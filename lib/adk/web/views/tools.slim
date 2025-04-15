@@ -1,0 +1,16 @@
+.content
+  h1.title Tools
+  p.subtitle Browse and manage available tools
+
+#tool-list.mt-4
+  .columns.is-multiline
+    / Check if @tools_list exists and is not empty
+    - if @tools_list && !@tools_list.empty?
+      / Iterate over the tools provided by the route
+      - @tools_list.each do |tool_info|
+        / Render the partial for each tool
+        == slim :_tool_card, locals: { tool_info: tool_info }
+    - else
+      / Show a message if no tools are available
+      .column
+        p No tools currently available.

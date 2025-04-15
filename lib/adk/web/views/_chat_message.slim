@@ -1,0 +1,15 @@
+// File: lib/adk/web/views/_chat_message.slim
+// This partial receives 'user_message' and 'agent_result' via locals
+
+.message.is-info.is-small.mb-2
+  .message-header
+    p You
+  .message-body
+    = user_message
+
+.message.is-success.is-small.mb-4
+  .message-header
+    p Agent (#{agent_name})
+  .message-body
+    // Handle potential non-string results gracefully
+    pre = agent_result.respond_to?(:to_s) ? agent_result.to_s : agent_result.inspect

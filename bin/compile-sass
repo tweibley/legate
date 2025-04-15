@@ -1,0 +1,7 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require_relative '../lib/adk/web/sass_compiler'
+
+# Compile all Sass files
+ADK::Web::SassCompiler.compile_all 

@@ -1,0 +1,29 @@
+# File: lib/adk/web/views/chat.slim
+
+.container
+  section.section
+    h1.title Chat with Agent: #{@agent.name}
+    p.subtitle Send messages to the agent and see its responses.
+
+    // Agent Status (Optional but helpful)
+    .box
+      p
+        strong Status: 
+        span class=(@agent.running? ? 'has-text-success' : 'has-text-danger')
+          = @agent.running? ? 'Running' : 'Stopped (Go to agent page to start)'
+
+    // Chat History Display Area
+    #chat-history.box(style="height: 400px; overflow-y: scroll; margin-bottom: 1rem;")
+      // Messages will be appended here by htmx
+
+    // Chat Input Form
+    form(hx-post="/agents/#{@agent.name}/chat" hx-target="#chat-history" hx-swap="beforeend" _="on htmx:afterRequest reset()")
+      .field.has-addons
+        .control.is-expanded
+          input.input#chat-input(type="text" name="message" placeholder="Enter your message..." required=true autofocus)
+        .control
+          button.button.is-info(type="submit" disabled=(!@agent.running?)) Send
+
+    // Link back to agent details
+    .mt-4
+      a.button(href="/agents/#{@agent.name}") ← Back to Agent Details

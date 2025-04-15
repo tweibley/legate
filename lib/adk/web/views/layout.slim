@@ -1,0 +1,22 @@
+doctype html
+html
+  head
+    title ADK - Agent Development Kit
+    meta charset="utf-8"
+    meta name="viewport" content="width=device-width, initial-scale=1"
+    link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"
+    link rel="stylesheet" href="/css/main.css"
+    script src="https://unpkg.com/htmx.org@1.9.10"
+    script src="https://unpkg.com/hyperscript.org@0.9.12"
+  body
+    nav.navbar.is-primary
+      .navbar-brand
+        a.navbar-item href="/" ADK
+      .navbar-menu
+        .navbar-start
+          a.navbar-item href="/agents" Agents
+          a.navbar-item href="/tools" Tools
+    
+    section.section
+      .container
+        == yield 

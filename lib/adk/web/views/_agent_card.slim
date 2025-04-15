@@ -1,0 +1,18 @@
+/ File: lib/adk/web/views/_agent_card.slim
+
+/ Note: This outer comment uses Slim's comment syntax
+/ The .column div starts the actual HTML structure
+.column.is-one-third(data-agent-name=agent.name)
+  / This .card div MUST be indented (e.g., 2 spaces)
+  .card.agent-card
+    / .card-content is indented relative to .card
+    .card-content
+      / h3 and p are indented relative to .card-content
+      h3.title.is-5= agent.name
+      p.subtitle.is-6= agent.description
+    / .card-footer is indented relative to .card (same level as .card-content)
+    .card-footer
+      / a tag is indented relative to .card-footer
+      a.card-footer-item(href="/agents/#{agent.name}") Details
+      / Slim comments for potential future use
+      / a.card-footer-item(href="/agents/#{agent.name}/chat") Chat

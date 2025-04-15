@@ -1,0 +1,40 @@
+.content
+  h1.title = @agent.name
+  p.subtitle = @agent.description
+
+.box
+  h2.title.is-4 Status
+  // Render the partial, passing the @agent variable
+  == slim :_agent_status_controls, locals: { agent: @agent }
+  // Keep the chat button separate, outside the part that gets replaced
+  .buttons.mt-2
+    a.button.is-info(href="/agents/#{@agent.name}/chat")
+      span.icon
+        i.fas.fa-comments
+      span Chat with Agent
+
+.box
+  h2.title.is-4 Execute Task
+  form hx-post="/agents/#{@agent.name}/execute" hx-target="#task-result"
+    .field
+      label.label Task
+      .control
+        input.input type="text" name="task" placeholder="Enter task description" required=true
+    .field
+      .control
+        button.button.is-primary type="submit" Execute
+
+  #task-result.mt-4
+    - if @result
+      .notification.is-info
+        pre = @result
+
+.box
+  h2.title.is-4 Tools
+  .columns.is-multiline
+    - @agent.tools.each do |tool|
+      .column.is-one-third
+        .card.tool-card
+          .card-content
+            h3.title.is-5 = tool.name
+            p = tool.description 

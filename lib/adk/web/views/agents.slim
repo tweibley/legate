@@ -1,0 +1,26 @@
+# File: lib/adk/web/views/agents.slim
+
+.content
+  h1.title Agents
+  p.subtitle Manage your AI agents
+
+.box
+  h2.title.is-4 Create Agent
+  // The comment has been removed from the end of this line:
+  form(hx-post="/agents" hx-target="#agent-list .columns" hx-swap="beforeend")
+    .field
+      label.label Name
+      .control
+        input.input(type="text" name="name" placeholder="Agent name" required=true)
+    .field
+      label.label Description
+      .control
+        input.input(type="text" name="description" placeholder="Agent description" required=true)
+    .field
+      .control
+        button.button.is-primary(type="submit") Create Agent
+
+#agent-list.mt-4
+  .columns.is-multiline
+    - @agents_list&.each do |agent|
+      == slim :_agent_card, locals: { agent: agent }

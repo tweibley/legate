@@ -1,0 +1,123 @@
+@use "sass:color";
+
+// Variables
+$primary-color: #3498db;
+$secondary-color: #2ecc71;
+$text-color: #333;
+$background-color: #f9f9f9;
+$border-color: #ddd;
+
+// Reset
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.6;
+  color: $text-color;
+  background-color: $background-color;
+}
+
+// Layout
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+header {
+  background-color: $primary-color;
+  color: white;
+  padding: 1rem 0;
+  margin-bottom: 2rem;
+  
+  h1 {
+    font-size: 2rem;
+  }
+}
+
+// Navigation
+nav {
+  background-color: color.adjust($primary-color, $lightness: -10%);
+  padding: 0.5rem 0;
+  
+  ul {
+    display: flex;
+    list-style: none;
+    
+    li {
+      margin-right: 1rem;
+      
+      a {
+        color: white;
+        text-decoration: none;
+        
+        &:hover {
+          text-decoration: underline;
+        }
+      }
+    }
+  }
+}
+
+// Cards
+.card {
+  background-color: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  
+  h2 {
+    color: $primary-color;
+    margin-bottom: 1rem;
+  }
+}
+
+// Buttons
+.button {
+  display: inline-block;
+  background-color: $primary-color;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  
+  &:hover {
+    background-color: color.adjust($primary-color, $lightness: -10%);
+  }
+  
+  &.secondary {
+    background-color: $secondary-color;
+    
+    &:hover {
+      background-color: color.adjust($secondary-color, $lightness: -10%);
+    }
+  }
+}
+
+// Forms
+form {
+  .form-group {
+    margin-bottom: 1rem;
+    
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: bold;
+    }
+    
+    input, textarea, select {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid $border-color;
+      border-radius: 4px;
+    }
+  }
+} 

@@ -1,0 +1,34 @@
+.content
+  h1.title = @tool.name
+  p.subtitle = @tool.description
+
+.box
+  h2.title.is-4 Parameters
+  table.table
+    thead
+      tr
+        th Name
+        th Type
+        th Required
+        th Description
+    tbody
+      - @tool.parameters.each do |name, info|
+        tr
+          td = name
+          td = info[:type]
+          td = info[:required] ? 'Yes' : 'No'
+          td = info[:description]
+
+.box
+  h2.title.is-4 Try it out
+  form hx-post="/tools/#{@tool.name}/execute" hx-target="#tool-result"
+    - @tool.parameters.each do |name, info|
+      .field
+        label.label = name
+        .control
+          input.input(type="text" name=name.to_s placeholder=info[:description] required=info[:required])
+    .field
+      .control
+        button.button.is-primary type="submit" Execute
+
+  #tool-result.mt-4 
