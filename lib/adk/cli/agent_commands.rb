@@ -4,12 +4,12 @@
 require 'thor'
 require 'redis'
 require 'json'
-require_relative '../tool_registry' # Keep this for the 'execute' fallback
-require_relative '../agent' # Add require for ADK::Agent for start/stop/execute
+require_relative '../tool_registry' # Require registry for execute fallback
+require_relative '../agent' # Require Agent class for start/execute
 
 module ADK
   module CLI
-    # CLI commands for agent definition management AND temporary execution
+    # CLI commands for agent definition management AND execution
     class AgentCommands < Thor
       # --- Redis Configuration ---
       REDIS_AGENT_HASH_PREFIX = "adk:agent:"
@@ -21,22 +21,23 @@ module ADK
         end
 
         def connect_redis
-          redis = Redis.new
-          redis.ping
+          redis = Redis.new # Assumes localhost:6379
+          redis.ping # Verify connection
           redis
         rescue Redis::CannotConnectError => e
           say "Error: Could not connect to Redis. Is it running? (#{e.message})", :red
-          exit(1)
+          exit(1) # Exit if Redis is unavailable
         end
 
         def parse_tools(tools_json)
           return [] unless tools_json && !tools_json.empty?
 
-          JSON.parse(tools_json) rescue []
+          JSON.parse(tools_json) rescue [] # Return empty array on parse error
         end
       end
       # --- End Redis Configuration ---
 
+      # --- Definition Management Commands ---
       desc 'list', 'List all defined agents from Redis'
       def list
         redis = connect_redis
@@ -48,6 +49,7 @@ module ADK
         end
 
         say "Defined Agents:", :bold
+        # Fetch data efficiently using pipelined HMGET
         agents_data = redis.pipelined do |pipe|
           agent_names.each do |name|
             pipe.hmget(agent_redis_key(name), 'description', 'tools')
@@ -63,9 +65,9 @@ module ADK
       end
 
       desc 'create NAME', 'Create a new agent definition in Redis'
-      method_option :description, type: :string, desc: 'Agent description', required: true
+      method_option :description, type: :string, required: true
+      # TODO: Add --tools option to select tools via CLI
       def create(name)
-        # --- THIS IS THE CORRECT 'create' METHOD ---
         redis = connect_redis
         key = agent_redis_key(name)
 
@@ -85,7 +87,7 @@ module ADK
             multi.sadd(REDIS_AGENTS_SET_KEY, name)
           end
           if results.is_a?(Array) && results.length == 3 && results[0].is_a?(Integer) && results[1].is_a?(Integer) && results[2] == 1
-            say "Agent definition '#{name}' created successfully in Redis (with no tools configured).", :green
+            say "Agent definition '#{name}' created successfully in Redis (Tools: None).", :green
           else
             say "Warning: Agent definition command executed, but Redis reported unexpected results: #{results.inspect}. Please verify.",
                 :yellow
@@ -94,7 +96,6 @@ module ADK
           say "Error: Failed to save agent definition to Redis: #{e.message}", :red
           exit(1)
         end
-        # --- END CORRECT 'create' METHOD ---
       end
 
       desc 'delete NAME', "Delete an agent's definition from Redis"
@@ -127,46 +128,129 @@ module ADK
           say "Deletion cancelled.", :cyan
         end
       end
+      # --- End Definition Management Commands ---
 
-      # --- Temporary Instance Commands (No Redis Interaction) ---
-      desc 'start NAME', '[Temporary Instance] Start a temporary agent instance (does not use Redis definition)'
+      # --- Runtime/Execution Commands ---
+
+      desc 'start NAME', 'Verify agent definition loading and start (Ephemeral)'
+      long_desc <<-LONGDESC
+        Loads the agent definition (name, description, tools) from Redis,
+        instantiates the agent object, adds its configured tools, and calls start().
+
+        This command verifies that the agent can be loaded correctly based on its
+        persisted definition.
+
+        NOTE: This command does NOT start a persistent background process.
+        The agent instance exists only for the duration of this command execution.
+      LONGDESC
       def start(name)
-        say "Warning: This command starts a temporary, non-persisted agent instance.", :yellow
-        # Requires ADK::Agent definition
-        agent = ADK::Agent.new(name: name, description: 'Temporary Loaded agent')
-        agent.start
-        puts "Started temporary agent instance: #{agent.name}"
-      end
+        say "Attempting to load and start agent '#{name}' based on Redis definition..."
+        redis = connect_redis
+        key = agent_redis_key(name)
 
-      desc 'stop NAME', '[Temporary Instance] Stop a temporary agent instance'
-      def stop(name)
-        say "Warning: This command only affects temporary instances created by 'adk agent start'.", :yellow
-        # Requires ADK::Agent definition
-        agent = ADK::Agent.new(name: name, description: 'Temporary Loaded agent')
-        agent.stop
-        puts "Stopped temporary agent instance: #{agent.name}"
-      end
+        # Fetch definition
+        redis_agent_data = redis.hmget(key, 'description', 'tools')
+        description = redis_agent_data[0]
+        tools_json_string = redis_agent_data[1]
 
-      desc 'execute NAME TASK', '[Temporary Instance] Execute task on temporary agent instance'
-      def execute(name, task)
-        say "Warning: This command uses a temporary, non-persisted agent instance.", :yellow
-        # Requires ADK::Agent definition
-        agent = ADK::Agent.new(name: name, description: 'Temporary Loaded agent')
-        # Add default tools for basic execution
-        begin
-          echo = ADK::ToolRegistry.create_instance(:echo)
-          agent.add_tool(echo) if echo
-          calc = ADK::ToolRegistry.create_instance(:calculator)
-          agent.add_tool(calc) if calc
-        rescue NameError
-          say "Warning: ToolRegistry not loaded, cannot add default tools to temporary agent.", :yellow
+        unless description
+          say "Error: Agent definition '#{name}' not found in Redis.", :red
+          exit(1)
         end
 
-        agent.start
-        result = agent.run_task(task)
-        puts "Task result: #{result}"
-        agent.stop
+        begin
+          # Instantiate agent
+          agent = ADK::Agent.new(name: name, description: description)
+
+          # Load configured tools
+          tool_names_to_load = parse_tools(tools_json_string).map(&:to_sym)
+          added_tools_names = []
+          if tool_names_to_load.empty?
+            say "  - No tools configured for this agent.", :yellow
+          else
+            say "  - Adding configured tools: #{tool_names_to_load.join(', ')}"
+            tool_names_to_load.each do |tool_name|
+              tool_instance = ADK::ToolRegistry.create_instance(tool_name)
+              if tool_instance
+                agent.add_tool(tool_instance)
+                added_tools_names << tool_name
+              else
+                say "  - Warning: Configured tool '#{tool_name}' not found in registry.", :yellow
+              end
+            end
+          end
+
+          # Call agent's start method
+          agent.start
+          say "Agent '#{name}' (with tools: [#{added_tools_names.join(', ')}]) loaded and started successfully (instance finished).",
+              :green
+        rescue StandardError => e
+          say "Error during agent instantiation or start: #{e.class} - #{e.message}", :red
+          # puts e.backtrace if options[:verbose] # Consider adding --verbose flag later
+          exit(1)
+        end
       end
-    end
-  end
-end
+
+      # --- 'stop' command removed ---
+
+      desc 'execute NAME TASK', 'Execute a task using the agent definition from Redis'
+      long_desc <<-LONGDESC
+        Loads the agent definition (name, description, tools) from Redis,
+        instantiates the agent, adds its configured tools, starts it, runs the specified TASK,
+        prints the result, stops the agent, and exits.
+
+        This executes the full agent lifecycle for a single task based on the
+        persisted definition.
+      LONGDESC
+      def execute(name, task)
+        say "Loading agent '#{name}' to execute task: \"#{task}\"..."
+        redis = connect_redis
+        key = agent_redis_key(name)
+
+        # Fetch definition
+        redis_agent_data = redis.hmget(key, 'description', 'tools')
+        description = redis_agent_data[0]
+        tools_json_string = redis_agent_data[1]
+
+        unless description
+          say "Error: Agent definition '#{name}' not found in Redis.", :red
+          exit(1)
+        end
+
+        begin
+          # Instantiate agent
+          agent = ADK::Agent.new(name: name, description: description)
+
+          # Load configured tools
+          tool_names_to_load = parse_tools(tools_json_string).map(&:to_sym)
+          if tool_names_to_load.empty?
+            say "  - Warning: Agent has no tools configured.", :yellow
+          else
+            say "  - Adding configured tools: #{tool_names_to_load.join(', ')}"
+            tool_names_to_load.each do |tool_name|
+              tool_instance = ADK::ToolRegistry.create_instance(tool_name)
+              agent.add_tool(tool_instance) if tool_instance # Silently skip if tool not found now
+            end
+          end
+
+          # Start, Run, Stop
+          agent.start
+          say "  - Running task...", :cyan
+          result = agent.run_task(task)
+          agent.stop
+
+          # Output result
+          say "Task Result:", :bold
+          puts result
+        rescue StandardError => e
+          say "Error during agent execution: #{e.class} - #{e.message}", :red
+          # Try to stop agent even if task failed
+          agent&.stop rescue nil
+          # puts e.backtrace if options[:verbose]
+          exit(1)
+        end
+      end
+      # --- End Runtime/Execution Commands ---
+    end # End AgentCommands class
+  end # End CLI module
+end # End ADK module
