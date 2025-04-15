@@ -57,7 +57,7 @@ module ADK
       prompt = build_gemini_prompt(task, available_tools)
 
       logger.info("Sending planning request to Gemini (via gemini-ai) for task: #{task}")
-      logger.info("Gemini Prompt:\n#{prompt}") # Uncomment for debugging
+      # logger.debug("Gemini Prompt:\n#{prompt}") # Uncomment for debugging
 
       begin
         # API call using the gemini-ai gem's structure
@@ -82,7 +82,7 @@ module ADK
            return fallback_plan(task, "Gemini response was empty or unparseable.")
         end
 
-        logger.debug("Gemini Raw Response Text:\n#{raw_response_text}")
+        # logger.debug("Gemini Raw Response Text:\n#{raw_response_text}")
 
         parsed_plan = parse_gemini_response(raw_response_text)
         validated_plan = validate_and_format_plan(parsed_plan)
