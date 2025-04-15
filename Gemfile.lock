@@ -8,6 +8,7 @@ PATH
       faraday-net_http
       gemini-ai (~> 4.2.0)
       logger (~> 1.5)
+      ostruct
       prometheus-client (~> 2.1)
       puma (~> 6.4)
       redis (~> 5.0)
@@ -88,6 +89,7 @@ GEM
       uri
     nio4r (2.7.4)
     os (1.1.4)
+    ostruct (0.6.1)
     parallel (1.26.3)
     parser (3.3.8.0)
       ast (~> 2.4.1)
