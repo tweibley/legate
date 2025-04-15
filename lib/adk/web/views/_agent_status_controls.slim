@@ -1,15 +1,23 @@
 / File: lib/adk/web/views/_agent_status_controls.slim
 
-// This partial expects 'agent' to be passed in locals
-// Use a unique ID for the container based on the agent name
-- container_id = "agent-status-controls-#{agent.name.gsub(/[^a-zA-Z0-9_-]/, '-')}"
+/ This partial expects 'agent_data' (EITHER live Agent object OR Hash {name:, description:, running:})
+- agent_name = agent_data.is_a?(Hash) ? agent_data[:name] : agent_data.name
+- is_running = agent_data.is_a?(Hash) ? agent_data[:running] : agent_data.running?
+- container_id = "agent-status-controls-#{agent_name.gsub(/[^a-zA-Z0-9_-]/, '-')}"
 
-div id=container_id
+div(id=container_id)
+  / Status Text
   p
     strong Running:
-    span class=(agent.running? ? 'has-text-success' : 'has-text-danger')
-      = agent.running? ? 'Running' : 'Stopped'
+    span(class=(is_running ? 'has-text-success' : 'has-text-danger'))
+      = is_running ? 'Running' : 'Stopped'
+
+  / Buttons Container
   .buttons.mt-2
-    // Buttons now target the container div and swap its outerHTML
-    button.button.is-success(hx-post="/agents/#{agent.name}/start" hx-target="##{container_id}" hx-swap="outerHTML" disabled=agent.running?) Start
-    button.button.is-danger(hx-post="/agents/#{agent.name}/stop" hx-target="##{container_id}" hx-swap="outerHTML" disabled=!agent.running?) Stop
+    / Start Button
+    button.button.is-success(hx-post="/agents/#{agent_name}/start" hx-target="##{container_id}" hx-swap="outerHTML" disabled=is_running) Start
+    / Stop Button
+    button.button.is-danger(hx-post="/agents/#{agent_name}/stop" hx-target="##{container_id}" hx-swap="outerHTML" disabled=!is_running) Stop
+    / --- Moved Chat Button Here ---
+    a.button.is-info(href="/agents/#{agent_name}/chat" disabled=!is_running)
+      span Chat with Agent (Requires Start)

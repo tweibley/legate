@@ -1,30 +1,33 @@
+/ File: lib/adk/web/views/agent.slim
 .content
-  h1.title = @agent.name
-  p.subtitle = @agent.description
+  h1.title= @view_agent_data[:name]
+  p.subtitle= @view_agent_data[:description]
 
 .box
   h2.title.is-4 Status
-  // Render the partial, passing the @agent variable
-  == slim :_agent_status_controls, locals: { agent: @agent }
-  // Keep the chat button separate, outside the part that gets replaced
-  .buttons.mt-2
-    a.button.is-info(href="/agents/#{@agent.name}/chat")
-      span.icon
-        i.fas.fa-comments
-      span Chat with Agent
+  / Render the partial, which now includes the Chat button
+  == slim :_agent_status_controls, locals: { agent_data: @view_agent_data }
+  / --- Removed Chat Button from here ---
+  / .buttons.mt-2
+  /   a.button.is-info(href="/agents/#{@view_agent_data[:name]}/chat" disabled=!@view_agent_data[:running])
+  /     span Chat with Agent (Requires Start)
 
+
+/ Execute Task box
 .box
-  h2.title.is-4 Execute Task
-  form hx-post="/agents/#{@agent.name}/execute" hx-target="#task-result"
+  h2.title.is-4 Execute Task (JSON Input)
+  form(hx-post="/agents/#{@view_agent_data[:name]}/execute" hx-target="#task-result")
     .field
-      label.label Task
+      label.label Task (JSON Format: {"task": "your task"})
       .control
-        input.input type="text" name="task" placeholder="Enter task description" required=true
+        textarea.textarea(name="task_json" placeholder='{"task": "Describe your task here..."}' required=true rows="3")
     .field
       .control
-        button.button.is-primary type="submit" Execute
+        / --- Add id="execute-task-button" ---
+        button.button.is-primary(type="submit" id="execute-task-button" disabled=!@view_agent_data[:running]) Execute (Requires Start)
 
   #task-result.mt-4
+    / This @result display likely doesn't work as intended currently
     - if @result
       .notification.is-info
         pre = @result
@@ -32,9 +35,20 @@
 .box
   h2.title.is-4 Tools
   .columns.is-multiline
-    - @agent.tools.each do |tool|
-      .column.is-one-third
-        .card.tool-card
-          .card-content
-            h3.title.is-5 = tool.name
-            p = tool.description 
+    - if @agent && @agent.tools.any? # Check if @agent and tools exist
+      - @agent.tools.each do |tool| # Loop through tools if available
+        .column.is-one-third
+          .card.tool-card
+            .card-content
+              h3.title.is-5= tool.name
+              p= tool.description
+      / No explicit 'end' needed for the each block's content in Slim,
+      / but the block itself must be properly structured.
+      / The lack of 'end' was the original issue reported.
+      / If Slim requires an explicit end for the block itself:
+      end
+    - else
+      .column
+        p This agent currently has no tools assigned (or agent object not loaded).
+
+end

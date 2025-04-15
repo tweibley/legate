@@ -40,5 +40,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'gemini-ai','~> 4.2.0'
   spec.add_dependency 'faraday'
   spec.add_dependency 'faraday-net_http'
-  spec.add_dependency 'rubocop'
+  
+
 end 

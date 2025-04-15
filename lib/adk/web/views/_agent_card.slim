@@ -2,17 +2,12 @@
 
 / Note: This outer comment uses Slim's comment syntax
 / The .column div starts the actual HTML structure
-.column.is-one-third(data-agent-name=agent.name)
-  / This .card div MUST be indented (e.g., 2 spaces)
+/ Expects 'agent_info' (a hash with :name, :description, :running) in locals
+.column.is-one-third(data-agent-name=agent_info[:name])
   .card.agent-card
-    / .card-content is indented relative to .card
     .card-content
-      / h3 and p are indented relative to .card-content
-      h3.title.is-5= agent.name
-      p.subtitle.is-6= agent.description
-    / .card-footer is indented relative to .card (same level as .card-content)
+      h3.title.is-5= agent_info[:name]
+      p.subtitle.is-6= agent_info[:description]
     .card-footer
-      / a tag is indented relative to .card-footer
-      a.card-footer-item(href="/agents/#{agent.name}") Details
-      / Slim comments for potential future use
-      / a.card-footer-item(href="/agents/#{agent.name}/chat") Chat
+      a.card-footer-item(href="/agents/#{agent_info[:name]}") Details
+      / Can add status indicator here if needed based on agent_info[:running]

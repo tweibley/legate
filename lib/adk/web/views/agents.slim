@@ -1,26 +1,34 @@
-# File: lib/adk/web/views/agents.slim
+/ File: lib/adk/web/views/agents.slim
 
 .content
   h1.title Agents
-  p.subtitle Manage your AI agents
+  p.subtitle Manage your defined AI agents. Start agents to enable interaction.
 
 .box
-  h2.title.is-4 Create Agent
-  // The comment has been removed from the end of this line:
-  form(hx-post="/agents" hx-target="#agent-list .columns" hx-swap="beforeend")
+  h2.title.is-4 Create Agent Definition
+  form(hx-post="/agents" hx-target="#agent-list .columns" hx-swap="beforeend" _="on htmx:afterRequest reset()")
     .field
       label.label Name
       .control
-        input.input(type="text" name="name" placeholder="Agent name" required=true)
+        input.input(type="text" name="name" placeholder="Unique agent name" required=true)
     .field
       label.label Description
       .control
         input.input(type="text" name="description" placeholder="Agent description" required=true)
     .field
       .control
-        button.button.is-primary(type="submit") Create Agent
+        button.button.is-primary(type="submit") Create Agent Definition
 
-#agent-list.mt-4
+#agent-list.mt-4(data-testid="agent-list-container")
+  / Container for the agent cards, targeted by the creation form
   .columns.is-multiline
-    - @agents_list&.each do |agent|
-      == slim :_agent_card, locals: { agent: agent }
+    / Check if @view_agents exists and is not empty (provided by the GET /agents route)
+    - if @view_agents && !@view_agents.empty?
+      / Iterate over the agent info hashes
+      - @view_agents.each do |agent_info|
+        / Render the partial for each agent, passing the info hash
+        == slim :_agent_card, locals: { agent_info: agent_info }
+    - else
+      / Show a message if no agents are defined yet
+      .column
+        p No agent definitions found in Redis. Use the form above to create one.
