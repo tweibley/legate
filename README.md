@@ -38,6 +38,9 @@ $ gem install adk-ruby
 ### Ruby API
 
 ```ruby
+#!/usr/bin/env ruby
+
+require 'bundler/setup'
 require 'adk'
 
 # Create a new agent
@@ -47,13 +50,14 @@ agent = ADK::Agent.new(
 )
 
 # Add tools to the agent
-agent.add_tool(ADK::Tools::Calculator.new)
+agent.add_tool(ADK::Tools::Echo.new)
 
 # Start the agent
 agent.start
 
 # Execute a task
-agent.run_task('Calculate 2 + 2')
+puts agent.run_task('Tell me a cat fact!')
+
 ```
 
 ### Command Line Interface
