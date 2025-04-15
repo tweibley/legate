@@ -1,13 +1,25 @@
 / File: lib/adk/web/views/_agent_card.slim
-
-/ Note: This outer comment uses Slim's comment syntax
-/ The .column div starts the actual HTML structure
-/ Expects 'agent_info' (a hash with :name, :description, :running) in locals
+/ Expects 'agent_info' (a hash with :name, :description, :running, :configured_tools)
 .column.is-one-third(data-agent-name=agent_info[:name])
   .card.agent-card
     .card-content
       h3.title.is-5= agent_info[:name]
       p.subtitle.is-6= agent_info[:description]
+      / --- Add Display for Configured Tools ---
+      - if agent_info[:configured_tools] && !agent_info[:configured_tools].empty?
+        div.mt-2
+          strong.is-size-7 Configured Tools:
+          p.is-size-7= agent_info[:configured_tools].join(', ')
+      - else
+         p.is-size-7.has-text-grey No tools configured.
+      / --- End Display ---
     .card-footer
       a.card-footer-item(href="/agents/#{agent_info[:name]}") Details
-      / Can add status indicator here if needed based on agent_info[:running]
+      / Optional: Add running status indicator using Bulma tags?
+      / - if agent_info[:running]
+      /   span.card-footer-item
+      /     span.tag.is-success.is-light Running
+      / - else
+      /   span.card-footer-item
+      /     span.tag.is-light Stopped
+      

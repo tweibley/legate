@@ -15,6 +15,23 @@
       label.label Description
       .control
         input.input(type="text" name="description" placeholder="Agent description" required=true)
+
+    / --- Add Tool Selection ---
+    .field
+      label.label Tools
+      .control
+        - if @available_tools && !@available_tools.empty?
+          - @available_tools.each do |tool_info|
+            .field
+              label.checkbox
+                / Use name="tools[]" to submit multiple values as an array
+                input(type="checkbox" name="tools[]" value=tool_info[:name])
+                strong #{tool_info[:name].to_s.capitalize}:
+                span  #{tool_info[:description]}
+        - else
+          p No tools available for selection.
+    / --- End Tool Selection ---
+
     .field
       .control
         button.button.is-primary(type="submit") Create Agent Definition
