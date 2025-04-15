@@ -27,3 +27,17 @@ Here are a few potential directions we could go next, ranging from strengthening
 **Recommendation:**
 
 I'd strongly recommend focusing on **#1 Agent Persistence** next. It's a fundamental piece missing for making the agent management aspect truly functional across sessions. After that, **#2 Dynamic Tool Discovery** would be the next logical step to make the framework more robust and extensible.
+
+
+**What's Next?**
+
+We've built a solid foundation. Based on our previous discussion, here are the most logical next steps:
+
+1.  **Persist Tool Configuration per Agent:** Currently, when an agent starts, it gets *all* registered tools. We could enhance the agent definition in Redis to store a list of *specific* tool names for that agent and update the `/start` route to load only those. This requires UI changes for selecting tools during agent creation/editing.
+2.  **Enhance Planner Robustness:** The planner currently assumes Gemini returns valid JSON and that the chosen tool/parameters are correct. We could add more validation *after* getting the response from Gemini (e.g., check if parameters match the tool definition) before creating the final plan step.
+3.  **Add Agent Deletion:** Implement functionality in the UI (e.g., a delete button on the `/agents` list or `/agents/:name` page) and a corresponding backend route to remove agent definitions from Redis (and stop the agent if it's running).
+4.  **Refine UI/UX:** Implement flash messages, improve chat styling, etc.
+5.  **Add More Tools:** Create more tools (like the Calculator, WebSearch) to test the planner and registry further.
+
+Given the structure, **#1 (Persist Tool Configuration per Agent)** or **#5 (Add More Tools)** seem like good next steps to leverage the dynamic tool registry. Persisting the tool config is a bigger step involving Redis changes and UI updates, while adding a new tool is more straightforward and helps verify the registry works as expected.
+
