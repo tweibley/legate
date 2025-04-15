@@ -17,7 +17,7 @@ module ADK
     # @option options [String] :api_key Google AI API Key (defaults to ENV['GOOGLE_API_KEY'])
     def initialize(agent:, **options)
       @agent = agent
-      @logger = options[:logger] || Logger.new($stdout)
+      @logger = options[:logger] || ADK.logger
       @api_key = options[:api_key] || ENV['GOOGLE_API_KEY']
       @client = nil # Initialize client as nil
 
@@ -134,7 +134,7 @@ module ADK
 
     # Build the prompt for the Gemini API call (Identical to previous version)
     def build_gemini_prompt(task, tools_description)
-      puts tools_description
+      # puts tools_description
       # ... (implementation from previous response) ...
       <<~PROMPT
         You are an AI planner for an agent. Your goal is to choose the single best tool to fulfill the user's request and determine the necessary parameters for that tool based ONLY on the request and the tool descriptions provided.

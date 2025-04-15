@@ -64,4 +64,4 @@ module ADK
       @state.key?(key)
     end
   end
-end 
+end

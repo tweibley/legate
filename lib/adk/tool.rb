@@ -5,10 +5,6 @@ require_relative 'tool_registry'
 require 'logger'
 
 module ADK
-  class Error < StandardError; end
-
-  class Error < StandardError; end
-
   class Tool
     # --- Class-level attributes ---
     class << self
@@ -24,16 +20,10 @@ module ADK
 
       # --- Moved Registration Logic Here ---
       def register_tool_class
-        unless @tool_name && @description # Check if metadata was set
-          # Don't log error here, might be called for base class
-          # Logger.new($stdout).error("ToolRegistry: Cannot register #{self}. Metadata not defined via `define_metadata`.")
-          return
-        end
+        return unless @tool_name && @description # Check if metadata was set
 
-        # Prevent re-registration if already done (optional, register overwrites anyway)
-        # unless ADK::ToolRegistry.find_class(@tool_name) == self
+        ADK.logger.debug("Attempting to register tool '#{@tool_name}' with class #{self}")
         ADK::ToolRegistry.register(@tool_name, self)
-        # end
       end
       # --- End Moved Registration Logic ---
     end
@@ -43,7 +33,8 @@ module ADK
     def self.inherited(subclass)
       super # Call parent's inherited if necessary
       # The registration now happens when define_metadata is called in the subclass
-      Logger.new($stdout).debug("Tool subclass #{subclass} inherited from ADK::Tool.")
+      ADK.logger.debug("Tool subclass #{subclass} inherited from ADK::Tool.")
+      # Registration now triggered by define_metadata in subclass
     end
     # --- End Hook ---
 
@@ -80,6 +71,8 @@ module ADK
     # Execute the tool
     def execute(params = {})
       validate_params(params)
+      # Log parameters *after* validation succeeds but before execution
+      ADK.logger.debug("Executing tool '#{name}' with validated params: #{params.inspect}")
       perform_execution(params)
     end
 
@@ -90,14 +83,21 @@ module ADK
       present_keys = params.keys.map(&:to_s)
       missing_params = required_param_names - present_keys
       unless missing_params.empty?
-        logger = self.respond_to?(:logger) ? self.logger : Logger.new($stdout)
-        logger.error("Validation failed. Required(string): #{required_param_names.inspect}, Received keys(string): #{present_keys.inspect}, Received params: #{params.inspect}")
-        raise Error, "Missing required parameters: #{missing_params.join(', ')}"
+        # --- Use the central ADK logger here ---
+        log_message = "Validation failed for tool '#{@name}'. Required(string): #{required_param_names.inspect}, Received keys(string): #{present_keys.inspect}, Received params: #{params.inspect}"
+        ADK.logger.error(log_message) # Log the specific error
+        # --- End logger usage ---
+        # Raise the error with just the user-facing message
+        raise ADK::Error, "Missing required parameters: #{missing_params.join(', ')}"
       end
+      # Optional: Add type validation here later if needed
     end
 
     private
 
+    # Perform the actual execution of the tool
+    # @param params [Hash] The validated parameters to execute with
+    # @return [Object] The result of the execution
     def perform_execution(params)
       raise NotImplementedError, "Subclasses must implement #perform_execution"
     end

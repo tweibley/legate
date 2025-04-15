@@ -168,7 +168,7 @@ module ADK
           if tool_names_to_load.empty?
             say "  - No tools configured for this agent.", :yellow
           else
-            say "  - Adding configured tools: #{tool_names_to_load.join(', ')}"
+            say "  - Adding configured tools: #{tool_names_to_load.join(', ')}", :cyan
             tool_names_to_load.each do |tool_name|
               tool_instance = ADK::ToolRegistry.create_instance(tool_name)
               if tool_instance
@@ -226,7 +226,7 @@ module ADK
           if tool_names_to_load.empty?
             say "  - Warning: Agent has no tools configured.", :yellow
           else
-            say "  - Adding configured tools: #{tool_names_to_load.join(', ')}"
+            say "  - Adding configured tools: [#{tool_names_to_load.join(', ')}]", :cyan
             tool_names_to_load.each do |tool_name|
               tool_instance = ADK::ToolRegistry.create_instance(tool_name)
               agent.add_tool(tool_instance) if tool_instance # Silently skip if tool not found now
@@ -234,18 +234,27 @@ module ADK
           end
 
           # Start, Run, Stop
+          say "  - Starting agent #{agent.name}...", :cyan, false
           agent.start
-          say "  - Running task...", :cyan
+          say "started.", :cyan
+
+          say "  - Running task...", :cyan, false
           result = agent.run_task(task)
+          say "finished.", :cyan
+          say "  - Stopping agent...", :cyan, false
           agent.stop
+          say "stopped.", :cyan
 
           # Output result
-          say "Task Result:", :bold
-          puts result
+          say ""
+          say "Task Result:", :green
+          say result, :green
         rescue StandardError => e
           say "Error during agent execution: #{e.class} - #{e.message}", :red
           # Try to stop agent even if task failed
           agent&.stop rescue nil
+          say "Agent #{agent.name} stopped!", :cyan
+
           # puts e.backtrace if options[:verbose]
           exit(1)
         end

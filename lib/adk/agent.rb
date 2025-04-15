@@ -25,12 +25,12 @@ module ADK
       @name = name
       @description = description
       @tools = [] # Initialize as empty; tools are added via add_tool
-      @logger = options[:logger] || Logger.new($stdout) # Default logger
+      @logger = options[:logger] || ADK.logger # Default logger
       # Ensure Planner, Session, Memory classes are loaded before this runs
       # (Handled by load order in lib/adk.rb)
-      @session = options[:session] || Session.new(agent: self)
-      @memory = options[:memory] || Memory.new(agent: self)
-      @planner = options[:planner] || Planner.new(agent: self)
+      @planner = options[:planner] || Planner.new(agent: self, logger: @logger) # Pass logger down
+      @memory = options[:memory] || Memory.new(agent: self) # Memory might need logger too later
+      @session = options[:session] || Session.new(agent: self) # Session might need logger too later
       @state = Concurrent::Map.new # For runtime state like :running
     end
 

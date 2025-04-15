@@ -22,12 +22,8 @@ require_relative '../tools/calculator' # e.g. in default lists or checks
 
 # Load dotenv for development AFTER other requires if needed
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
-  begin
-    require 'dotenv/load'
-    puts "Dotenv loaded for development in app.rb."
-  rescue LoadError
-    puts "Warning: dotenv gem not found."
-  end
+  begin; require 'dotenv/load'; rescue LoadError; end
+  # Removed puts message here
 end
 
 module ADK
@@ -37,12 +33,12 @@ module ADK
       configure :development do
         register Sinatra::Reloader
         # Set more verbose logging for development if desired
-        set :logging, Logger::DEBUG
+        # set :logging, Logger::DEBUG
       end
 
       # Configure logger for all environments (can be adjusted)
       configure do
-        set :logger, Logger.new($stdout) unless settings.respond_to?(:logger) && settings.logger # Ensure logger exists
+        set :logger, ADK.logger unless settings.respond_to?(:logger) && settings.logger # Ensure logger exists
         # Optionally set default level, e.g., Logger::INFO
         # settings.logger.level = Logger::INFO
       end

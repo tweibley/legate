@@ -1,67 +1,65 @@
 # File: lib/adk/tool_registry.rb
 # frozen_string_literal: true
 
-require 'logger'
+# require 'logger' # Not needed directly if only using ADK.logger
 
 module ADK
   module ToolRegistry
-    @tools = {}
-    @logger = Logger.new($stdout)
+    @tools = {} # Stores { name_symbol => tool_class }
 
     class << self
       attr_reader :tools
 
       # Register a tool class
       def register(name, klass)
-        # ... (registration logic remains the same) ...
-         if @tools.key?(name)
-           @logger.warn("ToolRegistry: Tool '#{name}' is already registered. Overwriting with class #{klass}.")
-         else
-           @logger.info("ToolRegistry: Registering tool '#{name}' with class #{klass}")
-         end
-         @tools[name] = klass
+        logger = ADK.logger # Get the central logger instance
+
+        if @tools.key?(name)
+          # Use the local variable 'logger'
+          logger.warn("ToolRegistry: Tool '#{name}' is already registered. Overwriting with class #{klass}.")
+        else
+          # Use the local variable 'logger'
+          logger.info("ToolRegistry: Registering tool '#{name}' with class #{klass}")
+        end
+        @tools[name] = klass
       end
 
-      # Find class (remains the same)
+      # Find a tool class by its name symbol.
       def find_class(name_symbol)
         @tools[name_symbol]
       end
 
-      # Create instance (remains the same)
+      # Create an instance of a tool by its name symbol.
       def create_instance(name_symbol)
-        # ... (existing instantiation logic) ...
-         klass = find_class(name_symbol)
-         if klass
-           begin
-             klass.new
-           rescue StandardError => e
-             @logger.error("ToolRegistry: Failed to instantiate tool '#{name_symbol}' (Class: #{klass}): #{e.message}")
-             nil
-           end
-         else
-           @logger.warn("ToolRegistry: Attempted to create instance of unregistered tool '#{name_symbol}'")
-           nil
-         end
+        logger = ADK.logger # Get logger instance
+        klass = find_class(name_symbol)
+
+        if klass
+          begin
+            instance = klass.new
+            logger.debug("ToolRegistry: Successfully instantiated tool '#{name_symbol}'")
+            instance
+          rescue StandardError => e
+            logger.error("ToolRegistry: Failed to instantiate tool '#{name_symbol}' (Class: #{klass}): #{e.class} - #{e.message}")
+            logger.error(e.backtrace.first(5).join("\n"))
+            nil
+          end
+        else
+          logger.warn("ToolRegistry: Attempted to create instance of unregistered tool '#{name_symbol}'")
+          nil
+        end
       end
 
-      # Get list - NOW USES CLASS METADATA
-      # @return [Array<Hash>] Like [{ name: :echo, description: "..." }, ...]
+      # Get a list of available tools with basic info using class metadata.
       def list_tools
+        # No need to get logger instance if not logging within this method currently
         @tools.map do |name, klass|
-          # Access metadata directly from the class
           {
-            name: klass.tool_name || name, # Use registered name as fallback
+            name: klass.tool_name || name,
             description: klass.description || "[No description provided]"
           }
-          # Ensure the class has the methods before calling:
-          # if klass.respond_to?(:tool_name) && klass.respond_to?(:description)
-          #   { name: klass.tool_name, description: klass.description }
-          # else
-          #   @logger.warn("ToolRegistry: Tool class #{klass} for name '#{name}' doesn't define metadata methods.")
-          #   { name: name, description: "[Metadata unavailable]" }
-          # end
-        end.sort_by { |t| t[:name].to_s } # Sort alphabetically by name
+        end.sort_by { |t| t[:name].to_s }
       end
-    end
-  end
-end
+    end # End class << self
+  end # End ToolRegistry module
+end # End ADK module
