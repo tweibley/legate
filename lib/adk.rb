@@ -15,11 +15,8 @@ require_relative 'adk/session'
 require_relative 'adk/memory'
 require_relative 'adk/planner'
 
-# CLI components
+# CLI - This loads lib/adk/cli.rb, which now requires its own command files internally
 require_relative 'adk/cli'
-require_relative 'adk/cli/agent_commands'
-require_relative 'adk/cli/tool_commands'
-
 # Tools
 require_relative 'adk/tools/echo'
 require_relative 'adk/tools/calculator'
