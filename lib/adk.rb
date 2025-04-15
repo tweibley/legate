@@ -50,8 +50,9 @@ require_relative 'adk/planner'
 require_relative 'adk/cli'
 
 # Tools
-# require_relative 'adk/tools/echo'
-# require_relative 'adk/tools/calculator'
+require_relative 'adk/tools/echo'
+require_relative 'adk/tools/calculator'
+require_relative 'adk/tools/cat_facts'
 
 module ADK
   class Error < StandardError; end

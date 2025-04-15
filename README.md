@@ -7,8 +7,9 @@ Agent Development Kit (ADK) for Ruby is a framework for building and managing AI
 *   Flexible agent architecture (`ADK::Agent`).
 *   Dynamic Tool System with self-registration (`ADK::Tool`, `ADK::ToolRegistry`).
 *   Included Tools:
-    *   `Echo`: Echoes messages with a random cat fact.
+    *   `Echo`: Echoes back the provided message.
     *   `Calculator`: Performs basic arithmetic.
+    *   `CatFacts`: Fetches a random cat fact.
 *   LLM-powered Planning: Uses Google Gemini (via `gemini-ai` gem) to select tools based on task descriptions (`ADK::Planner`).
 *   Basic Memory Management (`ADK::Memory` - short-term & long-term placeholders).
 *   Session Management (`ADK::Session` - placeholder).
@@ -21,7 +22,8 @@ Agent Development Kit (ADK) for Ruby is a framework for building and managing AI
     *   Execute tasks directly via JSON input for *running* agents.
     *   View available tools (from Tool Registry).
     *   Execute tools directly via a form.
-*   **Command Line Interface:** Basic commands for tools and web server control. (Note: Agent CLI commands currently do not interact with persistence).
+*   **Command Line Interface:** Manage agent definitions, view tools, execute tasks, and control the web server.
+*   Configurable Logging via `ADK_LOG_LEVEL` environment variable.
 *   Standard Ruby tooling: Bundler, Rake, RSpec, Rubocop, Yard.
 
 ## Installation
@@ -69,8 +71,10 @@ The planner requires a Google API key for the Gemini models.
         # .env
         RACK_ENV=development
         GOOGLE_API_KEY="YOUR_API_KEY_HERE"
+        # Optional: Set log level (DEBUG, INFO, WARN, ERROR, FATAL, NONE) - Default is WARN
+        # ADK_LOG_LEVEL=INFO
         ```
-        Ensure the `dotenv` gem is in your Gemfile's development group (`bundle install`). The web app (`lib/adk/web/app.rb`) will load this automatically when `RACK_ENV` is `development`.
+        Ensure the `dotenv` gem is in your Gemfile's development group (`bundle install`).
         > **Important:** Add `.env` to your `.gitignore` file!
 
     *   **Production/Other:** Set the `GOOGLE_API_KEY` environment variable directly in your deployment environment *before* running the application.
@@ -79,6 +83,11 @@ The planner requires a Google API key for the Gemini models.
 
 *   By default, the application attempts to connect to Redis at `localhost:6379` without a password.
 *   To use a different host, port, password, or database, modify the `Redis.new` call within the `initialize` method of `lib/adk/web/app.rb`. Consider using environment variables (e.g., `ENV['REDIS_URL']`) for production configurations.
+
+### Logging Verbosity
+
+*   Control the detail level of logs by setting the `ADK_LOG_LEVEL` environment variable (or in `.env`).
+*   Valid levels: `DEBUG`, `INFO`, `WARN` (Default), `ERROR`, `FATAL`, `NONE` (or `SILENT`).
 
 ## Usage
 
@@ -101,6 +110,7 @@ This is the primary way to interact with the full feature set.
     *   Shows running status (based on current server process).
     *   Displays configured tools for each agent.
     *   Allows creating new agent definitions with tool selection.
+    *   Allows deleting agent definitions.
 *   **Agent Detail Page (`/agents/:name`):**
     *   Shows agent status (Running/Stopped).
     *   Provides Start/Stop buttons (affects runtime state).
@@ -129,7 +139,7 @@ require 'adk' # Loads core, registry, and tools
 # --- Agent Definition (Values you'd normally load from Redis) ---
 agent_name = 'api_agent_001'
 agent_description = 'Agent created via API'
-agent_tool_names = [:echo, :calculator] # List of tool names this agent should use
+agent_tool_names = [:echo, :calculator, :cat_facts] # List of tool names this agent should use
 
 # --- Runtime ---
 
@@ -170,11 +180,12 @@ puts "Result 2: #{result2}"
 # Stop the agent
 agent.stop
 puts "\nAgent '#{agent.name}' stopped. Running: #{agent.running?}"
+
 ```
 
 ### Command Line Interface
 
-Provides basic commands.
+Provides commands for managing agent definitions and executing tasks.
 
 ```bash
 # View ADK version
@@ -184,18 +195,23 @@ adk version
 adk tool list
 adk tool info echo
 adk tool info calculator
+adk tool info cat_facts
 adk tool execute echo Hello there
 adk tool execute calculator 10 5 multiply # Note: Arg parsing is basic
+adk tool execute cat_facts
 
-# --- Agent Commands (CAVEAT) ---
-# These commands currently create *temporary, non-persisted* agent instances.
-# They DO NOT interact with the Redis store or the running agents managed by the web UI.
-# Use the Web Interface for persistent agent management.
-adk agent create temp_agent --description="Temporary agent"
-# adk agent list # Currently does not list persisted agents
-# adk agent start temp_agent # Starts a temporary instance only
-# adk agent execute temp_agent "Hello" # Executes on temporary instance only
-# adk agent stop temp_agent # Stops temporary instance only
+# --- Agent Definition Commands (Uses Redis) ---
+adk agent list                             # List defined agents from Redis
+adk agent create <name> --description="..." # Create a new agent definition (no tools initially)
+adk agent delete <name>                    # Delete an agent definition
+
+# --- Agent Execution Command (Uses Redis Definition) ---
+# Loads definition, starts agent, runs task, stops agent, exits.
+adk agent execute <name> "Your task description here"
+
+# --- Agent Start Verification (Ephemeral) ---
+# Loads definition and verifies it can start (does not run persistently).
+adk agent start <name>
 
 # --- Web Server ---
 adk web start --port=5000 # Start web UI on different port
@@ -207,11 +223,12 @@ adk compile-sass # Manually compile Sass
 ## Core Concepts
 
 *   **Agent (`ADK::Agent`):** The central entity that manages runtime state, tools, planning, and execution.
-*   **Tool (`ADK::Tool`):** Represents a capability the agent can use (e.g., `Echo`, `Calculator`). Tools define metadata (`name`, `description`, `parameters`) using the `define_metadata` class method.
+*   **Tool (`ADK::Tool`):** Represents a capability the agent can use (e.g., `Echo`, `Calculator`, `CatFacts`). Tools define metadata (`name`, `description`, `parameters`) using the `define_metadata` class method.
 *   **Tool Registry (`ADK::ToolRegistry`):** A singleton module that automatically discovers and registers available `Tool` classes when they are loaded. Used by the UI, CLI, and Agent start process.
 *   **Planner (`ADK::Planner`):** Responsible for taking a high-level task and creating an execution plan (currently a single tool invocation). Uses Google Gemini (via `gemini-ai` gem) and requires a `GOOGLE_API_KEY`. Receives the list of tools available to the *specific running agent instance*.
 *   **Redis Persistence**: Agent definitions (name, description, list of configured tool names) are stored permanently in Redis Hashes and a central Set. This data survives server restarts.
 *   **Runtime State**: The set of *actively running* agent instances is managed in an in-memory hash within the Web UI process (`ADK::Web::App`). This state (including which agents are started/stopped) is lost when the web server restarts.
+*   **CLI vs. Web Runtime**: The CLI `agent execute` and `agent start` commands operate on *temporary* instances based on Redis definitions and exit upon completion. They do not interact with the persistent runtime state managed by the Web UI process.
 
 ## Development
 
@@ -223,7 +240,7 @@ After checking out the repo:
     ```
 2.  **Setup Environment:**
     *   Ensure Redis is running.
-    *   Create a `.env` file with `RACK_ENV=development` and your `GOOGLE_API_KEY`.
+    *   Create a `.env` file with `RACK_ENV=development` and your `GOOGLE_API_KEY`. Set `ADK_LOG_LEVEL` if desired.
 3.  **Run Web UI:**
     ```bash
     adk web start
@@ -254,3 +271,4 @@ Bug reports and pull requests are welcome on GitHub at [https://github.com/youru
 ## License
 
 If you are DHH or work at Basecamp/37signals you absolutely cannot use this.
+```
