@@ -4,52 +4,53 @@ Agent Development Kit (ADK) for Ruby is a framework for building and managing AI
 
 ## Features
 
-*   Flexible agent architecture (`ADK::Agent`).
-*   Dynamic Tool System with self-registration (`ADK::Tool`, `ADK::ToolRegistry`).
-*   Included Tools:
-    *   `Echo`: Echoes back the provided message.
-    *   `Calculator`: Performs basic arithmetic.
-    *   `CatFacts`: Fetches a random cat fact.
-*   LLM-powered Planning: Uses Google Gemini (via `gemini-ai` gem) to select tools based on task descriptions (`ADK::Planner`).
-*   Basic Memory Management (`ADK::Memory` - short-term & long-term placeholders).
-*   Session Management (`ADK::Session` - placeholder).
-*   **Redis Persistence:** Agent definitions (name, description, configured tools) are stored in Redis.
-*   **Web Interface:** (Sinatra/Slim/HTMX) for managing and interacting with agents:
-    *   View defined agents (from Redis) and their running status.
-    *   Create new agent definitions with tool selection (saved to Redis).
-    *   Start/Stop agents (manages runtime instances).
-    *   Chat interactively with *running* agents.
-    *   Execute tasks directly via JSON input for *running* agents.
-    *   View available tools (from Tool Registry).
-    *   Execute tools directly via a form.
-*   **Command Line Interface:** Manage agent definitions, view tools, execute tasks, and control the web server.
-*   Configurable Logging via `ADK_LOG_LEVEL` environment variable.
-*   Standard Ruby tooling: Bundler, Rake, RSpec, Rubocop, Yard.
+* Flexible agent architecture (`ADK::Agent`).
+* Dynamic Tool System with self-registration (`ADK::Tool`, `ADK::ToolRegistry`).
+* Included Tools:
+  * `Echo`: Echoes back the provided message.
+  * `Calculator`: Performs basic arithmetic.
+  * `CatFacts`: Fetches a random cat fact.
+* LLM-powered Planning: Uses Google Gemini (via `gemini-ai` gem) to select tools based on task descriptions (`ADK::Planner`).
+* Basic Memory Management (`ADK::Memory` - short-term & long-term placeholders).
+* Session Management (`ADK::Session` - placeholder).
+* **Redis Persistence:** Agent definitions (name, description, configured tools) are stored in Redis.
+* **Web Interface:** (Sinatra/Slim/HTMX) for managing and interacting with agents:
+  * View defined agents (from Redis) and their running status.
+  * Create new agent definitions with tool selection (saved to Redis).
+  * Start/Stop agents (manages runtime instances).
+  * Chat interactively with *running* agents.
+  * Execute tasks directly via JSON input for *running* agents.
+  * View available tools (from Tool Registry).
+  * Execute tools directly via a form.
+  * Delete agent definitions.
+* **Command Line Interface:** Manage agent definitions, view tools, execute tasks based on definitions, and control the web server.
+* Configurable Logging via `ADK_LOG_LEVEL` environment variable.
+* Standard Ruby tooling: Bundler, Rake, RSpec, Rubocop, Yard.
 
 ## Installation
 
 ### Prerequisites
 
-*   Ruby (>= 2.7.0 recommended, check `.mise.toml` for current version).
-*   Bundler (`gem install bundler`).
-*   Redis Server (running locally on default port 6379, or configure connection in `lib/adk/web/app.rb`).
-*   Google API Key for Gemini (see Configuration section).
+* Ruby (>= 2.7.0 recommended, check `.mise.toml` for current version).
+* Bundler (`gem install bundler`).
+* Redis Server (running locally on default port 6379, or configure connection in `lib/adk/web/app.rb` / CLI commands).
+* Google API Key for Gemini (see Configuration section).
 
 ### Steps
 
-1.  Add this line to your application's Gemfile:
-    ```ruby
-    gem 'adk-ruby'
-    # Or, if developing locally:
-    # gem 'adk-ruby', path: '.'
-    ```
+1. Add this line to your application's Gemfile:
+   ```ruby
+   gem 'adk-ruby'
+   # Or, if developing locally:
+   # gem 'adk-ruby', path: '.'
+   ```
 
-2.  Execute:
-    ```bash
-    bundle install
-    ```
+2. Execute:
+   ```bash
+   bundle install
+   ```
 
-3.  (Optional but Recommended for Dev) Create a `.env` file in the project root for development secrets (see Configuration).
+3. (Optional but Recommended for Dev) Create a `.env` file in the project root for development secrets (see Configuration).
 
 Or install it yourself as a system gem (less common for development):
 
@@ -63,65 +64,65 @@ gem install adk-ruby
 
 The planner requires a Google API key for the Gemini models.
 
-1.  Obtain an API key from [Google AI Studio](https://aistudio.google.com/).
-2.  Provide the key to the application via the environment variable `GOOGLE_API_KEY`.
+1. Obtain an API key from [Google AI Studio](https://aistudio.google.com/).
+2. Provide the key to the application via the environment variable `GOOGLE_API_KEY`.
 
-    *   **Development:** Create a `.env` file in the project root:
-        ```dotenv
-        # .env
-        RACK_ENV=development
-        GOOGLE_API_KEY="YOUR_API_KEY_HERE"
-        # Optional: Set log level (DEBUG, INFO, WARN, ERROR, FATAL, NONE) - Default is WARN
-        # ADK_LOG_LEVEL=INFO
-        ```
-        Ensure the `dotenv` gem is in your Gemfile's development group (`bundle install`).
-        > **Important:** Add `.env` to your `.gitignore` file!
+   * **Development:** Create a `.env` file in the project root:
+     ```dotenv
+     # .env
+     RACK_ENV=development
+     GOOGLE_API_KEY="YOUR_API_KEY_HERE"
+     # Optional: Set log level (DEBUG, INFO, WARN, ERROR, FATAL, NONE) - Default is WARN
+     # ADK_LOG_LEVEL=INFO
+     ```
+     Ensure the `dotenv` gem is in your Gemfile's development group (`bundle install`). The application will attempt to load this file.
+     > **Important:** Add `.env` to your `.gitignore` file!
 
-    *   **Production/Other:** Set the `GOOGLE_API_KEY` environment variable directly in your deployment environment *before* running the application.
+   * **Production/Other:** Set the `GOOGLE_API_KEY` environment variable directly in your deployment environment *before* running the application.
 
 ### Redis Connection
 
-*   By default, the application attempts to connect to Redis at `localhost:6379` without a password.
-*   To use a different host, port, password, or database, modify the `Redis.new` call within the `initialize` method of `lib/adk/web/app.rb`. Consider using environment variables (e.g., `ENV['REDIS_URL']`) for production configurations.
+* By default, the application (Web UI and CLI) attempts to connect to Redis at `localhost:6379` without a password.
+* To use a different host, port, password, or database, modify the `Redis.new` calls within `lib/adk/web/app.rb` and `lib/adk/cli/agent_commands.rb`. Consider using environment variables (e.g., `ENV['REDIS_URL']`) for production configurations.
 
 ### Logging Verbosity
 
-*   Control the detail level of logs by setting the `ADK_LOG_LEVEL` environment variable (or in `.env`).
-*   Valid levels: `DEBUG`, `INFO`, `WARN` (Default), `ERROR`, `FATAL`, `NONE` (or `SILENT`).
+* Control the detail level of logs by setting the `ADK_LOG_LEVEL` environment variable (or in `.env`).
+* Valid levels: `DEBUG`, `INFO`, `WARN` (Default), `ERROR`, `FATAL`, `NONE` (or `SILENT`).
 
 ## Usage
 
 ### Web Interface (Recommended)
 
-This is the primary way to interact with the full feature set.
+This is the primary way to manage agents and interact with running instances.
 
-1.  **Start the server:**
-    ```bash
-    # Ensure GOOGLE_API_KEY is set in your environment or .env
-    # Ensure Redis server is running
-    adk web start
-    ```
-2.  **Access:** Open your browser to `http://localhost:4567` (or the host/port specified).
+1. **Start the server:**
+   ```bash
+   # Ensure GOOGLE_API_KEY is set in your environment or .env
+   # Ensure Redis server is running
+   adk web start
+   ```
+2. **Access:** Open your browser to `http://localhost:4567` (or the host/port specified).
 
 #### Web UI Features
 
-*   **Agents Page (`/agents`):**
-    *   Lists all agent definitions from Redis.
-    *   Shows running status (based on current server process).
-    *   Displays configured tools for each agent.
-    *   Allows creating new agent definitions with tool selection.
-    *   Allows deleting agent definitions.
-*   **Agent Detail Page (`/agents/:name`):**
-    *   Shows agent status (Running/Stopped).
-    *   Provides Start/Stop buttons (affects runtime state).
-    *   Allows interactive chat *only if* the agent is running.
-    *   Allows direct task execution (via JSON input) *only if* the agent is running.
-    *   Displays the tools configured for the agent definition in Redis.
-*   **Tools Page (`/tools`):**
-    *   Lists all tools discovered by the `ToolRegistry`.
-*   **Tool Detail Page (`/tools/:name`):**
-    *   Shows tool description and parameters.
-    *   Allows direct execution of the tool via a form (independent of agents).
+* **Agents Page (`/agents`):**
+  * Lists all agent definitions from Redis.
+  * Shows running status (based on current server process).
+  * Displays configured tools for each agent.
+  * Allows creating new agent definitions with tool selection.
+  * Allows deleting agent definitions.
+* **Agent Detail Page (`/agents/:name`):**
+  * Shows agent status (Running/Stopped).
+  * Provides Start/Stop buttons (affects runtime state).
+  * Allows interactive chat *only if* the agent is running.
+  * Allows direct task execution (via JSON input) *only if* the agent is running.
+  * Displays the tools configured for the agent definition in Redis.
+* **Tools Page (`/tools`):**
+  * Lists all tools discovered by the `ToolRegistry`.
+* **Tool Detail Page (`/tools/:name`):**
+  * Shows tool description and parameters.
+  * Allows direct execution of the tool via a form (independent of agents).
 
 ### Ruby API
 
@@ -177,15 +178,14 @@ puts "\nRunning task 2: '#{task2}'"
 result2 = agent.run_task(task2)
 puts "Result 2: #{result2}"
 
-# Stop the agent
+# Stop the agent (if running in a managed process)
 agent.stop
 puts "\nAgent '#{agent.name}' stopped. Running: #{agent.running?}"
-
 ```
 
 ### Command Line Interface
 
-Provides commands for managing agent definitions and executing tasks.
+Provides commands for managing agent definitions, tools, and executing tasks ephemerally.
 
 ```bash
 # View ADK version
@@ -202,10 +202,13 @@ adk tool execute cat_facts
 
 # --- Agent Definition Commands (Uses Redis) ---
 adk agent list                             # List defined agents from Redis
-adk agent create <name> --description="..." # Create a new agent definition (no tools initially)
-adk agent delete <name>                    # Delete an agent definition
+adk agent create <name> --description="<desc here>" --tools=echo,cat_facts # Create agent with specific tools
+adk agent update <name> --add-tool=calculator #Add a tool
+adk agent update <name> --remove-tool=echo #Remove a tool
 
-# --- Agent Execution Command (Uses Redis Definition) ---
+adk agent delete <name> # Delete an agent definition
+
+# --- Agent Execution Command (Uses Redis Definition - Ephemeral) ---
 # Loads definition, starts agent, runs task, stops agent, exits.
 adk agent execute <name> "Your task description here"
 
@@ -222,37 +225,37 @@ adk compile-sass # Manually compile Sass
 
 ## Core Concepts
 
-*   **Agent (`ADK::Agent`):** The central entity that manages runtime state, tools, planning, and execution.
-*   **Tool (`ADK::Tool`):** Represents a capability the agent can use (e.g., `Echo`, `Calculator`, `CatFacts`). Tools define metadata (`name`, `description`, `parameters`) using the `define_metadata` class method.
-*   **Tool Registry (`ADK::ToolRegistry`):** A singleton module that automatically discovers and registers available `Tool` classes when they are loaded. Used by the UI, CLI, and Agent start process.
-*   **Planner (`ADK::Planner`):** Responsible for taking a high-level task and creating an execution plan (currently a single tool invocation). Uses Google Gemini (via `gemini-ai` gem) and requires a `GOOGLE_API_KEY`. Receives the list of tools available to the *specific running agent instance*.
-*   **Redis Persistence**: Agent definitions (name, description, list of configured tool names) are stored permanently in Redis Hashes and a central Set. This data survives server restarts.
-*   **Runtime State**: The set of *actively running* agent instances is managed in an in-memory hash within the Web UI process (`ADK::Web::App`). This state (including which agents are started/stopped) is lost when the web server restarts.
-*   **CLI vs. Web Runtime**: The CLI `agent execute` and `agent start` commands operate on *temporary* instances based on Redis definitions and exit upon completion. They do not interact with the persistent runtime state managed by the Web UI process.
+* **Agent (`ADK::Agent`):** The central entity that manages runtime state, tools, planning, and execution within a single process.
+* **Tool (`ADK::Tool`):** Represents a capability the agent can use (e.g., `Echo`, `Calculator`, `CatFacts`). Tools define metadata (`name`, `description`, `parameters`) using the `define_metadata` class method.
+* **Tool Registry (`ADK::ToolRegistry`):** A singleton module that automatically registers available `Tool` classes when they are loaded. Used by the UI, CLI, and Agent start process.
+* **Planner (`ADK::Planner`):** Responsible for taking a high-level task and creating an execution plan (currently a single tool invocation). Uses Google Gemini (via `gemini-ai` gem) and requires a `GOOGLE_API_KEY`. Receives the list of tools available to the *specific running agent instance*.
+* **Redis Persistence**: Agent definitions (name, description, list of configured tool names) are stored permanently in Redis Hashes and a central Set. This data survives server restarts.
+* **Runtime State**: The set of *actively running* agent instances is managed in an in-memory hash **only within the Web UI process** (`ADK::Web::App`). This state is lost when the web server restarts.
+* **CLI vs. Web Runtime**: The CLI `agent execute` and `agent start` commands operate on *temporary*, *ephemeral* instances based on Redis definitions and exit upon completion. They **do not** interact with the persistent runtime state managed by the Web UI process, nor do they create background processes.
 
 ## Development
 
 After checking out the repo:
 
-1.  **Install Dependencies:**
-    ```bash
-    bundle install
-    ```
-2.  **Setup Environment:**
-    *   Ensure Redis is running.
-    *   Create a `.env` file with `RACK_ENV=development` and your `GOOGLE_API_KEY`. Set `ADK_LOG_LEVEL` if desired.
-3.  **Run Web UI:**
-    ```bash
-    adk web start
-    ```
-4.  **(Optional) Run Checks/Tasks:** Use Bundler to execute Rake tasks:
-    ```bash
-    bundle exec rake setup    # Runs spec, rubocop, yard
-    bundle exec rake spec     # Run RSpec tests
-    bundle exec rake rubocop  # Run Rubocop linting
-    bundle exec rake yard     # Generate YARD documentation
-    bundle exec rake sass     # Compile Sass manually
-    ```
+1. **Install Dependencies:**
+   ```bash
+   bundle install
+   ```
+2. **Setup Environment:**
+   * Ensure Redis is running.
+   * Create a `.env` file with `RACK_ENV=development` and your `GOOGLE_API_KEY`. Set `ADK_LOG_LEVEL` if desired.
+3. **Run Web UI:**
+   ```bash
+   adk web start
+   ```
+4. **(Optional) Run Checks/Tasks:** Use Bundler to execute Rake tasks:
+   ```bash
+   bundle exec rake setup    # Runs spec, rubocop, yard
+   bundle exec rake spec     # Run RSpec tests
+   bundle exec rake rubocop  # Run Rubocop linting
+   bundle exec rake yard     # Generate YARD documentation
+   bundle exec rake sass     # Compile Sass manually
+   ```
 
 ### Sass Compilation
 
@@ -266,9 +269,8 @@ bin/compile-sass
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at [https://github.com/yourusername/adk-ruby](https://github.com/yourusername/adk-ruby). (Replace with your actual project URL).
+Bug reports and pull requests are welcome on GitHub at [https://github.com/tweibley/adk-ruby](https://github.com/tweibley/adk-ruby). (Replace with your actual project URL).
 
 ## License
 
 If you are DHH or work at Basecamp/37signals you absolutely cannot use this.
-```
