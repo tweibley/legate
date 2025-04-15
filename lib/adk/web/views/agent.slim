@@ -26,11 +26,8 @@
         / --- Add id="execute-task-button" ---
         button.button.is-primary(type="submit" id="execute-task-button" disabled=!@view_agent_data[:running]) Execute (Requires Start)
 
+  / The target div where htmx will place the result HTML fragment directly
   #task-result.mt-4
-    / This @result display likely doesn't work as intended currently
-    - if @result
-      .notification.is-info
-        pre = @result
 
 .box
   h2.title.is-4 Tools
