@@ -3,16 +3,6 @@
 
 require 'sinatra/base'
 
-# # Load development environment variables early
-# if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
-#   begin
-#     require 'dotenv/load'
-#     puts "Dotenv loaded successfully for development." # Optional confirmation
-#   rescue LoadError
-#     puts "Warning: dotenv gem not found. Skipping .env file loading."
-#   end
-# end
-# # --- END DOTENV LOADING ---
 require 'sinatra/json'
 require 'sinatra/reloader'
 require 'slim'
@@ -21,12 +11,24 @@ require_relative 'sass_compiler'
 require 'rack/utils' # For escape_html
 require 'redis'
 
+# --- ADD/MOVE Requires for ADK Components Used Here ---
+# Load core ADK classes needed by the App routes directly
+require_relative '../agent'
+require_relative '../tool' # Base class might be needed implicitly
 require_relative '../tool_registry'
+require_relative '../tools/echo' # Require specific tools if used
+require_relative '../tools/calculator' # e.g. in default lists or checks
+# --- End Requires ---
 
-# Removed
-# STDOUT.sync = true # - not typically needed with standard logging
-
-# Removed explicit require 'logger' - relying on Sinatra's logger
+# Load dotenv for development AFTER other requires if needed
+if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
+  begin
+    require 'dotenv/load'
+    puts "Dotenv loaded for development in app.rb."
+  rescue LoadError
+    puts "Warning: dotenv gem not found."
+  end
+end
 
 module ADK
   module Web
@@ -444,6 +446,48 @@ module ADK
         agent_status_fragments(agent_data_for_view) # agent_data_for_view will be the running agent object
       end
 
+      # --- Detail Page Specific Start ---
+      post '/agents/:name/start/detail' do |name|
+        content_type :html
+        agent_data_for_view = nil
+        # --- Perform the SAME start logic as the main /start route ---
+        if @agents.key?(name)
+          # ... (handle already running) ...
+          agent_data_for_view = @agents[name]
+        else
+          # ... (handle creating/starting new instance, load tools etc.) ...
+          halt 503, "Redis unavailable." unless @redis
+          key = agent_redis_key(name)
+          redis_agent_data = @redis.hmget(key, 'description', 'tools')
+          agent_description = redis_agent_data[0]
+          tools_json_string = redis_agent_data[1]
+          unless agent_description then halt 404; end
+
+          begin
+            agent = ADK::Agent.new(name: name, description: agent_description)
+            # Load specific tools (copy logic from main /start)
+            tool_names_to_load = []
+            if tools_json_string && !tools_json_string.empty?
+              tool_names_to_load = JSON.parse(tools_json_string).map(&:to_sym) rescue []
+            end
+            tool_names_to_load.each do |tool_name|
+              tool_instance = ADK::ToolRegistry.create_instance(tool_name)
+              agent.add_tool(tool_instance) if tool_instance
+            end
+            agent.start
+            @agents[name] = agent
+            agent_data_for_view = agent
+          rescue => e
+            logger.error("Failed start from detail: #{e.message}")
+            halt 500 # Or render an error partial
+          end
+        end
+        # --- End start logic ---
+
+        # --- Return the CORRECT partial for the detail page ---
+        slim :_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view }
+      end
+
       post '/agents/:name/stop' do |name|
         # Removed content_type :html - helper handles fragments
         agent = @agents[name]
@@ -469,6 +513,34 @@ module ADK
 
         # Return combined fragments using helper
         agent_status_fragments(stopped_agent_data) # Pass the hash representing stopped state
+      end
+
+      # --- Detail Page Specific Stop ---
+      post '/agents/:name/stop/detail' do |name|
+        content_type :html
+        stopped_agent_data = nil
+        # --- Perform the SAME stop logic as the main /stop route ---
+        agent = @agents[name]
+        if agent
+          # ... (stop agent, remove from @agents) ...
+          description = agent.description
+          tools = agent.tools.map(&:name) # Get tools before deleting
+          agent.stop
+          @agents.delete(name)
+          stopped_agent_data = { name: name, description: description, running: false, configured_tools: tools }
+        else
+          # ... (create stopped data hash from Redis) ...
+          description = @redis&.hget(agent_redis_key(name), 'description') || "N/A"
+          tools_json = @redis&.hget(agent_redis_key(name), 'tools')
+          configured_tools = []
+          if tools_json then configured_tools = JSON.parse(tools_json) rescue []; end
+          stopped_agent_data = { name: name, description: description, running: false,
+                                 configured_tools: configured_tools }
+        end
+        # --- End stop logic ---
+
+        # --- Return the CORRECT partial for the detail page ---
+        slim :_agent_status_controls, layout: false, locals: { agent_data: stopped_agent_data }
       end
 
       # --- REMOVED OOB logic from Agent Detail Page Start/Stop Handlers ---

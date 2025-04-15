@@ -15,9 +15,9 @@ div(id=container_id)
   / Buttons Container
   .buttons.mt-2
     / Start Button
-    button.button.is-success(hx-post="/agents/#{agent_name}/start" hx-target="##{container_id}" hx-swap="outerHTML" disabled=is_running) Start
+    button.button.is-success(hx-post="/agents/#{agent_name}/start/detail" hx-target="##{container_id}" hx-swap="outerHTML" disabled=is_running) Start
     / Stop Button
-    button.button.is-danger(hx-post="/agents/#{agent_name}/stop" hx-target="##{container_id}" hx-swap="outerHTML" disabled=!is_running) Stop
+    button.button.is-danger(hx-post="/agents/#{agent_name}/stop/detail" hx-target="##{container_id}" hx-swap="outerHTML" disabled=!is_running) Stop
     / --- Moved Chat Button Here ---
     a.button.is-info(href="/agents/#{agent_name}/chat" disabled=!is_running)
       span Chat with Agent (Requires Start)
