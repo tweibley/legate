@@ -1,11 +1,12 @@
-begin
-    require 'dotenv/load' if ENV['RACK_ENV'] == 'development' || ENV['RAILS_ENV'] == 'development' || $PROGRAM_NAME.include?('rake')
-  rescue LoadError
-    # dotenv not found, proceed without it (rely on manually set ENV vars)
-  end
+require 'dotenv/load'
+
 # frozen_string_literal: true
 
 require_relative 'adk/version'
+
+# Ensure the Tool base class and registry are loaded first
+require_relative 'adk/tool'
+require_relative 'adk/tool_registry' # Added registry require
 
 # Core components
 require_relative 'adk/agent'
@@ -21,7 +22,7 @@ require_relative 'adk/cli/tool_commands'
 
 # Tools
 require_relative 'adk/tools/echo'
-
+require_relative 'adk/tools/calculator'
 # Additional components will be added as they are implemented
 # require_relative 'adk/events'
 # require_relative 'adk/telemetry'
@@ -32,6 +33,6 @@ require_relative 'adk/tools/echo'
 
 module ADK
   class Error < StandardError; end
-  
+
   # Your code goes here...
-end 
+end

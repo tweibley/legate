@@ -2,6 +2,17 @@
 # frozen_string_literal: true
 
 require 'sinatra/base'
+
+# # Load development environment variables early
+# if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
+#   begin
+#     require 'dotenv/load'
+#     puts "Dotenv loaded successfully for development." # Optional confirmation
+#   rescue LoadError
+#     puts "Warning: dotenv gem not found. Skipping .env file loading."
+#   end
+# end
+# # --- END DOTENV LOADING ---
 require 'sinatra/json'
 require 'sinatra/reloader'
 require 'slim'
@@ -10,8 +21,10 @@ require_relative 'sass_compiler'
 require 'rack/utils' # For escape_html
 require 'redis'
 
+require_relative '../tool_registry'
+
 # Removed
-STDOUT.sync = true # - not typically needed with standard logging
+# STDOUT.sync = true # - not typically needed with standard logging
 
 # Removed explicit require 'logger' - relying on Sinatra's logger
 
@@ -141,40 +154,42 @@ module ADK
       get '/agents/:name' do |name|
         halt 503, "Redis connection unavailable." unless @redis
 
-        # 1. Check if definition exists in Redis
+        # 1. Check definition exists
         key = agent_redis_key(name)
         description = @redis.hget(key, 'description')
-
         unless description
-          logger.warn("Agent '#{name}' definition not found in Redis when accessing detail page.")
+          logger.warn("Agent '#{name}' definition not found in Redis.")
           halt 404,
                slim(:error_404,
                     locals: { title: "Agent Not Found", message: "Agent definition for '#{name}' could not be found." })
         end
 
-        # 2. Prepare view data hash (for status controls, etc.)
-        is_running = @agents.key?(name) # Check if running in memory
+        # 2. Prepare view data hash
+        is_running = @agents.key?(name)
         @view_agent_data = { name: name, description: description, running: is_running }
 
-        # 3. Set the @agent instance variable for the view
+        # 3. Set @agent instance variable
         if is_running
-          # If running, use the live object from memory
+          # Use the live, running agent object
           @agent = @agents[name]
-          logger.info("Agent '#{name}' is running, using live object for view.")
+          logger.info("Agent '#{name}' is running, using live object for view. Tools: #{@agent.tools.map(&:name)}")
         else
-          # If not running, create a temporary Agent object for display purposes
-          # This allows accessing methods like .name, .description, .tools
+          # Create a temporary Agent object for display
           logger.info("Agent '#{name}' is stopped, creating temporary object for view.")
           @agent = ADK::Agent.new(name: name, description: description)
-          # Add default tools to the temporary object so the view doesn't crash
-          # TODO: Load actual tools associated with the agent definition if/when persisted
-          if defined?(ADK::Tools::Echo)
-            @agent.add_tool(ADK::Tools::Echo.new)
-            logger.info("Added default Echo tool to temporary view object for '#{name}'.")
+
+          # --- CORRECTED TOOL POPULATION ---
+          # Populate the temporary agent with ALL tools from the registry
+          registered_tools = ADK::ToolRegistry.list_tools # Get list like [{name:, description:}, ...]
+          registered_tools.each do |tool_info|
+            tool_instance = ADK::ToolRegistry.create_instance(tool_info[:name])
+            @agent.add_tool(tool_instance) if tool_instance
           end
+          logger.info("Added tools from registry to temporary view object for '#{name}'. Tools: #{@agent.tools.map(&:name)}")
+          # --- END CORRECTION ---
         end
 
-        # 4. Render the view (now has both @view_agent_data and @agent)
+        # 4. Render the view
         slim :agent
       end
 
@@ -236,54 +251,60 @@ module ADK
 
       post '/agents/:name/start' do |name|
         content_type :html
-        @agent = @agents[name]
-        agent_data_for_view = nil # Prepare variable
-
-        if @agent
-          logger.info("Starting agent '#{name}'")
-          @agent.start
-          agent_data_for_view = @agent # Use the live agent for rendering
+        # Check if already running - use existing instance if so
+        if @agents.key?(name)
+          logger.warn("Agent '#{name}' is already running. Start request completing.")
+          @agent = @agents[name] # Use existing live agent
+          agent_data_for_view = @agent
         else
-          # Agent wasn't running, need to create it
+          # Agent wasn't running, need to create and start it
+          halt 503, "Redis connection unavailable." unless @redis # Check Redis connection here
           key = agent_redis_key(name)
-          redis_agent_data = @redis&.hgetall(key)
+          redis_agent_data = @redis.hgetall(key) # Fetch definition
           unless redis_agent_data && redis_agent_data['description']
-            logger.error("Attempted to start agent '#{name}' but its definition was not found in Redis.")
+            logger.error("Attempted to start agent '#{name}' but definition not found in Redis.")
             halt 404, "<div class='has-text-danger'>Error: Agent definition not found. Cannot start.</div>"
           end
 
           begin
+            logger.info("Instantiating and starting agent '#{name}'...")
             agent = ADK::Agent.new(name: name, description: redis_agent_data['description'])
-            # TODO: Add actual tools based on definition
-            if defined?(ADK::Tools::Echo)
-              agent.add_tool(ADK::Tools::Echo.new)
+
+            # --- CORRECTED TOOL ADDITION ---
+            # Add ALL tools from the registry to the new agent instance
+            registered_tools = ADK::ToolRegistry.list_tools
+            added_tools_names = []
+            registered_tools.each do |tool_info|
+              tool_instance = ADK::ToolRegistry.create_instance(tool_info[:name])
+              if tool_instance
+                agent.add_tool(tool_instance)
+                added_tools_names << tool_info[:name]
+              end
             end
-            agent.start
-            @agents[name] = agent # Store live object
+            logger.info("Added tools to agent '#{name}': #{added_tools_names}")
+            # --- END CORRECTION ---
+
+            agent.start # Start the agent logic
+            @agents[name] = agent # Store the live object in memory
             agent_data_for_view = agent # Use the newly started agent for rendering
-            logger.info("Agent '#{name}' started and added to in-memory store.")
+            logger.info("Agent '#{name}' started successfully.")
           rescue StandardError => e
             logger.error("Failed to instantiate or start agent '#{name}': #{e.class} - #{e.message}")
             logger.error(e.backtrace.join("\n"))
             halt 500,
                  "<div class='notification is-danger'>Error starting agent: #{Rack::Utils.escape_html(e.message)}</div>"
           end
-        end
+        end # End if @agents.key?(name) check
 
-        # Render the status controls fragment (main target)
-        status_controls_html = slim(:_agent_status_controls, layout: false,
-                                                             locals: { agent_data: agent_data_for_view })
-
-        # Render the execute button fragment (OOB target)
-        # Determine running state for the button's disabled attribute
+        # --- Rendering logic remains the same ---
+        status_controls_html = slim(:_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view })
         is_running = agent_data_for_view.is_a?(ADK::Agent) ? agent_data_for_view.running? : agent_data_for_view[:running]
+        # Use explicit OOB syntax:
         execute_button_html = %(
-    <button class='button is-primary' type='submit' id='execute-task-button' #{is_running ? '' : 'disabled'} hx-swap-oob='true'>
-      Execute (Requires Start)
-    </button>
-  ) # Note hx-swap-oob='true' which defaults to outerHTML swap for the target ID
-
-        # Return both fragments concatenated
+      <button class='button is-primary' type='submit' id='execute-task-button' #{is_running ? '' : 'disabled'} hx-swap-oob='outerHTML:#execute-task-button'>
+        Execute (Requires Start)
+      </button>
+    )
         status_controls_html + execute_button_html
       end
 
@@ -312,9 +333,11 @@ module ADK
 
         # Render the execute button fragment (OOB target)
         # Determine running state for the button's disabled attribute (will always be false here)
+        # Render the execute button fragment (OOB target)
         is_running = stopped_agent_data[:running] # Should be false
+        # Use explicit OOB syntax:
         execute_button_html = %(
-    <button class='button is-primary' type='submit' id='execute-task-button' #{is_running ? '' : 'disabled'} hx-swap-oob='true'>
+    <button class='button is-primary' type='submit' id='execute-task-button' #{is_running ? '' : 'disabled'} hx-swap-oob='outerHTML:#execute-task-button'>
       Execute (Requires Start)
     </button>
   )
@@ -369,29 +392,18 @@ module ADK
       # --- Tool Routes ---
 
       get '/tools' do
-        # TODO: Implement dynamic tool discovery/registry
-        logger.warn("Tool list is currently hardcoded in GET /tools route.")
-        @tools_list = [
-          ADK::Tools::Echo.new # Instantiate the tool to get its current info
-          # Example: ADK::Tools::Calculator.new
-        ].map do |tool|
-          { name: tool.name, description: tool.description }
-        end
+        # Use the registry to get the list
+        @tools_list = ADK::ToolRegistry.list_tools
+        logger.info("Displaying tools: #{@tools_list.map { |t| t[:name] }}")
         slim :tools
       end
 
       get '/tools/:name' do |name|
-        # TODO: Implement dynamic tool discovery/registry
-        tool_instance = case name.to_sym
-                        when :echo
-                          ADK::Tools::Echo.new
-                        # Add other tools here
-                        else
-                          nil
-                        end
+        tool_name_sym = name.to_sym
+        # Use the registry to create an instance
+        @tool = ADK::ToolRegistry.create_instance(tool_name_sym)
 
-        if tool_instance
-          @tool = tool_instance # Pass the instance to the view
+        if @tool
           slim :tool
         else
           logger.warn("Tool '#{name}' not found when accessing detail page.")
@@ -400,47 +412,34 @@ module ADK
       end
 
       post '/tools/:name/execute' do |name|
-        # Handles execution via tool detail page form
         content_type :html
+        tool_name_sym = name.to_sym
         logger.info("--- Executing Tool '#{name}' via form ---")
-        # logger.debug("Raw params received: #{params.inspect}") # Debug logging (optional)
 
-        # Parameters are expected with STRING keys from the form now
-        # Removed .transform_keys(&:to_sym) as validation expects strings
         submitted_params = params.reject { |k, _| ['splat', 'captures', 'name'].include?(k) }
         logger.debug("Parameters sent to tool: #{submitted_params.inspect}")
 
-        # TODO: Implement dynamic tool discovery/registry
-        tool = case name.to_sym
-               when :echo
-                 ADK::Tools::Echo.new
-               # Add other tools here
-               else
-                 nil
-               end
+        # Use the registry to create an instance
+        tool = ADK::ToolRegistry.create_instance(tool_name_sym)
 
         unless tool
-          logger.error("Tool definition '#{name}' not found.")
+          logger.error("Tool definition '#{name}' not found in registry.")
           halt 404,
-               "<div class='notification is-danger mt-4'>Error: Tool definition '#{Rack::Utils.escape_html(name)}' not found on server.</div>"
+               "<div class='notification is-danger mt-4'>Error: Tool '#{Rack::Utils.escape_html(name)}' not found.</div>"
         end
 
         begin
+          # Execute the specific instance
           logger.info("Attempting tool.execute for '#{name}' with params: #{submitted_params.inspect}")
-          result = tool.execute(submitted_params) # Assumes tool validation/execution expects string keys now
+          result = tool.execute(submitted_params)
           logger.info("Tool '#{name}' execution successful.")
-          # Render success result
           "<div class='notification is-success mt-4'><pre>#{Rack::Utils.escape_html(result.to_s)}</pre></div>"
         rescue ADK::Error, ArgumentError => e
-          # Catch specific validation/argument errors
           logger.warn("Validation/Argument Error executing tool '#{name}': #{e.message}. Params: #{submitted_params.inspect}")
-          # Render specific error result
           "<div class='notification is-danger mt-4'>Error: #{Rack::Utils.escape_html(e.message)}</div>"
         rescue StandardError => e
-          # Catch unexpected errors within the tool's execution
           logger.error("Unexpected error executing tool '#{name}': #{e.class} - #{e.message}. Params: #{submitted_params.inspect}")
           logger.error(e.backtrace.join("\n"))
-          # Render generic error result
           "<div class='notification is-danger mt-4'>An unexpected error occurred: #{Rack::Utils.escape_html(e.message)}</div>"
         end
       end
@@ -464,16 +463,9 @@ module ADK
 
       get '/api/tools' do
         content_type :json
-        # TODO: Implement dynamic tool discovery/registry
-        logger.warn("Tool API endpoint is currently hardcoded.")
-        echo_tool = ADK::Tools::Echo.new
-        json tools: [
-          {
-            name: echo_tool.name,
-            description: echo_tool.description
-          }
-          # Add other registered tools here
-        ]
+        # Use the registry
+        tools_data = ADK::ToolRegistry.list_tools
+        json tools: tools_data
       end
     end # End App class
   end # End Web module

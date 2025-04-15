@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 # require 'google/generative_ai' # Remove this
-require 'gemini-ai'             # Add this
+require 'gemini-ai' # Add this
 require 'json'
 require 'logger'
 
@@ -16,33 +16,33 @@ module ADK
     # @option options [Logger] :logger Optional logger instance
     # @option options [String] :api_key Google AI API Key (defaults to ENV['GOOGLE_API_KEY'])
     def initialize(agent:, **options)
-        @agent = agent
-        @logger = options[:logger] || Logger.new($stdout)
-        @api_key = options[:api_key] || ENV['GOOGLE_API_KEY']
-        @client = nil # Initialize client as nil
-  
-        if @api_key.nil? || @api_key.empty?
-            @logger.error("GOOGLE_API_KEY not found. GeminiPlanner requires an API key.")
-            @client = nil
-          else
-            begin
-              @client = Gemini.new(
-                credentials: {
-                  service: 'generative-language-api',
-                  api_key: @api_key
-                },
-                options: { model: 'gemini-2.0-flash', server_sent_events: false }
-              )
-              # @model_name = @client.options[:model] # <--- REMOVE THIS LINE
-              @model_name = 'gemini-2.0-flash' # <-- Store the model name directly
-              logger.info("Gemini AI client initialized with model: #{@model_name}")
-            rescue StandardError => e
-              logger.error("Failed to initialize Gemini AI client: #{e.class}: #{e.message}")
-              logger.error(e.backtrace.join("\n"))
-              @client = nil
-            end
-          end
+      @agent = agent
+      @logger = options[:logger] || Logger.new($stdout)
+      @api_key = options[:api_key] || ENV['GOOGLE_API_KEY']
+      @client = nil # Initialize client as nil
+
+      if @api_key.nil? || @api_key.empty?
+        @logger.error("GOOGLE_API_KEY not found. GeminiPlanner requires an API key.")
+        @client = nil
+      else
+        begin
+          @client = Gemini.new(
+            credentials: {
+              service: 'generative-language-api',
+              api_key: @api_key
+            },
+            options: { model: 'gemini-2.0-flash', server_sent_events: false }
+          )
+          # @model_name = @client.options[:model] # <--- REMOVE THIS LINE
+          @model_name = 'gemini-2.0-flash' # <-- Store the model name directly
+          logger.info("Gemini AI client initialized with model: #{@model_name}")
+        rescue StandardError => e
+          logger.error("Failed to initialize Gemini AI client: #{e.class}: #{e.message}")
+          logger.error(e.backtrace.join("\n"))
+          @client = nil
+        end
       end
+    end
 
     # Plan a task using the gemini-ai gem
     # @param task [String] The task to plan
@@ -70,16 +70,16 @@ module ADK
             contents: [{ role: 'user', parts: { text: prompt } }]
           } # <--- End of the single Hash argument
         )
-      
+
         # Accessing the response text - Check the gem's response structure
         # This dig might still be correct if it wraps the Google API response
         raw_response_text = response.dig('candidates', 0, 'content', 'parts', 0, 'text')
 
         unless raw_response_text
-           logger.warn("Gemini response (via gemini-ai) was empty or couldn't find text.")
-           # Try inspecting the response object if dig fails
-           logger.debug("Raw Gemini Response Object: #{response.inspect}")
-           return fallback_plan(task, "Gemini response was empty or unparseable.")
+          logger.warn("Gemini response (via gemini-ai) was empty or couldn't find text.")
+          # Try inspecting the response object if dig fails
+          logger.debug("Raw Gemini Response Object: #{response.inspect}")
+          return fallback_plan(task, "Gemini response was empty or unparseable.")
         end
 
         # logger.debug("Gemini Raw Response Text:\n#{raw_response_text}")
@@ -88,11 +88,11 @@ module ADK
         validated_plan = validate_and_format_plan(parsed_plan)
 
         if validated_plan.empty?
-           logger.warn("Failed to get a valid plan from Gemini response. Falling back.")
-           return fallback_plan(task, "Could not parse or validate Gemini's plan.")
+          logger.warn("Failed to get a valid plan from Gemini response. Falling back.")
+          return fallback_plan(task, "Could not parse or validate Gemini's plan.")
         else
-           logger.info("Plan received from Gemini: #{validated_plan}")
-           return validated_plan
+          logger.info("Plan received from Gemini: #{validated_plan}")
+          return validated_plan
         end
 
       # Error handling might need adjustment based on errors raised by gemini-ai
@@ -116,7 +116,7 @@ module ADK
     # Format available tools into a string for the prompt (Identical to previous version)
     def format_tools_for_prompt(tools)
       # ... (implementation from previous response) ...
-       return "No tools available." if tools.empty?
+      return "No tools available." if tools.empty?
 
       tools.map do |tool|
         params_desc = tool.parameters.map do |name, info|
@@ -134,8 +134,9 @@ module ADK
 
     # Build the prompt for the Gemini API call (Identical to previous version)
     def build_gemini_prompt(task, tools_description)
+      puts tools_description
       # ... (implementation from previous response) ...
-        <<~PROMPT
+      <<~PROMPT
         You are an AI planner for an agent. Your goal is to choose the single best tool to fulfill the user's request and determine the necessary parameters for that tool based ONLY on the request and the tool descriptions provided.
 
         Available Tools:
@@ -170,7 +171,7 @@ module ADK
     # Parse the text response from Gemini, expecting JSON (Identical to previous version)
     def parse_gemini_response(response_text)
       # ... (implementation from previous response) ...
-        # Sometimes the model might still wrap the JSON in backticks or "json" language identifier
+      # Sometimes the model might still wrap the JSON in backticks or "json" language identifier
       clean_text = response_text.strip.delete_prefix("```json").delete_prefix("```").delete_suffix("```").strip
       JSON.parse(clean_text)
     end
@@ -178,7 +179,7 @@ module ADK
     # Validate the parsed response and format it into the ADK plan structure (Identical to previous version)
     def validate_and_format_plan(parsed_response)
       # ... (implementation from previous response) ...
-        tool_name_str = parsed_response['tool_name']
+      tool_name_str = parsed_response['tool_name']
       parameters = parsed_response['parameters']
 
       # Handle the "no suitable tool" case
@@ -207,11 +208,10 @@ module ADK
       [{ tool: tool_name_sym, params: symbolized_params }]
     end
 
-
     # Default plan to use if Gemini fails (Identical to previous version)
     def fallback_plan(task, reason)
       # ... (implementation from previous response) ...
-        logger.warn("Falling back to echo plan. Reason: #{reason}")
+      logger.warn("Falling back to echo plan. Reason: #{reason}")
       [
         {
           tool: :echo,
