@@ -15,11 +15,10 @@
       / --- End Display ---
     .card-footer
       a.card-footer-item(href="/agents/#{agent_info[:name]}") Details
-      / Optional: Add running status indicator using Bulma tags?
-      / - if agent_info[:running]
-      /   span.card-footer-item
-      /     span.tag.is-success.is-light Running
-      / - else
-      /   span.card-footer-item
-      /     span.tag.is-light Stopped
-      
+      a.card-footer-item.has-text-danger(
+        href="#"
+        hx-delete="/agents/#{agent_info[:name]}"
+        hx-target="closest .column"
+        hx-swap="outerHTML"
+        hx-confirm="Are you sure you want to delete agent '#{agent_info[:name]}'?"
+      ) Delete

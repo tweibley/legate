@@ -76,6 +76,43 @@ module ADK
         "#{REDIS_AGENT_HASH_PREFIX}#{name}"
       end
 
+      helpers do
+        def agent_status_fragments(agent_data_or_obj)
+          agent_name = agent_data_or_obj.is_a?(Hash) ? agent_data_or_obj[:name] : agent_data_or_obj.name
+          is_running = agent_data_or_obj.is_a?(Hash) ? agent_data_or_obj[:running] : agent_data_or_obj.running?
+
+          # IDs
+          # status_cell_id = "agent-status-cell-#{agent_name}" # No longer primary target
+          status_content_id = "agent-status-content-#{agent_name}" # Inner span ID
+          start_button_id = "agent-start-button-#{agent_name}"
+          stop_button_id = "agent-stop-button-#{agent_name}"
+
+          # --- Fragment 1: Status CONTENT (Primary Target for innerHTML swap) ---
+          status_tag_class = is_running ? 'is-success' : 'is-light'
+          status_text = is_running ? 'Running' : 'Stopped'
+          status_content_html = %(
+            <span class='tag #{status_tag_class}'>#{status_text}</span>
+          ) # Just the inner span tag
+
+          # Fragment 2: Start Button (OOB) - Keep OOB logic
+          start_button_html = %(
+            <button class='button is-success is-light is-small' type='button' id='#{start_button_id}'
+                    hx-post='/agents/#{agent_name}/start' hx-target='##{status_content_id}' hx-swap='innerHTML'
+                    #{is_running ? 'disabled' : ''} hx-swap-oob='outerHTML:##{start_button_id}'>Start</button>
+          ) # Note: Button hx-target also updated to status_content_id
+
+          # Fragment 3: Stop Button (OOB) - Keep OOB logic
+          stop_button_html = %(
+            <button class='button is-warning is-light is-small' type='button' id='#{stop_button_id}'
+                    hx-post='/agents/#{agent_name}/stop' hx-target='##{status_content_id}' hx-swap='innerHTML'
+                    #{is_running ? '' : 'disabled'} hx-swap-oob='outerHTML:##{stop_button_id}'>Stop</button>
+          ) # Note: Button hx-target also updated to status_content_id
+
+          # Concatenate fragments
+          status_content_html + start_button_html + stop_button_html
+        end
+      end
+
       # --- Routes ---
 
       get '/' do
@@ -129,64 +166,115 @@ module ADK
       end
 
       post '/agents' do
-        # Handles creation via form post
+        # ... (parameter handling, validation, Redis check) ...
         halt 503, "Redis connection unavailable. Cannot create agent." unless @redis
-
         agent_name = params['name']&.strip
         agent_description = params['description']&.strip
+        selected_tools = params['tools'] || []
 
-        # Get selected tool names - params['tools'] will be an array or nil
-        selected_tools = params['tools'] || [] # Default to empty array if none selected
-
-        # --- Validation ---
+        # ... (validation checks) ...
         if agent_name.nil? || agent_name.empty? || agent_description.nil? || agent_description.empty?
-          status 400
-          halt "<div class='notification is-danger'>Name and description are required.</div>"
+          status 400; halt "<div class='notification is-danger'>Name and description required.</div>"
         end
-        # TODO: Validate that selected_tools actually exist in the registry?
-
         key = agent_redis_key(agent_name)
-
-        # Check if agent name already exists in Redis SET
         if @redis.sismember(REDIS_AGENTS_SET_KEY, agent_name)
-          status 409 # Conflict
-          halt "<div class='notification is-warning'>Agent with name '#{agent_name}' already exists.</div>"
+          status 409; halt "<div class='notification is-warning'>Agent '#{agent_name}' exists.</div>"
         end
-        # --- End Validation ---
 
         # --- Agent Creation (in Redis) ---
         begin
           tools_json = selected_tools.to_json
-          # key = agent_redis_key(agent_name) # Define key before multi
-
           @redis.multi do |multi|
-            # --- Use separate HSET commands ---
             multi.hset(key, 'description', agent_description)
             multi.hset(key, 'tools', tools_json)
-            # --- End separate HSET ---
             multi.sadd(REDIS_AGENTS_SET_KEY, agent_name)
           end
           logger.info("Agent '#{agent_name}' definition saved to Redis with tools: #{selected_tools}")
         rescue Redis::BaseError => e
           # ... (error handling) ...
           logger.error("Redis error creating agent '#{agent_name}': #{e.class} - #{e.message}")
-          logger.error(e.backtrace.join("\n"))
-          halt 500,
-               "<div class='notification is-danger'>Failed to save agent definition due to database error. Check server logs for details.</div>"
+          halt 500, "DB Error" # Return simple error for halt
         rescue JSON::GeneratorError => e
           # ... (error handling) ...
-          logger.error("Error generating JSON for tools list: #{e.message}")
-          halt 500, "<div class='notification is-danger'>Internal server error preparing tool data.</div>"
+          logger.error("JSON generation error for tools: #{e.message}")
+          halt 500, "Internal Error" # Return simple error for halt
         end
         # --- End Agent Creation ---
 
         # --- Response ---
-        # We return an HTML card, but it now represents a *stopped* agent by default
         content_type :html
-        # Pass data hash, not live object, as it's not running yet
-        agent_data = { name: agent_name, description: agent_description, running: false }
-        slim :_agent_card, layout: false, locals: { agent_info: agent_data }
+        # Create data hash for the new row (stopped initially)
+        agent_data = {
+          name: agent_name,
+          description: agent_description,
+          running: false,
+          configured_tools: selected_tools # Use the selected tools
+        }
+        # Render the new agent table row HTML
+        agent_row_html = slim(:_agent_row, layout: false, locals: { agent_info: agent_data }) # <-- Use _agent_row
+
+        # OOB fragment to remove the "No agents" row (if it exists)
+        # Use an empty TR with the ID and oob swap attribute
+        oob_remove_message_html = "<tr id='no-agents-row' hx-swap-oob='true'></tr>"
+
+        # Return the agent row HTML concatenated with the OOB removal instruction
+        agent_row_html + oob_remove_message_html
         # --- End Response ---
+      end
+
+      delete '/agents/:name' do |name|
+        logger.info("Received request to delete agent '#{name}'")
+        halt 503, "Redis connection unavailable. Cannot delete agent." unless @redis
+
+        agent_key = agent_redis_key(name)
+
+        # 1. Check if agent definition exists in Redis
+        unless @redis.exists?(agent_key)
+          logger.warn("Attempted to delete non-existent agent definition '#{name}'")
+          # Return 404 - htmx usually ignores 4xx/5xx for swapping by default
+          # A 200 empty response might be better if we want the card removed even on error?
+          # Let's stick with 404 for now, meaning card stays if delete fails early.
+          halt 404
+        end
+
+        # 2. Stop the agent if it's running in memory
+        if @agents.key?(name)
+          logger.info("Agent '#{name}' is running, stopping before deletion...")
+          begin
+            agent = @agents[name]
+            agent.stop # Call stop method if it does anything important
+            @agents.delete(name)
+            logger.info("Agent '#{name}' stopped and removed from memory.")
+          rescue StandardError => e
+            logger.error("Error stopping running agent '#{name}' during deletion: #{e.message}")
+            # Proceed with Redis deletion anyway, but log the error
+          end
+        end
+
+        # 3. Delete from Redis within a transaction
+        begin
+          deleted_count = @redis.multi do |multi|
+            multi.del(agent_key) # Delete the agent's hash
+            multi.srem(REDIS_AGENTS_SET_KEY, name) # Remove from the set
+          end
+          # deleted_count[0] is result of DEL, deleted_count[1] is result of SREM
+          if deleted_count[0] >= 1 && deleted_count[1] >= 1
+            logger.info("Agent '#{name}' definition successfully deleted from Redis.")
+          else
+            logger.warn("Agent '#{name}' deletion from Redis reported unexpected results: #{deleted_count.inspect}")
+            # Potential inconsistency if one command failed but transaction didn't error
+          end
+
+          # 4. Success: Return empty 200 OK response
+          # htmx with hx-swap="outerHTML" will remove the target element
+          status 200
+          body '' # Empty body
+        rescue Redis::BaseError => e
+          logger.error("Redis error deleting agent '#{name}': #{e.class} - #{e.message}")
+          logger.error(e.backtrace.join("\n"))
+          # Return an error status - card won't be removed by default htmx behaviour
+          halt 500, "Database error during deletion." # User won't see this directly
+        end
       end
 
       get '/agents/:name' do |name|
@@ -306,117 +394,96 @@ module ADK
       end
 
       post '/agents/:name/start' do |name|
-        content_type :html
+        # Removed content_type :html - helper handles fragments
+
+        # --- Logic to find or start agent (remains mostly the same) ---
+        agent_data_for_view = nil
         if @agents.key?(name)
+          # ... (handle already running) ...
           logger.warn("Agent '#{name}' is already running. Start request completing.")
-          @agent = @agents[name]
-          agent_data_for_view = @agent
+          agent_data_for_view = @agents[name] # Use existing live agent
         else
-          halt 503, "Redis connection unavailable." unless @redis
+          # ... (handle creating/starting new instance) ...
+          halt 503, "Redis unavailable." unless @redis
           key = agent_redis_key(name)
-          # Fetch specific fields instead of HGETALL if only description & tools needed
-          redis_agent_data = @redis.hmget(key, 'description', 'tools')
+          redis_agent_data = @redis.hmget(key, 'description', 'tools') # Fetch specific fields
           agent_description = redis_agent_data[0]
           tools_json_string = redis_agent_data[1]
-
           unless agent_description
-            logger.error("Attempted to start agent '#{name}' but its definition was not found in Redis.")
-            halt 404, "<div class='has-text-danger'>Error: Agent definition not found. Cannot start.</div>"
+            logger.error("Agent '#{name}' definition not found."); halt 404 # Simple halt
           end
 
           begin
             logger.info("Instantiating and starting agent '#{name}'...")
             agent = ADK::Agent.new(name: name, description: agent_description)
-
-            # --- TOOL LOADING BASED ON PERSISTED CONFIG ---
+            # Load specific tools
             tool_names_to_load = []
             if tools_json_string && !tools_json_string.empty?
-              begin
-                # Parse the stored JSON string of tool names
-                tool_names_to_load = JSON.parse(tools_json_string).map(&:to_sym) # Ensure symbols
-                logger.info("Found configured tools for '#{name}': #{tool_names_to_load}")
-              rescue JSON::ParserError => e
-                logger.error("Failed to parse stored tools JSON for agent '#{name}'. Loading no tools. JSON: #{tools_json_string.inspect}. Error: #{e.message}")
-                tool_names_to_load = [] # Default to no tools on parsing error
-              end
-            else
-              logger.warn("No tools configured or field missing for agent '#{name}'. Starting with no tools.")
-              tool_names_to_load = []
+              tool_names_to_load = JSON.parse(tools_json_string).map(&:to_sym) rescue []
             end
-
             added_tools_names = []
             tool_names_to_load.each do |tool_name|
               tool_instance = ADK::ToolRegistry.create_instance(tool_name)
-              if tool_instance
-                agent.add_tool(tool_instance)
-                added_tools_names << tool_name
-              else
-                logger.warn("Configured tool '#{tool_name}' for agent '#{name}' could not be found or instantiated in the registry.")
-              end
+              if tool_instance then agent.add_tool(tool_instance); added_tools_names << tool_name; end
             end
-            logger.info("Actually added tools to agent '#{name}': #{added_tools_names}")
-            # --- END TOOL LOADING ---
+            logger.info("Added tools to agent '#{name}': #{added_tools_names}")
 
             agent.start
             @agents[name] = agent
-            agent_data_for_view = agent
+            agent_data_for_view = agent # Newly started agent
             logger.info("Agent '#{name}' started successfully.")
           rescue StandardError => e
-            logger.error("Failed to instantiate or start agent '#{name}': #{e.class} - #{e.message}")
+            logger.error("Failed to start agent '#{name}': #{e.class} - #{e.message}")
             logger.error(e.backtrace.join("\n"))
-            halt 500,
-                 "<div class='notification is-danger'>Error starting agent: #{Rack::Utils.escape_html(e.message)}</div>"
+            halt 500 # Simple halt on error
           end
         end
+        # --- End agent start logic ---
 
-        # --- Rendering logic (remains the same) ---
-        status_controls_html = slim(:_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view })
-        is_running = agent_data_for_view.is_a?(ADK::Agent) ? agent_data_for_view.running? : agent_data_for_view[:running]
-        execute_button_html = %(
-          <button class='button is-primary' type='submit' id='execute-task-button' #{is_running ? '' : 'disabled'} hx-swap-oob='outerHTML:#execute-task-button'>
-            Execute (Requires Start)
-          </button>
-        )
-        status_controls_html + execute_button_html
+        # Return combined fragments using helper
+        agent_status_fragments(agent_data_for_view) # agent_data_for_view will be the running agent object
       end
 
       post '/agents/:name/stop' do |name|
-        content_type :html
-        agent = @agents[name] # Find the LIVE agent object
-        stopped_agent_data = nil # Prepare variable
+        # Removed content_type :html - helper handles fragments
+        agent = @agents[name]
+        stopped_agent_data = nil
 
         if agent
           logger.info("Stopping agent '#{name}'...")
-          description = agent.description # Get description before stopping/removing
+          description = agent.description
           agent.stop
           @agents.delete(name)
-          stopped_agent_data = { name: name, description: description, running: false } # Create data hash
-          logger.info("Agent '#{name}' stopped and removed from in-memory store.")
+          stopped_agent_data = { name: name, description: description, running: false, configured_tools: agent.tools.map(&:name) } # Include tools for potential future use
+          logger.info("Agent '#{name}' stopped and removed from memory.")
         else
-          logger.warn("Attempted to stop agent '#{name}' which is not currently running in memory.")
-          # Agent not running, create data hash representing stopped state from Redis info
+          logger.warn("Attempted to stop agent '#{name}' which is not running.")
+          # Agent not running, create data hash from Redis
           description = @redis&.hget(agent_redis_key(name), 'description') || "N/A"
-          stopped_agent_data = { name: name, description: description, running: false }
+          tools_json = @redis&.hget(agent_redis_key(name), 'tools')
+          configured_tools = []
+          if tools_json then configured_tools = JSON.parse(tools_json) rescue []; end
+          stopped_agent_data = { name: name, description: description, running: false,
+                                 configured_tools: configured_tools }
         end
 
-        # Render the status controls fragment (main target)
-        status_controls_html = slim(:_agent_status_controls, layout: false,
-                                                             locals: { agent_data: stopped_agent_data })
-
-        # Render the execute button fragment (OOB target)
-        # Determine running state for the button's disabled attribute (will always be false here)
-        # Render the execute button fragment (OOB target)
-        is_running = stopped_agent_data[:running] # Should be false
-        # Use explicit OOB syntax:
-        execute_button_html = %(
-    <button class='button is-primary' type='submit' id='execute-task-button' #{is_running ? '' : 'disabled'} hx-swap-oob='outerHTML:#execute-task-button'>
-      Execute (Requires Start)
-    </button>
-  )
-
-        # Return both fragments concatenated
-        status_controls_html + execute_button_html
+        # Return combined fragments using helper
+        agent_status_fragments(stopped_agent_data) # Pass the hash representing stopped state
       end
+
+      # --- REMOVED OOB logic from Agent Detail Page Start/Stop Handlers ---
+      # POST /agents/:name/start (Original OOB logic - now handled by table logic)
+      # POST /agents/:name/stop (Original OOB logic - now handled by table logic)
+      # The /start and /stop routes accessible from the detail page
+      # should now likely just return the updated _agent_status_controls partial
+      # or redirect back to the detail page. The table versions handle the table updates.
+      # Let's simplify them for now to just update the agent state and redirect.
+
+      # Example simplification (apply similarly to the stop route if needed)
+      # post '/agents/:name/start/from_detail' do |name| # Maybe use a different route?
+      #    # ... (perform start logic as before) ...
+      #    redirect "/agents/#{name}" # Redirect back after action
+      # end
 
       post '/agents/:name/execute' do |name|
         content_type :html # <-- CHANGE 1: Set content type to HTML

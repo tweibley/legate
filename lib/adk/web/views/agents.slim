@@ -1,22 +1,21 @@
-/ File: lib/adk/web/views/agents.slim
-
 .content
   h1.title Agents
   p.subtitle Manage your defined AI agents. Start agents to enable interaction.
 
 .box
   h2.title.is-4 Create Agent Definition
-  form(hx-post="/agents" hx-target="#agent-list .columns" hx-swap="beforeend" _="on htmx:afterRequest reset()")
+  form(hx-post="/agents" hx-target="#agent-list-tbody" hx-swap="beforeend" _="on htmx:afterRequest reset()")
+    / --- Agent Name ---
     .field
       label.label Name
       .control
         input.input(type="text" name="name" placeholder="Unique agent name" required=true)
+    / --- Agent Description ---
     .field
       label.label Description
       .control
         input.input(type="text" name="description" placeholder="Agent description" required=true)
-
-    / --- Add Tool Selection ---
+    / --- Tool Selection ---
     .field
       label.label Tools
       .control
@@ -24,28 +23,36 @@
           - @available_tools.each do |tool_info|
             .field
               label.checkbox
-                / Use name="tools[]" to submit multiple values as an array
                 input(type="checkbox" name="tools[]" value=tool_info[:name])
                 strong #{tool_info[:name].to_s.capitalize}:
                 span  #{tool_info[:description]}
         - else
           p No tools available for selection.
-    / --- End Tool Selection ---
-
+    / --- Submit Button ---
     .field
       .control
         button.button.is-primary(type="submit") Create Agent Definition
 
-#agent-list.mt-4(data-testid="agent-list-container")
-  / Container for the agent cards, targeted by the creation form
-  .columns.is-multiline
-    / Check if @view_agents exists and is not empty (provided by the GET /agents route)
-    - if @view_agents && !@view_agents.empty?
-      / Iterate over the agent info hashes
-      - @view_agents.each do |agent_info|
-        / Render the partial for each agent, passing the info hash
-        == slim :_agent_card, locals: { agent_info: agent_info }
-    - else
-      / Show a message if no agents are defined yet
-      .column
-        p No agent definitions found in Redis. Use the form above to create one.
+/ --- Agent List Table ---
+.box
+  h2.title.is-4 Defined Agents
+  table.table.is-fullwidth.is-striped.is-hoverable#agent-list-table(data-testid="agent-list-table")
+    thead
+      tr
+        th Name
+        th Description
+        th Configured Tools
+        th Status
+        th Actions
+    / --- Table Body: Target for HTMX appends ---
+    tbody#agent-list-tbody
+      / Check if @view_agents exists and is not empty
+      - if @view_agents && !@view_agents.empty?
+        / Iterate over the agent info hashes
+        - @view_agents.each do |agent_info|
+          / Render the partial for each agent row
+          == slim :_agent_row, locals: { agent_info: agent_info }
+      - else
+        / Show a message spanning all columns if no agents are defined yet
+        tr#no-agents-row
+          td(colspan="5") No agent definitions found in Redis. Use the form above to create one.

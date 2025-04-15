@@ -1,0 +1,52 @@
+/ Expects 'agent_info' (a hash ...)
+
+- agent_name = agent_info[:name]
+- is_running = agent_info[:running]
+- status_cell_id = "agent-status-cell-#{agent_name}" # Keep TD id just in case
+- status_content_id = "agent-status-content-#{agent_name}" # ID for INNER span
+- start_button_id = "agent-start-button-#{agent_name}"
+- stop_button_id = "agent-stop-button-#{agent_name}"
+
+tr(data-agent-name=agent_name)
+  td
+    a(href="/agents/#{agent_name}")= agent_name
+  td= agent_info[:description]
+  td
+    / Configured Tools ...
+    - if agent_info[:configured_tools] && !agent_info[:configured_tools].empty?
+      span.is-size-7= agent_info[:configured_tools].join(', ')
+    - else
+      span.is-size-7.has-text-grey -
+  / --- Status Cell with inner span ID ---
+  td(id=status_cell_id)
+    span(id=status_content_id)
+      span(class="tag #{is_running ? 'is-success' : 'is-light'}")
+        = is_running ? 'Running' : 'Stopped'
+  td
+    / --- Action buttons ---
+    .buttons.are-small.is-justify-content-right
+      / Start Button - Target inner span, swap innerHTML
+      button.button.is-success.is-light(
+        id=start_button_id
+        hx-post="/agents/#{agent_name}/start"
+        hx-target="##{status_content_id}"
+        hx-swap="innerHTML"
+        disabled=is_running
+      ) Start
+      / Stop Button - Target inner span, swap innerHTML
+      button.button.is-warning.is-light(
+        id=stop_button_id
+        hx-post="/agents/#{agent_name}/stop"
+        hx-target="##{status_content_id}"
+        hx-swap="innerHTML"
+        disabled=!is_running
+      ) Stop
+      / Details Button
+      a.button.is-info.is-light(href="/agents/#{agent_name}") Details
+      / Delete Button
+      button.button.is-danger.is-light(
+        hx-delete="/agents/#{agent_name}"
+        hx-target="closest tr"
+        hx-swap="outerHTML"
+        hx-confirm="Are you sure you want to delete agent '#{agent_name}'?"
+      ) Delete
