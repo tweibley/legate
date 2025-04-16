@@ -48,7 +48,6 @@ require_relative 'adk/session' # <<< Session depends on Event
 require_relative 'adk/tool'
 require_relative 'adk/tool_registry'
 # --- Load dependencies BEFORE Agent ---
-require_relative 'adk/memory' # Keep for now, though Agent won't use directly yet
 require_relative 'adk/planner'
 # --- Load Services ---
 require_relative 'adk/session_service/in_memory'

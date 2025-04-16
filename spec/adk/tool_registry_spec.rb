@@ -5,7 +5,6 @@ RSpec.describe ADK::Agent do
   let(:description) { 'Test Description' }
   let(:model_name) { 'test-model-123' }
   let(:mock_planner) { instance_double(ADK::Planner) }
-  let(:mock_memory) { instance_double(ADK::Memory) }
   let(:mock_session) { instance_double(ADK::Session) }
   let(:mock_logger) { instance_double(Logger, info: nil, warn: nil, error: nil, debug: nil) }
 
@@ -16,7 +15,7 @@ RSpec.describe ADK::Agent do
     tool
   end
 
-  let(:options) { { planner: mock_planner, memory: mock_memory, session: mock_session, logger: mock_logger } }
+  let(:options) { { planner: mock_planner, session: mock_session, logger: mock_logger } }
 
   subject(:agent) { described_class.new(name: name, description: description, model_name: model_name, **options) }
 
