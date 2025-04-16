@@ -7,18 +7,19 @@ require 'logger'
 
 module ADK
   class Planner
-    attr_reader :agent, :logger
+    attr_reader :agent, :logger, :model_name # Add model_name reader
 
-    # ... (initialize method remains the same) ...
-    def initialize(agent:, **options)
+    # --- MODIFY initialize signature and logic ---
+    def initialize(agent:, model_name: nil, **options) # Add model_name param
       @agent = agent
       @logger = options[:logger] || ADK.logger
       @api_key = options[:api_key] || ENV['GOOGLE_API_KEY']
       @client = nil
+      # Determine model to use: passed param > agent default > hardcoded default (fallback)
+      @configured_model_name = model_name && !model_name.empty? ? model_name : ADK::Agent::DEFAULT_MODEL
 
       if @api_key.nil? || @api_key.empty?
         @logger.error("GOOGLE_API_KEY not found. GeminiPlanner requires an API key.")
-        @client = nil
       else
         begin
           @client = Gemini.new(
@@ -26,18 +27,17 @@ module ADK
               service: 'generative-language-api',
               api_key: @api_key
             },
-            # --- USE A MORE CAPABLE MODEL ---
-            # Flash might struggle with complex sequences/formats.
-            # Consider gemini-1.5-flash if flash fails, or gemini-1.0-pro.
-            # Let's try 1.5 Flash first as it's often a good balance.
-            options: { model: 'gemini-1.5-flash', server_sent_events: false }
+            # --- Use the configured model name ---
+            options: { model: @configured_model_name, server_sent_events: false }
           )
-          @model_name = 'gemini-1.5-flash' # <-- Store the model name directly
-          logger.info("Gemini AI client initialized with model: #{@model_name}")
+          # Store the actually used model name
+          @model_name = @configured_model_name
+          logger.info("Gemini AI client initialized for Planner with model: #{@model_name}")
         rescue StandardError => e
-          logger.error("Failed to initialize Gemini AI client: #{e.class}: #{e.message}")
+          logger.error("Failed to initialize Gemini AI client with model '#{@configured_model_name}': #{e.class}: #{e.message}")
           logger.error(e.backtrace.join("\n"))
           @client = nil
+          @model_name = nil # Ensure model_name is nil if client fails
         end
       end
     end

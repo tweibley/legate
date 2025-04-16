@@ -1,6 +1,7 @@
+/ File: lib/adk/web/views/agents.slim
 .content
   h1.title Agents
-  p.subtitle Manage your defined AI agents. Start agents to enable interaction.
+  p.subtitle Manage agent definitions and runtime instances.
 
 .box
   h2.title.is-4 Create Agent Definition
@@ -14,7 +15,20 @@
     .field
       label.label Description
       .control
-        input.input(type="text" name="description" placeholder="Agent description" required=true)
+        input.input(type="text" name="description" placeholder="Agent purpose" required=true)
+
+    / --- Agent Model ---
+    .field
+      label.label Model
+      .control
+        .select
+          select(name="model")
+            - default_model = ADK::Agent::DEFAULT_MODEL
+            - @available_models.each do |model_name|
+              option(value=model_name selected=(model_name == default_model)) = model_name
+            / Optionally add an option for custom input if needed
+            / option(value="") Other (Specify if not listed)
+
     / --- Tool Selection ---
     .field
       label.label Tools
@@ -28,6 +42,7 @@
                 span  #{tool_info[:description]}
         - else
           p No tools available for selection.
+
     / --- Submit Button ---
     .field
       .control
@@ -41,18 +56,16 @@
       tr
         th Name
         th Description
+        th Model
         th Configured Tools
         th Status
         th Actions
-    / --- Table Body: Target for HTMX appends ---
     tbody#agent-list-tbody
-      / Check if @view_agents exists and is not empty
       - if @view_agents && !@view_agents.empty?
-        / Iterate over the agent info hashes
         - @view_agents.each do |agent_info|
-          / Render the partial for each agent row
+          / Pass the agent_info hash which now includes :model
           == slim :_agent_row, locals: { agent_info: agent_info }
       - else
-        / Show a message spanning all columns if no agents are defined yet
         tr#no-agents-row
-          td(colspan="5") No agent definitions found in Redis. Use the form above to create one.
+          / --- Adjust colspan ---
+          td(colspan="6") No agent definitions found in Redis.

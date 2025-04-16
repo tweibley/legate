@@ -2,7 +2,6 @@
 # frozen_string_literal: true
 
 require 'sinatra/base'
-
 require 'sinatra/json'
 require 'sinatra/reloader'
 require 'slim'
@@ -11,19 +10,20 @@ require_relative 'sass_compiler'
 require 'rack/utils' # For escape_html
 require 'redis'
 
-# --- ADD/MOVE Requires for ADK Components Used Here ---
-# Load core ADK classes needed by the App routes directly
+# --- Load ADK Components ---
+# Ensure Agent is loaded first to get DEFAULT_MODEL constant
 require_relative '../agent'
-require_relative '../tool' # Base class might be needed implicitly
+require_relative '../tool'
 require_relative '../tool_registry'
-require_relative '../tools/echo' # Require specific tools if used
-require_relative '../tools/calculator' # e.g. in default lists or checks
-# --- End Requires ---
+# Explicitly require tools needed for default settings or direct use
+require_relative '../tools/echo'
+require_relative '../tools/calculator'
+require_relative '../tools/cat_facts'
+require_relative '../tools/random_number_tool'
 
 # Load dotenv for development AFTER other requires if needed
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
   begin; require 'dotenv/load'; rescue LoadError; end
-  # Removed puts message here
 end
 
 module ADK
@@ -32,15 +32,10 @@ module ADK
     class App < Sinatra::Base
       configure :development do
         register Sinatra::Reloader
-        # Set more verbose logging for development if desired
-        # set :logging, Logger::DEBUG
       end
 
-      # Configure logger for all environments (can be adjusted)
       configure do
-        set :logger, ADK.logger unless settings.respond_to?(:logger) && settings.logger # Ensure logger exists
-        # Optionally set default level, e.g., Logger::INFO
-        # settings.logger.level = Logger::INFO
+        set :logger, ADK.logger unless settings.respond_to?(:logger) && settings.logger
       end
 
       set :root, File.expand_path('../../..', __dir__)
@@ -48,9 +43,13 @@ module ADK
       set :public_folder, File.expand_path('../public', __FILE__)
       set :slim, pretty: true
 
-      # Redis Keys Constants (Good Practice)
+      # Redis Keys Constants
       REDIS_AGENT_HASH_PREFIX = "adk:agent:"
       REDIS_AGENTS_SET_KEY = "adk:agents:all_names"
+
+      # --- List of models for UI dropdown ---
+      # TODO: Make this dynamically configurable if needed
+      AVAILABLE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro'].freeze
 
       # Initialize agent registry (in-memory for running) and Redis client
       def initialize
@@ -74,113 +73,87 @@ module ADK
         "#{REDIS_AGENT_HASH_PREFIX}#{name}"
       end
 
+      # --- Sinatra Helpers ---
       helpers do
+        # Helper for Agent Start/Stop button fragments (used in table view)
         def agent_status_fragments(agent_data_or_obj)
           agent_name = agent_data_or_obj.is_a?(Hash) ? agent_data_or_obj[:name] : agent_data_or_obj.name
           is_running = agent_data_or_obj.is_a?(Hash) ? agent_data_or_obj[:running] : agent_data_or_obj.running?
-
-          # IDs
-          # status_cell_id = "agent-status-cell-#{agent_name}" # No longer primary target
-          status_content_id = "agent-status-content-#{agent_name}" # Inner span ID
+          status_content_id = "agent-status-content-#{agent_name}"
           start_button_id = "agent-start-button-#{agent_name}"
           stop_button_id = "agent-stop-button-#{agent_name}"
 
-          # --- Fragment 1: Status CONTENT (Primary Target for innerHTML swap) ---
           status_tag_class = is_running ? 'is-success' : 'is-light'
           status_text = is_running ? 'Running' : 'Stopped'
-          status_content_html = %(
-            <span class='tag #{status_tag_class}'>#{status_text}</span>
-          ) # Just the inner span tag
+          status_content_html = %(<span class='tag #{status_tag_class}'>#{status_text}</span>)
 
-          # Fragment 2: Start Button (OOB) - Keep OOB logic
           start_button_html = %(
             <button class='button is-success is-light is-small' type='button' id='#{start_button_id}'
                     hx-post='/agents/#{agent_name}/start' hx-target='##{status_content_id}' hx-swap='innerHTML'
                     #{is_running ? 'disabled' : ''} hx-swap-oob='outerHTML:##{start_button_id}'>Start</button>
-          ) # Note: Button hx-target also updated to status_content_id
-
-          # Fragment 3: Stop Button (OOB) - Keep OOB logic
+          )
           stop_button_html = %(
             <button class='button is-warning is-light is-small' type='button' id='#{stop_button_id}'
                     hx-post='/agents/#{agent_name}/stop' hx-target='##{status_content_id}' hx-swap='innerHTML'
                     #{is_running ? '' : 'disabled'} hx-swap-oob='outerHTML:##{stop_button_id}'>Stop</button>
-          ) # Note: Button hx-target also updated to status_content_id
-
-          # Concatenate fragments
+          )
           status_content_html + start_button_html + stop_button_html
-        end
+        end # end agent_status_fragments
 
-        # --- NEW HELPER for formatting results ---
+        # Helper for formatting tool/agent execution results into HTML
         def format_execution_result_html(result_data)
           html_parts = []
           notification_class = 'is-info' # Default
 
-          # --- Determine overall status for notification color ---
-          # If it's an array, it's successful overall unless any step failed
-          # If it's a single hash, use its status directly
           overall_status = :success # Assume success initially
           if result_data.is_a?(Array)
             if result_data.any? { |h| h.is_a?(Hash) && h[:status] == :error }
               overall_status = :error
-            elsif result_data.empty? # Empty might mean "cannot fulfill"
-              overall_status = :warning # Or :info ?
+            elsif result_data.empty?
+              overall_status = :warning
             end
           elsif result_data.is_a?(Hash)
-            overall_status = result_data[:status] || :error # Default to error if status missing
+            overall_status = result_data[:status] || :error
           else
-            overall_status = :error # Treat unexpected format as error
+            overall_status = :error
             result_data = { status: :error, error_message: "Unexpected result format: #{result_data.inspect}" } # Wrap it
           end
 
           notification_class = case overall_status
                                when :success then 'is-success'
                                when :error then 'is-danger'
-                               else 'is-warning' # For other statuses or ambiguity
+                               else 'is-warning'
                                end
 
-          # --- Generate HTML content ---
           if result_data.is_a?(Array)
-            # Multi-step result
-            html_parts << "<p><strong>Multi-step Result:</strong></p>"
-            html_parts << "<ol>"
+            html_parts << "<p><strong>Multi-step Result:</strong></p><ol>"
             result_data.each_with_index do |step_hash, index|
               html_parts << "<li>"
               if step_hash.is_a?(Hash) && step_hash[:status] == :success
-                html_parts << "<strong>Step #{index + 1} (Success):</strong> "
-                html_parts << "<pre>#{Rack::Utils.escape_html(step_hash[:result].to_s)}</pre>"
+                html_parts << "<strong>Step #{index + 1} (Success):</strong> <pre>#{Rack::Utils.escape_html(step_hash[:result].to_s)}</pre>"
               elsif step_hash.is_a?(Hash) && step_hash[:status] == :error
-                html_parts << "<strong>Step #{index + 1} (Error):</strong> "
-                html_parts << "<pre class='has-text-danger'>#{Rack::Utils.escape_html(step_hash[:error_message].to_s)}</pre>"
+                html_parts << "<strong>Step #{index + 1} (Error):</strong> <pre class='has-text-danger'>#{Rack::Utils.escape_html(step_hash[:error_message].to_s)}</pre>"
               else
-                html_parts << "<strong>Step #{index + 1} (Unknown format):</strong> "
-                html_parts << "<pre>#{Rack::Utils.escape_html(step_hash.inspect)}</pre>"
+                html_parts << "<strong>Step #{index + 1} (Unknown format):</strong> <pre>#{Rack::Utils.escape_html(step_hash.inspect)}</pre>"
               end
               html_parts << "</li>"
             end
             html_parts << "</ol>"
-
           elsif result_data.is_a?(Hash)
-            # Single step result or error
             if result_data[:status] == :success
-              html_parts << "<p><strong>Result:</strong></p>"
-              html_parts << "<pre>#{Rack::Utils.escape_html(result_data[:result].to_s)}</pre>"
+              html_parts << "<p><strong>Result:</strong></p><pre>#{Rack::Utils.escape_html(result_data[:result].to_s)}</pre>"
             elsif result_data[:status] == :error
-              html_parts << "<p><strong>Error:</strong></p>"
-              html_parts << "<pre class='has-text-danger'>#{Rack::Utils.escape_html(result_data[:error_message].to_s)}</pre>"
+              html_parts << "<p><strong>Error:</strong></p><pre class='has-text-danger'>#{Rack::Utils.escape_html(result_data[:error_message].to_s)}</pre>"
             else
-              html_parts << "<p><strong>Result (Unknown Status):</strong></p>"
-              html_parts << "<pre>#{Rack::Utils.escape_html(result_data.inspect)}</pre>"
+              html_parts << "<p><strong>Result (Unknown Status):</strong></p><pre>#{Rack::Utils.escape_html(result_data.inspect)}</pre>"
             end
-          else
-            # Should have been wrapped already, but handle defensively
-            html_parts << "<p><strong>Error:</strong> Unexpected result format.</p>"
-            html_parts << "<pre>#{Rack::Utils.escape_html(result_data.inspect)}</pre>"
+          else # Should have been wrapped already
+            html_parts << "<p><strong>Error:</strong> Unexpected result format.</p><pre>#{Rack::Utils.escape_html(result_data.inspect)}</pre>"
           end
 
-          # --- Wrap content in notification div ---
           "<div class='notification #{notification_class} mt-4'>#{html_parts.join}</div>"
         end # end format_execution_result_html
-      end
+      end # end helpers
 
       # --- Routes ---
 
@@ -190,352 +163,267 @@ module ADK
 
       # --- Agent Routes ---
 
-      # File: lib/adk/web/app.rb
-
+      # List Agents Page
       get '/agents' do
-        # Load existing agent definitions for display
         @view_agents = []
         if @redis
-          # ... (code to load agent definitions into @view_agents) ...
           agent_names = @redis.smembers(REDIS_AGENTS_SET_KEY)
-          # Use PIPELINE for efficiency
           agent_data_list = @redis.pipelined do |pipe|
             agent_names.each do |name|
-              pipe.hmget(agent_redis_key(name), 'description', 'tools')
+              # Fetch model along with other fields
+              pipe.hmget(agent_redis_key(name), 'description', 'tools', 'model')
             end
           end
 
           agent_names.zip(agent_data_list).each do |name, data|
             description = data[0] || "N/A"
             tools_json = data[1]
+            model = data[2] # Keep nil if not set in Redis
             configured_tools = []
-            if tools_json && !tools_json.empty?
-              begin
-                configured_tools = JSON.parse(tools_json)
-              rescue JSON::ParserError
-                logger.error("Invalid tools JSON for agent '#{name}'")
-              end
-            end
+            begin tools_json && configured_tools = JSON.parse(tools_json) rescue []; end
             is_running = @agents.key?(name)
             @view_agents << { name: name, description: description, running: is_running,
-                              configured_tools: configured_tools }
+                              configured_tools: configured_tools, model: model } # Add model
           end
           @view_agents.sort_by! { |a| a[:name] }
         else
           logger.error("Redis unavailable during GET /agents")
         end
 
-        # --- ENSURE THIS PART IS PRESENT ---
-        # Fetch available tools for the creation form checkboxes
         @available_tools = ADK::ToolRegistry.list_tools
-        logger.debug("Available tools for form: #{@available_tools.inspect}") # Add debug log
-        # --- END ENSURE ---
+        @available_models = AVAILABLE_MODELS # Pass models for the form
+        logger.debug("Available models for form: #{@available_models.inspect}")
 
-        slim :agents # Render the view
+        slim :agents
       end
 
+      # Create Agent Definition
       post '/agents' do
-        # ... (parameter handling, validation, Redis check) ...
         halt 503, "Redis connection unavailable. Cannot create agent." unless @redis
         agent_name = params['name']&.strip
         agent_description = params['description']&.strip
         selected_tools = params['tools'] || []
+        selected_model = params['model']&.strip
+        model_to_save = selected_model && !selected_model.empty? ? selected_model : ADK::Agent::DEFAULT_MODEL
 
-        # ... (validation checks) ...
+        # Validations
         if agent_name.nil? || agent_name.empty? || agent_description.nil? || agent_description.empty?
           status 400; halt "<div class='notification is-danger'>Name and description required.</div>"
         end
         key = agent_redis_key(agent_name)
         if @redis.sismember(REDIS_AGENTS_SET_KEY, agent_name)
-          status 409; halt "<div class='notification is-warning'>Agent '#{agent_name}' exists.</div>"
+          status 409; halt "<div class='notification is-warning'>Agent '#{agent_name}' already exists.</div>"
         end
 
-        # --- Agent Creation (in Redis) ---
+        # Save to Redis
         begin
           tools_json = selected_tools.to_json
           @redis.multi do |multi|
             multi.hset(key, 'description', agent_description)
             multi.hset(key, 'tools', tools_json)
+            multi.hset(key, 'model', model_to_save) # Save model
             multi.sadd(REDIS_AGENTS_SET_KEY, agent_name)
           end
-          logger.info("Agent '#{agent_name}' definition saved to Redis with tools: #{selected_tools}")
+          logger.info("Agent '#{agent_name}' definition saved (Model: #{model_to_save}, Tools: #{selected_tools})")
         rescue Redis::BaseError => e
-          # ... (error handling) ...
-          logger.error("Redis error creating agent '#{agent_name}': #{e.class} - #{e.message}")
-          halt 500, "DB Error" # Return simple error for halt
+          logger.error("Redis error creating agent '#{agent_name}': #{e.message}")
+          halt 500, "DB Error"
         rescue JSON::GeneratorError => e
-          # ... (error handling) ...
           logger.error("JSON generation error for tools: #{e.message}")
-          halt 500, "Internal Error" # Return simple error for halt
+          halt 500, "Internal Error"
         end
-        # --- End Agent Creation ---
 
-        # --- Response ---
+        # Respond with new table row HTML
         content_type :html
-        # Create data hash for the new row (stopped initially)
         agent_data = {
-          name: agent_name,
-          description: agent_description,
-          running: false,
-          configured_tools: selected_tools # Use the selected tools
+          name: agent_name, description: agent_description, running: false,
+          configured_tools: selected_tools, model: model_to_save # Include model
         }
-        # Render the new agent table row HTML
-        agent_row_html = slim(:_agent_row, layout: false, locals: { agent_info: agent_data }) # <-- Use _agent_row
-
-        # OOB fragment to remove the "No agents" row (if it exists)
-        # Use an empty TR with the ID and oob swap attribute
+        agent_row_html = slim(:_agent_row, layout: false, locals: { agent_info: agent_data })
         oob_remove_message_html = "<tr id='no-agents-row' hx-swap-oob='true'></tr>"
-
-        # Return the agent row HTML concatenated with the OOB removal instruction
         agent_row_html + oob_remove_message_html
-        # --- End Response ---
       end
 
+      # Delete Agent Definition
       delete '/agents/:name' do |name|
         logger.info("Received request to delete agent '#{name}'")
         halt 503, "Redis connection unavailable. Cannot delete agent." unless @redis
-
         agent_key = agent_redis_key(name)
 
-        # 1. Check if agent definition exists in Redis
-        unless @redis.exists?(agent_key)
-          logger.warn("Attempted to delete non-existent agent definition '#{name}'")
-          # Return 404 - htmx usually ignores 4xx/5xx for swapping by default
-          # A 200 empty response might be better if we want the card removed even on error?
-          # Let's stick with 404 for now, meaning card stays if delete fails early.
-          halt 404
-        end
+        halt 404 unless @redis.exists?(agent_key) # Check if definition exists
 
-        # 2. Stop the agent if it's running in memory
+        # Stop running instance if any
         if @agents.key?(name)
-          logger.info("Agent '#{name}' is running, stopping before deletion...")
-          begin
-            agent = @agents[name]
-            agent.stop # Call stop method if it does anything important
-            @agents.delete(name)
-            logger.info("Agent '#{name}' stopped and removed from memory.")
-          rescue StandardError => e
-            logger.error("Error stopping running agent '#{name}' during deletion: #{e.message}")
-            # Proceed with Redis deletion anyway, but log the error
-          end
+          logger.info("Stopping running agent '#{name}' before deletion...")
+          begin @agents[name].stop;
+                @agents.delete(name);
+                logger.info("Agent '#{name}' stopped.");
+          rescue => e; logger.error("Error stopping agent: #{e.message}"); end
         end
 
-        # 3. Delete from Redis within a transaction
+        # Delete from Redis
         begin
-          deleted_count = @redis.multi do |multi|
-            multi.del(agent_key) # Delete the agent's hash
-            multi.srem(REDIS_AGENTS_SET_KEY, name) # Remove from the set
-          end
-          # deleted_count[0] is result of DEL, deleted_count[1] is result of SREM
-          if deleted_count[0] >= 1 && deleted_count[1] >= 1
-            logger.info("Agent '#{name}' definition successfully deleted from Redis.")
-          else
-            logger.warn("Agent '#{name}' deletion from Redis reported unexpected results: #{deleted_count.inspect}")
-            # Potential inconsistency if one command failed but transaction didn't error
-          end
-
-          # 4. Success: Return empty 200 OK response
-          # htmx with hx-swap="outerHTML" will remove the target element
-          status 200
-          body '' # Empty body
+          deleted_count = @redis.multi { |multi| multi.del(agent_key); multi.srem(REDIS_AGENTS_SET_KEY, name); }
+          logger.info("Agent '#{name}' definition deleted from Redis. Results: #{deleted_count.inspect}")
+          status 200; body '' # Success for HTMX swap
         rescue Redis::BaseError => e
-          logger.error("Redis error deleting agent '#{name}': #{e.class} - #{e.message}")
-          logger.error(e.backtrace.join("\n"))
-          # Return an error status - card won't be removed by default htmx behaviour
-          halt 500, "Database error during deletion." # User won't see this directly
+          logger.error("Redis error deleting agent '#{name}': #{e.message}")
+          halt 500, "Database error during deletion."
         end
       end
 
+      # Agent Detail Page
       get '/agents/:name' do |name|
         halt 503, "Redis connection unavailable." unless @redis
-
-        # 1. Fetch agent definition (description and tools) from Redis
         key = agent_redis_key(name)
-        redis_agent_data = @redis.hmget(key, 'description', 'tools')
+        redis_agent_data = @redis.hmget(key, 'description', 'tools', 'model') # Fetch model
         description = redis_agent_data[0]
         tools_json_string = redis_agent_data[1]
+        loaded_model = redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL # Apply default
 
         unless description
           logger.warn("Agent '#{name}' definition not found in Redis.")
-          halt 404,
-               slim(:error_404,
-                    locals: { title: "Agent Not Found", message: "Agent definition for '#{name}' could not be found." })
+          halt 404, slim(:error_404, locals: { title: "Agent Not Found", message: "..." })
         end
 
-        # 2. Determine running state
         is_running = @agents.key?(name)
-        @view_agent_data = { name: name, description: description, running: is_running } # For status controls etc.
+        @view_agent_data = { name: name, description: description, running: is_running, model: loaded_model } # Add model
 
-        # 3. Set the @agent instance variable for the view
-        configured_tool_names = [] # Store the names configured in Redis
-        if tools_json_string && !tools_json_string.empty?
-          begin
-            configured_tool_names = JSON.parse(tools_json_string).map(&:to_sym)
-          rescue JSON::ParserError => e
-            logger.error("Invalid tools JSON for agent '#{name}' on detail page: #{e.message}")
-          end
-        end
-        logger.debug("Agent '#{name}' configured tools from Redis: #{configured_tool_names}")
+        configured_tool_names = []
+        begin tools_json_string && configured_tool_names = JSON.parse(tools_json_string).map(&:to_sym) rescue []; end
+        logger.debug("Agent '#{name}' configured tools: #{configured_tool_names}, model: #{loaded_model}")
 
         if is_running
-          # Use the live, running agent object (already has correct tools loaded during start)
           @agent = @agents[name]
-          logger.info("Agent '#{name}' is running, using live object for view. Live Tools: #{@agent.tools.map(&:name)}")
+          @view_agent_data[:model] = @agent.model_name # Ensure view data matches live agent
         else
-          # Create a temporary Agent object for display
-          logger.info("Agent '#{name}' is stopped, creating temporary object for view.")
-          @agent = ADK::Agent.new(name: name, description: description)
-
-          # --- CORRECTED TOOL POPULATION for stopped agent ---
-          # Add ONLY the tools configured for this agent from Redis
-          added_tools = []
+          # Pass loaded model to constructor for temporary object
+          @agent = ADK::Agent.new(name: name, description: description, model_name: loaded_model)
           configured_tool_names.each do |tool_name|
             tool_instance = ADK::ToolRegistry.create_instance(tool_name)
-            if tool_instance
-              @agent.add_tool(tool_instance)
-              added_tools << tool_name
-            else
-              logger.warn("Configured tool '#{tool_name}' for stopped agent '#{name}' not found in registry.")
-            end
+            if tool_instance then @agent.add_tool(tool_instance);
+            else logger.warn("Tool '#{tool_name}' not found."); end
           end
-          logger.info("Added configured tools to temporary view object for '#{name}'. Tools: #{added_tools}")
-          # --- END CORRECTION ---
-        end # End if is_running
-
-        # 4. Render the view (now @agent has correct tools whether running or stopped)
+        end
         slim :agent
       end
 
       # --- Routes requiring a RUNNING agent ---
 
+      # Agent Chat Page
       get '/agents/:name/chat' do |name|
-        @agent = @agents[name] # Look in memory (only running agents are here)
+        @agent = @agents[name] # Look in memory
         if @agent
-          # Agent is running, proceed to chat
+          # Ensure agent has at least Echo tool for basic chat if none configured
           if @agent.tools.empty? && defined?(ADK::Tools::Echo)
-            @agent.add_tool(ADK::Tools::Echo.new)
+            echo_tool = ADK::ToolRegistry.create_instance(:echo)
+            @agent.add_tool(echo_tool) if echo_tool
           end
           slim :chat
         else
-          # Agent not running or doesn't exist in memory
-          logger.warn("Attempted to chat with agent '#{name}' which is not running.")
-          # Just redirect to the detail page without the unsupported 'error:' hash
-          redirect "/agents/#{name}" # <--- REMOVED , error: "..."
+          logger.warn("Attempted to chat with non-running agent '#{name}'")
+          redirect "/agents/#{name}" # Redirect back to detail page
         end
       end
 
+      # Process Chat Message
       post '/agents/:name/chat' do |name|
-        # Chat only works with RUNNING agents from memory
         content_type :html
         @agent = @agents[name] # Look in memory
         user_message = params['message']&.strip
 
-        # Use helper method for rendering chat error messages
+        # Helper lambda remains the same (renders _chat_message)
         halt_chat_error = lambda do |status, error_msg, agent_name_fallback|
           halt status, slim(:_chat_message, layout: false, locals: {
                               user_message: user_message || "[Error]",
-                              agent_result: error_msg,
+                              # Wrap plain error strings in standard hash format for partial
+                              agent_result: error_msg.is_a?(String) ? { status: :error,
+                                                                        error_message: error_msg } : error_msg,
                               agent_name: @agent ? @agent.name : agent_name_fallback
                             })
         end
 
-        # Updated error checks to use the in-memory @agent
-        unless @agent
-          halt_chat_error.call(400, "[Error: Agent '#{name}' is not running or not found]", name)
-          # Note: We already know it's not running if @agent is nil here.
+        unless @agent then halt_chat_error.call(400, "[Error: Agent '#{name}' is not running.]", name); end
+        if user_message.nil? || user_message.empty? then halt_chat_error.call(400, "[Error: Message cannot be empty.]",
+                                                                              @agent.name);
         end
-        # agent.running? check might be redundant now if only running agents are in @agents
-        halt_chat_error.call(400, "[Error: Message cannot be empty]",
-                             @agent.name) if user_message.nil? || user_message.empty?
 
         begin
-          logger.info("Agent '#{name}' running task: #{user_message}")
-          agent_result = @agent.run_task(user_message) # Use the live agent object
+          logger.info("Agent '#{name}' (Model: #{@agent.model_name}) running task: #{user_message}")
+          agent_result = @agent.run_task(user_message) # Returns Hash or Array<Hash>
           logger.info("Agent '#{name}' task result: #{agent_result.inspect}")
+          # Pass result directly to partial, which now handles hash/array format
           slim :_chat_message, layout: false, locals: {
             user_message: user_message, agent_result: agent_result, agent_name: @agent.name
           }
-        rescue => e
+        rescue => e # Errors during run_task itself
           logger.error("Error running task for agent #{name}: #{e.class} - #{e.message}")
           logger.error(e.backtrace.join("\n"))
           halt_chat_error.call(500, "[Error executing task: #{e.message}]", @agent.name)
         end
       end
 
-      post '/agents/:name/start' do |name|
-        # Removed content_type :html - helper handles fragments
-
-        # --- Logic to find or start agent (remains mostly the same) ---
+      # Start Agent (for Table View)
+      post '/agents/:name/start' do
+        name = params[:name] # Get name from params
         agent_data_for_view = nil
         if @agents.key?(name)
-          # ... (handle already running) ...
-          logger.warn("Agent '#{name}' is already running. Start request completing.")
-          agent_data_for_view = @agents[name] # Use existing live agent
+          logger.warn("Agent '#{name}' is already running.")
+          agent_data_for_view = @agents[name]
         else
-          # ... (handle creating/starting new instance) ...
           halt 503, "Redis unavailable." unless @redis
           key = agent_redis_key(name)
-          redis_agent_data = @redis.hmget(key, 'description', 'tools') # Fetch specific fields
+          redis_agent_data = @redis.hmget(key, 'description', 'tools', 'model') # Fetch model
           agent_description = redis_agent_data[0]
           tools_json_string = redis_agent_data[1]
-          unless agent_description
-            logger.error("Agent '#{name}' definition not found."); halt 404 # Simple halt
-          end
+          model_name = redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL # Apply default
+
+          unless agent_description then logger.error("Agent '#{name}' definition not found."); halt 404; end
 
           begin
-            logger.info("Instantiating and starting agent '#{name}'...")
-            agent = ADK::Agent.new(name: name, description: agent_description)
-            # Load specific tools
+            logger.info("Instantiating and starting agent '#{name}' with model '#{model_name}'...")
+            agent = ADK::Agent.new(name: name, description: agent_description, model_name: model_name) # Pass model
             tool_names_to_load = []
-            if tools_json_string && !tools_json_string.empty?
-              tool_names_to_load = JSON.parse(tools_json_string).map(&:to_sym) rescue []
+            if tools_json_string && !tools_json_string.empty? then tool_names_to_load = JSON.parse(tools_json_string).map(&:to_sym) rescue [];
             end
-            added_tools_names = []
             tool_names_to_load.each do |tool_name|
               tool_instance = ADK::ToolRegistry.create_instance(tool_name)
-              if tool_instance then agent.add_tool(tool_instance); added_tools_names << tool_name; end
+              agent.add_tool(tool_instance) if tool_instance
             end
-            logger.info("Added tools to agent '#{name}': #{added_tools_names}")
-
             agent.start
             @agents[name] = agent
-            agent_data_for_view = agent # Newly started agent
+            agent_data_for_view = agent
             logger.info("Agent '#{name}' started successfully.")
           rescue StandardError => e
-            logger.error("Failed to start agent '#{name}': #{e.class} - #{e.message}")
-            logger.error(e.backtrace.join("\n"))
+            logger.error("Failed to start agent '#{name}': #{e.message}")
             halt 500 # Simple halt on error
           end
         end
-        # --- End agent start logic ---
-
-        # Return combined fragments using helper
-        agent_status_fragments(agent_data_for_view) # agent_data_for_view will be the running agent object
+        # Return start/stop button fragments using helper
+        agent_status_fragments(agent_data_for_view)
       end
 
-      # --- Detail Page Specific Start ---
-      post '/agents/:name/start/detail' do |name|
-        content_type :html
+      # Start Agent (for Detail View)
+      post '/agents/:name/start/detail' do
+        name = params[:name]
         agent_data_for_view = nil
-        # --- Perform the SAME start logic as the main /start route ---
+        # --- Perform the SAME start logic as the main /start route (including fetching/passing model) ---
         if @agents.key?(name)
-          # ... (handle already running) ...
           agent_data_for_view = @agents[name]
         else
-          # ... (handle creating/starting new instance, load tools etc.) ...
           halt 503, "Redis unavailable." unless @redis
           key = agent_redis_key(name)
-          redis_agent_data = @redis.hmget(key, 'description', 'tools')
+          redis_agent_data = @redis.hmget(key, 'description', 'tools', 'model')
           agent_description = redis_agent_data[0]
           tools_json_string = redis_agent_data[1]
+          model_name = redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL
           unless agent_description then halt 404; end
 
           begin
-            agent = ADK::Agent.new(name: name, description: agent_description)
-            # Load specific tools (copy logic from main /start)
+            agent = ADK::Agent.new(name: name, description: agent_description, model_name: model_name)
+            # Load tools...
             tool_names_to_load = []
-            if tools_json_string && !tools_json_string.empty?
-              tool_names_to_load = JSON.parse(tools_json_string).map(&:to_sym) rescue []
+            if tools_json_string && !tools_json_string.empty? then tool_names_to_load = JSON.parse(tools_json_string).map(&:to_sym) rescue [];
             end
             tool_names_to_load.each do |tool_name|
               tool_instance = ADK::ToolRegistry.create_instance(tool_name)
@@ -546,90 +434,79 @@ module ADK
             agent_data_for_view = agent
           rescue => e
             logger.error("Failed start from detail: #{e.message}")
-            halt 500 # Or render an error partial
+            halt 500
           end
         end
-        # --- End start logic ---
-
-        # --- Return the CORRECT partial for the detail page ---
+        # --- Return the status controls partial ---
+        # Pass the live agent object which includes model_name implicitly
         slim :_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view }
       end
 
-      post '/agents/:name/stop' do |name|
-        # Removed content_type :html - helper handles fragments
+      # Stop Agent (for Table View)
+      post '/agents/:name/stop' do
+        name = params[:name]
         agent = @agents[name]
         stopped_agent_data = nil
-
         if agent
-          logger.info("Stopping agent '#{name}'...")
           description = agent.description
+          model = agent.model_name # Capture model
+          tools = agent.tools.map(&:name)
           agent.stop
           @agents.delete(name)
-          stopped_agent_data = { name: name, description: description, running: false, configured_tools: agent.tools.map(&:name) } # Include tools for potential future use
-          logger.info("Agent '#{name}' stopped and removed from memory.")
+          stopped_agent_data = { name: name, description: description, running: false, model: model, configured_tools: tools } # Include model
+          logger.info("Agent '#{name}' stopped.")
         else
-          logger.warn("Attempted to stop agent '#{name}' which is not running.")
-          # Agent not running, create data hash from Redis
-          description = @redis&.hget(agent_redis_key(name), 'description') || "N/A"
-          tools_json = @redis&.hget(agent_redis_key(name), 'tools')
+          logger.warn("Attempted to stop non-running agent '#{name}'.")
+          key = agent_redis_key(name)
+          redis_data = @redis&.hmget(key, 'description', 'tools', 'model') || ["N/A", nil, nil]
+          description = redis_data[0] || "N/A"
+          tools_json = redis_data[1]
+          model = redis_data[2] # Fetch model from Redis
           configured_tools = []
           if tools_json then configured_tools = JSON.parse(tools_json) rescue []; end
-          stopped_agent_data = { name: name, description: description, running: false,
-                                 configured_tools: configured_tools }
+          stopped_agent_data = { name: name, description: description, running: false, model: model, configured_tools: configured_tools } # Include model
         end
-
-        # Return combined fragments using helper
-        agent_status_fragments(stopped_agent_data) # Pass the hash representing stopped state
+        # Return start/stop button fragments
+        agent_status_fragments(stopped_agent_data)
       end
 
-      # --- Detail Page Specific Stop ---
-      post '/agents/:name/stop/detail' do |name|
-        content_type :html
+      # Stop Agent (for Detail View)
+      post '/agents/:name/stop/detail' do
+        name = params[:name]
         stopped_agent_data = nil
-        # --- Perform the SAME stop logic as the main /stop route ---
+        # --- Perform the SAME stop logic (capture model etc) ---
         agent = @agents[name]
         if agent
-          # ... (stop agent, remove from @agents) ...
           description = agent.description
-          tools = agent.tools.map(&:name) # Get tools before deleting
+          model = agent.model_name
+          tools = agent.tools.map(&:name)
           agent.stop
           @agents.delete(name)
-          stopped_agent_data = { name: name, description: description, running: false, configured_tools: tools }
+          stopped_agent_data = { name: name, description: description, running: false, model: model,
+                                 configured_tools: tools }
         else
-          # ... (create stopped data hash from Redis) ...
-          description = @redis&.hget(agent_redis_key(name), 'description') || "N/A"
-          tools_json = @redis&.hget(agent_redis_key(name), 'tools')
+          key = agent_redis_key(name)
+          redis_data = @redis&.hmget(key, 'description', 'tools', 'model') || ["N/A", nil, nil]
+          description = redis_data[0] || "N/A"
+          tools_json = redis_data[1]
+          model = redis_data[2]
           configured_tools = []
           if tools_json then configured_tools = JSON.parse(tools_json) rescue []; end
-          stopped_agent_data = { name: name, description: description, running: false,
+          stopped_agent_data = { name: name, description: description, running: false, model: model,
                                  configured_tools: configured_tools }
         end
-        # --- End stop logic ---
-
-        # --- Return the CORRECT partial for the detail page ---
+        # --- Return the status controls partial ---
+        # Pass hash which now includes model
         slim :_agent_status_controls, layout: false, locals: { agent_data: stopped_agent_data }
       end
 
-      # --- REMOVED OOB logic from Agent Detail Page Start/Stop Handlers ---
-      # POST /agents/:name/start (Original OOB logic - now handled by table logic)
-      # POST /agents/:name/stop (Original OOB logic - now handled by table logic)
-      # The /start and /stop routes accessible from the detail page
-      # should now likely just return the updated _agent_status_controls partial
-      # or redirect back to the detail page. The table versions handle the table updates.
-      # Let's simplify them for now to just update the agent state and redirect.
-
-      # Example simplification (apply similarly to the stop route if needed)
-      # post '/agents/:name/start/from_detail' do |name| # Maybe use a different route?
-      #    # ... (perform start logic as before) ...
-      #    redirect "/agents/#{name}" # Redirect back after action
-      # end
-
-      post '/agents/:name/execute' do |name|
+      # Execute Agent Task Directly (via JSON input)
+      post '/agents/:name/execute' do
+        name = params[:name]
         content_type :html
         agent = @agents[name]
 
         html_error = lambda do |message, status_code = 400|
-          # Use the standard hash format for errors originating here too
           error_hash = { status: :error, error_message: message }
           halt status_code, format_execution_result_html(error_hash) # Use helper
         end
@@ -637,27 +514,24 @@ module ADK
         html_error.call("Error: Agent '#{name}' not found or not running.", 400) unless agent
 
         json_string = params['task_json']
-        html_error.call("Error: Missing 'task_json' data in request.", 400) unless json_string && !json_string.empty?
+        html_error.call("Error: Missing 'task_json' data.", 400) unless json_string && !json_string.empty?
 
         begin
           data = JSON.parse(json_string)
           task = data['task']
-          html_error.call("Error: Missing 'task' key within the provided JSON.", 400) unless task
+          html_error.call("Error: Missing 'task' key in JSON.", 400) unless task
         rescue JSON::ParserError => e
           logger.error "Invalid JSON submitted: #{e.message}"
-          html_error.call("Error: Invalid JSON format submitted.", 400)
+          html_error.call("Error: Invalid JSON format.", 400)
         end
 
         begin
           logger.info("Agent '#{name}' executing task via direct endpoint: #{task}")
-          # agent.run_task now returns Hash or Array<Hash>
-          result_data = agent.run_task(task)
+          result_data = agent.run_task(task) # Returns Hash or Array<Hash>
           logger.info("Agent '#{name}' direct execution result data: #{result_data.inspect}")
-
-          # --- CHANGE: Use helper to format result ---
-          format_execution_result_html(result_data)
-        rescue => e # Catch errors during run_task itself
-          logger.error "Error during direct agent execution for '#{name}': #{e.class} - #{e.message}"
+          format_execution_result_html(result_data) # Use helper to format
+        rescue => e
+          logger.error "Error during direct agent execution for '#{name}': #{e.message}"
           logger.error e.backtrace.join("\n")
           html_error.call("Error: Internal server error during task execution: #{e.message}", 500)
         end
@@ -665,27 +539,26 @@ module ADK
 
       # --- Tool Routes ---
 
+      # List Tools Page
       get '/tools' do
-        # Use the registry to get the list
         @tools_list = ADK::ToolRegistry.list_tools
         logger.info("Displaying tools: #{@tools_list.map { |t| t[:name] }}")
         slim :tools
       end
 
+      # Tool Detail Page
       get '/tools/:name' do |name|
         tool_name_sym = name.to_sym
-        # Use the registry to create an instance
         @tool = ADK::ToolRegistry.create_instance(tool_name_sym)
-
-        if @tool
-          slim :tool
-        else
-          logger.warn("Tool '#{name}' not found when accessing detail page.")
-          halt 404, slim(:error_404, locals: { title: "Tool Not Found", message: "Tool '#{name}' could not be found." })
+        if @tool then slim :tool
+        else halt 404,
+                  slim(:error_404, locals: { title: "Tool Not Found", message: "Tool '#{name}' could not be found." });
         end
       end
 
-      post '/tools/:name/execute' do |name|
+      # Execute Tool Directly (via form)
+      post '/tools/:name/execute' do
+        name = params[:name]
         content_type :html
         tool_name_sym = name.to_sym
         logger.info("--- Executing Tool '#{name}' via form ---")
@@ -697,50 +570,50 @@ module ADK
 
         unless tool
           err_msg = "Error: Tool '#{Rack::Utils.escape_html(name)}' not found."
-          # --- Return error hash formatted as HTML ---
-          halt 404, format_execution_result_html({ status: :error, error_message: err_msg })
+          halt 404, format_execution_result_html({ status: :error, error_message: err_msg }) # Format error
         end
 
         begin
           logger.info("Attempting tool.execute for '#{name}' with params: #{submitted_params.inspect}")
-          # tool.execute now returns a hash
-          result_hash = tool.execute(submitted_params)
+          result_hash = tool.execute(submitted_params) # Returns hash
           logger.info("Tool '#{name}' execution returned: #{result_hash.inspect}")
-
-          # --- CHANGE: Use helper to format result hash ---
-          format_execution_result_html(result_hash)
-
-        # --- Catch errors during the execute call itself ---
-        rescue ADK::Error, ArgumentError => e # These might be raised *before* execute returns a hash
-          logger.warn("Validation/Argument Error executing tool '#{name}': #{e.message}. Params: #{submitted_params.inspect}")
-          format_execution_result_html({ status: :error, error_message: e.message }) # Format as error hash
+          format_execution_result_html(result_hash) # Use helper to format
+        rescue ADK::Error, ArgumentError => e # Catch errors during execute call
+          logger.warn("Error executing tool '#{name}': #{e.message}")
+          format_execution_result_html({ status: :error, error_message: e.message })
         rescue StandardError => e
-          logger.error("Unexpected error executing tool '#{name}': #{e.class} - #{e.message}. Params: #{submitted_params.inspect}")
+          logger.error("Unexpected error executing tool '#{name}': #{e.class} - #{e.message}")
           logger.error(e.backtrace.join("\n"))
-          format_execution_result_html({ status: :error, error_message: "An unexpected error occurred: #{e.message}" }) # Format as error hash
+          format_execution_result_html({ status: :error, error_message: "An unexpected error occurred: #{e.message}" })
         end
       end
 
       # --- API Endpoints ---
 
+      # Get Agent List (API)
       get '/api/agents' do
-        # Combine Redis definitions with in-memory status
         content_type :json
         agents_data = []
         if @redis
           agent_names = @redis.smembers(REDIS_AGENTS_SET_KEY)
-          agents_data = agent_names.map do |name|
-            description = @redis.hget(agent_redis_key(name), 'description') || "N/A"
+          redis_agent_data = @redis.pipelined do |pipe|
+            agent_names.each { |n| pipe.hmget(agent_redis_key(n), 'description', 'model') } # Fetch model
+          end
+          agents_data = agent_names.zip(redis_agent_data).map do |name, data|
+            description = data[0] || "N/A"
+            model = data[1] # Get model from Redis
             is_running = @agents.key?(name)
-            { name: name, description: description, running: is_running }
+            # If running, override with live agent's model name
+            model = @agents[name].model_name if is_running && @agents[name]
+            { name: name, description: description, running: is_running, model: model || ADK::Agent::DEFAULT_MODEL } # Add model, ensure default
           end
         end
-        json agents: agents_data
+        json agents: agents_data.sort_by { |a| a[:name] }
       end
 
+      # Get Tool List (API)
       get '/api/tools' do
         content_type :json
-        # Use the registry
         tools_data = ADK::ToolRegistry.list_tools
         json tools: tools_data
       end

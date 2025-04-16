@@ -11,18 +11,26 @@ module ADK
 
   # Agent class represents an AI agent that can perform tasks
   class Agent
-    attr_reader :name, :description, :tools, :session, :memory, :planner, :logger
+    # --- ADD Default Model Constant ---
+    DEFAULT_MODEL = 'gemini-2.0-flash'
+    # --- End Add ---
 
-    # ... (initialize, add_tool, start, stop, running? methods remain the same) ...
-    def initialize(name:, description:, **options)
+    attr_reader :name, :description, :tools, :session, :memory, :planner, :logger, :model_name # Add model_name
+
+    # --- MODIFY initialize signature and logic ---
+    def initialize(name:, description:, model_name: nil, **options)
       @name = name
       @description = description
-      @tools = [] # Initialize as empty; tools are added via add_tool
-      @logger = options[:logger] || ADK.logger # Default logger
-      @planner = options[:planner] || ADK::Planner.new(agent: self, logger: @logger)
+      # Use provided model or default, store it
+      @model_name = model_name && !model_name.empty? ? model_name : DEFAULT_MODEL
+      @tools = []
+      @logger = options[:logger] || ADK.logger
+      # --- Pass the determined model_name to the Planner ---
+      @planner = options[:planner] || ADK::Planner.new(agent: self, logger: @logger, model_name: @model_name)
       @memory = options[:memory] || ADK::Memory.new(agent: self)
       @session = options[:session] || ADK::Session.new(agent: self)
-      @state = Concurrent::Map.new # For runtime state like :running
+      @state = Concurrent::Map.new
+      logger.info("Agent '#{@name}' initialized with model: '#{@model_name}'") # Log the model used
     end
 
     def add_tool(tool)

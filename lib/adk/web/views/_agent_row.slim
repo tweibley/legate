@@ -1,31 +1,48 @@
-/ Expects 'agent_info' (a hash ...)
+/ File: lib/adk/web/views/_agent_row.slim
+/ Expects 'agent_info' hash containing keys:
+/   :name (String)
+/   :description (String)
+/   :model (String or nil) - The configured model name from Redis
+/   :running (Boolean) - Current runtime status
+/   :configured_tools (Array<String>) - List of tool names from Redis
 
 - agent_name = agent_info[:name]
 - is_running = agent_info[:running]
-- status_cell_id = "agent-status-cell-#{agent_name}" # Keep TD id just in case
-- status_content_id = "agent-status-content-#{agent_name}" # ID for INNER span
+- model_display = agent_info[:model] && !agent_info[:model].empty? ? agent_info[:model] : "#{ADK::Agent::DEFAULT_MODEL} (Default)" # Apply default for display if nil or empty
+- status_cell_id = "agent-status-cell-#{agent_name}" # Optional ID for the TD
+- status_content_id = "agent-status-content-#{agent_name}" # ID for the inner status span (HTMX target)
 - start_button_id = "agent-start-button-#{agent_name}"
 - stop_button_id = "agent-stop-button-#{agent_name}"
 
 tr(data-agent-name=agent_name)
+  / Name Column
   td
     a(href="/agents/#{agent_name}")= agent_name
+
+  / Description Column
   td= agent_info[:description]
+
+  / Model Column
   td
-    / Configured Tools ...
+    span.is-size-7= model_display
+
+  / Configured Tools Column
+  td
     - if agent_info[:configured_tools] && !agent_info[:configured_tools].empty?
       span.is-size-7= agent_info[:configured_tools].join(', ')
     - else
       span.is-size-7.has-text-grey -
-  / --- Status Cell with inner span ID ---
+
+  / Status Column (with HTMX target span)
   td(id=status_cell_id)
     span(id=status_content_id)
       span(class="tag #{is_running ? 'is-success' : 'is-light'}")
         = is_running ? 'Running' : 'Stopped'
+
+  / Actions Column
   td
-    / --- Action buttons ---
     .buttons.are-small.is-justify-content-right
-      / Start Button - Target inner span, swap innerHTML
+      / Start Button
       button.button.is-success.is-light(
         id=start_button_id
         hx-post="/agents/#{agent_name}/start"
@@ -33,7 +50,8 @@ tr(data-agent-name=agent_name)
         hx-swap="innerHTML"
         disabled=is_running
       ) Start
-      / Stop Button - Target inner span, swap innerHTML
+
+      / Stop Button
       button.button.is-warning.is-light(
         id=stop_button_id
         hx-post="/agents/#{agent_name}/stop"
@@ -41,12 +59,14 @@ tr(data-agent-name=agent_name)
         hx-swap="innerHTML"
         disabled=!is_running
       ) Stop
+
       / Details Button
       a.button.is-info.is-light(href="/agents/#{agent_name}") Details
+
       / Delete Button
       button.button.is-danger.is-light(
         hx-delete="/agents/#{agent_name}"
         hx-target="closest tr"
         hx-swap="outerHTML"
-        hx-confirm="Are you sure you want to delete agent '#{agent_name}'?"
+        hx-confirm="Are you sure you want to delete agent definition '#{agent_name}'?"
       ) Delete
