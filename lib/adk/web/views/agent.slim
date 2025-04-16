@@ -1,22 +1,22 @@
 / File: lib/adk/web/views/agent.slim
 
 .content
-  / --- Name Display ---
+  / --- Pass @view_agent_data as agent_data local ---
   div(id="agent-name-display")
     == slim :_display_agent_name, locals: { agent_data: @view_agent_data }
 
-  / --- Description Display/Edit ---
+  / --- Pass @view_agent_data as agent_data local ---
   div(id="agent-description-display" hx-swap="innerHTML")
     == slim :_display_agent_description, locals: { agent_data: @view_agent_data }
 
-  / --- Model Display/Edit ---
+  / --- Pass @view_agent_data as agent_data local ---
   div(id="agent-model-display" hx-swap="innerHTML")
     == slim :_display_agent_model, locals: { agent_data: @view_agent_data }
-
 
 / Status Box
 .box.mb-5
   h2.title.is-4 Status & Control
+  / This already passes locals correctly
   == slim :_agent_status_controls, locals: { agent_data: @view_agent_data }
 
 / Execute Task box
@@ -51,9 +51,8 @@
 
 / --- Tools Container ---
 div(id="agent-tools-display" hx-swap="innerHTML")
-  / --- Remove locals, partial uses instance variables ---
-  == slim :_display_agent_tools
-
+  / --- Pass @view_agent_data and @configured_tool_info as locals ---
+  == slim :_display_agent_tools, locals: { agent_data: @view_agent_data, configured_tools: @configured_tool_info }
 
 / Link back to the main agents list
 .mt-4

@@ -1,7 +1,10 @@
 / File: lib/adk/web/views/_display_agent_description.slim
+/ Expects locals: agent_data (Hash: {name, description, ...})
+
 div.is-flex.is-align-items-center.mb-3
+  / --- Use local variable ---
   p.subtitle.mb-0= agent_data[:description]
-  / --- Target container, swap innerHTML ---
+  / --- Use local variable for name in URL ---
   button.button.is-small.is-ghost.ml-2( hx-get="/agents/#{agent_data[:name]}/edit/description"
                                         hx-target="#agent-description-display"
                                         hx-swap="innerHTML" )

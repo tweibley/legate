@@ -1,7 +1,7 @@
 # File: lib/adk/web/app.rb
 # frozen_string_literal: true
 
-#STDOUT.sync = true
+# STDOUT.sync = true
 require 'sinatra/base'
 require 'sinatra/json'
 require 'sinatra/custom_logger'
@@ -465,6 +465,15 @@ module ADK
             echo_tool = ADK::ToolRegistry.create_instance(:echo)
             @agent.add_tool(echo_tool) if echo_tool
           end
+
+          # Set the view agent data for the template
+          @view_agent_data = {
+            name: @agent.name,
+            description: @agent.description,
+            model: @agent.model_name,
+            running: true
+          }
+
           slim :chat
         else
           logger.warn("Attempted to chat with non-running agent '#{name}'")
@@ -477,6 +486,16 @@ module ADK
         content_type :html
         @agent = @agents[name] # Look in memory
         user_message = params['message']&.strip
+
+        # Set @view_agent_data here in case we need it for any partials
+        if @agent
+          @view_agent_data = {
+            name: @agent.name,
+            description: @agent.description,
+            model: @agent.model_name,
+            running: true
+          }
+        end
 
         # Helper lambda remains the same (renders _chat_message)
         halt_chat_error = lambda do |status, error_msg, agent_name_fallback|
@@ -652,6 +671,16 @@ module ADK
         content_type :html
         agent = @agents[name]
 
+        # Set @view_agent_data for any partials that might use it
+        if agent
+          @view_agent_data = {
+            name: agent.name,
+            description: agent.description,
+            model: agent.model_name,
+            running: true
+          }
+        end
+
         html_error = lambda do |message, status_code = 400|
           error_hash = { status: :error, error_message: message }
           halt status_code, format_execution_result_html(error_hash) # Use helper
@@ -757,26 +786,33 @@ module ADK
 
       # GET /agents/:name/display/:field - Serves the display partial (for Cancel button)
       get '/agents/:name/display/:field' do |name, field|
-        # ... (halts and checks) ...
+        supported_fields = ['description', 'model', 'tools']
+        halt 404, "Displaying field '#{field}' not supported." unless supported_fields.include?(field)
+        halt 503, "Redis unavailable." unless @redis
+
         key = agent_redis_key(name)
-        halt 404 unless @redis.exists?(key)
+        halt 404, "Agent definition '#{name}' not found." unless @redis.exists?(key)
+
+        # Fetch necessary data
         redis_data = @redis.hmget(key, 'description', 'model', 'tools')
 
-        # --- Set Instance Variables ---
-        @view_agent_data = { name: name, description: redis_data[0], model: redis_data[1] } # For desc/model partials
+        # --- Prepare locals hash ---
+        response_locals = {}
+        response_locals[:agent_data] = { name: name, description: redis_data[0], model: redis_data[1] }
 
         if field == 'tools'
           tools_json_string = redis_data[2]
           configured_tool_names_str = []
           begin tools_json_string && configured_tool_names_str = JSON.parse(tools_json_string) rescue []; end
-          @configured_tool_info = configured_tool_names_str.map do |tool_name| # Set tools instance var
+          # Add :configured_tools to locals hash
+          response_locals[:configured_tools] = configured_tool_names_str.map do |tool_name|
             ADK::ToolRegistry.list_tools.find { |t| t[:name].to_s == tool_name }
           end.compact
         end
-        # --- End Set Instance Variables ---
+        # --- End Prepare locals hash ---
 
-        # Render using instance variables
-        slim :"_display_agent_#{field}", layout: false
+        # Render using locals
+        slim :"_display_agent_#{field}", layout: false, locals: response_locals
       end
 
       # PUT /agents/:name/update/:field - Handles the update from the edit form

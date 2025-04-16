@@ -1,71 +1,31 @@
-/ File: lib/adk/web/views/agent.slim
+/ File: lib/adk/web/views/chat.slim
 
-.content
-  / --- Name Display/Edit ---
-  div(id="agent-name-display" hx-target="this" hx-swap="outerHTML")
-    == slim :_display_agent_name, locals: { agent_data: @view_agent_data }
+.container
+  section.section
+    h1.title Chat with Agent: #{@agent.name}
+    p.subtitle Send messages to the agent and see its responses.
 
-  / --- Description Display/Edit ---
-  div(id="agent-description-display" hx-target="this" hx-swap="outerHTML")
-    == slim :_display_agent_description, locals: { agent_data: @view_agent_data }
+    / Agent Status (Optional but helpful)
+    .box
+      p
+        strong Status:
+        span class=(@agent.running? ? 'has-text-success' : 'has-text-danger')
+          = @agent.running? ? 'Running' : 'Stopped (Go to agent page to start)'
 
-  / --- Model Display/Edit ---
-  div(id="agent-model-display" hx-target="this" hx-swap="outerHTML")
-    == slim :_display_agent_model, locals: { agent_data: @view_agent_data }
+    / Chat History Display Area
+    / --- Add hx-on::after-swap attribute for autoscroll ---
+    #chat-history.box( style="height: 400px; overflow-y: scroll; margin-bottom: 1rem;"
+                      hx-on::after-swap="this.scrollTop = this.scrollHeight" )
+      / Messages will be appended here by htmx
 
+    / Chat Input Form
+    form(hx-post="/agents/#{@agent.name}/chat" hx-target="#chat-history" hx-swap="beforeend" _="on htmx:afterRequest reset()")
+      .field.has-addons
+        .control.is-expanded
+          input.input#chat-input(type="text" name="message" placeholder="Enter your message..." required=true autofocus)
+        .control
+          button.button.is-info(type="submit" disabled=(!@agent.running?)) Send
 
-/ Status Box - Add margin bottom
-.box.mb-5
-  h2.title.is-4 Status & Control
-  == slim :_agent_status_controls, locals: { agent_data: @view_agent_data }
-
-/ Execute Task box - Add margin bottom
-.box.mb-5
-  h2.title.is-4 Execute Task (JSON Input)
-  form( hx-post="/agents/#{@view_agent_data[:name]}/execute"
-        hx-target="#task-result"
-        hx-swap="innerHTML"
-        hx-indicator="#task-spinner" )
-    .field
-      label.label Task (JSON Format: {"task": "your task description"})
-      .control
-        textarea.textarea(name="task_json" placeholder='{"task": "Describe your task here..."}' required=true rows="3")
-    .field.is-grouped.is-grouped-right
-      .control
-        span.icon.is-small.htmx-indicator#task-spinner style="margin-right: 8px; vertical-align: middle;"
-          i.fas.fa-spinner.fa-spin
-      .control
-        button.button( type="button"
-                       _='on click put "<p class=\"has-text-grey\">Task results will appear here.</p>" into #task-result' )
-          span.icon.is-small
-            i.fas.fa-eraser
-          span Clear Result
-      .control
-        button.button.is-primary(type="submit" id="execute-task-button" disabled=!@view_agent_data[:running])
-          span.icon.is-small
-            i.fas.fa-play-circle
-          span Execute (Requires Start)
-
-  #task-result.mt-4
-    p.has-text-grey Task results will appear here.
-
-/ Tools Box - Add margin bottom
-.box.mb-5
-  h2.title.is-4 Configured Tools
-  .columns.is-multiline
-    - if @agent && @agent.tools.any?
-      - @agent.tools.each |tool|
-        .column.is-one-third
-          .card.tool-card
-            .card-content
-              h3.title.is-5= tool.name.to_s.capitalize
-              p= tool.description
-            .card-footer
-              a.card-footer-item(href="/tools/#{tool.name}") View Tool Details
-    - else
-      .column
-        p This agent currently has no tools assigned (or the agent object could not be loaded).
-
-/ Link back to the main agents list
-.mt-4
-  a.button(href="/agents") ← Back to Agents List
+    / Link back to agent details
+    .mt-4
+      a.button(href="/agents/#{@agent.name}") ← Back to Agent Details

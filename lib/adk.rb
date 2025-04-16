@@ -55,6 +55,7 @@ require_relative 'adk/agent'
 require_relative 'adk/cli'
 
 # Tools
+require_relative 'adk/tools/agent_tool'
 require_relative 'adk/tools/echo'
 require_relative 'adk/tools/calculator'
 require_relative 'adk/tools/cat_facts'

@@ -1,4 +1,8 @@
 / File: lib/adk/web/views/_display_agent_name.slim
-/ --- REMOVED is-flex and the button ---
+/ Expects locals: agent_data (Hash)
+
 div.mb-3
-  h1.title.mb-0= agent_data[:name]
+  - if agent_data && agent_data[:name]
+    h1.title.mb-0= agent_data[:name]
+  - else
+    h1.title.mb-0.has-text-danger [Error: Agent Name Unavailable]

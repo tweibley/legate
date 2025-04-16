@@ -1,25 +1,25 @@
 / File: lib/adk/web/views/_display_agent_tools.slim
-/ Expects instance variables:
-/   @view_agent_data (Hash: {name, ...})
-/   @configured_tool_info (Array<Hash>: [{name: :tool_symbol, description: "..."}])
+/ Expects locals:
+/   agent_data (Hash: {name, ...})
+/   configured_tools (Array<Hash>: [{name: :tool_symbol, description: "..."}])
 
 .box.mb-5
   .level
     .level-left
       h2.title.is-4.level-item Configured Tools
     .level-right
-      / --- Use instance variable @view_agent_data[:name] ---
-      button.button.is-link.is-light.level-item( hx-get="/agents/#{@view_agent_data[:name]}/edit/tools"
-                                                 hx-target="#agent-tools-display"
-                                                 hx-swap="innerHTML" )
+      / --- Use local variable agent_data[:name] ---
+      button.button.is-link.is-light.level-item( hx-get="/agents/#{agent_data[:name]}/edit/tools"
+                                                hx-target="#agent-tools-display"
+                                                hx-swap="innerHTML" )
         span.icon.is-small
           i.fas.fa-pencil-alt
         span Edit Tools
 
   .columns.is-multiline
-    / --- Use instance variable @configured_tool_info ---
-    - if @configured_tool_info && !@configured_tool_info.empty?
-      - @configured_tool_info.each do |tool_info|
+    / --- Use local variable configured_tools ---
+    - if configured_tools && !configured_tools.empty?
+      - configured_tools.each do |tool_info|
         / Render the standard tool card partial
         == slim :_tool_card, locals: { tool_info: tool_info }
     - else

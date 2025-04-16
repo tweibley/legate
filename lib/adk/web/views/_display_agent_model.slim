@@ -1,10 +1,14 @@
 / File: lib/adk/web/views/_display_agent_model.slim
+/ Expects locals: agent_data (Hash: {name, model, ...})
+
+/ --- Use local variable ---
 - model_display = agent_data[:model] && !agent_data[:model].empty? ? agent_data[:model] : "#{ADK::Agent::DEFAULT_MODEL} (Default)"
+
 div.is-flex.is-align-items-center.mb-3
   p
     strong Model:
     span.tag.is-info.is-light.ml-2= model_display
-  / --- Target container, swap innerHTML ---
+  / --- Use local variable for name in URL ---
   button.button.is-small.is-ghost.ml-2( hx-get="/agents/#{agent_data[:name]}/edit/model"
                                         hx-target="#agent-model-display"
                                         hx-swap="innerHTML" )
