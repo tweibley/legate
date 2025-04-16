@@ -2,10 +2,11 @@
 require 'bundler/setup'
 # --- Load ADK Library ---
 require 'adk'
+require 'gemini-ai'
 # --- End Load ADK ---
 
 require 'webmock/rspec'
-#WebMock.disable_net_connect!(allow_localhost: true) # Disable real HTTP requests during tests
+# WebMock.disable_net_connect!(allow_localhost: true) # Disable real HTTP requests during tests
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure

@@ -197,6 +197,7 @@ PLATFORMS
 DEPENDENCIES
   adk-ruby!
   dotenv (~> 2.0)
+  gemini-ai
   pry (~> 0.14)
   pry-byebug (~> 3.10)
   rake (~> 13.0)

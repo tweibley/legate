@@ -12,7 +12,7 @@ RSpec.describe ADK::Tools::CatFacts do
     end
     # ... other basic checks ...
     it 'has no required parameters' do
-        expect(tool.parameters).to be_empty
+      expect(tool.parameters).to be_empty
     end
   end
 
@@ -64,7 +64,7 @@ RSpec.describe ADK::Tools::CatFacts do
 
     context 'when API call times out' do
       before do
-         # --- CHANGE: Explicitly raise the expected exception ---
+        # --- CHANGE: Explicitly raise the expected exception ---
         # stub_request(:get, api_url).to_timeout
         stub_request(:get, api_url).to_raise(Faraday::TimeoutError.new("execution expired"))
         # --- END CHANGE ---
@@ -77,29 +77,29 @@ RSpec.describe ADK::Tools::CatFacts do
       end
     end
 
-     context 'when API connection fails' do
-       before do
-         stub_request(:get, api_url).to_raise(Faraday::ConnectionFailed.new("Connection refused"))
-       end
+    context 'when API connection fails' do
+      before do
+        stub_request(:get, api_url).to_raise(Faraday::ConnectionFailed.new("Connection refused"))
+      end
 
-       it 'returns an error hash' do
-         result = tool.execute(params)
-         expect(result[:status]).to eq(:error)
-         expect(result[:error_message]).to match(/Connection failed/i)
-       end
-     end
+      it 'returns an error hash' do
+        result = tool.execute(params)
+        expect(result[:status]).to eq(:error)
+        expect(result[:error_message]).to match(/Connection failed/i)
+      end
+    end
 
     context 'when API response is invalid JSON' do
-       before do
-         stub_request(:get, api_url)
-           .to_return(status: 200, body: 'This is not JSON', headers: { 'Content-Type' => 'text/plain' })
-       end
+      before do
+        stub_request(:get, api_url)
+          .to_return(status: 200, body: 'This is not JSON', headers: { 'Content-Type' => 'text/plain' })
+      end
 
-       it 'returns an error hash' do
-         result = tool.execute(params)
-         expect(result[:status]).to eq(:error)
-         expect(result[:error_message]).to match(/JSON parse failed/i)
-       end
+      it 'returns an error hash' do
+        result = tool.execute(params)
+        expect(result[:status]).to eq(:error)
+        expect(result[:error_message]).to match(/JSON parse failed/i)
+      end
     end
   end
 end

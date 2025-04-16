@@ -9,6 +9,7 @@ group :development, :test do
   gem 'rubocop', '~> 1.50' # <-- Ensure this line is present here
   gem 'yard', '~> 0.9'
   gem 'webmock'
+  gem "gemini-ai"
 end
 
 group :development do

@@ -41,14 +41,14 @@ RSpec.describe ADK::Tools::Echo do
       end
     end
 
-     context 'with parameters as strings (less common case)' do
-        let(:params) { { 'message' => 'Hello string key' } }
+    context 'with parameters as strings (less common case)' do
+      let(:params) { { 'message' => 'Hello string key' } }
 
-        it 'returns a success hash' do
-          # This depends on perform_execution using fetch correctly
-           result = tool.execute(params)
-           expect(result).to eq({ status: :success, result: 'Hello string key' })
-        end
-     end
+      it 'returns a success hash' do
+        # This depends on perform_execution using fetch correctly
+        result = tool.execute(params)
+        expect(result).to eq({ status: :success, result: 'Hello string key' })
+      end
+    end
   end
 end

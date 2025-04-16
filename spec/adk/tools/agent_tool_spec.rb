@@ -28,8 +28,8 @@ RSpec.describe ADK::Tools::AgentTool do
     allow(Redis).to receive(:new).and_return(mock_redis)
     allow(mock_redis).to receive(:ping)
     allow(mock_redis).to receive(:hmget)
-                          .with(target_key, 'description', 'tools', 'model')
-                          .and_return(target_definition.values)
+      .with(target_key, 'description', 'tools', 'model')
+      .and_return(target_definition.values)
 
     # Mock ToolRegistry for the target agent's tool
     allow(ADK::ToolRegistry).to receive(:create_instance).with(:calculator).and_return(mock_calculator_tool)
@@ -37,8 +37,9 @@ RSpec.describe ADK::Tools::AgentTool do
     # Mock Agent instantiation for the target agent
     allow(ADK::Agent).to receive(:new).and_call_original # Allow normal agent init
     allow(ADK::Agent).to receive(:new)
-                       .with(hash_including(name: matching(/#{target_agent_name}_delegated/), model_name: 'gemini-test-model'))
-                       .and_return(mock_target_agent)
+      .with(hash_including(name: matching(/#{target_agent_name}_delegated/),
+                           model_name: 'gemini-test-model'))
+      .and_return(mock_target_agent)
 
     # Mock methods on the target agent instance
     allow(mock_target_agent).to receive(:add_tool).with(mock_calculator_tool)
@@ -59,7 +60,8 @@ RSpec.describe ADK::Tools::AgentTool do
       it 'connects to redis, loads definition, instantiates agent, adds tools, runs task' do
         expect(Redis).to receive(:new).and_return(mock_redis)
         expect(mock_redis).to receive(:ping)
-        expect(mock_redis).to receive(:hmget).with(target_key, 'description', 'tools', 'model').and_return(target_definition.values)
+        expect(mock_redis).to receive(:hmget).with(target_key, 'description', 'tools',
+                                                   'model').and_return(target_definition.values)
         expect(ADK::Agent).to receive(:new).with(hash_including(name: matching(/#{target_agent_name}_delegated/))).and_return(mock_target_agent)
         expect(ADK::ToolRegistry).to receive(:create_instance).with(:calculator).and_return(mock_calculator_tool)
         expect(mock_target_agent).to receive(:add_tool).with(mock_calculator_tool)
@@ -88,51 +90,57 @@ RSpec.describe ADK::Tools::AgentTool do
     end
 
     context 'when redis connection fails' do
-       before do
-         allow(Redis).to receive(:new).and_raise(Redis::CannotConnectError.new("Cannot connect"))
-       end
+      before do
+        allow(Redis).to receive(:new).and_raise(Redis::CannotConnectError.new("Cannot connect"))
+      end
 
-       it 'returns an error hash' do
-         result = tool.execute(params)
-         expect(result[:status]).to eq(:error)
-         expect(result[:error_message]).to include("Could not connect to Redis")
-       end
+      it 'returns an error hash' do
+        result = tool.execute(params)
+        expect(result[:status]).to eq(:error)
+        expect(result[:error_message]).to include("Could not connect to Redis")
+      end
     end
 
-     context 'when target agent has invalid tools JSON' do
-        let(:invalid_target_definition) { target_definition.merge('tools' => '[invalid json') }
-        before do
-            allow(mock_redis).to receive(:hmget).with(target_key, 'description', 'tools', 'model').and_return(invalid_target_definition.values)
-        end
+    context 'when target agent has invalid tools JSON' do
+      let(:invalid_target_definition) { target_definition.merge('tools' => '[invalid json') }
+      before do
+        allow(mock_redis).to receive(:hmget).with(target_key, 'description', 'tools',
+                                                  'model').and_return(invalid_target_definition.values)
+      end
 
-       it 'returns an error hash' do
-         result = tool.execute(params)
-         expect(result[:status]).to eq(:error)
-         expect(result[:error_message]).to include("Failed to parse tools JSON")
-       end
-     end
+      it 'returns an error hash' do
+        result = tool.execute(params)
+        expect(result[:status]).to eq(:error)
+        expect(result[:error_message]).to include("Failed to parse tools JSON")
+      end
+    end
 
-     context 'when target agent task execution raises an error' do
-        let(:target_error) { StandardError.new("Target agent failed!") }
-        before do
-            allow(mock_target_agent).to receive(:run_task).with(task_to_delegate).and_raise(target_error)
-        end
+    context 'when target agent task execution raises an error' do
+      let(:target_error) { StandardError.new("Target agent failed!") }
+      before do
+        allow(mock_target_agent).to receive(:run_task).with(task_to_delegate).and_raise(target_error)
+      end
 
-       it 'returns an error hash capturing the exception' do
-         result = tool.execute(params)
-         expect(result[:status]).to eq(:error)
-         expect(result[:error_message]).to include("Unexpected error during delegation", "StandardError - Target agent failed!")
-       end
-     end
+      it 'returns an error hash capturing the exception' do
+        result = tool.execute(params)
+        expect(result[:status]).to eq(:error)
+        expect(result[:error_message]).to include("Unexpected error during delegation",
+                                                  "StandardError - Target agent failed!")
+      end
+    end
 
     context 'with missing parameters (base validation)' do
-       it 'raises ADK::Error if target_agent_name is missing' do
-         expect { tool.execute(task: task_to_delegate) }.to raise_error(ADK::Error, /Missing required parameters: target_agent_name/)
-       end
+      it 'raises ADK::Error if target_agent_name is missing' do
+        expect {
+          tool.execute(task: task_to_delegate)
+        }.to raise_error(ADK::Error, /Missing required parameters: target_agent_name/)
+      end
 
-        it 'raises ADK::Error if task is missing' do
-         expect { tool.execute(target_agent_name: target_agent_name) }.to raise_error(ADK::Error, /Missing required parameters: task/)
-       end
+      it 'raises ADK::Error if task is missing' do
+        expect {
+          tool.execute(target_agent_name: target_agent_name)
+        }.to raise_error(ADK::Error, /Missing required parameters: task/)
+      end
     end
   end
 end

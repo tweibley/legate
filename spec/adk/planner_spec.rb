@@ -1,132 +1,310 @@
+# File: spec/adk/planner_spec.rb
 require 'spec_helper'
-require 'gemini-ai' # Make sure gem is loaded for instance_double
 
 RSpec.describe ADK::Planner do
-  let(:mock_agent) { instance_double(ADK::Agent, name: 'mock_agent', model_name: 'test-model') }
-  let(:mock_tool_list) { [instance_double(ADK::Tool, name: :tool_a, description: 'Does A', parameters: {})] }
-  let(:mock_gemini_client) { instance_double(Gemini::Client) }
-  let(:task) { "Perform action A" }
-  let(:api_key) { 'test-api-key' }
-
-  before do
-    # Stub ENV (important for tests)
-    allow(ENV).to receive(:[]).and_call_original # Allow other ENV vars
-    allow(ENV).to receive(:[]).with('GOOGLE_API_KEY').and_return(api_key)
-    allow(ENV).to receive(:[]).with('ADK_LOG_LEVEL').and_return('FATAL') # Silence logs unless needed
-
-    # Mock agent's tools
-    allow(mock_agent).to receive(:tools).and_return(mock_tool_list)
-
-    # Mock Gemini client instantiation
-    allow(Gemini).to receive(:new).and_return(mock_gemini_client)
-  end
-
-  subject(:planner) { described_class.new(agent: mock_agent, model_name: 'test-model') }
+  let(:agent) { instance_double(ADK::Agent, tools: [], name: 'test_agent') }
+  let(:mock_client) { double('Gemini') }
+  let(:mock_logger) { instance_double(Logger, info: nil, warn: nil, error: nil, debug: nil) }
+  let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
 
   describe '#initialize' do
-    it 'initializes Gemini client with correct model and api key' do
-       expect(Gemini).to receive(:new).with(
-         credentials: { service: 'generative-language-api', api_key: api_key },
-         options: { model: 'test-model', server_sent_events: false }
-       ).and_return(mock_gemini_client)
-       planner # Trigger initialization
-       expect(planner.model_name).to eq('test-model')
+    before do
+      allow(ENV).to receive(:[]).with('GOOGLE_API_KEY').and_return('fake-api-key')
+      allow(Gemini).to receive(:new).and_return(mock_client)
     end
 
-     it 'uses agent default model if none provided' do
-        allow(ADK::Agent).to receive(:DEFAULT_MODEL).and_return('flash-default')
-        expect(Gemini).to receive(:new).with(hash_including(options: hash_including(model: 'flash-default'))).and_return(mock_gemini_client)
-        described_class.new(agent: mock_agent) # No model_name passed
-     end
+    it 'initializes with an agent' do
+      expect(planner.agent).to eq(agent)
+    end
 
-     it 'handles missing API key' do
-       allow(ENV).to receive(:[]).with('GOOGLE_API_KEY').and_return(nil)
-       expect(ADK.logger).to receive(:error).with(/GOOGLE_API_KEY not found/)
-       expect(Gemini).not_to receive(:new)
-       planner_no_key = described_class.new(agent: mock_agent)
-       expect(planner_no_key.instance_variable_get(:@client)).to be_nil
-     end
+    it 'initializes with a default model name' do
+      # Mocked default model constant from Agent
+      default_model = 'gemini-2.0-flash'
+      allow(ADK::Agent).to receive(:const_get).with(:DEFAULT_MODEL).and_return(default_model)
+
+      # Create a new planner with the mock in place
+      planner_with_default = described_class.new(agent: agent, logger: mock_logger)
+      expect(planner_with_default.model_name).to eq(default_model)
+    end
+
+    it 'uses a custom model name when provided' do
+      custom_planner = described_class.new(agent: agent, model_name: 'gemini-2.0-flash', logger: mock_logger)
+      expect(custom_planner.model_name).to eq('gemini-2.0-flash')
+    end
+
+    it 'logs an error when API key is missing' do
+      allow(ENV).to receive(:[]).with('GOOGLE_API_KEY').and_return(nil)
+      expect(mock_logger).to receive(:error).with("GOOGLE_API_KEY not found. GeminiPlanner requires an API key.")
+      described_class.new(agent: agent, logger: mock_logger)
+    end
+
+    it 'logs an error when Gemini client initialization fails' do
+      allow(Gemini).to receive(:new).and_raise(StandardError.new("Initialization error"))
+      expect(mock_logger).to receive(:error).with(/Failed to initialize Gemini AI client/)
+      planner = described_class.new(agent: agent, logger: mock_logger)
+      expect(planner.instance_variable_get(:@client)).to be_nil
+    end
   end
 
   describe '#plan' do
-    let(:gemini_response_text) { '[{"tool_name": "tool_a", "parameters": {}}]' }
-    let(:gemini_response) { { 'candidates' => [{ 'content' => { 'parts' => [{ 'text' => gemini_response_text }] } }] } }
-    let(:expected_plan) { [{ tool: :tool_a, params: {} }] }
-
     before do
-       # Ensure client is mocked for plan tests
-       allow(planner).to receive(:client).and_return(mock_gemini_client)
-       allow(mock_gemini_client).to receive(:generate_content).and_return(gemini_response)
+      allow(ENV).to receive(:[]).with('GOOGLE_API_KEY').and_return('fake-api-key')
+      allow(Gemini).to receive(:new).and_return(mock_client)
+      allow(planner).to receive(:format_tools_for_prompt).and_return('Tool descriptions')
+      allow(planner).to receive(:build_multi_step_gemini_prompt).and_return('Planning prompt')
     end
 
-    it 'builds a prompt including tool descriptions' do
-       expect(planner).to receive(:build_multi_step_gemini_prompt).with(task, instance_of(String)).and_call_original
-       planner.plan(task)
+    context 'when Gemini client is not initialized' do
+      it 'returns a fallback plan' do
+        # Create a test instance of planner for this specific test
+        test_planner = described_class.new(agent: agent, logger: mock_logger)
+
+        # Directly set the instance variable to nil
+        test_planner.instance_variable_set(:@client, nil)
+
+        # Create a fallback response
+        fallback_response = [{ tool: :echo, params: { message: "fallback message" } }]
+
+        # Mock the fallback_plan method
+        allow(test_planner).to receive(:fallback_plan).with('test task',
+                                                            "Gemini client not available.").and_return(fallback_response)
+
+        # Expect logger to receive the error
+        expect(mock_logger).to receive(:error).with("Gemini client not initialized. Falling back to default plan.")
+
+        # Call the method under test
+        result = test_planner.plan('test task')
+
+        # Verify the result
+        expect(result).to eq(fallback_response)
+      end
     end
 
-    it 'calls the Gemini client generate_content' do
-        expect(mock_gemini_client).to receive(:generate_content).with(hash_including(contents: anything)).and_return(gemini_response)
-        planner.plan(task)
+    context 'when Gemini client is available' do
+      let(:gemini_response) do
+        {
+          'candidates' => [
+            {
+              'content' => {
+                'parts' => [
+                  { 'text' => '[{"tool_name": "echo", "parameters": {"message": "Hello"}}]' }
+                ]
+              }
+            }
+          ]
+        }
+      end
+
+      before do
+        allow(planner).to receive(:instance_variable_get).with(:@client).and_return(mock_client)
+        allow(mock_client).to receive(:generate_content).and_return(gemini_response)
+      end
+
+      it 'sends a request to Gemini and processes the response' do
+        expect(mock_client).to receive(:generate_content).with(hash_including(
+                                                                 contents: [{ role: 'user',
+                                                                              parts: { text: 'Planning prompt' } }]
+                                                               )).and_return(gemini_response)
+
+        expect(planner).to receive(:parse_gemini_response).with(
+          '[{"tool_name": "echo", "parameters": {"message": "Hello"}}]'
+        ).and_call_original
+
+        expect(planner).to receive(:validate_and_format_multi_step_plan).and_return([
+                                                                                      { tool: :echo,
+                                                                                        params: { message: "Hello" } }
+                                                                                    ])
+
+        result = planner.plan('task')
+        expect(result).to eq([{ tool: :echo, params: { message: "Hello" } }])
+      end
+
+      it 'handles empty Gemini response' do
+        empty_response = { 'candidates' => [{ 'content' => { 'parts' => [{ 'text' => nil }] } }] }
+        allow(mock_client).to receive(:generate_content).and_return(empty_response)
+
+        expect(mock_logger).to receive(:warn).with("Gemini response was empty or couldn't find text.")
+        expect(planner).to receive(:fallback_plan)
+
+        planner.plan('task')
+      end
+
+      it 'handles JSON parsing errors' do
+        invalid_json_response = {
+          'candidates' => [{ 'content' => { 'parts' => [{ 'text' => 'Not valid JSON' }] } }]
+        }
+        allow(mock_client).to receive(:generate_content).and_return(invalid_json_response)
+
+        expect(planner).to receive(:parse_gemini_response).and_raise(JSON::ParserError.new("Invalid JSON"))
+        expect(mock_logger).to receive(:error).with(/Failed to parse Gemini response as JSON/)
+        expect(planner).to receive(:fallback_plan)
+
+        planner.plan('task')
+      end
+
+      it 'handles general errors during planning' do
+        allow(mock_client).to receive(:generate_content).and_raise(StandardError.new("API error"))
+
+        expect(mock_logger).to receive(:error).with(/Error during planning with gemini-ai/)
+        expect(planner).to receive(:fallback_plan)
+
+        planner.plan('task')
+      end
     end
-
-    it 'parses and validates a valid JSON response' do
-        result = planner.plan(task)
-        expect(result).to eq(expected_plan)
-    end
-
-    context 'when gemini response is an empty plan' do
-       let(:gemini_response_text) { '[]' }
-       it 'returns an empty array' do
-          result = planner.plan(task)
-          expect(result).to eq([])
-       end
-    end
-
-     context 'when gemini response has ```json``` markers' do
-       let(:gemini_response_text) { "```json\n[{\"tool_name\": \"tool_a\", \"parameters\": {}}]\n```" }
-       it 'parses correctly' do
-          result = planner.plan(task)
-          expect(result).to eq(expected_plan)
-       end
-     end
-
-    context 'when gemini response is invalid JSON' do
-       let(:gemini_response_text) { 'this is not json' }
-       it 'returns the fallback plan' do
-          expect(planner).to receive(:fallback_plan).with(task, instance_of(String)).and_call_original
-          result = planner.plan(task)
-          expect(result).to include(hash_including(tool: :echo)) # Check fallback
-       end
-    end
-
-    context 'when validation fails (e.g., unknown tool)' do
-       let(:gemini_response_text) { '[{"tool_name": "unknown_tool", "parameters": {}}]' }
-       it 'returns the fallback plan' do
-          expect(planner).to receive(:fallback_plan).with(task, instance_of(String)).and_call_original
-          result = planner.plan(task)
-          expect(result).to include(hash_including(tool: :echo))
-       end
-    end
-
-     context 'when gemini client raises an error' do
-        before { allow(mock_gemini_client).to receive(:generate_content).and_raise(StandardError.new("API Boom")) }
-        it 'returns the fallback plan' do
-           expect(planner).to receive(:fallback_plan).with(task, instance_of(String)).and_call_original
-           result = planner.plan(task)
-           expect(result).to include(hash_including(tool: :echo))
-           expect(result.first[:params][:message]).to include("API Boom")
-        end
-     end
-
-     context 'when client is not initialized' do
-        before { allow(planner).to receive(:client).and_return(nil) }
-        it 'returns the fallback plan' do
-          expect(planner).to receive(:fallback_plan).with(task, instance_of(String)).and_call_original
-          result = planner.plan(task)
-          expect(result).to include(hash_including(tool: :echo))
-          expect(result.first[:params][:message]).to include("Gemini client not available")
-        end
-     end
   end
-   # TODO: Add tests for private methods like format_tools_for_prompt, parse, validate if needed
+
+  describe '#parse_gemini_response' do
+    it 'parses valid JSON response' do
+      result = planner.send(:parse_gemini_response, '[{"key": "value"}]')
+      expect(result).to eq([{ "key" => "value" }])
+    end
+
+    it 'removes markdown code blocks from response' do
+      result = planner.send(:parse_gemini_response, "```json\n[{\"key\": \"value\"}]\n```")
+      expect(result).to eq([{ "key" => "value" }])
+    end
+
+    it 'removes generic code blocks from response' do
+      result = planner.send(:parse_gemini_response, "```\n[{\"key\": \"value\"}]\n```")
+      expect(result).to eq([{ "key" => "value" }])
+    end
+
+    it 'raises error when response is not a JSON array' do
+      expect {
+        planner.send(:parse_gemini_response, '{\"key\": \"value\"}')
+      }.to raise_error(JSON::ParserError)
+    end
+  end
+
+  describe '#validate_and_format_multi_step_plan' do
+    let(:echo_tool) { instance_double(ADK::Tool, name: :echo) }
+    let(:agent) { instance_double(ADK::Agent, tools: [echo_tool], name: 'test_agent') }
+    let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
+
+    it 'returns an empty array if the parsed response is not an array' do
+      expect(mock_logger).to receive(:warn)
+      result = planner.send(:validate_and_format_multi_step_plan, {})
+      expect(result).to eq([])
+    end
+
+    it 'returns an empty array if any step is not a hash' do
+      expect(mock_logger).to receive(:warn)
+      result = planner.send(:validate_and_format_multi_step_plan, [{ "tool_name" => "echo" }, "invalid_step"])
+      expect(result).to eq([])
+    end
+
+    it 'returns an empty array if tool_name is missing or empty' do
+      expect(mock_logger).to receive(:warn)
+      result = planner.send(:validate_and_format_multi_step_plan, [{ "tool_name" => "", "parameters" => {} }])
+      expect(result).to eq([])
+    end
+
+    it 'returns an empty array if tool does not exist' do
+      expect(mock_logger).to receive(:warn)
+      result = planner.send(:validate_and_format_multi_step_plan,
+                            [{ "tool_name" => "unknown_tool", "parameters" => {} }])
+      expect(result).to eq([])
+    end
+
+    it 'returns an empty array if parameters is not a hash' do
+      expect(mock_logger).to receive(:warn)
+      result = planner.send(:validate_and_format_multi_step_plan,
+                            [{ "tool_name" => "echo", "parameters" => "invalid" }])
+      expect(result).to eq([])
+    end
+
+    it 'returns a properly formatted plan when input is valid' do
+      result = planner.send(:validate_and_format_multi_step_plan,
+                            [{ "tool_name" => "echo", "parameters" => { "message" => "Hello" } }])
+      expect(result).to eq([{ tool: :echo, params: { message: "Hello" } }])
+    end
+
+    it 'converts parameter keys to symbols' do
+      result = planner.send(:validate_and_format_multi_step_plan,
+                            [{ "tool_name" => "echo", "parameters" => { "message" => "Hello" } }])
+      expect(result.first[:params].keys.first).to be_a(Symbol)
+    end
+  end
+
+  describe '#fallback_plan' do
+    context 'when echo tool is available' do
+      let(:echo_tool) { instance_double(ADK::Tool, name: :echo) }
+      let(:agent) { instance_double(ADK::Agent, tools: [echo_tool], name: 'test_agent') }
+      let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
+
+      it 'creates a fallback plan using the echo tool' do
+        expect(mock_logger).to receive(:warn)
+        result = planner.send(:fallback_plan, 'original task', 'reason for fallback')
+        expect(result).to eq([{
+                               tool: :echo,
+                               params: { message: "Planning failed: reason for fallback. Original task: original task" }
+                             }])
+      end
+    end
+
+    context 'when echo tool is not available' do
+      it 'returns an empty plan' do
+        expect(mock_logger).to receive(:warn)
+        expect(mock_logger).to receive(:error).with("Fallback failed: Echo tool not available to the agent.")
+        result = planner.send(:fallback_plan, 'original task', 'reason for fallback')
+        expect(result).to eq([])
+      end
+    end
+  end
+
+  describe '#format_tools_for_prompt' do
+    let(:tool_no_params) { instance_double(ADK::Tool, name: :test, description: 'Test tool', parameters: {}) }
+    let(:tool_with_params) do
+      instance_double(ADK::Tool,
+                      name: :parameterized,
+                      description: 'Tool with params',
+                      parameters: {
+                        required_param: { type: 'string', required: true, description: 'A required param' },
+                        optional_param: { type: 'number', required: false, description: 'An optional param' }
+                      })
+    end
+
+    it 'returns a message when no tools are available' do
+      expect(planner.send(:format_tools_for_prompt, [])).to eq("No tools available.")
+    end
+
+    it 'formats a tool with no parameters' do
+      result = planner.send(:format_tools_for_prompt, [tool_no_params])
+      expect(result).to include("Tool Name: test")
+      expect(result).to include("Description: Test tool")
+      expect(result).to include("Parameters:\n  None")
+    end
+
+    it 'formats a tool with parameters' do
+      result = planner.send(:format_tools_for_prompt, [tool_with_params])
+      expect(result).to include("Tool Name: parameterized")
+      expect(result).to include("Description: Tool with params")
+      expect(result).to include("required_param (string, required)")
+      expect(result).to include("optional_param (number, optional)")
+    end
+
+    it 'formats multiple tools' do
+      result = planner.send(:format_tools_for_prompt, [tool_no_params, tool_with_params])
+      expect(result).to include("Tool Name: test")
+      expect(result).to include("Tool Name: parameterized")
+    end
+  end
+
+  describe '#build_multi_step_gemini_prompt' do
+    it 'includes the task in the prompt' do
+      result = planner.send(:build_multi_step_gemini_prompt, 'test task', 'tool descriptions')
+      expect(result).to include('User Request: "test task"')
+      expect(result).to include('Now, plan the User Request: "test task"')
+    end
+
+    it 'includes the tool descriptions in the prompt' do
+      result = planner.send(:build_multi_step_gemini_prompt, 'test task', 'tool descriptions')
+      expect(result).to include('tool descriptions')
+    end
+
+    it 'includes instructions for JSON format' do
+      result = planner.send(:build_multi_step_gemini_prompt, 'test task', 'tool descriptions')
+      expect(result).to include('Respond ONLY with a single JSON array')
+    end
+  end
 end

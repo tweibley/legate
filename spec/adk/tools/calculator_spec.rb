@@ -42,22 +42,22 @@ RSpec.describe ADK::Tools::Calculator do
     end
 
     context 'with valid parameters for multiplication' do
-       let(:params) { { operand1: 6, operand2: 7, operation: '*' } } # Test symbol op
+      let(:params) { { operand1: 6, operand2: 7, operation: '*' } } # Test symbol op
 
-       it 'returns a success hash with the correct product' do
-         result = tool.execute(params)
-         expect(result).to eq({ status: :success, result: 42.0 })
-       end
+      it 'returns a success hash with the correct product' do
+        result = tool.execute(params)
+        expect(result).to eq({ status: :success, result: 42.0 })
+      end
     end
 
-     context 'with valid parameters for division' do
-       let(:params) { { operand1: 10.0, operand2: 4, operation: '/' } }
+    context 'with valid parameters for division' do
+      let(:params) { { operand1: 10.0, operand2: 4, operation: '/' } }
 
-       it 'returns a success hash with the correct quotient' do
-         result = tool.execute(params)
-         expect(result).to eq({ status: :success, result: 2.5 })
-       end
-     end
+      it 'returns a success hash with the correct quotient' do
+        result = tool.execute(params)
+        expect(result).to eq({ status: :success, result: 2.5 })
+      end
+    end
 
     context 'with division by zero' do
       let(:params) { { operand1: 10, operand2: 0, operation: 'divide' } }
