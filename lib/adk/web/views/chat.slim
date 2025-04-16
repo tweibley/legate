@@ -8,13 +8,15 @@
     // Agent Status (Optional but helpful)
     .box
       p
-        strong Status: 
+        strong Status:
         span class=(@agent.running? ? 'has-text-success' : 'has-text-danger')
           = @agent.running? ? 'Running' : 'Stopped (Go to agent page to start)'
 
     // Chat History Display Area
-    #chat-history.box(style="height: 400px; overflow-y: scroll; margin-bottom: 1rem;")
-      // Messages will be appended here by htmx
+    // --- Add hx-on::after-swap attribute ---
+    #chat-history.box( style="height: 400px; overflow-y: scroll; margin-bottom: 1rem;"
+                      hx-on::after-swap="this.scrollTop = this.scrollHeight" )
+      / Messages will be appended here by htmx
 
     // Chat Input Form
     form(hx-post="/agents/#{@agent.name}/chat" hx-target="#chat-history" hx-swap="beforeend" _="on htmx:afterRequest reset()")

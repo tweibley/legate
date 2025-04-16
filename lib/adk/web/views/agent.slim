@@ -1,48 +1,64 @@
 / File: lib/adk/web/views/agent.slim
-/ This view displays the details for a single agent.
-/ It receives @view_agent_data (Hash with :name, :description, :running, :model)
-/ and potentially @agent (live Agent object if running, or temporary object if stopped)
 
 .content
   h1.title= @view_agent_data[:name]
   p.subtitle= @view_agent_data[:description]
-  / --- Display Model ---
   p
     strong Model:
-    / Display the model from view_data, apply default text if necessary
-    code= @view_agent_data[:model] && !@view_agent_data[:model].empty? ? @view_agent_data[:model] : "#{ADK::Agent::DEFAULT_MODEL} (Default)"
+    / Use Tag for Model Display
+    span.tag.is-info.is-light.ml-2
+      = @view_agent_data[:model] && !@view_agent_data[:model].empty? ? @view_agent_data[:model] : "#{ADK::Agent::DEFAULT_MODEL} (Default)"
 
+/ Status Box
 .box
   h2.title.is-4 Status & Control
-  / Render the status controls partial.
-  / It expects 'agent_data' which can be the live @agent object or the @view_agent_data hash.
-  / Let's pass @view_agent_data as it reliably contains the running status and name.
+  / Render the status controls partial
   == slim :_agent_status_controls, locals: { agent_data: @view_agent_data }
 
 / Execute Task box
 .box
   h2.title.is-4 Execute Task (JSON Input)
-  / Form targets the execute endpoint and replaces the content of #task-result
-  form(hx-post="/agents/#{@view_agent_data[:name]}/execute" hx-target="#task-result" hx-swap="innerHTML")
+  / Add indicator attribute to form
+  form( hx-post="/agents/#{@view_agent_data[:name]}/execute"
+        hx-target="#task-result"
+        hx-swap="innerHTML"
+        hx-indicator="#task-spinner" )
     .field
       label.label Task (JSON Format: {"task": "your task description"})
       .control
         textarea.textarea(name="task_json" placeholder='{"task": "Describe your task here..."}' required=true rows="3")
-    .field
+    .field.is-grouped.is-grouped-right
       .control
-        / Disable button if the agent is not running (based on view data)
-        button.button.is-primary(type="submit" id="execute-task-button" disabled=!@view_agent_data[:running]) Execute (Requires Start)
+        / Spinner Element (initially hidden by htmx-indicator class)
+        span.icon.is-small.htmx-indicator#task-spinner style="margin-right: 8px; vertical-align: middle;"
+          i.fas.fa-spinner.fa-spin
+      .control
+        / Clear Result Button
+        / Use single quotes for the outer attribute value for Hyperscript
+        button.button( type="button"
+                       _='on click put "<p class=\"has-text-grey\">Task results will appear here.</p>" into #task-result' )
+          span.icon.is-small
+            i.fas.fa-eraser
+          span Clear Result
+      .control
+        / Execute Button
+        button.button.is-primary(type="submit" id="execute-task-button" disabled=!@view_agent_data[:running])
+          span.icon.is-small
+            i.fas.fa-play-circle
+          span Execute (Requires Start)
 
-  / The target div where htmx will place the result HTML fragment (success or error notification)
+
+  / The target div where htmx will place the result
   #task-result.mt-4
+    / Initial Placeholder Text
+    p.has-text-grey Task results will appear here.
 
+/ Tools Box (No structural changes needed for these improvements)
 .box
   h2.title.is-4 Configured Tools
   .columns.is-multiline
-    / Check if the @agent object exists and has tools loaded
     - if @agent && @agent.tools.any?
       - @agent.tools.each do |tool|
-        / Render a card for each tool associated with the agent instance
         .column.is-one-third
           .card.tool-card
             .card-content
@@ -51,7 +67,6 @@
             .card-footer
               a.card-footer-item(href="/tools/#{tool.name}") View Tool Details
     - else
-      / Displayed if the agent has no tools or if @agent object wasn't loaded properly
       .column
         p This agent currently has no tools assigned (or the agent object could not be loaded).
 
