@@ -42,6 +42,7 @@ module ADK
       private
 
       # Performs the calculation based on validated parameters.
+      # Returns a hash with :status and either :result or :error_message.
       def perform_execution(params)
         op1_str = params.fetch('operand1') { params.fetch(:operand1, nil) }
         op2_str = params.fetch('operand2') { params.fetch(:operand2, nil) }
@@ -51,36 +52,44 @@ module ADK
           op1 = Float(op1_str)
           op2 = Float(op2_str)
         rescue ArgumentError, TypeError
-          # Use central logger
-          ADK.logger.error("Calculator Tool: Invalid numeric input received. Operand1: '#{op1_str}', Operand2: '#{op2_str}'")
-          raise ADK::Error, "Invalid numeric input provided for operands."
+          err_msg = "Invalid numeric input provided for operands. Op1: '#{op1_str}', Op2: '#{op2_str}'"
+          ADK.logger.error("Calculator Tool Error: #{err_msg}")
+          # --- Return Error Hash ---
+          return { status: :error, error_message: err_msg }
         end
 
-        result = case operation
-                 when 'add', '+' then op1 + op2
-                 when 'subtract', '-' then op1 - op2
-                 when 'multiply', '*' then op1 * op2
-                 when 'divide', '/'
-                   if op2.zero?
-                     # No specific logging needed here, the error message is clear
-                     raise ADK::Error, "Division by zero is not allowed."
-                   else
-                     op1 / op2
-                   end
-                 else
-                   # Use central logger
-                   ADK.logger.warn("Calculator Tool: Unsupported operation '#{operation}' requested.")
-                   raise ADK::Error,
-                         "Unsupported operation: '#{operation}'. Use add, subtract, multiply, or divide (or +, -, *, /)."
-                 end
+        result_val = case operation
+                     when 'add', '+' then op1 + op2
+                     when 'subtract', '-' then op1 - op2
+                     when 'multiply', '*' then op1 * op2
+                     when 'divide', '/'
+                       if op2.zero?
+                         err_msg = "Division by zero is not allowed."
+                         ADK.logger.error("Calculator Tool Error: #{err_msg}")
+                         # --- Return Error Hash ---
+                         return { status: :error, error_message: err_msg }
+                       else
+                         op1 / op2
+                       end
+                     else
+                       err_msg = "Unsupported operation: '#{operation}'. Use add, subtract, multiply, or divide (or +, -, *, /)."
+                       ADK.logger.warn("Calculator Tool Warning: #{err_msg}")
+                       # --- Return Error Hash ---
+                       return { status: :error, error_message: err_msg }
+                     end
 
-        # Use central logger
-        ADK.logger.info("Calculator Tool: #{op1} #{operation} #{op2} = #{result}")
-        result
+        ADK.logger.info("Calculator Tool: #{op1} #{operation} #{op2} = #{result_val}")
+        # --- Return Success Hash ---
+        { status: :success, result: result_val }
+
+      # Catch potential unexpected errors during execution logic itself
+      rescue ADK::Error => e # Catch specific ADK errors if needed
+        ADK.logger.error("Calculator Tool ADK::Error: #{e.message}")
+        return { status: :error, error_message: e.message }
       rescue StandardError => e
-        # Use central logger
         ADK.logger.error("Calculator Tool: Unexpected error during calculation: #{e.class} - #{e.message}")
-        raise ADK::Error, "Calculation failed due to an internal error."
+        # Consider logging backtrace here for unexpected errors
+        return { status: :error, error_message: "Calculation failed due to an unexpected internal error: #{e.message}" }
       end
     end # End Calculator class
   end # End Tools module

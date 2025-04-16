@@ -3,48 +3,47 @@
 
 require 'faraday'
 require 'json'
-require_relative '../tool' # Ensure base class is loaded
+require_relative '../tool'
 
 module ADK
   module Tools
-    # Tool to fetch a random cat fact.
     class CatFacts < Tool
-      # --- Define Metadata (This triggers registration) ---
       define_metadata(
         name: :cat_facts,
         description: 'Fetches a random cat fact from an online API.',
-        parameters: {} # No parameters needed for a random fact
+        parameters: {}
       )
-      # --- End Metadata ---
 
       CAT_FACT_URL = 'https://catfact.ninja/fact'
 
       def initialize(**options)
         super(**options)
-        # Initialize Faraday connection once
         @conn = Faraday.new(url: CAT_FACT_URL) do |faraday|
+          # ... (faraday setup remains the same) ...
           faraday.adapter Faraday.default_adapter
           faraday.response :raise_error # Raise errors for 4xx/5xx responses
           faraday.request :url_encoded
           faraday.options.timeout = 5
           faraday.options.open_timeout = 2
         end
-      rescue Faraday::Error => e # Catch potential setup errors
+      rescue Faraday::Error => e
         ADK.logger.error("CatFacts Tool: Failed to initialize Faraday connection: #{e.message}")
-        @conn = nil # Ensure conn is nil if setup fails
+        @conn = nil
       end
 
       private
 
-      # perform_execution calls the helper method
-      def perform_execution(_params) # Takes params but ignores them
+      # perform_execution calls the helper method and returns its hash
+      def perform_execution(_params)
         fetch_cat_fact
       end
 
-      # Helper method to fetch the cat fact (Moved from Echo)
+      # Helper method modified to return the standard hash format
       def fetch_cat_fact
         unless @conn
-          return "[CatFacts Tool HTTP client not initialized]"
+          err_msg = "CatFacts Tool HTTP client not initialized"
+          ADK.logger.error(err_msg)
+          return { status: :error, error_message: err_msg }
         end
 
         begin
@@ -55,22 +54,35 @@ module ADK
 
           if fact && !fact.empty?
             ADK.logger.info("Cat fact fetched successfully.")
-            return fact # Return just the fact string
+            # --- Return Success Hash ---
+            { status: :success, result: fact }
           else
-            ADK.logger.warn("Cat fact API response did not contain a 'fact' field or it was empty.")
-            return "[Could not retrieve a valid cat fact.]"
+            err_msg = "Cat fact API response did not contain a valid 'fact' field."
+            ADK.logger.warn(err_msg)
+            # --- Return Error Hash ---
+            { status: :error, error_message: err_msg }
           end
-        rescue Faraday::Error => e
-          ADK.logger.error("Error fetching cat fact (Faraday::Error): #{e.class} - #{e.message}")
-          ADK.logger.error("Response status: #{e.response[:status] if e.response}")
-          return "[Error connecting to cat fact API.]"
+        rescue Faraday::TimeoutError => e
+          err_msg = "Timeout connecting to cat fact API."
+          ADK.logger.error("#{err_msg}: #{e.message}")
+          { status: :error, error_message: err_msg }
+        rescue Faraday::ConnectionFailed => e
+          err_msg = "Connection failed for cat fact API."
+          ADK.logger.error("#{err_msg}: #{e.message}")
+          { status: :error, error_message: err_msg }
+        rescue Faraday::Error => e # Catch other Faraday/HTTP errors (like 4xx/5xx)
+          err_msg = "Error fetching cat fact (HTTP Status: #{e.response[:status] if e.response})."
+          ADK.logger.error("#{err_msg} #{e.class}: #{e.message}")
+          { status: :error, error_message: err_msg }
         rescue JSON::ParserError => e
-          ADK.logger.error("Error parsing cat fact JSON response: #{e.message}")
-          return "[Error reading cat fact response.]"
+          err_msg = "Error reading cat fact response (JSON parse failed)."
+          ADK.logger.error("#{err_msg}: #{e.message}")
+          { status: :error, error_message: err_msg }
         rescue StandardError => e
-          ADK.logger.error("Unexpected error fetching cat fact: #{e.class} - #{e.message}")
-          ADK.logger.error(e.backtrace.join("\n"))
-          return "[Unexpected error retrieving cat fact.]"
+          err_msg = "Unexpected error retrieving cat fact."
+          ADK.logger.error("#{err_msg}: #{e.class} - #{e.message}")
+          ADK.logger.error(e.backtrace.first(5).join("\n"))
+          { status: :error, error_message: err_msg }
         end
       end
     end # End CatFacts class

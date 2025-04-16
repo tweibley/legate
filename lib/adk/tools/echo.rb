@@ -1,17 +1,14 @@
 # File: lib/adk/tools/echo.rb
 # frozen_string_literal: true
 
-# Removed requires for faraday, json, logger
-require_relative '../tool' # Ensure base class is loaded
+require_relative '../tool'
 
 module ADK
   module Tools
-    # Echo tool that simply echoes back a message.
     class Echo < Tool
-      # --- Define Metadata ---
       define_metadata(
         name: :echo,
-        description: 'Echoes back the provided message.', # Updated description
+        description: 'Echoes back the provided message.',
         parameters: {
           message: {
             type: :string,
@@ -20,33 +17,33 @@ module ADK
           }
         }
       )
-      # --- End Metadata ---
-
-      # REMOVED: LOGGER constant
-      # REMOVED: CAT_FACT_URL constant
 
       def initialize(**options)
         super(**options)
-        # REMOVED: Faraday connection setup
       end
 
       private
 
-      # Simplified perform_execution
+      # Returns a hash with :status and :result or :error_message
       def perform_execution(params)
-        # Use fetch for safety, ensure it handles string/symbol keys if necessary,
-        # though validation should pass string keys now.
-        message = params.fetch('message') { params.fetch(:message, nil) }
+        begin
+          # Fetch validated parameter
+          message = params.fetch('message') { params.fetch(:message, nil) }
 
-        unless message
-          # This shouldn't happen if validation passes, but good practice
-          raise ArgumentError, "Internal Error: Message parameter missing in perform_execution for Echo tool."
+          # This check is belts-and-suspenders; validation should catch missing required params.
+          unless message
+            err_msg = "Internal Error: Message parameter missing in perform_execution for Echo tool after validation."
+            ADK.logger.error(err_msg)
+            return { status: :error, error_message: err_msg }
+          end
+
+          # Simple success case
+          { status: :success, result: message }
+        rescue StandardError => e # Catch any truly unexpected errors during fetch/processing
+          ADK.logger.error("Echo Tool: Unexpected error: #{e.class} - #{e.message}")
+          { status: :error, error_message: "Unexpected error in Echo tool: #{e.message}" }
         end
-
-        message # Just return the message
       end
-
-      # REMOVED: fetch_cat_fact method
     end # End Echo class
   end # End Tools module
 end # End ADK module

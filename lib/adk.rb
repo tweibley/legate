@@ -43,16 +43,20 @@ end
 # --- Require components AFTER logger is configurable ---
 require_relative 'adk/tool'
 require_relative 'adk/tool_registry'
-require_relative 'adk/agent'
+# --- Load dependencies BEFORE Agent ---
 require_relative 'adk/session'
 require_relative 'adk/memory'
 require_relative 'adk/planner'
+# --- Now load Agent ---
+require_relative 'adk/agent'
+# --- Load CLI and Tools last ---
 require_relative 'adk/cli'
 
 # Tools
 require_relative 'adk/tools/echo'
 require_relative 'adk/tools/calculator'
 require_relative 'adk/tools/cat_facts'
+require_relative 'adk/tools/random_number_tool'
 
 module ADK
   class Error < StandardError; end

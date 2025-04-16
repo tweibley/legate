@@ -45,51 +45,74 @@ module ADK
         end
       end
 
-      desc 'execute NAME ...ARGS', 'Execute a tool directly using arguments'
+      desc 'execute NAME [param1=value1 param2=value2 ...]', 'Execute a tool directly using key=value arguments'
+      long_desc <<-LONGDESC
+        # ... (long description) ...
+      LONGDESC
       def execute(name, *args)
         tool_name_sym = name.to_sym
         tool = ADK::ToolRegistry.create_instance(tool_name_sym)
 
         unless tool
-          say "Tool '#{name}' not found in registry.", :red
-          return
+          say "Error: Tool '#{name}' not found in registry.", :red
+          exit(1)
         end
 
-        # Basic argument parsing (same as before, needs improvement for complex tools)
         params_to_execute = {}
-        string_keys_params = tool.parameters.transform_keys(&:to_s) # Get string keys for lookup
+        valid_param_names = tool.parameters.keys.map(&:to_s)
 
-        if string_keys_params.keys.length == 1 && string_keys_params.values.first[:required]
-          param_key = string_keys_params.keys.first
-          params_to_execute[param_key] = args.join(' ')
-          say "Attempting execution with single required param '#{param_key}' = '#{params_to_execute[param_key]}'"
-        elsif args.empty? && !tool.parameters.any? { |_, p| p[:required] }
-          say "Executing tool '#{name}' with no arguments (assuming no required parameters)."
-        else
-          # Very basic fallback - might fail validation
-          # TODO: Implement proper mapping of ARGS based on tool.parameters
-          say "Warning: Basic argument parsing used. Mapping all args to 'message' or first param if possible.", :yellow
-          fallback_key = string_keys_params.key?('message') ? 'message' : string_keys_params.keys.first
-          if fallback_key
-            params_to_execute[fallback_key] = args.join(' ')
+        args.each do |arg|
+          parts = arg.split('=', 2)
+          if parts.length == 2
+            key = parts[0].strip
+            value = parts[1]
+
+            unless valid_param_names.include?(key)
+              say "Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring.", :yellow
+              next
+            end
+
+            params_to_execute[key] = value
+            # --- REMOVED :faint ---
+            say "  Parsed: #{key} = '#{value}'" # No color specified, uses default
           else
-            say "Error: Cannot determine how to map arguments to parameters for tool '#{name}'.", :red
-            return
+            # ... (rest of the argument parsing logic) ...
+            if args.length == 1 && tool.parameters.length == 1 && tool.parameters.values.first[:required]
+              single_key = valid_param_names.first
+              say "Info: Assuming single argument '#{arg}' maps to required parameter '#{single_key}'.", :cyan
+              params_to_execute[single_key] = arg
+            elsif !args.empty?
+              say "Warning: Argument '#{arg}' ignored. Please use 'key=value' format for parameters.", :yellow
+            end
           end
-
         end
 
         begin
-          say "Executing tool '#{name}' with params: #{params_to_execute.inspect}"
-          result = tool.execute(params_to_execute) # Pass string keys
-          puts "Result: #{result}"
+          say "Executing tool '#{name}' with parsed params: #{params_to_execute.inspect}"
+          result_hash = tool.execute(params_to_execute)
+
+          # ... (result printing logic - remains the same) ...
+          say "\nResult:", :bold
+          if result_hash.is_a?(Hash) && result_hash.key?(:status)
+            if result_hash[:status] == :success
+              say "Success:", :green
+              say "  Output: #{result_hash[:result]}"
+            else
+              say "Error:", :red
+              say "  Message: #{result_hash[:error_message]}"
+            end
+          else
+            say "Unknown Result Format:", :yellow
+            say "  Data: #{result_hash.inspect}"
+          end
         rescue ADK::Error, ArgumentError => e
-          say "Error: #{e.message}", :red
+          say "\nError executing tool:", :red
+          say e.message, :red
         rescue StandardError => e
-          say "An unexpected error occurred: #{e.class} - #{e.message}", :red
-          puts e.backtrace.first # Show where the error occurred
+          say "\nAn unexpected error occurred:", :red
+          say "#{e.class} - #{e.message}", :red
         end
-      end
+      end # end execute
     end
   end
 end

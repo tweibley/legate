@@ -34,6 +34,44 @@ module ADK
 
           JSON.parse(tools_json) rescue [] # Return empty array on parse error
         end
+
+        # --- NEW: Helper method to format CLI output ---
+        def format_cli_result(result_data)
+          if result_data.is_a?(Array)
+            say "Multi-Step Result:", :cyan
+            any_errors = false
+            result_data.each_with_index do |step_hash, index|
+              if step_hash.is_a?(Hash) && step_hash.key?(:status)
+                if step_hash[:status] == :success
+                  say "  Step #{index + 1} (Success):", :green
+                  say "    Result: #{step_hash[:result]}"
+                else # :error or other
+                  say "  Step #{index + 1} (Error):", :red
+                  say "    Message: #{step_hash[:error_message]}"
+                  any_errors = true
+                end
+              else
+                say "  Step #{index + 1} (Unknown Format): #{step_hash.inspect}", :yellow
+                any_errors = true
+              end
+            end
+            say "Overall Plan Status: #{any_errors ? 'Completed with errors' : 'Completed successfully'}",
+                (any_errors ? :yellow : :green)
+
+          elsif result_data.is_a?(Hash) && result_data.key?(:status)
+            if result_data[:status] == :success
+              say "Success:", :green
+              say "  Result: #{result_data[:result]}"
+            else # :error or other
+              say "Error:", :red
+              say "  Message: #{result_data[:error_message]}"
+            end
+          else
+            say "Unknown Result Format:", :yellow
+            say "  Data: #{result_data.inspect}"
+          end
+        end
+        # --- End helper method ---
       end
       # --- End Redis Configuration ---
 
@@ -303,11 +341,12 @@ module ADK
 
       # --- 'stop' command removed ---
 
+      # --- 'execute' command ---
       desc 'execute NAME TASK', 'Execute a task using the agent definition from Redis'
       long_desc <<-LONGDESC
         Loads the agent definition (name, description, tools) from Redis,
         instantiates the agent, adds its configured tools, starts it, runs the specified TASK,
-        prints the result, stops the agent, and exits.
+        prints the formatted result, stops the agent, and exits.
       LONGDESC
       def execute(name, task)
         say "Loading agent '#{name}' to execute task: \"#{task}\"..."
@@ -322,6 +361,7 @@ module ADK
           say "Error: Agent definition '#{name}' not found in Redis.", :red; exit(1)
         end
 
+        agent = nil # Initialize agent variable outside the begin block for ensure block
         begin
           agent = ADK::Agent.new(name: name, description: description)
 
@@ -336,18 +376,28 @@ module ADK
             end
           end
 
+          # --- Execute and get result ---
           say "  - Starting agent #{agent.name}...", :cyan, false; agent.start; say "started.", :cyan
-          say "  - Running task...", :cyan, false; result = agent.run_task(task); say "finished.", :cyan
-          say "  - Stopping agent...", :cyan, false; agent.stop; say "stopped.", :cyan
+          say "  - Running task...", :cyan, false;
+          result_data = agent.run_task(task); # result_data is now Hash or Array<Hash>
+          say "finished.", :cyan
 
-          say "\nTask Result:", :green
-          say result, :green
+          # --- Format and Print Result ---
+          say "\nTask Result:", :bold
+          format_cli_result(result_data) # Use helper method
         rescue StandardError => e
-          say "Error during agent execution: #{e.class} - #{e.message}", :red
-          agent&.stop rescue nil; say "Agent #{agent.name} stopped!", :cyan if defined?(agent) && agent
-          exit(1)
+          say "\nError during agent execution: #{e.class} - #{e.message}", :red
+          # Ensure agent is stopped even if error occurred mid-execution
+        ensure
+          # Stop the agent if it was successfully instantiated
+          if agent&.running? # Check if agent exists and is running
+            say "  - Stopping agent...", :cyan, false; agent.stop; say "stopped.", :cyan
+          end
+          # Exit with error code if an exception was caught
+          exit(1) if e
         end
       end
+      # --- End 'execute' command ---
       # --- End Runtime/Execution Commands ---
     end # End AgentCommands class
   end # End CLI module

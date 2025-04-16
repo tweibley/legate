@@ -109,6 +109,77 @@ module ADK
           # Concatenate fragments
           status_content_html + start_button_html + stop_button_html
         end
+
+        # --- NEW HELPER for formatting results ---
+        def format_execution_result_html(result_data)
+          html_parts = []
+          notification_class = 'is-info' # Default
+
+          # --- Determine overall status for notification color ---
+          # If it's an array, it's successful overall unless any step failed
+          # If it's a single hash, use its status directly
+          overall_status = :success # Assume success initially
+          if result_data.is_a?(Array)
+            if result_data.any? { |h| h.is_a?(Hash) && h[:status] == :error }
+              overall_status = :error
+            elsif result_data.empty? # Empty might mean "cannot fulfill"
+              overall_status = :warning # Or :info ?
+            end
+          elsif result_data.is_a?(Hash)
+            overall_status = result_data[:status] || :error # Default to error if status missing
+          else
+            overall_status = :error # Treat unexpected format as error
+            result_data = { status: :error, error_message: "Unexpected result format: #{result_data.inspect}" } # Wrap it
+          end
+
+          notification_class = case overall_status
+                               when :success then 'is-success'
+                               when :error then 'is-danger'
+                               else 'is-warning' # For other statuses or ambiguity
+                               end
+
+          # --- Generate HTML content ---
+          if result_data.is_a?(Array)
+            # Multi-step result
+            html_parts << "<p><strong>Multi-step Result:</strong></p>"
+            html_parts << "<ol>"
+            result_data.each_with_index do |step_hash, index|
+              html_parts << "<li>"
+              if step_hash.is_a?(Hash) && step_hash[:status] == :success
+                html_parts << "<strong>Step #{index + 1} (Success):</strong> "
+                html_parts << "<pre>#{Rack::Utils.escape_html(step_hash[:result].to_s)}</pre>"
+              elsif step_hash.is_a?(Hash) && step_hash[:status] == :error
+                html_parts << "<strong>Step #{index + 1} (Error):</strong> "
+                html_parts << "<pre class='has-text-danger'>#{Rack::Utils.escape_html(step_hash[:error_message].to_s)}</pre>"
+              else
+                html_parts << "<strong>Step #{index + 1} (Unknown format):</strong> "
+                html_parts << "<pre>#{Rack::Utils.escape_html(step_hash.inspect)}</pre>"
+              end
+              html_parts << "</li>"
+            end
+            html_parts << "</ol>"
+
+          elsif result_data.is_a?(Hash)
+            # Single step result or error
+            if result_data[:status] == :success
+              html_parts << "<p><strong>Result:</strong></p>"
+              html_parts << "<pre>#{Rack::Utils.escape_html(result_data[:result].to_s)}</pre>"
+            elsif result_data[:status] == :error
+              html_parts << "<p><strong>Error:</strong></p>"
+              html_parts << "<pre class='has-text-danger'>#{Rack::Utils.escape_html(result_data[:error_message].to_s)}</pre>"
+            else
+              html_parts << "<p><strong>Result (Unknown Status):</strong></p>"
+              html_parts << "<pre>#{Rack::Utils.escape_html(result_data.inspect)}</pre>"
+            end
+          else
+            # Should have been wrapped already, but handle defensively
+            html_parts << "<p><strong>Error:</strong> Unexpected result format.</p>"
+            html_parts << "<pre>#{Rack::Utils.escape_html(result_data.inspect)}</pre>"
+          end
+
+          # --- Wrap content in notification div ---
+          "<div class='notification #{notification_class} mt-4'>#{html_parts.join}</div>"
+        end # end format_execution_result_html
       end
 
       # --- Routes ---
@@ -554,45 +625,41 @@ module ADK
       # end
 
       post '/agents/:name/execute' do |name|
-        content_type :html # <-- CHANGE 1: Set content type to HTML
-        agent = @agents[name] # Look in memory
+        content_type :html
+        agent = @agents[name]
 
-        # Helper lambda for HTML error fragments
         html_error = lambda do |message, status_code = 400|
-          halt status_code, "<div class='notification is-danger mt-4'>#{Rack::Utils.escape_html(message)}</div>"
+          # Use the standard hash format for errors originating here too
+          error_hash = { status: :error, error_message: message }
+          halt status_code, format_execution_result_html(error_hash) # Use helper
         end
 
         html_error.call("Error: Agent '#{name}' not found or not running.", 400) unless agent
 
         json_string = params['task_json']
-        html_error.call("Error: Missing 'task_json' data in request.",
-                        400) unless json_string && !json_string.empty?
+        html_error.call("Error: Missing 'task_json' data in request.", 400) unless json_string && !json_string.empty?
 
         begin
           data = JSON.parse(json_string)
           task = data['task']
           html_error.call("Error: Missing 'task' key within the provided JSON.", 400) unless task
         rescue JSON::ParserError => e
-          logger.error "Invalid JSON submitted in 'task_json' parameter: #{e.message}"
-          logger.error "Submitted string was: #{json_string.inspect}"
+          logger.error "Invalid JSON submitted: #{e.message}"
           html_error.call("Error: Invalid JSON format submitted.", 400)
         end
 
         begin
           logger.info("Agent '#{name}' executing task via direct endpoint: #{task}")
-          result = agent.run_task(task)
-          result_string = result.to_s # Ensure we have a string
-          logger.info("Agent '#{name}' direct execution result: #{result_string.inspect}")
+          # agent.run_task now returns Hash or Array<Hash>
+          result_data = agent.run_task(task)
+          logger.info("Agent '#{name}' direct execution result data: #{result_data.inspect}")
 
-          # --- CHANGE 2: Format success response as HTML ---
-          # Use <pre> to preserve newlines from the cat fact/tool output
-          "<div class='notification is-success mt-4'><pre>#{Rack::Utils.escape_html(result_string)}</pre></div>"
-        # --- End CHANGE 2 ---
-        rescue => e
+          # --- CHANGE: Use helper to format result ---
+          format_execution_result_html(result_data)
+        rescue => e # Catch errors during run_task itself
           logger.error "Error during direct agent execution for '#{name}': #{e.class} - #{e.message}"
           logger.error e.backtrace.join("\n")
-          # Use the HTML error helper here too
-          html_error.call("Error: Internal server error during task execution.", 500)
+          html_error.call("Error: Internal server error during task execution: #{e.message}", 500)
         end
       end
 
@@ -626,28 +693,31 @@ module ADK
         submitted_params = params.reject { |k, _| ['splat', 'captures', 'name'].include?(k) }
         logger.debug("Parameters sent to tool: #{submitted_params.inspect}")
 
-        # Use the registry to create an instance
         tool = ADK::ToolRegistry.create_instance(tool_name_sym)
 
         unless tool
-          logger.error("Tool definition '#{name}' not found in registry.")
-          halt 404,
-               "<div class='notification is-danger mt-4'>Error: Tool '#{Rack::Utils.escape_html(name)}' not found.</div>"
+          err_msg = "Error: Tool '#{Rack::Utils.escape_html(name)}' not found."
+          # --- Return error hash formatted as HTML ---
+          halt 404, format_execution_result_html({ status: :error, error_message: err_msg })
         end
 
         begin
-          # Execute the specific instance
           logger.info("Attempting tool.execute for '#{name}' with params: #{submitted_params.inspect}")
-          result = tool.execute(submitted_params)
-          logger.info("Tool '#{name}' execution successful.")
-          "<div class='notification is-success mt-4'><pre>#{Rack::Utils.escape_html(result.to_s)}</pre></div>"
-        rescue ADK::Error, ArgumentError => e
+          # tool.execute now returns a hash
+          result_hash = tool.execute(submitted_params)
+          logger.info("Tool '#{name}' execution returned: #{result_hash.inspect}")
+
+          # --- CHANGE: Use helper to format result hash ---
+          format_execution_result_html(result_hash)
+
+        # --- Catch errors during the execute call itself ---
+        rescue ADK::Error, ArgumentError => e # These might be raised *before* execute returns a hash
           logger.warn("Validation/Argument Error executing tool '#{name}': #{e.message}. Params: #{submitted_params.inspect}")
-          "<div class='notification is-danger mt-4'>Error: #{Rack::Utils.escape_html(e.message)}</div>"
+          format_execution_result_html({ status: :error, error_message: e.message }) # Format as error hash
         rescue StandardError => e
           logger.error("Unexpected error executing tool '#{name}': #{e.class} - #{e.message}. Params: #{submitted_params.inspect}")
           logger.error(e.backtrace.join("\n"))
-          "<div class='notification is-danger mt-4'>An unexpected error occurred: #{Rack::Utils.escape_html(e.message)}</div>"
+          format_execution_result_html({ status: :error, error_message: "An unexpected error occurred: #{e.message}" }) # Format as error hash
         end
       end
 

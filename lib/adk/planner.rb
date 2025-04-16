@@ -1,8 +1,7 @@
 # File: lib/adk/planner.rb
 # frozen_string_literal: true
 
-# require 'google/generative_ai' # Remove this
-require 'gemini-ai' # Add this
+require 'gemini-ai'
 require 'json'
 require 'logger'
 
@@ -10,16 +9,12 @@ module ADK
   class Planner
     attr_reader :agent, :logger
 
-    # Initialize the planner using the gemini-ai gem
-    # @param agent [Agent] The agent this planner belongs to
-    # @param options [Hash] Additional options
-    # @option options [Logger] :logger Optional logger instance
-    # @option options [String] :api_key Google AI API Key (defaults to ENV['GOOGLE_API_KEY'])
+    # ... (initialize method remains the same) ...
     def initialize(agent:, **options)
       @agent = agent
       @logger = options[:logger] || ADK.logger
       @api_key = options[:api_key] || ENV['GOOGLE_API_KEY']
-      @client = nil # Initialize client as nil
+      @client = nil
 
       if @api_key.nil? || @api_key.empty?
         @logger.error("GOOGLE_API_KEY not found. GeminiPlanner requires an API key.")
@@ -31,10 +26,13 @@ module ADK
               service: 'generative-language-api',
               api_key: @api_key
             },
-            options: { model: 'gemini-2.0-flash', server_sent_events: false }
+            # --- USE A MORE CAPABLE MODEL ---
+            # Flash might struggle with complex sequences/formats.
+            # Consider gemini-1.5-flash if flash fails, or gemini-1.0-pro.
+            # Let's try 1.5 Flash first as it's often a good balance.
+            options: { model: 'gemini-1.5-flash', server_sent_events: false }
           )
-          # @model_name = @client.options[:model] # <--- REMOVE THIS LINE
-          @model_name = 'gemini-2.0-flash' # <-- Store the model name directly
+          @model_name = 'gemini-1.5-flash' # <-- Store the model name directly
           logger.info("Gemini AI client initialized with model: #{@model_name}")
         rescue StandardError => e
           logger.error("Failed to initialize Gemini AI client: #{e.class}: #{e.message}")
@@ -54,74 +52,75 @@ module ADK
       end
 
       available_tools = format_tools_for_prompt(agent.tools)
-      prompt = build_gemini_prompt(task, available_tools)
+      # --- Use the NEW multi-step prompt ---
+      prompt = build_multi_step_gemini_prompt(task, available_tools)
 
-      logger.info("Sending planning request to Gemini (via gemini-ai) for task: #{task}")
-      # logger.debug("Gemini Prompt:\n#{prompt}") # Uncomment for debugging
+      logger.info("Sending multi-step planning request to Gemini (#{@model_name}) for task: #{task}")
+      # logger.debug("Gemini Prompt:\n#{prompt}") # Uncomment for deep debugging
 
       begin
-        # API call using the gemini-ai gem's structure
-        # Pass ONE hash argument, not keyword arguments
         response = @client.generate_content(
-          { # <--- Start of the single Hash argument
-            # The model should be set during client initialization,
-            # so we likely only need to pass contents here.
-            # Check gem docs if model override is needed/possible here.
+          {
             contents: [{ role: 'user', parts: { text: prompt } }]
-          } # <--- End of the single Hash argument
+            # --- Add safety setting to encourage JSON output ---
+            # Check Gemini API docs for exact names if needed
+            # safety_settings: [
+            #   { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+            #   # Add others if needed
+            # ],
+            # generation_config: {
+            #    response_mime_type: "application/json" # Request JSON directly if model supports it
+            # }
+            # Note: Check if gemini-ai gem exposes these generation_config options.
+            # If not, we rely on prompt instructions and parsing.
+          }
         )
 
-        # Accessing the response text - Check the gem's response structure
-        # This dig might still be correct if it wraps the Google API response
         raw_response_text = response.dig('candidates', 0, 'content', 'parts', 0, 'text')
 
         unless raw_response_text
-          logger.warn("Gemini response (via gemini-ai) was empty or couldn't find text.")
-          # Try inspecting the response object if dig fails
+          logger.warn("Gemini response was empty or couldn't find text.")
           logger.debug("Raw Gemini Response Object: #{response.inspect}")
           return fallback_plan(task, "Gemini response was empty or unparseable.")
         end
 
         # logger.debug("Gemini Raw Response Text:\n#{raw_response_text}")
 
-        parsed_plan = parse_gemini_response(raw_response_text)
-        validated_plan = validate_and_format_plan(parsed_plan)
+        parsed_plan = parse_gemini_response(raw_response_text) # Expects JSON array now
+        validated_plan = validate_and_format_multi_step_plan(parsed_plan) # New validation method
 
         if validated_plan.empty?
-          logger.warn("Failed to get a valid plan from Gemini response. Falling back.")
-          return fallback_plan(task, "Could not parse or validate Gemini's plan.")
+          logger.warn("Failed to get a valid multi-step plan from Gemini response. Falling back.")
+          # logger.debug("Parsed plan before validation: #{parsed_plan.inspect}") # Debugging line
+          return fallback_plan(task, "Could not parse or validate Gemini's multi-step plan.")
         else
-          logger.info("Plan received from Gemini: #{validated_plan}")
+          logger.info("Multi-step plan received from Gemini: #{validated_plan}")
           return validated_plan
         end
-
-      # Error handling might need adjustment based on errors raised by gemini-ai
       rescue JSON::ParserError => e
         logger.error("Failed to parse Gemini response as JSON: #{e.message}")
         logger.error("Raw response text was: #{raw_response_text}")
         return fallback_plan(task, "Invalid JSON response from Gemini.")
-      rescue StandardError => e # Catch broader errors as specific API errors might differ
+      rescue StandardError => e
         logger.error("Error during planning with gemini-ai: #{e.class}: #{e.message}")
         logger.error(e.backtrace.join("\n"))
         return fallback_plan(task, "Gemini planning error: #{e.message}")
       end
     end
 
-    # --- Helper methods (format_tools_for_prompt, build_gemini_prompt, parse_gemini_response, validate_and_format_plan, fallback_plan) ---
-    # --- These methods should remain largely the same as they handle the content ---
-    # --- Ensure they are present and correct as in the previous implementation ---
-
     private
 
-    # Format available tools into a string for the prompt (Identical to previous version)
+    # Format tools (remains the same)
     def format_tools_for_prompt(tools)
-      # ... (implementation from previous response) ...
+      # ... (implementation from previous response - no change needed) ...
       return "No tools available." if tools.empty?
 
       tools.map do |tool|
         params_desc = tool.parameters.map do |name, info|
           req = info[:required] ? "required" : "optional"
-          "- #{name} (#{info[:type]}, #{req}): #{info[:description]}"
+          # Ensure type is displayed, default to 'any' if missing
+          type = info[:type] || 'any'
+          "- #{name} (#{type}, #{req}): #{info[:description]}"
         end.join("\n    ")
         <<~TOOL_DESC
           Tool Name: #{tool.name}
@@ -132,12 +131,10 @@ module ADK
       end.join("\n\n")
     end
 
-    # Build the prompt for the Gemini API call (Identical to previous version)
-    def build_gemini_prompt(task, tools_description)
-      # puts tools_description
-      # ... (implementation from previous response) ...
+    # --- NEW: Build the multi-step prompt ---
+    def build_multi_step_gemini_prompt(task, tools_description)
       <<~PROMPT
-        You are an AI planner for an agent. Your goal is to choose the single best tool to fulfill the user's request and determine the necessary parameters for that tool based ONLY on the request and the tool descriptions provided.
+        You are an AI planner for an agent. Your goal is to break down the user's request into a sequence of steps. Each step must use exactly one of the available tools. You need to determine the necessary parameters for each tool call based on the user request AND the potential output of previous steps.
 
         Available Tools:
         ---
@@ -148,76 +145,137 @@ module ADK
 
         Instructions:
         1. Analyze the user request and the available tools.
-        2. Select the single most appropriate tool from the list provided. The tool name must match EXACTLY one of the "Tool Name" values above.
-        3. Determine the values for the tool's required parameters based on the user request. If optional parameters can be inferred, include them.
-        4. Respond ONLY with a single JSON object in the following format:
+        2. Determine the sequence of tool calls needed to fulfill the request.
+        3. For each step, identify the exact tool name (must match a "Tool Name" from the list).
+        4. For each step, determine the values for its parameters. Parameter values can come from the original request OR **implicitly from the result of the previous step** if applicable (e.g., if step 1 gets a number, step 2 might use that number).
+        5. Respond ONLY with a single JSON array where each element represents one step in the sequence. Each step object must have the following format:
            {
              "tool_name": "exact_tool_name_here",
              "parameters": {
-               "param1_name": "value1",
+               "param1_name": "value1", // Values derived from request or previous step output
                "param2_name": "value2"
-               // ... include all necessary parameters derived from the request
+               // ... include all necessary parameters for this step
              }
            }
-        5. If no suitable tool is found among the available tools to fulfill the request, respond ONLY with the following JSON object:
-           {
-             "tool_name": null,
-             "parameters": null
-           }
-        6. Do not include any explanation, commentary, or text outside the JSON object in your response.
+        6. If the request can be fulfilled by a single tool call, the array will contain only one step object.
+        7. If the request cannot be fulfilled by any sequence of the available tools, respond ONLY with an empty JSON array: `[]`.
+        8. Do not include any explanation, commentary, or text outside the JSON array in your response. Ensure the output is valid JSON.
+
+        Example Request: "Generate a random number and then tell me that number."
+        Example Tools: random_number (no params), echo (param: message)
+        Example Response:
+        [
+          {
+            "tool_name": "random_number",
+            "parameters": {}
+          },
+          {
+            "tool_name": "echo",
+            "parameters": {
+              "message": "[Result from step 1]" // You should infer how to represent the dependency
+            }
+          }
+        ]
+        // (Note: The actual parameter value for 'echo' in the real response should be derived by the agent during execution based on step 1's output, but the LLM needs to structure the plan correctly).
+
+        Now, plan the User Request: "#{task}"
       PROMPT
     end
 
-    # Parse the text response from Gemini, expecting JSON (Identical to previous version)
+    # Parse the text response from Gemini, expecting a JSON array (minor change)
     def parse_gemini_response(response_text)
-      # ... (implementation from previous response) ...
+      logger.debug("Attempting to parse Gemini response text: #{response_text}")
       # Sometimes the model might still wrap the JSON in backticks or "json" language identifier
-      clean_text = response_text.strip.delete_prefix("```json").delete_prefix("```").delete_suffix("```").strip
+      clean_text = response_text.strip
+      if clean_text.start_with?('```json') && clean_text.end_with?('```')
+        clean_text = clean_text.delete_prefix('```json').delete_suffix('```').strip
+      elsif clean_text.start_with?('```') && clean_text.end_with?('```')
+        clean_text = clean_text.delete_prefix('```').delete_suffix('```').strip
+      end
+      # Ensure it looks like an array before parsing
+      unless clean_text.start_with?('[') && clean_text.end_with?(']')
+        # Maybe it's the failure case? Check for empty array explicitly
+        return [] if clean_text == '[]'
+
+        # Otherwise, it's likely invalid format
+        logger.error("Gemini response does not appear to be a JSON array: #{clean_text}")
+        raise JSON::ParserError, "Response is not a JSON array."
+      end
+
       JSON.parse(clean_text)
     end
 
-    # Validate the parsed response and format it into the ADK plan structure (Identical to previous version)
-    def validate_and_format_plan(parsed_response)
-      # ... (implementation from previous response) ...
-      tool_name_str = parsed_response['tool_name']
-      parameters = parsed_response['parameters']
-
-      # Handle the "no suitable tool" case
-      return [] if tool_name_str.nil?
-
-      tool_name_sym = tool_name_str.to_sym
-
-      # Find the actual tool to ensure it exists
-      tool = agent.tools.find { |t| t.name == tool_name_sym }
-
-      unless tool
-        logger.warn("Gemini suggested tool '#{tool_name_sym}' which is not available to the agent.")
-        return [] # Return empty plan if tool doesn't exist
+    # --- NEW: Validate the parsed multi-step response ---
+    def validate_and_format_multi_step_plan(parsed_response)
+      unless parsed_response.is_a?(Array)
+        logger.warn("Parsed Gemini response was not an Array: #{parsed_response.inspect}")
+        return [] # Return empty plan if it's not even an array
       end
 
-      unless parameters.is_a?(Hash)
-        logger.warn("Gemini response 'parameters' field was not a JSON object.")
-        return []
+      plan_steps = []
+      available_tool_syms = agent.tools.map(&:name)
+
+      parsed_response.each_with_index do |step_data, index|
+        unless step_data.is_a?(Hash)
+          logger.warn("Step #{index + 1} in Gemini plan is not a Hash: #{step_data.inspect}")
+          return [] # Invalid plan if any step is malformed
+        end
+
+        tool_name_str = step_data['tool_name']
+        parameters = step_data['parameters']
+
+        # Handle potential null tool_name (shouldn't happen with array format, but check)
+        if tool_name_str.nil? || tool_name_str.empty?
+          logger.warn("Step #{index + 1} has missing 'tool_name'.")
+          return [] # Invalid step
+        end
+
+        tool_name_sym = tool_name_str.to_sym
+
+        # Check if tool exists
+        unless available_tool_syms.include?(tool_name_sym)
+          logger.warn("Step #{index + 1} suggested tool '#{tool_name_sym}' which is not available to the agent. Available: #{available_tool_syms.join(', ')}")
+          return [] # Invalid plan if tool doesn't exist
+        end
+
+        # Check parameters format
+        unless parameters.is_a?(Hash)
+          logger.warn("Step #{index + 1} 'parameters' field was not a JSON object: #{parameters.inspect}")
+          # Allow empty parameters if the tool definition has none or only optional ones.
+          # Let tool validation handle required params later. Assume {} if not a hash for now? Or fail? Let's fail for stricter planning.
+          return [] # Fail if params isn't a Hash
+        end
+
+        # Convert parameter keys to symbols for Tool#execute
+        symbolized_params = parameters.transform_keys do |k|
+          k.to_sym rescue k # Keep original if conversion fails
+        end
+
+        # Add the validated step to the plan
+        plan_steps << { tool: tool_name_sym, params: symbolized_params }
       end
 
-      # Basic validation (could add more checks for required params if needed)
-      # Convert parameter keys to symbols for the Tool#execute method
-      symbolized_params = parameters.transform_keys(&:to_sym)
-
-      # Return the plan in the expected format
-      [{ tool: tool_name_sym, params: symbolized_params }]
+      # Return the fully validated sequence of steps
+      plan_steps
     end
 
-    # Default plan to use if Gemini fails (Identical to previous version)
+    # Fallback plan remains the same (single echo step)
     def fallback_plan(task, reason)
-      # ... (implementation from previous response) ...
+      # ... (implementation from previous response - no change needed) ...
       logger.warn("Falling back to echo plan. Reason: #{reason}")
-      [
-        {
-          tool: :echo,
-          params: { message: "Planning failed: #{reason}. Original task: #{task}" }
-        }
-      ]
+      # Find if echo tool exists to use it
+      echo_tool_exists = agent.tools.any? { |t| t.name == :echo }
+      if echo_tool_exists
+        [
+          {
+            tool: :echo,
+            params: { message: "Planning failed: #{reason}. Original task: #{task}" }
+          }
+        ]
+      else
+        logger.error("Fallback failed: Echo tool not available to the agent.")
+        [] # Return empty plan if echo isn't available
+      end
     end
   end
 end
