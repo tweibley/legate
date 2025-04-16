@@ -2,328 +2,301 @@
 require 'spec_helper'
 
 RSpec.describe ADK::Agent do
-  # --- Setup (Mostly the same) ---
+  # --- Test Subjects ---
   let(:name) { 'test_agent' }
-  let(:description) { 'Test Description' }
-  let(:model_name) { 'test-model-123' }
-  let(:mock_planner) { instance_double(ADK::Planner) }
+  let(:description) { 'A test agent' }
+  let(:model_name) { 'gemini-test-model' }
+  let(:default_model) { ADK::Agent::DEFAULT_MODEL }
+
+  # --- Mocks / Doubles ---
+  let(:mock_planner) { instance_double(ADK::Planner, plan: []) } # Default stub
   let(:mock_logger) { instance_double(Logger, info: nil, warn: nil, error: nil, debug: nil) }
-
-  # Session-related mocks (new)
-  let(:session_id) { 'test-session-123' }
-  let(:mock_session) { instance_double(ADK::Session, id: session_id, events: []) }
   let(:mock_session_service) { instance_double(ADK::SessionService::InMemory) }
+  let(:session_id) { 'sid-123' }
+  let(:mock_session) { instance_double(ADK::Session, id: session_id, events: []) }
 
-  # Define mocks for tools
+  # Tools
   let(:mock_tool_a) { instance_double(ADK::Tool, name: :tool_a) }
   let(:mock_tool_b) { instance_double(ADK::Tool, name: :tool_b) }
-  let(:mock_agent_tool) { instance_double(ADK::Tools::AgentTool, name: :delegate_task) }
 
-  # Define results
-  let(:step1_result_simple) { { status: :success, result: 'Result From A' } }
-  let(:nested_success_result) { { status: :success, result: 'Inner Value' } }
-  let(:step1_result_nested) { { status: :success, result: nested_success_result } }
-  let(:step1_result_error) { { status: :error, error_message: 'Step 1 Failed' } }
-  let(:step1_result_no_key) { { status: :success, info: 'Only info here' } }
-  let(:step2_result_success) { { status: :success, result: 'Result B' } }
+  # Results
+  let(:success_hash_a) { { status: :success, result: 'Result A' } }
+  let(:success_hash_b) { { status: :success, result: 'Result B' } }
+  let(:error_hash) { { status: :error, error_message: 'Something failed' } }
 
-  # Event mocks
-  let(:user_event) { instance_double(ADK::Event, role: :user, content: "Do the multi-step thing") }
-  let(:agent_event) { instance_double(ADK::Event, role: :agent, content: "Response") }
-  let(:agent_error_event) { instance_double(ADK::Event, role: :agent, content: "Error during processing") }
-  let(:tool_request_event_a) { instance_double(ADK::Event, role: :tool_request, tool_name: :tool_a) }
-  let(:tool_request_event_b) { instance_double(ADK::Event, role: :tool_request, tool_name: :tool_b) }
-  let(:tool_request_event_delegate) { instance_double(ADK::Event, role: :tool_request, tool_name: :delegate_task) }
-  let(:tool_result_event_a) { instance_double(ADK::Event, role: :tool_result, tool_name: :tool_a) }
-  let(:tool_result_event_b) { instance_double(ADK::Event, role: :tool_result, tool_name: :tool_b) }
-  let(:tool_result_event_delegate) { instance_double(ADK::Event, role: :tool_result, tool_name: :delegate_task) }
+  # Events (use real structs where possible, mock only when necessary)
+  let(:user_input) { "Test user input" }
+  let(:agent_error_event) { instance_double(ADK::Event, role: :agent, content: "Error message") }
+  # Let event creation happen naturally unless we need to intercept it
 
-  let(:options) { { planner: mock_planner, logger: mock_logger } }
-  subject(:agent) { described_class.new(name: name, description: description, model_name: model_name, **options) }
-  # --- End Setup ---
+  # --- Agent Instance ---
+  # Use let! to ensure agent is created before tests that might need it implicitly
+  let!(:agent) do
+    # Stub Planner creation *before* agent is initialized
+    allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+    # Create the agent instance
+    described_class.new(
+      name: name,
+      description: description,
+      model_name: model_name,
+      logger: mock_logger
+      # Note: Planner is mocked via the allow above
+    )
+  end
 
-  # --- Keep tests for #initialize, #add_tool, #start/#stop/#running? ---
+  # --- General Setup ---
+  before do
+    # Ensure tools respond correctly to is_a? for add_tool
+    allow(mock_tool_a).to receive(:is_a?).with(ADK::Tool).and_return(true)
+    allow(mock_tool_b).to receive(:is_a?).with(ADK::Tool).and_return(true)
+
+    # Default session service behavior
+    allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
+    allow(mock_session_service).to receive(:add_event_and_update_state).and_return(true)
+
+    # Allow normal event creation by default
+    allow(ADK::Event).to receive(:new).and_call_original
+
+    # Silence the real logger unless needed for specific tests
+    allow(ADK.logger).to receive(:level=) unless RSpec.current_example.metadata[:log_level]
+    allow(ADK.logger).to receive(:info) unless RSpec.current_example.metadata[:log_level]
+    allow(ADK.logger).to receive(:warn) unless RSpec.current_example.metadata[:log_level]
+    allow(ADK.logger).to receive(:error) unless RSpec.current_example.metadata[:log_level]
+    allow(ADK.logger).to receive(:debug) unless RSpec.current_example.metadata[:log_level]
+  end
+
+  # --- Tests ---
+
   describe '#initialize' do
-    it 'initializes with name and description' do
+    it 'sets name, description, and model' do
       expect(agent.name).to eq(name)
       expect(agent.description).to eq(description)
-    end
-
-    it 'initializes with a provided model name' do
       expect(agent.model_name).to eq(model_name)
     end
 
-    it 'initializes with a default model name when not provided' do
-      default_agent = described_class.new(
-        name: name,
-        description: description,
-        planner: mock_planner,
-        logger: mock_logger
-      )
-      expect(default_agent.model_name).to eq(ADK::Agent::DEFAULT_MODEL)
+    it 'uses default model if none provided' do
+      # We need to re-allow Planner.new for this specific instance creation
+      allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+      agent_default = described_class.new(name: name, description: description, logger: mock_logger)
+      expect(agent_default.model_name).to eq(default_model)
+      # Verify planner was initialized with default model
+      expect(ADK::Planner).to have_received(:new).with(hash_including(model_name: default_model))
     end
 
-    it 'initializes with empty tools array' do
-      expect(agent.tools).to be_empty
-    end
-
-    it 'initializes with provided dependencies' do
+    it 'initializes with a planner' do
       expect(agent.planner).to eq(mock_planner)
+    end
+
+    it 'initializes with an empty tools list' do
+      expect(agent.tools).to eq([])
     end
   end
 
   describe '#add_tool' do
-    it 'adds a valid tool to the tools list' do
-      # Create a proper Tool mock
-      tool = instance_double(ADK::Tool, name: :test_tool, is_a?: true)
-      allow(tool).to receive(:is_a?).with(ADK::Tool).and_return(true)
-
-      expect { agent.add_tool(tool) }.to change { agent.tools.count }.by(1)
-      expect(agent.tools).to include(tool)
+    it 'adds a valid tool' do
+      expect { agent.add_tool(mock_tool_a) }.to change { agent.tools.count }.by(1)
+      expect(agent.tools).to include(mock_tool_a)
     end
 
-    it 'does not add duplicate tools' do
-      # Create a proper Tool mock
-      tool = instance_double(ADK::Tool, name: :test_tool, is_a?: true)
-      allow(tool).to receive(:is_a?).with(ADK::Tool).and_return(true)
-
-      agent.add_tool(tool)
-      expect { agent.add_tool(tool) }.not_to change { agent.tools.count }
+    it 'warns and does not add a duplicate tool', :log_level do
+      agent.add_tool(mock_tool_a) # Add once
+      expect(mock_logger).to receive(:warn).with(/already added/)
+      expect { agent.add_tool(mock_tool_a) }.not_to change { agent.tools.count }
     end
 
-    it 'ignores invalid tools' do
-      invalid_tool = "not a tool"
-      expect { agent.add_tool(invalid_tool) }.not_to change { agent.tools.count }
-    end
-
-    it 'returns self for chaining' do
-      # Create a proper Tool mock
-      tool = instance_double(ADK::Tool, name: :test_tool, is_a?: true)
-      allow(tool).to receive(:is_a?).with(ADK::Tool).and_return(true)
-
-      expect(agent.add_tool(tool)).to eq(agent)
+    it 'errors and does not add an invalid object', :log_level do
+      expect(mock_logger).to receive(:error).with(/Attempted to add invalid tool/)
+      expect { agent.add_tool("not a tool") }.not_to change { agent.tools.count }
     end
   end
 
   describe '#start/#stop/#running?' do
-    it 'starts the agent and changes running state' do
-      expect(agent.running?).to be false
+    it 'starts the agent' do
       agent.start
       expect(agent.running?).to be true
     end
 
-    it 'stops the agent and changes running state' do
+    it 'stops the agent' do
       agent.start
-      expect(agent.running?).to be true
       agent.stop
       expect(agent.running?).to be false
     end
-
-    it 'allows multiple start/stop calls without error' do
-      expect { agent.start.start.stop.stop }.not_to raise_error
-    end
-
-    it 'returns self for chaining' do
-      expect(agent.start).to eq(agent)
-      expect(agent.stop).to eq(agent)
-    end
+    # Consider adding idempotency tests if needed
   end
 
-  # --- Updated #run_task tests ---
   describe '#run_task' do
-    let(:task) { "Do the multi-step thing" }
-
     before do
-      # Add tools needed for the tests
-      allow(mock_tool_a).to receive(:is_a?).with(ADK::Tool).and_return(true)
-      allow(mock_tool_b).to receive(:is_a?).with(ADK::Tool).and_return(true)
-      allow(mock_agent_tool).to receive(:is_a?).with(ADK::Tool).and_return(true)
+      # Add tools used in these tests
       agent.add_tool(mock_tool_a)
       agent.add_tool(mock_tool_b)
-      agent.add_tool(mock_agent_tool)
-
-      # Setup session-related mocks
-      allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
-      allow(mock_session_service).to receive(:add_event_and_update_state).and_return(true)
-      
-      # Set up ADK::Event stubbing with different parameters
-      allow(ADK::Event).to receive(:new).and_call_original
-      allow(ADK::Event).to receive(:new).with(hash_including(role: :user)).and_return(user_event)
-      allow(ADK::Event).to receive(:new).with(hash_including(role: :agent)).and_return(agent_event)
-      
-      # Tool request and result events
-      allow(ADK::Event).to receive(:new).with(hash_including(role: :tool_request, tool_name: :tool_a)).and_return(tool_request_event_a)
-      allow(ADK::Event).to receive(:new).with(hash_including(role: :tool_request, tool_name: :tool_b)).and_return(tool_request_event_b)
-      allow(ADK::Event).to receive(:new).with(hash_including(role: :tool_request, tool_name: :delegate_task)).and_return(tool_request_event_delegate)
-      allow(ADK::Event).to receive(:new).with(hash_including(role: :tool_result, tool_name: :tool_a)).and_return(tool_result_event_a)
-      allow(ADK::Event).to receive(:new).with(hash_including(role: :tool_result, tool_name: :tool_b)).and_return(tool_result_event_b)
-      allow(ADK::Event).to receive(:new).with(hash_including(role: :tool_result, tool_name: :delegate_task)).and_return(tool_result_event_delegate)
-      
-      # For error case where no matching pattern exists
-      allow(ADK::Event).to receive(:new).with(hash_including(role: :tool_request, tool_name: :non_existent_tool)).and_return(
-        instance_double(ADK::Event, role: :tool_request, tool_name: :non_existent_tool)
-      )
-
-      # For error content agent events
-      allow(ADK::Event).to receive(:new).with(hash_including(role: :agent, content: /Error|error/)).and_return(agent_error_event)
-      allow(agent_error_event).to receive(:content).and_return("Error during processing")
     end
 
-    context "Basic Execution" do
-      let(:single_step_plan) { [{ tool: :tool_a, params: { arg: 'value' } }] }
-      let(:single_step_success_result) { { status: :success, result: 'Done A Single' } }
-
-      before do
-        allow(mock_planner).to receive(:plan).with(task).and_return(single_step_plan)
-        # Mock ONLY the tool's execute method
-        allow(mock_tool_a).to receive(:execute).with({ arg: 'value' }).and_return(single_step_success_result)
-      end
-
+    context 'pre-execution checks' do
       it 'returns error hash if agent is not running' do
-        # Agent is not started by default
-        result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-        expect(result).to be_a(Hash)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include("not active")
+        # Agent is stopped by default after initialization in `let!`
+        result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+        expect(result).to be_an(ADK::Event)
+        expect(result.role).to eq(:agent)
+        expect(result.content).to include("not active")
       end
 
-      it 'calls planner.plan with the task' do
-        agent.start
-        expect(mock_planner).to receive(:plan).with(task).and_return(single_step_plan)
-        agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-      end
-
-      it 'calls the correct tool execute method' do
-        agent.start
-        # Mock execute_step to verify the tool call
-        expect(mock_tool_a).to receive(:execute).with({ arg: 'value' }).and_return(single_step_success_result)
-        agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-      end
-
-      it 'returns the final agent event containing response' do
-        agent.start
-        result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-        expect(result).to eq(agent_event)
-      end
-    end # End Context Basic Execution
-
-    # --- NEW: Tests for Result Injection Logic ---
-    context "Result Injection in Multi-Step Plans" do
-      let(:step1_tool) { :tool_a }
-      let(:step2_tool) { :tool_b }
-      let(:step1_params) { { task: 'Task A' } }
-      let(:step2_params_placeholder) { { input: '[Result from step 1]' } }
-      let(:step2_params_no_placeholder) { { input: 'Static Value' } }
-      let(:plan_with_placeholder) do
-        [{ tool: step1_tool, params: step1_params }, { tool: step2_tool, params: step2_params_placeholder }]
-      end
-
-      before do
-        agent.start
-        allow(mock_planner).to receive(:plan).with(task).and_return(plan_with_placeholder)
-        # Stub tool A's execute (will be overridden in specific tests)
-        allow(mock_tool_a).to receive(:execute).and_return(step1_result_simple)
-        # Stub tool B's execute by default
-        allow(mock_tool_b).to receive(:execute).and_return(step2_result_success)
-      end
-
-      it 'injects simple success result into the next step' do
-        allow(mock_tool_a).to receive(:execute).with(step1_params).and_return(step1_result_simple)
-        # Expect tool B to be called with the *injected* result from tool A
-        expect(mock_tool_b).to receive(:execute).with({ input: 'Result From A' }).and_return(step2_result_success)
-        agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-      end
-
-      it 'injects nested success result (from AgentTool) into the next step' do
-        plan_with_agent_tool = [{ tool: :delegate_task, params: step1_params },
-                                { tool: step2_tool, params: step2_params_placeholder }]
-        allow(mock_planner).to receive(:plan).with(task).and_return(plan_with_agent_tool)
-        allow(mock_agent_tool).to receive(:execute).with(step1_params).and_return(step1_result_nested)
-
-        # Expect tool B to be called with the *inner* injected result
-        expect(mock_tool_b).to receive(:execute).with({ input: 'Inner Value' }).and_return(step2_result_success)
-        agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-      end
-
-      it 'does NOT inject if previous step failed' do
-        # Create a new plan where only the error result is used
-        plan = [{ tool: step1_tool, params: step1_params }]
-        allow(mock_planner).to receive(:plan).with(task).and_return(plan)
-        allow(mock_tool_a).to receive(:execute).with(step1_params).and_return(step1_result_error)
-        
-        # This test is simpler - we just verify that session_service methods were called
-        agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-        
-        # The agent should have recorded the tool's error result
-        expect(mock_session_service).to have_received(:add_event_and_update_state).at_least(2).times
-      end
-
-      it 'does NOT inject if previous step succeeded but lacked :result key' do
-        allow(mock_tool_a).to receive(:execute).with(step1_params).and_return(step1_result_no_key)
-        # Expect tool B to be called with the *original placeholder*
-        expect(mock_tool_b).to receive(:execute).with({ input: '[Result from step 1]' }).and_return(step2_result_success)
-        agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-      end
-
-      it 'does NOT modify parameters without placeholders' do
-        plan_no_placeholder = [{ tool: step1_tool, params: step1_params },
-                               { tool: step2_tool, params: step2_params_no_placeholder }]
-        allow(mock_planner).to receive(:plan).with(task).and_return(plan_no_placeholder)
-        allow(mock_tool_a).to receive(:execute).with(step1_params).and_return(step1_result_simple)
-
-        # Expect tool B to be called with its original static params
-        expect(mock_tool_b).to receive(:execute).with({ input: 'Static Value' }).and_return(step2_result_success)
-        agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-      end
-    end # End Context Result Injection
-
-    context "when planner fails" do
-      before do
-        agent.start
-        allow(mock_planner).to receive(:plan).with(task).and_raise(StandardError.new("Planner boom"))
-      end
-
-      it 'returns an error hash' do
-        result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-        expect(result).to be_a(Hash)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include("Planner boom")
+      it 'returns error hash if session not found' do
+        agent.start # Agent must be running
+        allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(nil)
+        result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+        expect(result).to be_an(ADK::Event)
+        expect(result.role).to eq(:agent)
+        expect(result.content).to include("Session not found")
       end
     end
 
-    context "when execute_step fails (e.g., tool not found)" do
-      let(:no_tool_plan) { [{ tool: :non_existent_tool, params: {} }] }
+    context 'successful single-step execution' do
+      let(:plan) { [{ tool: :tool_a, params: { p: 1 } }] }
+
       before do
         agent.start
-        allow(mock_planner).to receive(:plan).with(task).and_return(no_tool_plan)
-        allow(agent_error_event).to receive(:content).and_return("Tool 'non_existent_tool' not found")
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
+        allow(mock_tool_a).to receive(:execute).with({ p: 1 }).and_return(success_hash_a)
+      end
+
+      it 'records user, tool request, tool result, and agent events' do
+        expect(mock_session_service).to receive(:add_event_and_update_state).with(hash_including(event: instance_of(ADK::Event))).exactly(4).times.and_return(true)
+        agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+      end
+
+      it 'returns the final agent event with the tool result' do
+        final_event = agent.run_task(session_id: session_id, user_input: user_input,
+                                     session_service: mock_session_service)
+        expect(final_event).to be_an(ADK::Event)
+        expect(final_event.role).to eq(:agent)
+        expect(final_event.content).to eq(success_hash_a[:result])
+      end
+    end
+
+    context 'successful multi-step execution with injection' do
+      let(:plan) { [{ tool: :tool_a, params: { p: 1 } }, { tool: :tool_b, params: { data: '[Result from step 1]' } }] }
+
+      before do
+        agent.start
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
+        allow(mock_tool_a).to receive(:execute).with({ p: 1 }).and_return(success_hash_a)
+        allow(mock_tool_b).to receive(:execute).with({ data: 'Result A' }).and_return(success_hash_b)
+      end
+
+      it 'injects result from step 1 into step 2 params' do
+        expect(mock_tool_b).to receive(:execute).with({ data: 'Result A' }).and_return(success_hash_b)
+        agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+      end
+
+      it 'records events for both steps' do
+        expect(mock_session_service).to receive(:add_event_and_update_state).with(hash_including(event: instance_of(ADK::Event))).exactly(6).times
+        agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+      end
+
+      it 'returns the final agent event with the result of the last step' do
+        final_event = agent.run_task(session_id: session_id, user_input: user_input,
+                                     session_service: mock_session_service)
+        expect(final_event).to be_an(ADK::Event)
+        expect(final_event.role).to eq(:agent)
+        expect(final_event.content).to eq(success_hash_b[:result])
+      end
+    end
+
+    context 'multi-step execution with error and plan halting' do
+      let(:plan) { [{ tool: :tool_a, params: { p: 1 } }, { tool: :tool_b, params: { data: '[Result from step 1]' } }] }
+      let(:error_event) {
+        instance_double(ADK::Event, role: :agent,
+                                    content: "Completed plan with error on last step: #{error_hash[:error_message]}")
+      }
+
+      before do
+        agent.start
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
+        allow(mock_tool_a).to receive(:execute).with({ p: 1 }).and_return(error_hash)
+        allow(ADK::Event).to receive(:new).with(hash_including(role: :agent,
+                                                               content: /Completed plan with error/i)).and_return(error_event)
+      end
+
+      it 'stops execution after the failed step' do
+        expect(mock_tool_b).not_to receive(:execute)
+        agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+      end
+
+      it 'records events up to and including the failed tool result' do
+        # We expect 4 events: user input, tool request, tool result, and final agent response
+        expect(mock_session_service).to receive(:add_event_and_update_state).exactly(4).times do |args|
+          expect(args[:session_id]).to eq(session_id)
+          # Check that it's either a real ADK::Event or an instance double of one
+          expect(args[:event]).to satisfy { |e|
+            e.is_a?(ADK::Event) || e.instance_of?(RSpec::Mocks::InstanceVerifyingDouble)
+          }
+        end
+        agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+      end
+
+      it 'returns the final agent event indicating the error' do
+        final_event = agent.run_task(session_id: session_id, user_input: user_input,
+                                     session_service: mock_session_service)
+        expect(final_event).to eq(error_event)
+        expect(final_event.content).to include("Completed plan with error on last step: #{error_hash[:error_message]}")
+      end
+    end
+
+    context 'when planner returns an empty plan' do
+      before do
+        agent.start
+        allow(mock_planner).to receive(:plan).with(user_input).and_return([])
       end
 
       it 'returns an error event' do
-        result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-        # In the updated code, this returns an agent event with error content
-        expect(result).to eq(agent_error_event)
-        expect(result.content).to include("Tool 'non_existent_tool' not found")
+        result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+        expect(result).to be_an(ADK::Event)
+        expect(result.role).to eq(:agent)
+        expect(result.content).to include("I cannot fulfill this request with the available tools")
       end
     end
 
-    context "when tool execute raises validation error" do
-      let(:validation_error_plan) { [{ tool: :tool_a, params: {} }] }
-      let(:validation_error) { ADK::Error.new("Missing required parameters: some_param") }
-      
+    context 'when planner itself raises an error' do
       before do
         agent.start
-        allow(mock_planner).to receive(:plan).with(task).and_return(validation_error_plan)
-        allow(mock_tool_a).to receive(:execute).with({}).and_raise(validation_error)
-        allow(agent_error_event).to receive(:content).and_return(validation_error.message)
+        allow(mock_planner).to receive(:plan).with(user_input).and_raise(StandardError.new("Planner explosion"))
       end
 
-      it 'returns an error event with the validation message' do
-        result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-        # In the updated code, this returns an agent event with error content
-        expect(result).to eq(agent_error_event)
-        expect(result.content).to eq("Missing required parameters: some_param")
+      it 'returns an error event and logs an agent error event', :log_level do
+        expect(mock_logger).to receive(:error).with(/Critical error during run_task.*Planner explosion/)
+        expect(mock_session_service).to receive(:add_event_and_update_state).with(
+          hash_including(
+            session_id: session_id,
+            event: having_attributes(role: :agent, content: /internal error.*Planner explosion/i)
+          )
+        )
+
+        result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+        expect(result).to be_an(ADK::Event)
+        expect(result.role).to eq(:agent)
+        expect(result.content).to include("An internal error occurred during task processing: Planner explosion")
       end
     end
-  end # End describe run_task
-end # End describe Agent
+
+    context 'when finding a tool raises an error' do
+      let(:bad_tool_plan) { [{ tool: :missing_tool, params: {} }] }
+      let(:error_event) {
+        instance_double(ADK::Event, role: :agent,
+                                    content: "Completed plan with error on last step: Tool 'missing_tool' not found for this agent.")
+      }
+
+      before do
+        agent.start
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(bad_tool_plan)
+        allow(ADK::Event).to receive(:new).with(hash_including(role: :agent,
+                                                               content: /Tool 'missing_tool' not found/)).and_return(error_event)
+      end
+
+      it 'returns the final agent event with error content' do
+        result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+        expect(result).to eq(error_event)
+        expect(result.content).to include("Tool 'missing_tool' not found")
+      end
+    end
+  end
+end

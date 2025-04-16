@@ -95,16 +95,18 @@ RSpec.describe ADK::Agent do
       agent.add_tool(mock_tool)
       allow(mock_planner).to receive(:plan).with(task).and_return(plan)
       # Mock execute_step directly for focused testing
-      allow(agent).to receive(:execute_step).with(plan.first, session_id, mock_session_service).and_return(success_result)
+      allow(agent).to receive(:execute_step).with(plan.first, session_id,
+                                                  mock_session_service).and_return(success_result)
       allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(true)
       allow(mock_session_service).to receive(:add_event_and_update_state)
     end
 
-    it 'returns error hash if agent is not running' do
+    it 'returns error event if agent is not running' do
       # Agent starts not running by default
       result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-      expect(result[:status]).to eq(:error)
-      expect(result[:error_message]).to include("not active")
+      expect(result).to be_an(ADK::Event)
+      expect(result.role).to eq(:agent)
+      expect(result.content).to include("not active")
     end
 
     it 'calls planner.plan with the task' do
@@ -116,7 +118,8 @@ RSpec.describe ADK::Agent do
     it 'calls execute_plan with the plan' do
       agent.start
       # This is harder to mock directly, test via execute_step mock
-      expect(agent).to receive(:execute_step).with(plan.first, session_id, mock_session_service).and_return(success_result)
+      expect(agent).to receive(:execute_step).with(plan.first, session_id,
+                                                   mock_session_service).and_return(success_result)
       agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
     end
 
@@ -150,10 +153,11 @@ RSpec.describe ADK::Agent do
         allow(mock_planner).to receive(:plan).and_raise(StandardError.new("Planner boom"))
       }
 
-      it 'returns an error hash' do
+      it 'returns an error event' do
         result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include("Planner boom")
+        expect(result).to be_an(ADK::Event)
+        expect(result.role).to eq(:agent)
+        expect(result.content).to include("Planner boom")
       end
     end
 
@@ -163,10 +167,11 @@ RSpec.describe ADK::Agent do
         allow(agent).to receive(:execute_step).and_raise(ADK::Error.new("Exec boom"))
       }
 
-      it 'returns an error hash' do
+      it 'returns an error event' do
         result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include("Exec boom")
+        expect(result).to be_an(ADK::Event)
+        expect(result.role).to eq(:agent)
+        expect(result.content).to include("Exec boom")
       end
     end
   end

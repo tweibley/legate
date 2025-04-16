@@ -93,15 +93,18 @@ module ADK
       unless session
         msg = "Session not found: #{session_id}"
         logger.error(msg)
-        return { status: :error, error_message: msg }
+        error_event = ADK::Event.new(role: :agent, content: msg)
+        session_service.add_event_and_update_state(session_id: session_id, event: error_event) rescue nil
+        return error_event
       end
 
       # Ensure agent runtime state is active (distinct from session)
       unless running?
         msg = "Agent '#{name}' runtime is not active (stopped)."
         logger.error(msg)
-        # Log event about agent being stopped? Or just return error?
-        return { status: :error, error_message: msg }
+        error_event = ADK::Event.new(role: :agent, content: msg)
+        session_service.add_event_and_update_state(session_id: session_id, event: error_event) rescue nil
+        return error_event
       end
 
       logger.info("Agent '#{name}' starting task in session '#{session_id}': #{user_input}")
@@ -172,11 +175,10 @@ module ADK
         logger.error("Critical error during run_task for agent '#{name}': #{e.class} - #{e.message}")
         logger.error(e.backtrace.join("\n"))
         error_event_content = "An internal error occurred during task processing: #{e.message}"
-        # Attempt to log agent error event
+        # Create and log agent error event
         error_event = ADK::Event.new(role: :agent, content: error_event_content)
-        session_service.add_event_and_update_state(session_id: session_id, event: error_event) rescue nil # Ignore error during error logging
-        # Return an error hash indication failure
-        { status: :error, error_message: error_event_content }
+        session_service.add_event_and_update_state(session_id: session_id, event: error_event) rescue nil
+        error_event
       end
     end # end run_task
 

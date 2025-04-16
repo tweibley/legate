@@ -22,7 +22,7 @@ RSpec.describe ADK::Tools::AgentTool do
   end
   let(:target_key) { "adk:agent:#{target_agent_name}" }
   let(:expected_target_result) { { status: :success, result: 50.0 } }
-  
+
   # Session-related mocks
   let(:session_id) { 'delegate-session-123' }
   let(:mock_session) { instance_double(ADK::Session, id: session_id, events: []) }
@@ -50,13 +50,13 @@ RSpec.describe ADK::Tools::AgentTool do
     # Mock methods on the target agent instance
     allow(mock_target_agent).to receive(:add_tool).with(mock_calculator_tool)
     allow(mock_target_agent).to receive(:start)
-    
+
     # Mock session service
     allow(ADK::SessionService::InMemory).to receive(:new).and_return(mock_session_service)
     allow(mock_session_service).to receive(:create_session).and_return(mock_session)
     allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
     allow(mock_session_service).to receive(:add_event_and_update_state).and_return(true)
-    
+
     # Mock run_task with session parameters to return the expected result
     allow(mock_target_agent).to receive(:run_task)
       .with(session_id: session_id, user_input: task_to_delegate, session_service: mock_session_service)
@@ -82,11 +82,11 @@ RSpec.describe ADK::Tools::AgentTool do
         expect(ADK::ToolRegistry).to receive(:create_instance).with(:calculator).and_return(mock_calculator_tool)
         expect(mock_target_agent).to receive(:add_tool).with(mock_calculator_tool)
         expect(mock_target_agent).to receive(:start)
-        
+
         # Expect session service creation
         expect(ADK::SessionService::InMemory).to receive(:new).and_return(mock_session_service)
         expect(mock_session_service).to receive(:create_session).and_return(mock_session)
-        
+
         # Updated expectation for run_task with session parameters
         expect(mock_target_agent).to receive(:run_task)
           .with(session_id: session_id, user_input: task_to_delegate, session_service: mock_session_service)
