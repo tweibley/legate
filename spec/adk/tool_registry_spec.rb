@@ -7,8 +7,16 @@ RSpec.describe ADK::Agent do
   let(:mock_planner) { instance_double(ADK::Planner) }
   let(:mock_memory) { instance_double(ADK::Memory) }
   let(:mock_session) { instance_double(ADK::Session) }
-  let(:mock_tool) { instance_double(ADK::Tool, name: :mock_tool) }
-  let(:options) { { planner: mock_planner, memory: mock_memory, session: mock_session } }
+  let(:mock_logger) { instance_double(Logger, info: nil, warn: nil, error: nil, debug: nil) }
+
+  # Create proper tool mock for testing
+  let(:mock_tool) do
+    tool = instance_double(ADK::Tool, name: :mock_tool)
+    allow(tool).to receive(:is_a?).with(ADK::Tool).and_return(true)
+    tool
+  end
+
+  let(:options) { { planner: mock_planner, memory: mock_memory, session: mock_session, logger: mock_logger } }
 
   subject(:agent) { described_class.new(name: name, description: description, model_name: model_name, **options) }
 
@@ -35,10 +43,17 @@ RSpec.describe ADK::Agent do
       allow(ADK::Memory).to receive(:new).and_return(mock_memory)
       allow(ADK::Session).to receive(:new).and_return(mock_session)
 
-      agent_default_deps = described_class.new(name: name, description: description)
+      agent_default_deps = described_class.new(
+        name: name,
+        description: description,
+        logger: mock_logger
+      )
 
-      expect(ADK::Planner).to have_received(:new).with(agent: agent_default_deps, logger: ADK.logger,
-                                                       model_name: ADK::Agent::DEFAULT_MODEL)
+      expect(ADK::Planner).to have_received(:new).with(
+        agent: agent_default_deps,
+        logger: mock_logger,
+        model_name: ADK::Agent::DEFAULT_MODEL
+      )
       expect(ADK::Memory).to have_received(:new).with(agent: agent_default_deps)
       expect(ADK::Session).to have_received(:new).with(agent: agent_default_deps)
       expect(agent_default_deps.planner).to eq(mock_planner)
@@ -54,13 +69,14 @@ RSpec.describe ADK::Agent do
 
     it 'warns and does not add a duplicate tool' do
       agent.add_tool(mock_tool)
-      expect(ADK.logger).to receive(:warn).with(/already added/)
+      expect(mock_logger).to receive(:warn).with(/already added/)
       expect { agent.add_tool(mock_tool) }.not_to change { agent.tools.count }
     end
 
     it 'does not add an invalid object' do
-      expect(ADK.logger).to receive(:error).with(/Attempted to add invalid tool/)
-      expect { agent.add_tool(Object.new) }.not_to change { agent.tools.count }
+      invalid_tool = "not a tool"
+      expect(mock_logger).to receive(:error).with(/Attempted to add invalid tool/)
+      expect { agent.add_tool(invalid_tool) }.not_to change { agent.tools.count }
     end
   end
 
@@ -85,39 +101,43 @@ RSpec.describe ADK::Agent do
       allow(mock_planner).to receive(:plan).with(task).and_return(plan)
       # Mock execute_step directly for focused testing
       allow(agent).to receive(:execute_step).with(plan.first).and_return(success_result)
-      agent.start
     end
 
     it 'returns error hash if agent is not running' do
-      agent.stop
+      # Agent starts not running by default
       result = agent.run_task(task)
       expect(result[:status]).to eq(:error)
       expect(result[:error_message]).to include("not running")
     end
 
     it 'calls planner.plan with the task' do
+      agent.start
       expect(mock_planner).to receive(:plan).with(task).and_return(plan)
       agent.run_task(task)
     end
 
     it 'calls execute_plan with the plan' do
+      agent.start
       # This is harder to mock directly, test via execute_step mock
       expect(agent).to receive(:execute_step).with(plan.first).and_return(success_result)
       agent.run_task(task)
     end
 
     it 'returns the result from execute_plan (single step)' do
+      agent.start
       result = agent.run_task(task)
       expect(result).to eq(success_result)
     end
 
     context 'with multi-step plan' do
-      let(:plan) { [{ tool: :mock_tool, params: {} }, { tool: :mock_tool, params: {} }] }
+      let(:plan) { [{ tool: :tool_a, params: {} }, { tool: :tool_b, params: {} }] }
       let(:result1) { { status: :success, result: 'Step 1 Done' } }
       let(:result2) { { status: :success, result: 'Step 2 Done' } }
+
       before do
+        agent.start
+        # Need to mock specific calls to execute_step with different steps
         allow(agent).to receive(:execute_step).with(plan[0]).and_return(result1)
-        # Need to adjust param injection mock if testing that
         allow(agent).to receive(:execute_step).with(plan[1]).and_return(result2)
       end
 
@@ -128,7 +148,11 @@ RSpec.describe ADK::Agent do
     end
 
     context 'when planner fails' do
-      before { allow(mock_planner).to receive(:plan).and_raise(StandardError.new("Planner boom")) }
+      before {
+        agent.start
+        allow(mock_planner).to receive(:plan).and_raise(StandardError.new("Planner boom"))
+      }
+
       it 'returns an error hash' do
         result = agent.run_task(task)
         expect(result[:status]).to eq(:error)
@@ -137,7 +161,11 @@ RSpec.describe ADK::Agent do
     end
 
     context 'when execute_step fails' do
-      before { allow(agent).to receive(:execute_step).and_raise(ADK::Error.new("Exec boom")) }
+      before {
+        agent.start
+        allow(agent).to receive(:execute_step).and_raise(ADK::Error.new("Exec boom"))
+      }
+
       it 'returns an error hash' do
         result = agent.run_task(task)
         expect(result[:status]).to eq(:error)
