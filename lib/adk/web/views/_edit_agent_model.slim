@@ -1,0 +1,21 @@
+/ File: lib/adk/web/views/_edit_agent_model.slim
+/ Expects agent_data hash and available_models array
+
+- current_model = agent_data[:model] || ADK::Agent::DEFAULT_MODEL
+
+form( hx-put="/agents/#{agent_data[:name]}/update/model" hx-target="#agent-model-display" hx-swap="innerHTML" )
+  .field.has-addons
+    .control.is-expanded
+      .select.is-fullwidth
+        select(name="value")
+          - available_models.each do |model_name|
+            option(value=model_name selected=(model_name == current_model)) = model_name
+    .control
+      button.button.is-success(type="submit")
+        span.icon.is-small
+          i.fas.fa-check
+        span Save
+    .control
+      / --- Standard Slim Attributes on one line ---
+      button.button type="button" hx-get="/agents/#{agent_data[:name]}/display/model" hx-target="#agent-model-display" hx-swap="innerHTML"
+        span Cancel

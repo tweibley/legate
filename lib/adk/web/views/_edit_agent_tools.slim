@@ -1,0 +1,40 @@
+/ File: lib/adk/web/views/_edit_agent_tools.slim
+/ Expects:
+/   agent_data (Hash: {name})
+/   configured_tool_names (Array<String>) - Names of currently configured tools
+/   all_available_tools (Array<Hash>: [{name: :tool_symbol, description: "...""}]) - All tools from registry
+
+.box.mb-5
+  h2.title.is-4 Edit Configured Tools
+  form( hx-put="/agents/#{agent_data[:name]}/update/tools"
+        hx-target="#agent-tools-display"
+        hx-swap="innerHTML" )
+
+    .field
+      label.label Available Tools (Select tools for this agent definition):
+      .control
+        - if all_available_tools && !all_available_tools.empty?
+          - all_available_tools.each do |tool_info|
+            - tool_name_str = tool_info[:name].to_s
+            - is_checked = configured_tool_names.include?(tool_name_str)
+            .field
+              label.checkbox
+                / Checkbox name is 'tools[]' to submit an array
+                input(type="checkbox" name="tools[]" value=tool_name_str checked=is_checked)
+                strong.ml-2 #{tool_info[:name].to_s.capitalize}:
+                span.ml-1 #{tool_info[:description]}
+        - else
+          p.has-text-danger No tools found in the Tool Registry! Cannot configure agent.
+
+    .field.is-grouped.is-grouped-right.mt-4
+      .control
+        button.button( type="button"
+                       hx-get="/agents/#{agent_data[:name]}/display/tools"
+                       hx-target="#agent-tools-display"
+                       hx-swap="innerHTML" )
+          span Cancel
+      .control
+        button.button.is-success(type="submit")
+          span.icon.is-small
+            i.fas.fa-check
+          span Save Tool Configuration

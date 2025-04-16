@@ -1,0 +1,17 @@
+/ File: lib/adk/web/views/_edit_agent_description.slim
+/ Expects agent_data hash
+
+form( hx-put="/agents/#{agent_data[:name]}/update/description" hx-target="#agent-description-display" hx-swap="innerHTML" )
+  .field
+    .control
+      textarea.textarea(name="value" rows="2")= agent_data[:description]
+  .field.is-grouped.is-grouped-right
+    .control
+      / --- Standard Slim Attributes on one line ---
+      button.button type="button" hx-get="/agents/#{agent_data[:name]}/display/description" hx-target="#agent-description-display" hx-swap="innerHTML"
+        span Cancel
+    .control
+      button.button.is-success(type="submit")
+        span.icon.is-small
+          i.fas.fa-check
+        span Save

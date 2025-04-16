@@ -1,8 +1,10 @@
 # File: lib/adk/web/app.rb
 # frozen_string_literal: true
 
+#STDOUT.sync = true
 require 'sinatra/base'
 require 'sinatra/json'
+require 'sinatra/custom_logger'
 require 'sinatra/reloader'
 require 'slim'
 require 'json'
@@ -30,12 +32,16 @@ module ADK
   module Web
     # Web interface for ADK
     class App < Sinatra::Base
+      helpers Sinatra::CustomLogger
+
       configure :development do
         register Sinatra::Reloader
       end
 
+      # Configure the logger for Sinatra
       configure do
-        set :logger, ADK.logger unless settings.respond_to?(:logger) && settings.logger
+        # Set the logger for Sinatra
+        set :logger, ADK.logger
       end
 
       set :root, File.expand_path('../../..', __dir__)
@@ -58,9 +64,9 @@ module ADK
         begin
           @redis = Redis.new # Assumes Redis running on localhost:6379
           @redis.ping # Check connection
-          settings.logger.info("Successfully connected to Redis.")
+          logger.info("Successfully connected to Redis.")
         rescue Redis::CannotConnectError => e
-          settings.logger.error("FATAL: Could not connect to Redis. Persistence disabled. #{e.message}")
+          logger.error("Could not connect to Redis. Persistence disabled. #{e.message}")
           @redis = nil # Disable Redis features if connection fails
         end
 
@@ -158,6 +164,7 @@ module ADK
       # --- Routes ---
 
       get '/' do
+        logger.debug("GET / route handler entered")
         slim :index
       end
 
@@ -274,39 +281,178 @@ module ADK
 
       # Agent Detail Page
       get '/agents/:name' do |name|
-        halt 503, "Redis connection unavailable." unless @redis
+        halt 503, "Redis unavailable." unless @redis
         key = agent_redis_key(name)
-        redis_agent_data = @redis.hmget(key, 'description', 'tools', 'model') # Fetch model
+        redis_agent_data = @redis.hmget(key, 'description', 'tools', 'model')
         description = redis_agent_data[0]
         tools_json_string = redis_agent_data[1]
-        loaded_model = redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL # Apply default
+        loaded_model = redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL
 
         unless description
-          logger.warn("Agent '#{name}' definition not found in Redis.")
           halt 404, slim(:error_404, locals: { title: "Agent Not Found", message: "..." })
         end
 
         is_running = @agents.key?(name)
-        @view_agent_data = { name: name, description: description, running: is_running, model: loaded_model } # Add model
+        @view_agent_data = { name: name, description: description, running: is_running, model: loaded_model }
 
-        configured_tool_names = []
-        begin tools_json_string && configured_tool_names = JSON.parse(tools_json_string).map(&:to_sym) rescue []; end
-        logger.debug("Agent '#{name}' configured tools: #{configured_tool_names}, model: #{loaded_model}")
+        # --- Prepare Tool Info for Display ---
+        configured_tool_names_str = []
+        begin tools_json_string && configured_tool_names_str = JSON.parse(tools_json_string) rescue []; end
+        # Fetch full info for configured tools from registry for the display partial
+        @configured_tool_info = configured_tool_names_str.map do |tool_name|
+          ADK::ToolRegistry.list_tools.find { |t| t[:name].to_s == tool_name }
+        end.compact # Use compact to remove nil if a configured tool is no longer registered
+        logger.debug("Agent '#{name}' configured tool info: #{@configured_tool_info.inspect}")
+        # --- End Tool Info Prep ---
 
+        # --- Agent Object Instantiation (Remains the same) ---
+        configured_tool_names_sym = configured_tool_names_str.map(&:to_sym) # Use symbols for agent instance
         if is_running
           @agent = @agents[name]
-          @view_agent_data[:model] = @agent.model_name # Ensure view data matches live agent
+          @view_agent_data[:model] = @agent.model_name
         else
-          # Pass loaded model to constructor for temporary object
           @agent = ADK::Agent.new(name: name, description: description, model_name: loaded_model)
-          configured_tool_names.each do |tool_name|
+          configured_tool_names_sym.each do |tool_name|
             tool_instance = ADK::ToolRegistry.create_instance(tool_name)
             if tool_instance then @agent.add_tool(tool_instance);
             else logger.warn("Tool '#{tool_name}' not found."); end
           end
         end
-        slim :agent
+        # --- End Agent Object Instantiation ---
+
+        # Pass @configured_tool_info to the main agent view
+        slim :agent # agent.slim includes _display_agent_tools using this variable
+      end # end agent details page
+
+      # --- Agent Inline Editing Routes ---
+
+      # GET /agents/:name/edit/:field - Serves the edit partial for a field
+      get '/agents/:name/edit/:field' do |name, field|
+        # --- Add 'tools' to supported fields ---
+        supported_fields = ['description', 'model', 'tools']
+        halt 404, "Editing field '#{field}' not supported." unless supported_fields.include?(field)
+        halt 503, "Redis unavailable." unless @redis
+
+        key = agent_redis_key(name)
+        halt 404, "Agent definition '#{name}' not found." unless @redis.exists?(key)
+
+        # Fetch necessary data
+        redis_data = @redis.hmget(key, 'description', 'model', 'tools')
+        agent_data = { name: name, description: redis_data[0], model: redis_data[1] }
+        tools_json_string = redis_data[2]
+        configured_tool_names = []
+        begin tools_json_string && configured_tool_names = JSON.parse(tools_json_string) rescue []; end
+
+        locals = { agent_data: agent_data }
+        if field == 'model'
+          locals[:available_models] = AVAILABLE_MODELS
+        elsif field == 'tools'
+          # For editing tools, need configured names and all available tools
+          locals[:configured_tool_names] = configured_tool_names
+          locals[:all_available_tools] = ADK::ToolRegistry.list_tools
+        end
+
+        slim :"_edit_agent_#{field}", layout: false, locals: locals
       end
+
+      # GET /agents/:name/display/:field - Serves the display partial (for Cancel button)
+      get '/agents/:name/display/:field' do |name, field|
+        supported_fields = ['description', 'model', 'tools']
+        halt 404, "Displaying field '#{field}' not supported." unless supported_fields.include?(field)
+        halt 503, "Redis unavailable." unless @redis
+
+        key = agent_redis_key(name)
+        halt 404, "Agent definition '#{name}' not found." unless @redis.exists?(key)
+
+        # Fetch necessary data
+        redis_data = @redis.hmget(key, 'description', 'model', 'tools')
+
+        # --- Set Instance Variables Consistently ---
+        @view_agent_data = { name: name, description: redis_data[0], model: redis_data[1] } # Always set base data
+
+        if field == 'tools'
+          tools_json_string = redis_data[2]
+          configured_tool_names_str = []
+          begin tools_json_string && configured_tool_names_str = JSON.parse(tools_json_string) rescue []; end
+          @configured_tool_info = configured_tool_names_str.map do |tool_name| # Set tools instance var
+            ADK::ToolRegistry.list_tools.find { |t| t[:name].to_s == tool_name }
+          end.compact
+        end
+        # --- End Set Instance Variables ---
+
+        # Render using instance variables
+        slim :"_display_agent_#{field}", layout: false
+      end
+
+      # PUT /agents/:name/update/:field - Handles the update from the edit form
+      put '/agents/:name/update/:field' do |name, field|
+        supported_fields = ['description', 'model', 'tools']
+        halt 404, "Updating field '#{field}' not supported." unless supported_fields.include?(field)
+        halt 503, "Redis unavailable." unless @redis
+
+        key = agent_redis_key(name)
+        halt 404, "Agent definition '#{name}' not found." unless @redis.exists?(key)
+
+        redis_field_to_update = field
+        new_value_to_save = nil
+
+        # --- Initialize @view_agent_data early ---
+        @view_agent_data = { name: name } # Ensure name is always available
+
+        if field == 'tools'
+          selected_tools = params['tools'] || []
+          valid_available_tools = ADK::ToolRegistry.list_tools.map { |t| t[:name].to_s }
+          validated_tools = selected_tools.select do |submitted_tool|
+            if valid_available_tools.include?(submitted_tool)
+              true
+            else
+              logger.warn("Invalid tool '#{submitted_tool}' submitted for agent '#{name}'. Ignoring.")
+              false
+            end
+          end
+          new_value_to_save = validated_tools.to_json
+
+          # Set instance variable for configured tools
+          @configured_tool_info = validated_tools.map do |tool_name| # Use the same name as GET route
+            ADK::ToolRegistry.list_tools.find { |t| t[:name].to_s == tool_name }
+          end.compact
+          # No need to fetch desc/model here for _display_agent_tools
+
+        else # Handling description or model
+          new_value_to_save = params['value']&.strip
+          if new_value_to_save.nil? || new_value_to_save.empty?
+            logger.warn("Update failed for agent '#{name}', field '#{field}': Value cannot be empty.")
+            redis_data = @redis.hmget(key, 'description', 'model')
+            # Set instance variables for display partial before halting
+            @view_agent_data[:description] = redis_data[0]
+            @view_agent_data[:model] = redis_data[1]
+            halt 400, slim(:"_display_agent_#{field}", layout: false)
+          end
+          # Set instance variables for display partial (description or model)
+          @view_agent_data[:description] =
+            (field == 'description' ? new_value_to_save : @redis.hget(key, 'description'))
+          @view_agent_data[:model] = (field == 'model' ? new_value_to_save : @redis.hget(key, 'model'))
+        end
+
+        # Update Redis
+        begin
+          @redis.hset(key, redis_field_to_update, new_value_to_save)
+          logger.info("Updated agent '#{name}', field '#{redis_field_to_update}'")
+
+          # Render display partial using instance variables
+          # _display_agent_tools uses @view_agent_data and @configured_tool_info
+          # _display_agent_description/_model use @view_agent_data
+          slim :"_display_agent_#{field}", layout: false
+        rescue Redis::BaseError => e
+          logger.error("Redis error updating agent '#{name}': #{e.message}")
+          halt 500, "Error updating agent definition."
+        rescue JSON::GeneratorError => e # Catch error converting tool list to JSON
+          logger.error("JSON generation error updating tools for agent '#{name}': #{e.message}")
+          halt 500, "Error saving tool configuration."
+        end
+      end
+
+      # --- End Agent Inline Editing Routes ---
 
       # --- Routes requiring a RUNNING agent ---
 
@@ -587,6 +733,106 @@ module ADK
           format_execution_result_html({ status: :error, error_message: "An unexpected error occurred: #{e.message}" })
         end
       end
+
+      # --- NEW: Agent Inline Editing Routes ---
+
+      # GET /agents/:name/edit/:field - Serves the edit partial for a field
+      # get '/agents/:name/edit/:field' do |name, field|
+      #   halt 404, "Editing field '#{field}' not supported." unless ['name', 'description', 'model'].include?(field)
+      #   halt 503, "Redis unavailable." unless @redis
+
+      #   key = agent_redis_key(name)
+      #   # Fetch only necessary data for the form
+      #   redis_data = @redis.hmget(key, 'description', 'model') # Fetch description and model
+      #   halt 404, "Agent definition '#{name}' not found." unless redis_data[0] || field == 'name' # Name is part of the key
+
+      #   agent_data = { name: name, description: redis_data[0], model: redis_data[1] }
+
+      #   locals = { agent_data: agent_data }
+      #   # Pass available models specifically for the model editor
+      #   locals[:available_models] = AVAILABLE_MODELS if field == 'model'
+
+      #   slim :"_edit_agent_#{field}", layout: false, locals: locals
+      # end
+
+      # GET /agents/:name/display/:field - Serves the display partial (for Cancel button)
+      get '/agents/:name/display/:field' do |name, field|
+        # ... (halts and checks) ...
+        key = agent_redis_key(name)
+        halt 404 unless @redis.exists?(key)
+        redis_data = @redis.hmget(key, 'description', 'model', 'tools')
+
+        # --- Set Instance Variables ---
+        @view_agent_data = { name: name, description: redis_data[0], model: redis_data[1] } # For desc/model partials
+
+        if field == 'tools'
+          tools_json_string = redis_data[2]
+          configured_tool_names_str = []
+          begin tools_json_string && configured_tool_names_str = JSON.parse(tools_json_string) rescue []; end
+          @configured_tool_info = configured_tool_names_str.map do |tool_name| # Set tools instance var
+            ADK::ToolRegistry.list_tools.find { |t| t[:name].to_s == tool_name }
+          end.compact
+        end
+        # --- End Set Instance Variables ---
+
+        # Render using instance variables
+        slim :"_display_agent_#{field}", layout: false
+      end
+
+      # PUT /agents/:name/update/:field - Handles the update from the edit form
+      put '/agents/:name/update/:field' do |name, field|
+        # ... (halts and checks) ...
+        key = agent_redis_key(name)
+        halt 404 unless @redis.exists?(key)
+
+        redis_field_to_update = field
+        new_value_to_save = nil
+
+        # Prepare instance variables for response partial render
+        @view_agent_data = { name: name } # Need name for URLs in the partial
+
+        if field == 'tools'
+          # ... (tool validation logic) ...
+          validated_tools = selected_tools.select { |t| valid_available_tools.include?(t) } # Simplified
+          new_value_to_save = validated_tools.to_json
+
+          # Set instance variable for the display partial
+          @configured_tool_info = validated_tools.map do |tool_name|
+            ADK::ToolRegistry.list_tools.find { |t| t[:name].to_s == tool_name }
+          end.compact
+
+        else # Handling description or model
+          new_value_to_save = params['value']&.strip
+          if new_value_to_save.nil? || new_value_to_save.empty?
+            # Set instance variables for display partial before halting
+            redis_data = @redis.hmget(key, 'description', 'model')
+            @view_agent_data[:description] = redis_data[0]
+            @view_agent_data[:model] = redis_data[1]
+            halt 400, slim(:"_display_agent_#{field}", layout: false)
+          end
+          # Set instance variables for display partial
+          @view_agent_data[:description] =
+            (field == 'description' ? new_value_to_save : @redis.hget(key, 'description'))
+          @view_agent_data[:model] = (field == 'model' ? new_value_to_save : @redis.hget(key, 'model'))
+        end
+
+        # Update Redis
+        begin
+          @redis.hset(key, redis_field_to_update, new_value_to_save)
+          logger.info("Updated agent '#{name}', field '#{redis_field_to_update}'")
+
+          # Render display partial using instance variables
+          slim :"_display_agent_#{field}", layout: false
+        rescue Redis::BaseError => e
+          logger.error("Redis error updating agent '#{name}': #{e.message}")
+          halt 500, "Error updating agent definition."
+        rescue JSON::GeneratorError => e # Catch error converting tool list to JSON
+          logger.error("JSON generation error updating tools for agent '#{name}': #{e.message}")
+          halt 500, "Error saving tool configuration."
+        end
+      end
+
+      # --- End Agent Inline Editing Routes ---
 
       # --- API Endpoints ---
 

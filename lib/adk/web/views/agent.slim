@@ -1,24 +1,27 @@
 / File: lib/adk/web/views/agent.slim
 
 .content
-  h1.title= @view_agent_data[:name]
-  p.subtitle= @view_agent_data[:description]
-  p
-    strong Model:
-    / Use Tag for Model Display
-    span.tag.is-info.is-light.ml-2
-      = @view_agent_data[:model] && !@view_agent_data[:model].empty? ? @view_agent_data[:model] : "#{ADK::Agent::DEFAULT_MODEL} (Default)"
+  / --- Name Display ---
+  div(id="agent-name-display")
+    == slim :_display_agent_name, locals: { agent_data: @view_agent_data }
+
+  / --- Description Display/Edit ---
+  div(id="agent-description-display" hx-swap="innerHTML")
+    == slim :_display_agent_description, locals: { agent_data: @view_agent_data }
+
+  / --- Model Display/Edit ---
+  div(id="agent-model-display" hx-swap="innerHTML")
+    == slim :_display_agent_model, locals: { agent_data: @view_agent_data }
+
 
 / Status Box
-.box
+.box.mb-5
   h2.title.is-4 Status & Control
-  / Render the status controls partial
   == slim :_agent_status_controls, locals: { agent_data: @view_agent_data }
 
 / Execute Task box
-.box
+.box.mb-5
   h2.title.is-4 Execute Task (JSON Input)
-  / Add indicator attribute to form
   form( hx-post="/agents/#{@view_agent_data[:name]}/execute"
         hx-target="#task-result"
         hx-swap="innerHTML"
@@ -29,46 +32,28 @@
         textarea.textarea(name="task_json" placeholder='{"task": "Describe your task here..."}' required=true rows="3")
     .field.is-grouped.is-grouped-right
       .control
-        / Spinner Element (initially hidden by htmx-indicator class)
         span.icon.is-small.htmx-indicator#task-spinner style="margin-right: 8px; vertical-align: middle;"
           i.fas.fa-spinner.fa-spin
       .control
-        / Clear Result Button
-        / Use single quotes for the outer attribute value for Hyperscript
         button.button( type="button"
                        _='on click put "<p class=\"has-text-grey\">Task results will appear here.</p>" into #task-result' )
           span.icon.is-small
             i.fas.fa-eraser
           span Clear Result
       .control
-        / Execute Button
         button.button.is-primary(type="submit" id="execute-task-button" disabled=!@view_agent_data[:running])
           span.icon.is-small
             i.fas.fa-play-circle
           span Execute (Requires Start)
 
-
-  / The target div where htmx will place the result
   #task-result.mt-4
-    / Initial Placeholder Text
     p.has-text-grey Task results will appear here.
 
-/ Tools Box (No structural changes needed for these improvements)
-.box
-  h2.title.is-4 Configured Tools
-  .columns.is-multiline
-    - if @agent && @agent.tools.any?
-      - @agent.tools.each do |tool|
-        .column.is-one-third
-          .card.tool-card
-            .card-content
-              h3.title.is-5= tool.name.to_s.capitalize
-              p= tool.description
-            .card-footer
-              a.card-footer-item(href="/tools/#{tool.name}") View Tool Details
-    - else
-      .column
-        p This agent currently has no tools assigned (or the agent object could not be loaded).
+/ --- Tools Container ---
+div(id="agent-tools-display" hx-swap="innerHTML")
+  / --- Remove locals, partial uses instance variables ---
+  == slim :_display_agent_tools
+
 
 / Link back to the main agents list
 .mt-4

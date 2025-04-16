@@ -11,7 +11,9 @@ module ADK
 
   def self.logger
     @logger ||= begin
-      level_str = ENV['ADK_LOG_LEVEL']&.upcase || 'WARN' # Default to WARN
+      # Default to DEBUG in development, WARN otherwise
+      default_level = ENV['RACK_ENV'] == 'development' ? 'DEBUG' : 'WARN'
+      level_str = ENV['ADK_LOG_LEVEL']&.upcase || default_level
       log_target = $stdout # Default target
       # Check for silent flag *before* setting level
       if ['NONE', 'SILENT'].include?(level_str)
