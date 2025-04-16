@@ -51,6 +51,7 @@ require_relative 'adk/tool_registry'
 require_relative 'adk/planner'
 # --- Load Services ---
 require_relative 'adk/session_service/in_memory'
+require_relative 'adk/session_service/redis'
 # --- Now load Agent ---
 require_relative 'adk/agent'
 # --- Load CLI and Tools last ---

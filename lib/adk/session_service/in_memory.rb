@@ -41,16 +41,17 @@ module ADK
         session
       end
 
+      # --- DEPRECATED ---
       # Saves the session state (in memory this just means it's already updated).
       # In a persistent store, this would write changes. Here, we just update the timestamp.
-      # NOTE: Events and state updates should be done via #add_event_and_update_state for atomicity.
-      # This method mainly exists for interface compatibility.
+      # NOTE: Events and state updates should be done via #append_event for atomicity.
+      # This method mainly exists for interface compatibility if needed but should be avoided.
       # @param session [ADK::Session] The session object to "save".
       # @return [Boolean] True if the session exists in memory.
       def save_session(session:)
         if @sessions.key?(session.id)
-          session.updated_at = Time.now # Ensure timestamp reflects save attempt
-          ADK.logger.debug("Session 'saved' (timestamp updated): #{session.id}")
+          session.updated_at = Time.now.utc # Ensure timestamp reflects save attempt
+          ADK.logger.warn("InMemorySessionService#save_session called (likely unnecessary). Use append_event.")
           true
         else
           ADK.logger.error("Attempted to save non-existent session: #{session.id}")
@@ -58,23 +59,35 @@ module ADK
         end
       end
 
-      # Appends an event to a session and optionally merges state updates.
+      # --- REVISED METHOD ---
+      # Appends an event to a session and merges state updates from the event's state_delta.
       # This should be the primary way to modify a session during a turn.
       # @param session_id [String] The ID of the session to update.
-      # @param event [ADK::Event] The event to append.
-      # @param state_updates [Hash, nil] Optional hash of state updates to merge (keys are symbolized).
-      # @return [Boolean] True if successful, false if session not found.
-      def add_event_and_update_state(session_id:, event:, state_updates: nil)
+      # @param event [ADK::Event] The event to append. Must be an instance of ADK::Event.
+      # @return [Boolean] True if successful, false if session not found or event is invalid.
+      def append_event(session_id:, event:)
         session = @sessions[session_id]
         unless session
-          ADK.logger.error("Cannot add event, session not found: #{session_id}")
+          ADK.logger.error("Cannot append event, session not found: #{session_id}")
           return false
         end
 
-        session.add_event(event)
-        session.update_state(state_updates) if state_updates && !state_updates.empty?
-        # updated_at is handled by Session#add_event and Session#update_state
-        ADK.logger.debug("Appended event and updated state for session: #{session_id}")
+        unless event.is_a?(ADK::Event)
+          ADK.logger.error("Cannot append event, invalid event object provided: #{event.inspect}")
+          return false
+        end
+
+        # Add the event to the session's internal history
+        session.add_event(event) # This also updates session.updated_at
+
+        # Apply state changes if the event carries them
+        if event.state_delta && !event.state_delta.empty?
+          ADK.logger.debug("Applying state delta to session #{session_id}: #{event.state_delta.inspect}")
+          session.update_state(event.state_delta) # This also updates session.updated_at
+        end
+
+        # In-memory doesn't need an explicit save step, changes are live.
+        ADK.logger.debug("Appended event and potentially updated state for session: #{session_id}")
         true
       end
 

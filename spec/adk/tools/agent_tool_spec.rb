@@ -55,7 +55,7 @@ RSpec.describe ADK::Tools::AgentTool do
     allow(ADK::SessionService::InMemory).to receive(:new).and_return(mock_session_service)
     allow(mock_session_service).to receive(:create_session).and_return(mock_session)
     allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
-    allow(mock_session_service).to receive(:add_event_and_update_state).and_return(true)
+    allow(mock_session_service).to receive(:append_event).and_return(true)
 
     # Mock run_task with session parameters to return the expected result
     allow(mock_target_agent).to receive(:run_task)

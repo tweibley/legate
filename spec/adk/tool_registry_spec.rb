@@ -96,8 +96,8 @@ RSpec.describe ADK::Agent do
       # Mock execute_step directly for focused testing
       allow(agent).to receive(:execute_step).with(plan.first, session_id,
                                                   mock_session_service).and_return(success_result)
-      allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(true)
-      allow(mock_session_service).to receive(:add_event_and_update_state)
+      allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
+      allow(mock_session_service).to receive(:append_event).and_return(true)
     end
 
     it 'returns error event if agent is not running' do

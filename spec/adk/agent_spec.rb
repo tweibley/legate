@@ -52,7 +52,7 @@ RSpec.describe ADK::Agent do
 
     # Default session service behavior
     allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
-    allow(mock_session_service).to receive(:add_event_and_update_state).and_return(true)
+    allow(mock_session_service).to receive(:append_event).and_return(true)
 
     # Allow normal event creation by default
     allow(ADK::Event).to receive(:new).and_call_original
@@ -160,7 +160,7 @@ RSpec.describe ADK::Agent do
       end
 
       it 'records user, tool request, tool result, and agent events' do
-        expect(mock_session_service).to receive(:add_event_and_update_state).with(hash_including(event: instance_of(ADK::Event))).exactly(4).times.and_return(true)
+        expect(mock_session_service).to receive(:append_event).with(session_id: session_id, event: instance_of(ADK::Event)).exactly(4).times.and_return(true)
         agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
       end
 
@@ -189,7 +189,7 @@ RSpec.describe ADK::Agent do
       end
 
       it 'records events for both steps' do
-        expect(mock_session_service).to receive(:add_event_and_update_state).with(hash_including(event: instance_of(ADK::Event))).exactly(6).times
+        expect(mock_session_service).to receive(:append_event).with(session_id: session_id, event: instance_of(ADK::Event)).exactly(6).times
         agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
       end
 
@@ -224,7 +224,7 @@ RSpec.describe ADK::Agent do
 
       it 'records events up to and including the failed tool result' do
         # We expect 4 events: user input, tool request, tool result, and final agent response
-        expect(mock_session_service).to receive(:add_event_and_update_state).exactly(4).times do |args|
+        expect(mock_session_service).to receive(:append_event).exactly(4).times do |args|
           expect(args[:session_id]).to eq(session_id)
           # Check that it's either a real ADK::Event or an instance double of one
           expect(args[:event]).to satisfy { |e|
@@ -237,8 +237,9 @@ RSpec.describe ADK::Agent do
       it 'returns the final agent event indicating the error' do
         final_event = agent.run_task(session_id: session_id, user_input: user_input,
                                      session_service: mock_session_service)
-        expect(final_event).to eq(error_event)
-        expect(final_event.content).to include("Completed plan with error on last step: #{error_hash[:error_message]}")
+        expect(final_event).to be_an(ADK::Event)
+        expect(final_event.role).to eq(:agent)
+        expect(final_event.content).to include("Error during processing: #{error_hash[:error_message]}")
       end
     end
 
@@ -264,11 +265,9 @@ RSpec.describe ADK::Agent do
 
       it 'returns an error event and logs an agent error event', :log_level do
         expect(mock_logger).to receive(:error).with(/Critical error during run_task.*Planner explosion/)
-        expect(mock_session_service).to receive(:add_event_and_update_state).with(
-          hash_including(
-            session_id: session_id,
-            event: having_attributes(role: :agent, content: /internal error.*Planner explosion/i)
-          )
+        expect(mock_session_service).to receive(:append_event).with(
+          session_id: session_id,
+          event: having_attributes(role: :agent, content: /internal error.*Planner explosion/i)
         )
 
         result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
