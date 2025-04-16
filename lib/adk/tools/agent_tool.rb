@@ -4,6 +4,8 @@
 require_relative '../tool'
 require_relative '../agent'
 require_relative '../tool_registry'
+require_relative '../session'
+require_relative '../session_service/in_memory'
 require 'redis'
 require 'json'
 require 'securerandom' # Required for SecureRandom
@@ -136,14 +138,32 @@ module ADK
           end
         end
 
-        # 6. Start and Execute Task on Target Agent
+        # 6. Create Session Service and Session for delegation
+        session_service = ADK::SessionService::InMemory.new
+        delegate_session = session_service.create_session(
+          app_name: target_agent_name,
+          user_id: "delegation_#{SecureRandom.hex(4)}"
+        )
+        session_id = delegate_session.id
+        ADK.logger.debug("AgentTool: Created delegation session #{session_id} for target agent")
+
+        # 7. Start and Execute Task on Target Agent
         target_agent.start # Start the ephemeral instance
         ADK.logger.info("AgentTool: Running task '#{task_to_delegate}' on target agent '#{target_agent_name}'")
-        target_result = target_agent.run_task(task_to_delegate) # This returns Hash or Array<Hash>
+
+        # Use the new session-based interface
+        agent_event = target_agent.run_task(
+          session_id: session_id,
+          user_input: task_to_delegate,
+          session_service: session_service
+        )
+
+        # Extract content from the agent event
+        target_result = agent_event.is_a?(ADK::Event) ? agent_event.content : agent_event
+
         ADK.logger.info("AgentTool: Target agent '#{target_agent_name}' finished task. Result: #{target_result.inspect}")
 
-        # 7. Return Result (wrapping the target's result)
-        # The target_result itself is already in the standard {status:, ...} format
+        # 8. Return Result (wrapping the target's result)
         { status: :success, result: target_result }
 
       # --- Error Handling for perform_execution ---

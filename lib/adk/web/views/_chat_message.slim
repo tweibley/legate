@@ -1,47 +1,63 @@
 // File: lib/adk/web/views/_chat_message.slim
-// This partial receives 'user_message' and 'agent_result' via locals
+// This partial receives:
+//   user_message (String)
+//   agent_result (ADK::Event or Hash {status:, error_message:})
+//   agent_name (String)
 
-/ --- User Message (no change) ---
+/ --- User Message ---
 .message.is-info.is-small.mb-2
   .message-header
     p You
   .message-body
     = user_message
 
-/ --- Agent Response (Modified) ---
-.message.is-success.is-small.mb-4(id="agent-response-#{Time.now.to_f}")
+/ --- Agent Response ---
+/ Determine display class and content based on agent_result type
+- msg_class = 'is-warning' # Default to warning for unexpected
+- agent_response_content = "[Agent response format error]" # Default content
+
+- if agent_result.is_a?(ADK::Event) && agent_result.role == :agent
+  / --- CORRECT: Handle successful ADK::Event from agent ---
+  - msg_class = 'is-success'
+  - agent_response_content = agent_result.content # Extract content from the event
+
+- elsif agent_result.is_a?(Array)
+  / Multi-step result (kept for potential future use, though run_task returns final event now)
+  - msg_class = agent_result.any? { |h| h.is_a?(Hash) && h[:status] == :error } ? 'is-danger' : 'is-success'
+  / Format the array - This complex formatting is better handled by a helper if needed often
+  - ob = StringIO.new; ob << "<strong>Multi-step Result:</strong><ol style='margin-left: 1.5em; margin-top: 0.5em;'>"
+  - agent_result.each_with_index do |step_hash, index|
+    - ob << "<li>"
+    - if step_hash.is_a?(Hash) && step_hash[:status] == :success
+      - ob << "<span class='has-text-success-dark'>Step #{index + 1} (Success):</span>"
+      - ob << "<pre style='white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;'>#{Rack::Utils.escape_html(step_hash[:result].to_s)}</pre>"
+    - elsif step_hash.is_a?(Hash) && step_hash[:status] == :error
+      - ob << "<span class='has-text-danger-dark'>Step #{index + 1} (Error):</span>"
+      - ob << "<pre style='white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;'>#{Rack::Utils.escape_html(step_hash[:error_message].to_s)}</pre>"
+    - else
+      - ob << "<span>Step #{index + 1} (Unknown Format):</span>"
+      - ob << "<pre style='white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;'>#{Rack::Utils.escape_html(step_hash.inspect)}</pre>"
+    - ob << "</li>"
+  - ob << "</ol>"; agent_response_content = ob.string
+
+- elsif agent_result.is_a?(Hash) && agent_result[:status] == :error
+  / Handle explicit error hash returned by run_task
+  - msg_class = 'is-danger'
+  - agent_response_content = agent_result[:error_message] || "An unspecified error occurred."
+
+- else
+  / Handle any other unexpected format
+  - msg_class = 'is-warning'
+  - agent_response_content = "Unexpected response format: #{agent_result.inspect}"
+
+/ Render the message block
+.message class="#{msg_class} is-small mb-4"
   .message-header
     p Agent (#{agent_name})
   .message-body
-    - if agent_result.is_a?(Array)
-      / Multi-step result
-      strong Multi-step Result:
-      ol style="margin-left: 1.5em; margin-top: 0.5em;"
-        - agent_result.each_with_index do |step_hash, index|
-          li
-            - if step_hash.is_a?(Hash) && step_hash[:status] == :success
-              span.has-text-success-dark Step #{index + 1} (Success):
-              pre style="white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;" = step_hash[:result].to_s
-            - elsif step_hash.is_a?(Hash) && step_hash[:status] == :error
-              span.has-text-danger-dark Step #{index + 1} (Error):
-              pre style="white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;" = step_hash[:error_message].to_s
-            - else
-              span Step #{index + 1} (Unknown Format):
-              pre style="white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;" = step_hash.inspect
-
-    - elsif agent_result.is_a?(Hash)
-      / Single step result or error
-      - if agent_result[:status] == :success
-        span.has-text-success-dark Result:
-        pre style="white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;" = agent_result[:result].to_s
-      - elsif agent_result[:status] == :error
-        span.has-text-danger-dark Error:
-        pre style="white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;" = agent_result[:error_message].to_s
-      - else
-        span Result (Unknown Status):
-        pre style="white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;" = agent_result.inspect
-
+    / Use raw output for agent_response_content if it contains HTML (like the multi-step list)
+    / Otherwise, use pre for simple string content
+    - if agent_response_content.include?('<ol>') || agent_response_content.include?('<pre>')
+      == agent_response_content
     - else
-      / Unexpected format
-      span.has-text-danger-dark Error:
-      pre style="white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;" = "Unexpected result format: #{agent_result.inspect}"
+      pre style="white-space: pre-wrap; word-break: break-all;" = agent_response_content.to_s

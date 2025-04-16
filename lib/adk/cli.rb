@@ -17,17 +17,17 @@ module ADK
         puts "ADK version #{ADK::VERSION}"
       end
 
-      desc 'agent SUBCOMMAND ...ARGS', 'Agent management commands'
-      # Use the full namespace
-      subcommand 'agent', ADK::CLI::AgentCommands # <--- Explicit Namespace
+      # --- REMOVE ...ARGS from desc ---
+      desc 'agent SUBCOMMAND', 'Agent management commands'
+      subcommand 'agent', ADK::CLI::AgentCommands
 
-      desc 'tool SUBCOMMAND ...ARGS', 'Tool management commands'
-      # Use the full namespace
-      subcommand 'tool', ADK::CLI::ToolCommands # <--- Explicit Namespace
+      # --- REMOVE ...ARGS from desc ---
+      desc 'tool SUBCOMMAND', 'Tool management commands'
+      subcommand 'tool', ADK::CLI::ToolCommands
 
-      desc 'web SUBCOMMAND ...ARGS', 'Web interface commands'
-      # Use the full namespace
-      subcommand 'web', ADK::CLI::WebCommands # <--- Explicit Namespace
+      # --- REMOVE ...ARGS from desc ---
+      desc 'web SUBCOMMAND', 'Web interface commands'
+      subcommand 'web', ADK::CLI::WebCommands
     end
     # --- End Main class definition ---
   end # End CLI module

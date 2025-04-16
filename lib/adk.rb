@@ -8,7 +8,7 @@ require_relative 'adk/version'
 # --- Central ADK Logger Configuration ---
 module ADK
   @logger = nil
-
+  # ... (self.logger method remains the same) ...
   def self.logger
     @logger ||= begin
       # Default to DEBUG in development, WARN otherwise
@@ -43,18 +43,21 @@ module ADK
 end
 
 # --- Require components AFTER logger is configurable ---
+require_relative 'adk/event' # <<< Require Event first
+require_relative 'adk/session' # <<< Session depends on Event
 require_relative 'adk/tool'
 require_relative 'adk/tool_registry'
 # --- Load dependencies BEFORE Agent ---
-require_relative 'adk/session'
-require_relative 'adk/memory'
+require_relative 'adk/memory' # Keep for now, though Agent won't use directly yet
 require_relative 'adk/planner'
+# --- Load Services ---
+require_relative 'adk/session_service/in_memory'
 # --- Now load Agent ---
 require_relative 'adk/agent'
 # --- Load CLI and Tools last ---
 require_relative 'adk/cli'
 
-# Tools
+# Tools (Order doesn't strictly matter here, but keep AgentTool first if it uses others)
 require_relative 'adk/tools/agent_tool'
 require_relative 'adk/tools/echo'
 require_relative 'adk/tools/calculator'
@@ -63,6 +66,6 @@ require_relative 'adk/tools/random_number_tool'
 
 module ADK
   class Error < StandardError; end
-
-  # Your code goes here...
+  # Define SessionService module base for namespacing
+  module SessionService; end
 end

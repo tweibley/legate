@@ -3,54 +3,47 @@
 
 require 'logger'
 require 'concurrent'
-# Note: Requires for Planner, Session, Memory, Tool are handled by lib/adk.rb loading order
+# Note: Requires are handled by lib/adk.rb
 
 module ADK
-  # Define Error if not already defined centrally in lib/adk.rb
   class Error < StandardError; end unless defined?(ADK::Error)
 
-  # Agent class represents an AI agent that can perform tasks
+  # Agent class represents an AI agent that can perform tasks using tools and a planner.
+  # It operates within the context of a session managed by a SessionService.
   class Agent
-    # Default model used if none is specified during initialization.
     DEFAULT_MODEL = 'gemini-2.0-flash'
 
-    attr_reader :name, :description, :tools, :session, :memory, :planner, :logger, :model_name
+    attr_reader :name, :description, :tools, :planner, :logger, :model_name
 
-    # Initializes a new agent.
+    # Initializes a new agent instance.
+    # Note: Session and Memory are no longer managed directly by the agent instance.
     #
-    # @param name [String] The unique name of the agent.
+    # @param name [String] The unique name of the agent definition.
     # @param description [String] A description of the agent's purpose.
-    # @param model_name [String, nil] The specific LLM model name to use (optional). Defaults to DEFAULT_MODEL.
+    # @param model_name [String, nil] The specific LLM model name (optional).
     # @param options [Hash] Additional options:
     # @option options [ADK::Planner] :planner Custom planner instance.
-    # @option options [ADK::Memory] :memory Custom memory instance.
-    # @option options [ADK::Session] :session Custom session instance.
     # @option options [Logger] :logger Custom logger instance.
     def initialize(name:, description:, model_name: nil, **options)
       @name = name
       @description = description
-      # Use provided model or default, store it
       @model_name = model_name && !model_name.empty? ? model_name : DEFAULT_MODEL
-      @tools = [] # Initialize tools array
-      @logger = options[:logger] || ADK.logger # Use provided logger or global default
-      # Initialize dependencies, passing self and logger/model where needed
+      @tools = []
+      @logger = options[:logger] || ADK.logger
+      # Planner is still needed per agent instance, configured with its model
       @planner = options[:planner] || ADK::Planner.new(agent: self, logger: @logger, model_name: @model_name)
-      @memory = options[:memory] || ADK::Memory.new(agent: self)
-      @session = options[:session] || ADK::Session.new(agent: self)
-      @state = Concurrent::Map.new # Thread-safe map for runtime state like :running
+      # @memory and @session removed
+      @state = Concurrent::Map.new # For runtime state ONLY (e.g., running?)
       logger.info("Agent '#{@name}' initialized with model: '#{@model_name}'")
     end
 
-    # Adds a tool instance to the agent's available tools.
-    #
-    # @param tool [ADK::Tool] The tool instance to add.
-    # @return [self] The agent instance.
+    # Adds a tool instance.
     def add_tool(tool)
+      # ... (logic remains the same) ...
       unless tool.is_a?(ADK::Tool)
         logger.error("Attempted to add invalid tool: #{tool.inspect}")
         return self
       end
-      # Avoid adding duplicates by checking name
       if @tools.any? { |t| t.name == tool.name }
         logger.warn("Tool '#{tool.name}' already added to agent '#{name}'. Skipping.")
       else
@@ -60,76 +53,143 @@ module ADK
       self
     end
 
-    # Marks the agent as running.
-    #
-    # @return [self] The agent instance.
+    # --- Runtime State Methods (unchanged) ---
     def start
       unless running?
-        logger.info("Starting agent: #{name}")
+        logger.info("Starting agent runtime state: #{name}")
         @state[:running] = true
       else
-        logger.warn("Agent '#{name}' is already running.")
+        logger.warn("Agent '#{name}' runtime state is already running.")
       end
       self
     end
 
-    # Marks the agent as stopped.
-    #
-    # @return [self] The agent instance.
     def stop
       if running?
-        logger.info("Stopping agent: #{name}")
+        logger.info("Stopping agent runtime state: #{name}")
         @state[:running] = false
       else
-        logger.warn("Agent '#{name}' is already stopped.")
+        logger.warn("Agent '#{name}' runtime state is already stopped.")
       end
       self
     end
 
-    # Checks if the agent is marked as running.
-    #
-    # @return [Boolean] True if the agent is running, false otherwise.
     def running?
       @state[:running] == true
     end
+    # --- End Runtime State Methods ---
 
-    # Processes a high-level task by getting a plan from the planner
-    # and executing that plan.
+    # --- REFACTORED: run_task operates within a session context ---
+    # Processes user input within the context of a specific session.
     #
-    # @param task [String] The task description.
-    # @return [Hash, Array<Hash>] The result hash from the last step (for single-step plans),
-    #                             an array of result hashes (for multi-step plans),
-    #                             or a single error hash on planning failure or execution error.
-    def run_task(task)
-      unless running?
-        msg = "Agent '#{name}' is not running."
-        logger.error("Agent '#{name}' cannot run task '#{task}' because it is not running.")
-        return { status: :error, error_message: msg } # Return standard error hash
+    # @param session_id [String] The ID of the session to use/update.
+    # @param user_input [String] The user's input/request for this turn.
+    # @param session_service [ADK::SessionService::InMemory, Object] The service used to manage sessions.
+    # @return [ADK::Event] The final :agent event containing the response.
+    # @return [Hash] An error hash { status: :error, error_message: ... } if a critical error occurs.
+    def run_task(session_id:, user_input:, session_service:)
+      # 1. Retrieve Session
+      session = session_service.get_session(session_id: session_id)
+      unless session
+        msg = "Session not found: #{session_id}"
+        logger.error(msg)
+        return { status: :error, error_message: msg }
       end
 
-      logger.info("Agent '#{name}' running task: #{task}")
-      begin
-        plan = planner.plan(task) # Returns Array of Hashes, or empty Array
-        execute_plan(plan) # Returns Hash or Array<Hash> or Error Hash
-      rescue StandardError => e
-        # Catch errors during the plan/execute pipeline itself
-        logger.error("Error during task execution pipeline for agent '#{name}': #{e.class} - #{e.message}")
-        logger.error(e.backtrace.join("\n"))
-        # Return standard error hash
-        { status: :error, error_message: "Error during task execution: #{e.message}" }
+      # Ensure agent runtime state is active (distinct from session)
+      unless running?
+        msg = "Agent '#{name}' runtime is not active (stopped)."
+        logger.error(msg)
+        # Log event about agent being stopped? Or just return error?
+        return { status: :error, error_message: msg }
       end
-    end
+
+      logger.info("Agent '#{name}' starting task in session '#{session_id}': #{user_input}")
+
+      # 2. Record User Event
+      user_event = ADK::Event.new(role: :user, content: user_input)
+      session_service.add_event_and_update_state(session_id: session_id, event: user_event)
+
+      # 3. Plan Execution
+      plan = []
+      final_agent_event = nil
+      begin
+        # TODO: Pass session history/state to planner if needed for context
+        # plan = planner.plan(task: user_input, history: session.events, state: session.state_to_h)
+        plan = planner.plan(user_input) # Returns Array of Hashes or empty Array
+
+        # 4. Execute Plan (Logs events internally)
+        execution_result = execute_plan(plan, session_id, session_service) # Returns Hash or Array<Hash> or Error Hash
+
+        # 5. Determine Final Agent Response based on execution result
+        final_content = nil
+        if execution_result.is_a?(Hash) && execution_result[:status] == :error
+          # Handle planning error or single-step execution error
+          final_content = "Error during processing: #{execution_result[:error_message]}"
+          logger.error("Agent '#{name}' task failed. Reason: #{final_content}")
+        elsif execution_result.is_a?(Array)
+          # Multi-step: Check last step's status
+          last_step_result = execution_result.last
+          if last_step_result && last_step_result[:status] == :success && last_step_result.key?(:result)
+            # Use result of last successful step as final content
+            final_content = last_step_result[:result]
+            # Handle nested result from AgentTool if necessary
+            if final_content.is_a?(Hash) && final_content[:status] == :success && final_content.key?(:result)
+              final_content = final_content[:result]
+            end
+          elsif last_step_result && last_step_result[:status] == :error
+            final_content = "Completed plan with error on last step: #{last_step_result[:error_message]}"
+            logger.warn("Agent '#{name}' task completed with error. Last step msg: #{last_step_result[:error_message]}")
+          else
+            # Plan completed, but last step might not have a standard result
+            final_content = "Task processing completed. Final step result: #{last_step_result.inspect}"
+            logger.info("Agent '#{name}' task completed. Final step result: #{last_step_result.inspect}")
+          end
+        elsif execution_result.is_a?(Hash) && execution_result[:status] == :success # Single successful step
+          final_content = execution_result[:result]
+          # Handle nested result from AgentTool if necessary
+          if final_content.is_a?(Hash) && final_content[:status] == :success && final_content.key?(:result)
+            final_content = final_content[:result]
+          end
+          logger.info("Agent '#{name}' task completed successfully.")
+        else
+          # Should not happen if execute_plan returns correctly
+          final_content = "Task finished with unexpected execution result: #{execution_result.inspect}"
+          logger.error(final_content)
+        end
+
+        # Ensure final content is a string for the event (or handle other types?)
+        final_content = final_content.to_s unless final_content.is_a?(String)
+
+        # 6. Record Agent Event
+        final_agent_event = ADK::Event.new(role: :agent, content: final_content)
+        session_service.add_event_and_update_state(session_id: session_id, event: final_agent_event)
+
+        # 7. Return the final agent event itself
+        final_agent_event
+      rescue StandardError => e
+        # Catch errors during the overall run_task flow (e.g., planner errors not caught internally)
+        logger.error("Critical error during run_task for agent '#{name}': #{e.class} - #{e.message}")
+        logger.error(e.backtrace.join("\n"))
+        error_event_content = "An internal error occurred during task processing: #{e.message}"
+        # Attempt to log agent error event
+        error_event = ADK::Event.new(role: :agent, content: error_event_content)
+        session_service.add_event_and_update_state(session_id: session_id, event: error_event) rescue nil # Ignore error during error logging
+        # Return an error hash indication failure
+        { status: :error, error_message: error_event_content }
+      end
+    end # end run_task
 
     private
 
-    # Executes a plan (sequence of steps) provided by the planner.
-    # Handles passing results between steps and returns the final outcome(s).
-    #
-    # @param plan [Array<Hash>] An array of steps, each { tool: :symbol, params: {...} }.
-    # @return [Hash, Array<Hash>] Result hash for 1-step plan, Array of hashes for multi-step.
-    #                             Returns a single error hash on critical planning/setup failures.
-    def execute_plan(plan)
-      # Validate plan structure early
+    # --- REFACTORED: execute_plan needs session context ---
+    # Executes a plan, logging tool request/result events.
+    # @param plan [Array<Hash>] Plan from the planner.
+    # @param session_id [String] The current session ID.
+    # @param session_service [Object] The session service instance.
+    # @return [Hash, Array<Hash>] Result hash or array of hashes from steps.
+    def execute_plan(plan, session_id, session_service)
+      # ... (Plan validation logic remains the same) ...
       unless plan.is_a?(Array)
         msg = "Invalid plan received from planner (not an Array)."
         logger.error("#{msg} Plan: #{plan.inspect}")
@@ -141,145 +201,121 @@ module ADK
         return { status: :error, error_message: msg }
       end
 
-      logger.debug("Executing plan with #{plan.length} step(s): #{plan.inspect}")
-      previous_step_result_hash = nil # Stores the complete hash result of the previous step
-      all_results_hashes = [] # Stores result hashes from all steps
+      logger.debug("Executing plan with #{plan.length} step(s) for session '#{session_id}': #{plan.inspect}")
+      previous_step_result_hash = nil
+      all_results_hashes = []
 
-      # Iterate through each step in the plan
       plan.each_with_index do |step, index|
         logger.debug("Executing step #{index + 1}/#{plan.length}: #{step.inspect}")
         logger.debug("  Input (result hash from previous step): #{previous_step_result_hash.inspect}")
 
-        # --- Refined Input Injection Logic ---
-        current_params = step[:params].dup # Work on a copy
+        # --- Input Injection Logic (Updated for nested results) ---
+        current_params = step[:params].dup
         current_params.transform_values! do |value|
-          injection_value = nil # Holds the value to potentially inject
-          # Is the parameter value requesting injection?
+          injection_value = nil
           if value.is_a?(String) && value.match?(/\[Result from step \d+\]|\[Result from previous step\]/i)
-            # Was the previous step successful?
             if previous_step_result_hash && previous_step_result_hash[:status] == :success
               prev_result = previous_step_result_hash[:result]
-              # Check if the previous result is a nested success hash (likely from AgentTool)
               if prev_result.is_a?(Hash) && prev_result[:status] == :success && prev_result.key?(:result)
-                injection_value = prev_result[:result] # Inject the innermost result
-                logger.debug("  Injecting nested result '#{injection_value}' into parameter value '#{value}'")
-              # Check if previous result was a simple success value
+                injection_value = prev_result[:result]
+                logger.debug("Injecting nested result...")
               elsif previous_step_result_hash.key?(:result)
-                injection_value = prev_result # Inject the direct result
-                logger.debug("  Injecting direct result '#{injection_value}' into parameter value '#{value}'")
-              else
-                # Previous step succeeded but had no :result key? Log warning.
-                logger.warn("  Cannot inject previous result: Previous step succeeded but has no :result key. Placeholder '#{value}' kept.")
-                value # Keep placeholder
-              end
-            else
-              # Previous step failed or didn't exist, cannot inject.
-              logger.warn("  Cannot inject previous result: Previous step failed, returned no result, or placeholder found inappropriately. Placeholder '#{value}' kept.")
-              value # Keep placeholder
-            end
-            # Return the determined injection value or the original placeholder
+                injection_value = prev_result
+                logger.debug("Injecting direct result...")
+              else logger.warn("Cannot inject: Prev success no :result"); value; end
+            else logger.warn("Cannot inject: Prev failed/absent"); value; end
             injection_value || value
-          else
-            # Not a placeholder string, keep original value
-            value
-          end
-        end # end transform_values!
+          else value; end
+        end
         step_with_injected_params = step.merge(params: current_params)
         logger.debug("  Params after potential injection: #{current_params.inspect}")
-        # --- End Refined Input Injection Logic ---
+        # --- End Input Injection Logic ---
 
-        # Execute the current step
-        current_result_hash = execute_step(step_with_injected_params) # Returns a standard hash
+        # --- Execute Step (Pass session info for event logging) ---
+        current_result_hash = execute_step(step_with_injected_params, session_id, session_service)
         all_results_hashes << current_result_hash
 
-        # Optional: Halt plan execution if a step fails
+        # --- Stop on first error --- (RECOMMENDED)
         if current_result_hash[:status] == :error
-          logger.warn("Step #{index + 1} failed: #{current_result_hash[:error_message]}")
-          # Uncomment 'break' to stop the entire plan immediately on step failure
-          # break
+          logger.warn("Step #{index + 1} failed, stopping plan execution: #{current_result_hash[:error_message]}")
+          break # Exit the loop
         end
+        # --- End Stop on first error ---
 
-        # Store the current result hash for the next iteration's injection logic
         previous_step_result_hash = current_result_hash
-      end # end plan.each_with_index
+      end
 
       logger.debug("Plan execution finished. Result hashes collected: #{all_results_hashes.inspect}")
 
-      # Return single hash for single-step plans, array otherwise
+      # Return single hash or array based on *original* plan length
       if plan.length == 1
-        single_result_hash = all_results_hashes.first
-        logger.debug("Returning single result hash for 1-step plan: #{single_result_hash.inspect}")
-        single_result_hash
+        all_results_hashes.first || { status: :error, error_message: "Single step plan failed to produce result." } # Handle edge case where loop breaks on first step
       else
-        logger.debug("Returning array of result hashes for multi-step plan: #{all_results_hashes.inspect}")
         all_results_hashes
       end
     end # end execute_plan
 
-    # Executes a single step from the plan by finding the correct tool
-    # and calling its execute method. Handles finding/execution errors.
-    #
+    # --- REFACTORED: execute_step needs session context for events ---
+    # Executes a single step, logging :tool_request and :tool_result events.
     # @param step [Hash] A hash like { tool: :symbol, params: {...} }.
-    # @return [Hash] A standard result hash { status: ..., result: ... } or { status: ..., error_message: ... }.
-    def execute_step(step)
+    # @param session_id [String] The current session ID.
+    # @param session_service [Object] The session service instance.
+    # @return [Hash] A standard result hash { status: ..., result/error_message: ... }.
+    def execute_step(step, session_id, session_service)
+      # --- Basic validation ---
       unless step.is_a?(Hash) && step.key?(:tool) && step.key?(:params)
-        msg = "Invalid step format in plan."
-        logger.error("#{msg} Step: #{step.inspect}")
-        return { status: :error, error_message: msg }
+        msg = "Invalid step format in plan."; logger.error(msg); return { status: :error, error_message: msg }
       end
-
       tool_name = step[:tool]
-      params = step[:params] || {} # Ensure params is a hash
-
+      params = step[:params] || {}
       unless tool_name.is_a?(Symbol)
-        msg = "Invalid tool name format in plan (not a Symbol)."
-        logger.error("#{msg} Name: #{tool_name.inspect}")
-        return { status: :error, error_message: msg }
+        msg = "Invalid tool name format (not Symbol)."; logger.error(msg); return { status: :error, error_message: msg }
       end
+      # --- End basic validation ---
 
+      # 1. Log Tool Request Event
+      request_event = ADK::Event.new(role: :tool_request, tool_name: tool_name, content: params)
+      session_service.add_event_and_update_state(session_id: session_id, event: request_event)
+
+      # 2. Execute Tool
+      result_hash = nil
       begin
-        # Find the tool instance associated with this agent
         tool = find_tool(tool_name) # Raises ADK::Error if not found
-
         logger.info("Executing tool '#{tool_name}' with params: #{params.inspect}")
+        result_hash = tool.execute(params) # Expects { status: :success/:error, ... }
 
-        # Call the tool's execute method. It performs its own validation
-        # and is expected to return a standard status hash.
-        result_hash = tool.execute(params)
-
-        # Validate the structure of the hash returned by the tool
+        # Validate tool's return format
         unless result_hash.is_a?(Hash) && result_hash.key?(:status)
-          logger.error("Tool '#{tool_name}' returned invalid result (not a hash with :status). Result: #{result_hash.inspect}")
-          return { status: :error, error_message: "Tool '#{tool_name}' failed to return standard hash format." }
+          logger.error("Tool '#{tool_name}' returned invalid hash: #{result_hash.inspect}")
+          result_hash = { status: :error, error_message: "Tool '#{tool_name}' failed to return standard hash format." }
         end
-        # Return the valid hash from the tool
-        result_hash
-      rescue ADK::Error => e
-        # Catch errors finding the tool or validation errors raised by tool.execute
-        logger.error("ADK::Error during step execution for tool '#{tool_name}': #{e.message}")
-        { status: :error, error_message: e.message }
-      rescue StandardError => e
-        # Catch unexpected errors during the tool.execute call itself
-        logger.error("Unexpected error during step execution pipeline for tool '#{tool_name}': #{e.class} - #{e.message}")
+      rescue ADK::Error => e # Tool not found or validation error from tool.execute
+        logger.error("ADK::Error executing tool '#{tool_name}': #{e.message}")
+        result_hash = { status: :error, error_message: e.message }
+      rescue StandardError => e # Unexpected error within tool.execute
+        logger.error("Unexpected error executing tool '#{tool_name}': #{e.class} - #{e.message}")
         logger.error(e.backtrace.join("\n"))
-        { status: :error, error_message: "Internal error executing tool '#{tool_name}': #{e.message}" }
+        result_hash = { status: :error, error_message: "Internal error executing tool '#{tool_name}': #{e.message}" }
       end
+
+      # 3. Log Tool Result Event
+      result_event = ADK::Event.new(role: :tool_result, tool_name: tool_name, content: result_hash)
+      session_service.add_event_and_update_state(session_id: session_id, event: result_event)
+
+      # 4. Return the result hash from the tool execution
+      result_hash
     end # end execute_step
 
-    # Finds a tool instance added to this agent by its symbolic name.
-    #
-    # @param name_symbol [Symbol] The symbolic name of the tool.
-    # @return [ADK::Tool] The tool instance.
-    # @raise [ADK::Error] if the tool is not found in the agent's tool list.
+    # --- find_tool remains unchanged ---
     def find_tool(name_symbol)
+      # ... (same as before) ...
       found_tool = tools.find { |t| t.name == name_symbol }
       unless found_tool
         logger.error("Tool not found in agent '#{name}' tool list: #{name_symbol}")
         logger.debug("Available tools for agent '#{name}': #{tools.map(&:name).join(', ')}")
-        # Raise an error that can be caught by execute_step
         raise ADK::Error, "Tool '#{name_symbol}' not found for this agent."
       end
       found_tool
-    end # end find_tool
+    end
   end # End Agent class
 end # End ADK module

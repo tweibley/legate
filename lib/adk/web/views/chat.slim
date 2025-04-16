@@ -2,30 +2,64 @@
 
 .container
   section.section
-    h1.title Chat with Agent: #{@agent.name}
+    h1.title Chat with Agent: #{@view_agent_data[:name]}
     p.subtitle Send messages to the agent and see its responses.
 
-    / Agent Status (Optional but helpful)
+    / Agent Status Box
     .box
       p
         strong Status:
-        span class=(@agent.running? ? 'has-text-success' : 'has-text-danger')
-          = @agent.running? ? 'Running' : 'Stopped (Go to agent page to start)'
+        span.tag.ml-2 class=(@view_agent_data[:running] ? 'is-success' : 'is-danger')
+          = @view_agent_data[:running] ? 'Running' : 'Stopped (Go to agent page to start)'
 
     / Chat History Display Area
-    / --- Add hx-on::after-swap attribute for autoscroll ---
     #chat-history.box( style="height: 400px; overflow-y: scroll; margin-bottom: 1rem;"
-                      hx-on::after-swap="this.scrollTop = this.scrollHeight" )
-      / Messages will be appended here by htmx
+                      hx-on::after-swap="this.scrollTop = this.scrollHeight"
+                      _="init set my scrollTop to my scrollHeight end" )
+
+      / --- Loop to render existing history ---
+      - if @chat_history_events && !@chat_history_events.empty?
+        - @chat_history_events.each do |event|
+          - if event.role == :user
+            / --- User Message ---
+            .message.is-info.is-small.mb-2(id="event-#{event.event_id}")
+              .message-header
+                p You
+              .message-body= event.content
+
+          - elsif event.role == :agent
+            / --- Agent Message (Corrected Structure) ---
+            - agent_response_content = event.content
+            - is_complex_content = (agent_response_content.is_a?(Hash) && agent_response_content.key?(:status)) || (agent_response_content.is_a?(Array) && agent_response_content.first.is_a?(Hash) && agent_response_content.first.key?(:status))
+            - msg_class = (is_complex_content && agent_response_content.is_a?(Hash) && agent_response_content[:status] == :error) ? 'is-danger' : 'is-success'
+
+            .message class="#{msg_class} is-small mb-4" id="event-#{event.event_id}"
+              .message-header
+                p Agent (#{@view_agent_data[:name]})
+              .message-body
+                / Indent the logic *under* message-body
+                - if is_complex_content
+                  / Use inspect for complex historical data for simplicity
+                  pre style="white-space: pre-wrap; word-break: break-all;" = agent_response_content.inspect
+                - else
+                  / Render simple string content directly
+                  pre style="white-space: pre-wrap; word-break: break-all;" = agent_response_content.to_s
+          - else
+            / --- Optional: Tool Request/Result Rendering ---
+      - else
+        p.has-text-grey-light Start chatting...
+      / --- End History Loop ---
+
+      / New messages will be appended here by HTMX
 
     / Chat Input Form
-    form(hx-post="/agents/#{@agent.name}/chat" hx-target="#chat-history" hx-swap="beforeend" _="on htmx:afterRequest reset()")
+    form(hx-post="/agents/#{@view_agent_data[:name]}/chat" hx-target="#chat-history" hx-swap="beforeend" _="on htmx:afterRequest reset()")
       .field.has-addons
         .control.is-expanded
-          input.input#chat-input(type="text" name="message" placeholder="Enter your message..." required=true autofocus)
+          input.input#chat-input(type="text" name="message" placeholder="Enter your message..." required=true autofocus disabled=(!@view_agent_data[:running]))
         .control
-          button.button.is-info(type="submit" disabled=(!@agent.running?)) Send
+          button.button.is-info(type="submit" disabled=(!@view_agent_data[:running])) Send
 
     / Link back to agent details
     .mt-4
-      a.button(href="/agents/#{@agent.name}") ← Back to Agent Details
+      a.button(href="/agents/#{@view_agent_data[:name]}") ← Back to Agent Details
