@@ -6,6 +6,7 @@ require 'thor'
 require_relative 'cli/agent_commands'
 require_relative 'cli/tool_commands'
 require_relative 'cli/web_commands'
+require_relative 'cli/session_commands'
 
 module ADK
   module CLI
@@ -28,6 +29,9 @@ module ADK
       # --- REMOVE ...ARGS from desc ---
       desc 'web SUBCOMMAND', 'Web interface commands'
       subcommand 'web', ADK::CLI::WebCommands
+
+      desc 'session SUBCOMMAND', 'Session management commands (Redis-based)'
+      subcommand 'session', ADK::CLI::SessionCommands
     end
     # --- End Main class definition ---
   end # End CLI module

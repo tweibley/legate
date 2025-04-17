@@ -9,6 +9,7 @@ require_relative '../agent'
 require_relative '../event'   # Need Event for result formatting understanding
 require_relative '../session' # Need Session for session service context
 require_relative '../session_service/in_memory' # Need Service implementation
+require_relative '../session_service/redis' # Add Redis session service
 
 module ADK
   module CLI
@@ -50,23 +51,30 @@ module ADK
           status_prefix = ""
 
           # Determine what kind of result we got from run_task
-          if result_data.is_a?(ADK::Event) && result_data.role == :agent
-            # Standard successful execution returning the final agent event
-            content_to_display = result_data.content
-            # Check if the *content* itself is a status hash (e.g., from AgentTool success)
-            if content_to_display.is_a?(Hash) && content_to_display.key?(:status)
-              is_error = (content_to_display[:status] == :error)
-              status_prefix = "(Nested Result) " # Indicate the origin
+          if result_data.is_a?(ADK::Event)
+            if result_data.role == :agent
+              # Standard successful execution returning the final agent event
+              content_to_display = result_data.content
+              # Check if the *content* itself is a status hash (e.g., from AgentTool success)
+              if content_to_display.is_a?(Hash) && content_to_display.key?(:status)
+                is_error = (content_to_display[:status] == :error)
+                status_prefix = "(Nested Result) " # Indicate the origin
+              end
+            elsif result_data.role == :tool_result
+              # Tool result event
+              content_to_display = result_data.content
+              if content_to_display.is_a?(Hash) && content_to_display.key?(:status)
+                is_error = (content_to_display[:status] == :error)
+              end
             end
           elsif result_data.is_a?(Hash) && result_data.key?(:status)
             # An error occurred directly during run_task (e.g., agent not running, planning error)
             content_to_display = result_data
             is_error = true # Assume error if it's a status hash from run_task itself
           else
-            # Unexpected format from run_task
+            # Handle simple responses (like strings) as successful results
             content_to_display = result_data
-            is_error = true # Treat unexpected format as an error case for display
-            status_prefix = "(Unknown Format) "
+            is_error = false
           end
 
           # Now format based on the determined content and error status
@@ -98,25 +106,18 @@ module ADK
                 (any_step_errors ? :yellow : :green)
 
           elsif content_to_display.is_a?(Hash) && content_to_display.key?(:status)
-            # Single Step Result OR an Error Hash
+            # Single step or error
             if content_to_display[:status] == :success
               say "#{status_prefix}Success:", :green
-              # Handle potential nested result from AgentTool
-              result_val = content_to_display[:result]
-              if result_val.is_a?(Hash) && result_val.key?(:status)
-                say "  Result (Nested): #{result_val.inspect}"
-              else
-                say "  Result: #{result_val}"
-              end
-            else # :error or other
+              say "  Result: #{content_to_display[:result]}"
+            else
               say "#{status_prefix}Error:", :red
               say "  Message: #{content_to_display[:error_message]}"
             end
           else
-            # If content isn't an array or status hash, display it directly.
-            # This covers simple string responses from older agent logic or direct content.
-            say "#{status_prefix}Output:", (is_error ? :red : :green) # Color based on overall status if known
-            say "  Data: #{content_to_display.inspect}"
+            # Simple response (like a string)
+            say "#{status_prefix}Success:", :green
+            say "  Result: #{content_to_display}"
           end
         end
         # --- End format_cli_result ---
@@ -421,10 +422,14 @@ module ADK
         Loads agent definition, instantiates agent, runs TASK within a session context,
         prints the result, stops agent runtime & exits.
 
-        Use --session-id to continue an existing (in-memory) conversation,
+        Use --session-id to continue an existing conversation,
         otherwise starts a new session for this execution. The session ID used will be printed.
+
+        Use --redis to use Redis for session storage instead of in-memory storage.
+        This allows sessions to persist between CLI invocations.
       LONGDESC
       method_option :session_id, type: :string, desc: 'Optional ID of an existing session to use.'
+      method_option :redis, type: :boolean, default: false, desc: 'Use Redis for session storage instead of in-memory.'
       def execute(name, task)
         say "Loading agent '#{name}' to execute task: \"#{task}\"..."
         redis = connect_redis
@@ -437,7 +442,8 @@ module ADK
         unless description then say "Error: Agent definition '#{name}' not found.", :red; exit(1); end
 
         # --- Session Handling ---
-        session_service = @@session_service # Use the shared class instance variable
+        # Choose session service based on --redis option
+        session_service = options[:redis] ? ADK::SessionService::Redis.new : @@session_service
         session_id = options[:session_id]
         adk_session = nil
 
@@ -456,6 +462,9 @@ module ADK
           adk_session = session_service.create_session(app_name: name, user_id: 'cli_user')
           session_id = adk_session.id
           say "Started new session: #{session_id}", :cyan
+          if options[:redis]
+            say "  (Using Redis for persistent storage)", :cyan
+          end
         end
         # --- End Session Handling ---
 

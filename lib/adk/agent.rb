@@ -140,22 +140,18 @@ module ADK
           final_content = "Error during processing: #{execution_result[:error_message]}"
           logger.error("Agent '#{name}' task failed. Reason: #{final_content}")
         elsif execution_result.is_a?(Array)
-          # Multi-step: Check last step's status
-          last_step_result = execution_result.last
-          if last_step_result && last_step_result[:status] == :success && last_step_result.key?(:result)
-            final_content = last_step_result[:result]
+          # Multi-step: Use the last step's result
+          last_step = execution_result.last
+          if last_step && last_step[:status] == :success
+            final_content = last_step[:result]
             # Handle nested result from AgentTool if necessary
             if final_content.is_a?(Hash) && final_content[:status] == :success && final_content.key?(:result)
               final_content = final_content[:result]
             end
-          # Example: Maybe update state based on successful multi-step
-          # state_changes_from_task[:last_successful_result] = final_content
-          elsif last_step_result && last_step_result[:status] == :error
-            final_content = "Completed plan with error on last step: #{last_step_result[:error_message]}"
-            logger.warn("Agent '#{name}' task completed with error. Last step msg: #{last_step_result[:error_message]}")
+            logger.info("Agent '#{name}' task completed with multiple steps.")
           else
-            final_content = "Task processing completed. Final step result: #{last_step_result.inspect}"
-            logger.info("Agent '#{name}' task completed. Final step result: #{last_step_result.inspect}")
+            final_content = "Task processing completed with error on last step: #{last_step&.dig(:error_message)}"
+            logger.warn("Agent '#{name}' task completed with error. Last step msg: #{last_step&.dig(:error_message)}")
           end
         elsif execution_result.is_a?(Hash) && execution_result[:status] == :success # Single successful step
           final_content = execution_result[:result]
@@ -163,8 +159,6 @@ module ADK
             final_content = final_content[:result]
           end
           logger.info("Agent '#{name}' task completed successfully.")
-        # Example: Maybe update state based on successful single step
-        # state_changes_from_task[:last_successful_result] = final_content
         else
           final_content = "Task finished with unexpected execution result: #{execution_result.inspect}"
           logger.error(final_content)

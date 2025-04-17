@@ -144,7 +144,8 @@ module ADK
     # Provides a plain Hash representation of the current state.
     # @return [Hash] A copy of the session state.
     def state_to_h
-      @state.to_h
+      # Convert Concurrent::Map to a regular Hash
+      Hash[@state.to_enum(:each_pair).to_a]
     end
 
     # --- Serialization Helpers ---
