@@ -44,5 +44,15 @@ Gem::Specification.new do |spec|
   #CLI
   spec.add_dependency 'ostruct'
   
+  spec.add_development_dependency "rake", "~> 13.0"
+  spec.add_development_dependency "rspec", "~> 3.0"
+  spec.add_development_dependency "simplecov", "~> 0.21"
+  spec.add_development_dependency "webmock", "~> 3.18"
+  spec.add_development_dependency "timecop", "~> 0.9"
+  spec.add_development_dependency "pry"
+  spec.add_development_dependency "fast-mcp"
+  spec.add_development_dependency "dry-schema", "~> 1.13"
 
+  # Prevent pushing this gem to RubyGems.org by default.
+  # spec.metadata["allowed_push_host"] = "TODO: Set to your gem server host e.g. https://mygemserver.com"
 end 

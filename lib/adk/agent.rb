@@ -6,6 +6,10 @@ require 'concurrent'
 require_relative 'tool_context'
 require 'sidekiq' # Ensure sidekiq is required if needed here
 # Note: Requires are handled by lib/adk.rb
+require_relative 'planner'
+require_relative 'tool_registry'
+require_relative 'mcp/client'
+require_relative 'mcp/tool_wrapper'
 
 module ADK
   class Error < StandardError; end unless defined?(ADK::Error)
@@ -15,7 +19,7 @@ module ADK
   class Agent
     DEFAULT_MODEL = 'gemini-2.0-flash'
 
-    attr_reader :name, :description, :tools, :planner, :logger, :model_name
+    attr_reader :name, :description, :tools, :planner, :logger, :model_name, :state, :tool_registry
 
     # Initializes a new agent instance.
     # Note: Session and Memory are no longer managed directly by the agent instance.
@@ -23,38 +27,36 @@ module ADK
     # @param name [String] The unique name of the agent definition.
     # @param description [String] A description of the agent's purpose.
     # @param model_name [String, nil] The specific LLM model name (optional).
-    # @param options [Hash] Additional options:
-    # @option options [ADK::Planner] :planner Custom planner instance.
-    # @option options [Logger] :logger Custom logger instance.
-    def initialize(name:, description:, model_name: nil, **options)
+    # @param tools [Array<ADK::Tool>] An initial list of native tools.
+    # @param planner [ADK::Planner] A specific planner instance (default: created automatically).
+    # @param mcp_servers [Array<Hash>] Optional configurations for external MCP servers.
+    #        Example: [{ type: :stdio, command: 'cmd', args: [] }]
+    def initialize(name:, description:, model_name: DEFAULT_MODEL, tools: [], planner: nil, mcp_servers: [])
+      ADK.logger.info("Initializing agent '#{name}'...")
       @name = name
       @description = description
-      @model_name = model_name && !model_name.empty? ? model_name : DEFAULT_MODEL
-      @tools = []
-      @logger = options[:logger] || ADK.logger
-      # Planner is still needed per agent instance, configured with its model
-      @planner = options[:planner] || ADK::Planner.new(agent: self, logger: @logger, model_name: @model_name)
-      # @memory and @session removed
-      @state = Concurrent::Map.new # For runtime state ONLY (e.g., running?)
-      logger.info("Agent '#{@name}' initialized with model: '#{@model_name}'")
+      @model_name = model_name
+      @state = :idle # Initial state
+      @mcp_servers_config = mcp_servers # Store MCP configurations
+      @mcp_clients = [] # Store active MCP client instances
 
-      # Automatically add check_job_status tool if Sidekiq seems configured
-      # (Check if the class exists as a proxy for configuration)
-      if defined?(Sidekiq)
-        unless @tools.any? { |t| t.name == :check_job_status }
-          begin
-            status_tool_instance = ADK::ToolRegistry.create_instance(:check_job_status)
-            if status_tool_instance
-              add_tool(status_tool_instance)
-              logger.info("Automatically added :check_job_status tool.")
-            else
-              logger.warn("Could not automatically add :check_job_status tool (not found in registry).")
-            end
-          rescue => e
-            logger.warn("Failed to automatically add :check_job_status tool: #{e.message}")
-          end
-        end
+      # Each agent instance gets its own registry to allow for agent-specific tools (like MCP ones)
+      @tool_registry = ADK::ToolRegistry.new
+      ADK.logger.debug("Agent '#{name}' created its own ToolRegistry instance.")
+
+      # Register initial native tools
+      tools.each { |tool| add_tool(tool) }
+
+      # Automatically add the CheckJobStatusTool if async tools might be used
+      # (Consider if native or MCP tools are async - maybe always add it for now?)
+      unless @tool_registry.get_tool_class(:check_job_status)
+        require_relative 'tools/check_job_status_tool' # Ensure loaded
+        add_tool(ADK::Tools::CheckJobStatusTool.new)
       end
+
+      @planner = planner || ADK::Planner.new(agent: self)
+
+      ADK.logger.info("Agent '#{name}' initialized successfully.")
     end
 
     # Adds a tool instance.
@@ -74,29 +76,45 @@ module ADK
 
     # --- Runtime State Methods (unchanged) ---
     def start
-      unless running?
-        logger.info("Starting agent runtime state: #{name}")
-        @state[:running] = true
-      else
-        logger.warn("Agent '#{name}' runtime state is already running.")
-      end
-      self
+      return if running? # Prevent starting multiple times
+
+      ADK.logger.info("Starting agent '#{name}' runtime...")
+      @state = :running
+
+      # Connect to MCP Servers and register tools
+      connect_mcp_servers
+
+      ADK.logger.info("Agent '#{name}' runtime started.")
     end
 
     def stop
-      if running?
-        logger.info("Stopping agent runtime state: #{name}")
-        @state[:running] = false
-      else
-        logger.warn("Agent '#{name}' runtime state is already stopped.")
-      end
-      self
+      return unless running?
+
+      ADK.logger.info("Stopping agent '#{name}' runtime...")
+      @state = :stopped
+
+      # Disconnect MCP Clients
+      disconnect_mcp_servers
+
+      ADK.logger.info("Agent '#{name}' runtime stopped.")
     end
 
     def running?
-      @state[:running] == true
+      @state == :running
     end
-    # --- End Runtime State Methods ---
+
+    # Returns the list of available tool metadata (names, descriptions, parameters)
+    # from the agent's specific tool registry.
+    def available_tools_metadata
+      @tool_registry.list_tools
+    end
+
+    # Finds a tool class by name from the agent's specific tool registry.
+    # @param tool_name [Symbol]
+    # @return [Class<ADK::Tool>, nil]
+    def find_tool_class(tool_name)
+      @tool_registry.get_tool_class(tool_name)
+    end
 
     # --- REFACTORED: run_task operates within a session context ---
     # Processes user input within the context of a specific session.
@@ -354,6 +372,53 @@ module ADK
         raise ADK::Error, "Tool '#{name_symbol}' not found for this agent."
       end
       found_tool
+    end
+
+    # Connects to all configured MCP servers.
+    def connect_mcp_servers
+      @mcp_servers_config.each do |config|
+        ADK.logger.info("Attempting to connect to MCP server: #{config.inspect}")
+        begin
+          client = ADK::Mcp::Client.new(config)
+          client.connect # This performs handshake and gets capabilities
+          @mcp_clients << client
+          discover_and_register_mcp_tools(client)
+        rescue ADK::Mcp::ConnectionError, ArgumentError => e
+          ADK.logger.error("Failed to connect or initialize MCP client for config #{config.inspect}: #{e.message}")
+        rescue StandardError => e
+          ADK.logger.error("Unexpected error connecting to MCP server #{config.inspect}: #{e.class} - #{e.message}")
+        end
+      end
+    end
+
+    # Disconnects all active MCP clients.
+    def disconnect_mcp_servers
+      @mcp_clients.each do |client|
+        begin
+          ADK.logger.info("Disconnecting MCP client...")
+          client.disconnect
+        rescue StandardError => e
+          ADK.logger.error("Error disconnecting MCP client: #{e.message}")
+        end
+      end
+      @mcp_clients.clear
+    end
+
+    # Discovers tools from a connected MCP client and registers them with the agent's registry.
+    # @param client [ADK::Mcp::Client]
+    def discover_and_register_mcp_tools(client)
+      begin
+        mcp_tool_schemas = client.list_tools
+        ADK.logger.info("Discovered #{mcp_tool_schemas.count} tools from MCP server.")
+        mcp_tool_schemas.each do |schema|
+          # Pass the agent's specific registry instance (@tool_registry)
+          ADK::Mcp::ToolWrapper.from_mcp_schema(schema, client, @tool_registry)
+        end
+      rescue ADK::Mcp::Error => e
+        ADK.logger.error("Failed to list tools from MCP server: #{e.message}")
+      rescue StandardError => e
+        ADK.logger.error("Unexpected error discovering MCP tools: #{e.class} - #{e.message}")
+      end
     end
   end # End Agent class
 end # End ADK module

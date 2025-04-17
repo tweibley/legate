@@ -19,6 +19,16 @@ module ADK
         register_tool_class
       end
 
+      # --- ADDED: Method to retrieve all metadata as a hash ---
+      def tool_metadata
+        {
+          name: @tool_name,
+          description: @description,
+          parameters: @parameters_definition
+        }
+      end
+      # --- End ADDED ---
+
       # --- Moved Registration Logic Here ---
       def register_tool_class
         return unless @tool_name && @description # Check if metadata was set

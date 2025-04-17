@@ -22,3 +22,5 @@ group :development do
 end
 
 gem "sidekiq"
+
+gem "fast-mcp"
