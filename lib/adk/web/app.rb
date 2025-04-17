@@ -12,21 +12,27 @@ require_relative 'sass_compiler'
 require 'rack/utils' # For escape_html
 require 'redis'
 require 'securerandom' # For session secret
+require 'sidekiq/api'
 
 # --- Load ADK Components ---
 # Load dependencies in a sensible order
 require_relative '../event'   # Load Event first as Session uses it
 require_relative '../session' # Load Session next
-require_relative '../agent'   # Agent needs default model constant
+require_relative '../tool_context' # <--- ADDED
+require_relative '../agent' # Agent needs default model constant
 require_relative '../tool'
 require_relative '../tool_registry'
 require_relative '../session_service/in_memory' # Load Service
+require_relative '../session_service/redis' # Load Redis Service
 # Explicitly require all tools
 require_relative '../tools/echo'
 require_relative '../tools/calculator'
 require_relative '../tools/cat_facts'
 require_relative '../tools/random_number_tool'
 require_relative '../tools/agent_tool' # Load AgentTool
+require_relative '../tools/base_async_job_tool' # <--- ADDED
+require_relative '../tools/check_job_status_tool' # <--- ADDED
+require_relative '../tools/sleepy_tool' # <--- ADDED for SleepyTool
 
 # Load dotenv for development AFTER other requires if needed
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
@@ -118,59 +124,76 @@ module ADK
           status_content_html + start_button_html + stop_button_html
         end # end agent_status_fragments
 
-        # Helper for formatting tool/agent execution results into HTML
+        # Helper for formatting tool/agent execution results into HTML <-- MODIFIED
+        # Handles success, error, and pending statuses.
         def format_execution_result_html(result_data)
           html_parts = []
-          notification_class = 'is-info' # Default
+          notification_class = 'is-info'
+          overall_status = :unknown
 
-          overall_status = :success # Assume success initially
-          if result_data.is_a?(Array) # Multi-step result array
-            if result_data.any? { |h| h.is_a?(Hash) && h[:status] == :error }
-              overall_status = :error
-            elsif result_data.empty? # Empty plan result
-              overall_status = :warning
-            end
-          elsif result_data.is_a?(Hash) && result_data.key?(:status) # Single result/error hash
-            overall_status = result_data[:status]
-          else # Unexpected format
-            overall_status = :error
-            result_data = { status: :error, error_message: "Unexpected result format: #{result_data.inspect}" } # Wrap it
+          # Handle ADK::Event first
+          if result_data.is_a?(ADK::Event)
+            result_data = result_data.content
           end
 
+          # Determine overall status from hash or array
+          if result_data.is_a?(Hash) && result_data.key?(:status)
+            overall_status = result_data[:status]
+          elsif result_data.is_a?(Array) && result_data.all? { |h| h.is_a?(Hash) && h.key?(:status) }
+            if result_data.any? { |h| h[:status] == :error } then overall_status = :error
+            elsif result_data.any? { |h| h[:status] == :pending } then overall_status = :pending
+            elsif result_data.empty? then overall_status = :warning
+            else overall_status = :success end
+          else
+            overall_status = :error
+            result_data = { status: :error, error_message: "Unexpected result format: #{result_data.inspect}" }
+          end
+
+          # Set notification class based on status
           notification_class = case overall_status
                                when :success then 'is-success'
                                when :error then 'is-danger'
-                               else 'is-warning' # Includes empty plan case
-                               end
+                               when :pending then 'is-warning' # Use warning for pending
+                               else 'is-info' end
 
-          # Generate HTML content based on result structure
-          if result_data.is_a?(Array)
+          # Generate HTML content
+          if result_data.is_a?(Array) # Multi-step result array
             html_parts << "<p><strong>Multi-step Result:</strong></p><ol>"
             result_data.each_with_index do |step_hash, index|
               html_parts << "<li>"
-              if step_hash.is_a?(Hash) && step_hash[:status] == :success
-                step_result_content = step_hash[:result]
-                # Handle nested result from AgentTool for display
-                if step_result_content.is_a?(Hash) && step_result_content.key?(:status)
-                  html_parts << "<strong>Step #{index + 1} (Success - Delegated):</strong>"
-                  html_parts << "<blockquote style='margin-left: 1em; border-left: 3px solid #dbdbdb; padding-left: 1em;'>"
-                  html_parts << format_execution_result_html(step_result_content) # Format nested result
-                  html_parts << "</blockquote>"
-                else
-                  html_parts << "<strong>Step #{index + 1} (Success):</strong> <pre>#{Rack::Utils.escape_html(step_result_content.to_s)}</pre>"
+              if step_hash.is_a?(Hash)
+                case step_hash[:status]
+                when :success
+                  step_result_content = step_hash[:result]
+                  if step_result_content.is_a?(Hash) && step_result_content.key?(:status)
+                    html_parts << "<strong>Step #{index + 1} (Success - Delegated):</strong>"
+                    html_parts << "<blockquote style='margin-left: 1em; border-left: 3px solid #dbdbdb; padding-left: 1em;'>"
+                    html_parts << format_execution_result_html(step_result_content)
+                    html_parts << "</blockquote>"
+                  else
+                    html_parts << "<strong>Step #{index + 1} (Success):</strong> <pre>#{Rack::Utils.escape_html(step_result_content.to_s)}</pre>"
+                  end
+                when :pending
+                  html_parts << "<strong>Step #{index + 1} (Pending):</strong>"
+                  html_parts << "<pre>Job ID: #{Rack::Utils.escape_html(step_hash[:job_id].to_s)}"
+                  html_parts << "\nMessage: #{Rack::Utils.escape_html(step_hash[:message].to_s)}" if step_hash[:message]
+                  html_parts << "</pre>"
+                when :error
+                  html_parts << "<strong>Step #{index + 1} (Error):</strong> <pre class='has-text-danger'>#{Rack::Utils.escape_html(step_hash[:error_message].to_s)}</pre>"
+                else # Unknown status
+                  html_parts << "<strong>Step #{index + 1} (Unknown Status):</strong> <pre>#{Rack::Utils.escape_html(step_hash.inspect)}</pre>"
                 end
-              elsif step_hash.is_a?(Hash) && step_hash[:status] == :error
-                html_parts << "<strong>Step #{index + 1} (Error):</strong> <pre class='has-text-danger'>#{Rack::Utils.escape_html(step_hash[:error_message].to_s)}</pre>"
               else
-                html_parts << "<strong>Step #{index + 1} (Unknown format):</strong> <pre>#{Rack::Utils.escape_html(step_hash.inspect)}</pre>"
+                html_parts << "<strong>Step #{index + 1} (Invalid format):</strong> <pre>#{Rack::Utils.escape_html(step_hash.inspect)}</pre>"
               end
               html_parts << "</li>"
             end
             html_parts << "</ol>"
-          elsif result_data.is_a?(Hash) # Single result/error hash
-            if result_data[:status] == :success
+
+          elsif result_data.is_a?(Hash) # Single result/error/pending hash
+            case result_data[:status]
+            when :success
               result_content = result_data[:result]
-              # Handle potential nested result from AgentTool
               if result_content.is_a?(Hash) && result_content.key?(:status)
                 html_parts << "<p><strong>Result (from delegated agent):</strong></p>"
                 html_parts << "<blockquote style='margin-left: 1em; border-left: 3px solid #dbdbdb; padding-left: 1em;'>"
@@ -179,12 +202,17 @@ module ADK
               else
                 html_parts << "<p><strong>Result:</strong></p><pre>#{Rack::Utils.escape_html(result_content.to_s)}</pre>"
               end
-            elsif result_data[:status] == :error
+            when :pending
+              html_parts << "<p><strong>Status: Pending</strong></p>"
+              html_parts << "<pre>Job ID: #{Rack::Utils.escape_html(result_data[:job_id].to_s)}"
+              html_parts << "\nMessage: #{Rack::Utils.escape_html(result_data[:message].to_s)}" if result_data[:message]
+              html_parts << "\n(Use tool 'check_job_status' with this ID to get the final result)</pre>"
+            when :error
               html_parts << "<p><strong>Error:</strong></p><pre class='has-text-danger'>#{Rack::Utils.escape_html(result_data[:error_message].to_s)}</pre>"
             else # Unknown status within hash
               html_parts << "<p><strong>Result (Unknown Status):</strong></p><pre>#{Rack::Utils.escape_html(result_data.inspect)}</pre>"
             end
-          end # No 'else' needed, unexpected format already wrapped into error hash
+          end
 
           # Return final HTML structure
           "<div class='notification #{notification_class} mt-4'>#{html_parts.join}</div>"
@@ -286,21 +314,36 @@ module ADK
         @view_agent_data = { name: name, description: description, running: is_running, model: loaded_model }
         configured_tool_names_str = [];
         begin tools_json_string && configured_tool_names_str = JSON.parse(tools_json_string) rescue []; end
+
+        # --- Get tool info from registry for configured tools ---
+        all_available_tools_list = ADK::ToolRegistry.list_tools
         @configured_tool_info = configured_tool_names_str.map { |tn|
-          ADK::ToolRegistry.list_tools.find { |t|
-            t[:name].to_s == tn
-          }
+          all_available_tools_list.find { |t| t[:name].to_s == tn }
         }.compact
         logger.debug("Agent '#{name}' configured tool info: #{@configured_tool_info.inspect}")
 
         if is_running
           @agent = @agents[name]; @view_agent_data[:model] = @agent.model_name
+          # Ensure the live agent's tools are used for display if running
+          live_agent_tool_names = @agent.tools.map(&:name)
+          @configured_tool_info = live_agent_tool_names.map { |tn|
+            all_available_tools_list.find { |t| t[:name] == tn }
+          }.compact
+          logger.debug("Agent '#{name}' live tool info: #{@configured_tool_info.inspect}")
         else
-          @agent = ADK::Agent.new(name: name, description: description, model_name: loaded_model)
+          # Create a temporary agent instance just for displaying configured tools
+          temp_agent_for_view = ADK::Agent.new(name: name, description: description, model_name: loaded_model)
           configured_tool_names_str.map(&:to_sym).each { |tool_name|
             inst = ADK::ToolRegistry.create_instance(tool_name);
-            if inst then @agent.add_tool(inst); else logger.warn("Tool '#{tool_name}' not found."); end
+            if inst then temp_agent_for_view.add_tool(inst);
+            else logger.warn("Tool '#{tool_name}' not found for display."); end
           }
+          # Also include implicitly added check_workflow_status if applicable
+          if temp_agent_for_view.tools.any? { |t| t.name == :check_workflow_status }
+            status_tool_info = all_available_tools_list.find { |t| t[:name] == :check_workflow_status }
+            @configured_tool_info << status_tool_info if status_tool_info && !@configured_tool_info.include?(status_tool_info)
+          end
+          @agent = temp_agent_for_view # For view, not in @agents
         end
         slim :agent
       end
@@ -605,10 +648,10 @@ module ADK
         end
       end
 
-      # Execute Agent Task Directly (via JSON input) - REFACTORED for Session
+      # Execute Agent Task Directly (via JSON input) - REFACTORED for Context <-- MODIFIED
       post '/agents/:name/execute' do
         name = params[:name]; content_type :html
-        agent = @agents[name] # Agent must be running
+        agent = @agents[name]
 
         html_error = lambda do |message, code = 400|
                        halt code, format_execution_result_html({ status: :error, error_message: message }); end
@@ -617,37 +660,27 @@ module ADK
         json_string = params['task_json'];
         html_error.call("Error: Missing 'task_json' data.", 400) unless json_string && !json_string.empty?
         task = nil;
-        begin data = JSON.parse(json_string);
-              task = data['task'];
+        begin data = JSON.parse(json_string); task = data['task'];
               html_error.call("Error: Missing 'task' key in JSON.", 400) unless task;
         rescue JSON::ParserError => e;
           logger.error("Invalid JSON: #{e.message}"); html_error.call("Error: Invalid JSON format.", 400); end
 
-        temp_session = nil # Define outside begin for ensure block
+        temp_session = nil
         begin
           logger.info("Agent '#{name}' executing direct task: #{task}")
-          # Create temporary session
+          # Create temporary session using IN-MEMORY service
           temp_session = @session_service.create_session(app_name: name, user_id: 'direct_execute')
           # Call run_task with session context
           final_event_or_error = agent.run_task(session_id: temp_session.id, user_input: task,
                                                 session_service: @session_service)
           logger.info("Agent '#{name}' direct execution result: #{final_event_or_error.inspect}")
 
-          # Extract content or error message for formatting
-          content_to_display = if final_event_or_error.is_a?(ADK::Event) && final_event_or_error.role == :agent
-                                 final_event_or_error.content
-                               elsif final_event_or_error.is_a?(Hash) && final_event_or_error[:status] == :error
-                                 final_event_or_error # Pass error hash to formatter
-                               else
-                                 { status: :error,
-                                   error_message: "Unexpected result type from run_task: #{final_event_or_error.class}" }
-                               end
+          content_to_display = final_event_or_error.is_a?(ADK::Event) ? final_event_or_error.content : final_event_or_error
           format_execution_result_html(content_to_display)
         rescue => e
           logger.error "Error during direct agent execution for '#{name}': #{e.message}\n#{e.backtrace.join("\n")}"
           html_error.call("Error: Internal server error during task execution: #{e.message}", 500)
         ensure
-          # Clean up temporary session
           @session_service.delete_session(session_id: temp_session.id) if temp_session
         end
       end
@@ -663,16 +696,25 @@ module ADK
       }
       post '/tools/:name/execute' do |n|
         content_type :html; tool_name_sym = n.to_sym; logger.info("Executing Tool '#{n}' via form")
-        params.delete('_csrf') # Remove CSRF token if present
         submitted_params = params.reject { |k, _| ['splat', 'captures', 'name'].include?(k) }
         logger.debug("Params: #{submitted_params.inspect}")
         tool = ADK::ToolRegistry.create_instance(tool_name_sym)
         unless tool;
           err_msg = "Tool '#{Rack::Utils.escape_html(n)}' not found.";
           halt 404, format_execution_result_html({ status: :error, error_message: err_msg }); end
-        begin logger.info("Attempting tool.execute: #{submitted_params.inspect}");
-              result_hash = tool.execute(submitted_params);
-              logger.info("Tool execute returned: #{result_hash.inspect}"); format_execution_result_html(result_hash)
+
+        # --- Create dummy context for direct execution --- << ADDED >>
+        dummy_context = ADK::ToolContext.new(session_id: "web_direct_#{SecureRandom.hex(4)}", user_id: 'web_user',
+                                             app_name: 'web_tool_exec')
+
+        begin
+          symbolized_params = submitted_params.transform_keys(&:to_sym)
+          logger.info("Attempting tool.execute: #{symbolized_params.inspect} with context: #{dummy_context.to_h.inspect}")
+          # --- Pass context --- << MODIFIED >>
+          result_hash = tool.execute(symbolized_params, dummy_context)
+
+          logger.info("Tool execute returned: #{result_hash.inspect}")
+          format_execution_result_html(result_hash)
         rescue ADK::Error, ArgumentError => e;
           logger.warn("Tool Error: #{e.message}");
           format_execution_result_html({ status: :error, error_message: e.message });

@@ -24,8 +24,9 @@ module ADK
 
       private
 
-      # Returns a hash with :status and :result or :error_message
-      def perform_execution(params)
+      # @param params [Hash] Contains :message.
+      # @param _context [ADK::ToolContext, nil] The execution context (unused here).
+      def perform_execution(params, _context)
         begin
           # Fetch validated parameter
           message = params.fetch('message') { params.fetch(:message, nil) }

@@ -2,13 +2,20 @@
 require 'dotenv/load' if File.exist?('.env') # Load early for ENV vars
 
 # frozen_string_literal: true
-require 'logger' # Require logger here
+require 'logger'
+require 'sidekiq'
 require_relative 'adk/version'
 
 # --- Central ADK Logger Configuration ---
 module ADK
   @logger = nil
-  # ... (self.logger method remains the same) ...
+
+  # Default Redis connection options (used by SessionService and Sidekiq)
+  @redis_options = {
+    url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0')
+    # Add other Redis options if needed (password, etc.)
+  }
+
   def self.logger
     @logger ||= begin
       # Default to DEBUG in development, WARN otherwise
@@ -40,12 +47,50 @@ module ADK
       logger_instance
     end
   end
+
+  # Configure ADK settings
+  def self.configure
+    yield self
+    # Reconfigure Sidekiq if Redis settings change
+    configure_sidekiq
+  end
+
+  # Accessors for Redis config
+  def self.redis_url=(url)
+    @redis_options[:url] = url
+    configure_sidekiq # Reconfigure on change
+  end
+
+  def self.redis_options
+    @redis_options
+  end
+
+  # --- Sidekiq Configuration ---
+  def self.configure_sidekiq
+    Sidekiq.configure_client do |config|
+      config.redis = @redis_options.dup # Use a dup to avoid modification issues
+      logger.info("Sidekiq client configured with Redis: #{@redis_options[:url]}")
+    end
+    # Optional: Configure server as well, though ADK itself doesn't run the server.
+    # Sidekiq.configure_server do |config|
+    #   config.redis = @redis_options.dup
+    #   logger.info("Sidekiq server configured with Redis: #{@redis_options[:url]}")
+    # end
+  rescue Redis::CannotConnectError => e
+    logger.error("Sidekiq failed to configure Redis client: #{e.message}")
+    # Decide whether to raise or just log. Logging might be safer for library use.
+  end
+  # --- End Sidekiq Configuration ---
 end
+
+# --- Initial Sidekiq Configuration Call ---
+ADK.configure_sidekiq
 
 # --- Require components AFTER logger is configurable ---
 require_relative 'adk/errors'
 require_relative 'adk/event'
 require_relative 'adk/session'
+require_relative 'adk/tool_context'
 require_relative 'adk/tool'
 require_relative 'adk/tool_registry'
 # --- Load dependencies BEFORE Agent ---
@@ -67,6 +112,9 @@ require_relative 'adk/tools/echo'
 require_relative 'adk/tools/calculator'
 require_relative 'adk/tools/cat_facts'
 require_relative 'adk/tools/random_number_tool'
+require_relative 'adk/tools/base_async_job_tool'
+require_relative 'adk/tools/check_job_status_tool'
+require_relative 'adk/tools/sleepy_tool'
 
 module ADK
   class Error < StandardError; end

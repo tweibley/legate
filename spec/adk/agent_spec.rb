@@ -1,5 +1,6 @@
 # File: spec/adk/agent_spec.rb
 require 'spec_helper'
+require 'sidekiq/testing'
 
 RSpec.describe ADK::Agent do
   # --- Test Subjects ---
@@ -13,51 +14,61 @@ RSpec.describe ADK::Agent do
   let(:mock_logger) { instance_double(Logger, info: nil, warn: nil, error: nil, debug: nil) }
   let(:mock_session_service) { instance_double(ADK::SessionService::InMemory) }
   let(:session_id) { 'sid-123' }
-  let(:mock_session) { instance_double(ADK::Session, id: session_id, events: []) }
+  let(:user_id) { 'user-test' }
+  let(:app_name) { name }
+  let(:mock_session) { instance_double(ADK::Session, id: session_id, user_id: user_id, app_name: app_name, events: []) }
+  let(:mock_context) {
+    instance_double(ADK::ToolContext, session_id: session_id, user_id: user_id, app_name: app_name,
+                                      to_h: { session_id: session_id, user_id: user_id, app_name: app_name })
+  }
 
   # Tools
   let(:mock_tool_a) { instance_double(ADK::Tool, name: :tool_a) }
   let(:mock_tool_b) { instance_double(ADK::Tool, name: :tool_b) }
+  let(:mock_status_tool) { instance_double(ADK::Tools::CheckJobStatusTool, name: :check_job_status) }
+  let(:mock_async_tool) { instance_double(ADK::Tools::BaseAsyncJobTool, name: :async_tool) }
 
   # Results
   let(:success_hash_a) { { status: :success, result: 'Result A' } }
   let(:success_hash_b) { { status: :success, result: 'Result B' } }
+  let(:job_id) { 'jid_xyz789' }
+  let(:pending_hash) { { status: :pending, job_id: job_id, message: 'Job enqueued.' } }
   let(:error_hash) { { status: :error, error_message: 'Something failed' } }
 
-  # Events (use real structs where possible, mock only when necessary)
+  # Events
   let(:user_input) { "Test user input" }
   let(:agent_error_event) { instance_double(ADK::Event, role: :agent, content: "Error message") }
-  # Let event creation happen naturally unless we need to intercept it
 
   # --- Agent Instance ---
-  # Use let! to ensure agent is created before tests that might need it implicitly
   let!(:agent) do
-    # Stub Planner creation *before* agent is initialized
+    # Mock Planner before agent initialization
     allow(ADK::Planner).to receive(:new).and_return(mock_planner)
-    # Create the agent instance
-    described_class.new(
-      name: name,
-      description: description,
-      model_name: model_name,
-      logger: mock_logger
-      # Note: Planner is mocked via the allow above
-    )
+    # Mock ToolContext creation (will be called by execute_step)
+    allow(ADK::ToolContext).to receive(:new).with(session_id: session_id, user_id: user_id,
+                                                  app_name: app_name).and_return(mock_context)
+    # Mock ToolRegistry call during agent init for check_job_status
+    allow(ADK::ToolRegistry).to receive(:create_instance).with(:check_job_status).and_return(mock_status_tool)
+    allow(mock_status_tool).to receive(:is_a?).with(ADK::Tool).and_return(true) # Allow adding the status tool
+    # Stub Sidekiq configuration check during init
+    allow(Object).to receive(:defined?).with(Sidekiq).and_return(true)
+
+    # Initialize agent
+    described_class.new(name: name, description: description, model_name: model_name, logger: mock_logger)
   end
 
   # --- General Setup ---
   before do
-    # Ensure tools respond correctly to is_a? for add_tool
+    # Tool type checking
     allow(mock_tool_a).to receive(:is_a?).with(ADK::Tool).and_return(true)
     allow(mock_tool_b).to receive(:is_a?).with(ADK::Tool).and_return(true)
-
-    # Default session service behavior
+    allow(mock_status_tool).to receive(:is_a?).with(ADK::Tool).and_return(true)
+    allow(mock_async_tool).to receive(:is_a?).with(ADK::Tool).and_return(true)
+    # Session service interactions
     allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
     allow(mock_session_service).to receive(:append_event).and_return(true)
-
-    # Allow normal event creation by default
+    # Event creation
     allow(ADK::Event).to receive(:new).and_call_original
-
-    # Silence the real logger unless needed for specific tests
+    # Logger setup
     allow(ADK.logger).to receive(:level=) unless RSpec.current_example.metadata[:log_level]
     allow(ADK.logger).to receive(:info) unless RSpec.current_example.metadata[:log_level]
     allow(ADK.logger).to receive(:warn) unless RSpec.current_example.metadata[:log_level]
@@ -87,8 +98,15 @@ RSpec.describe ADK::Agent do
       expect(agent.planner).to eq(mock_planner)
     end
 
-    it 'initializes with an empty tools list' do
-      expect(agent.tools).to eq([])
+    it 'initializes with check_job_status tool if Sidekiq defined' do
+      # Check that the check_job_status tool (mocked) is present
+      expect(agent.tools).to include(mock_status_tool)
+      expect(agent.tools.map(&:name)).to include(:check_job_status)
+    end
+
+    it 'automatically adds check_job_status tool if Sidekiq is defined' do
+      # Agent initialization is already stubbed in the main let! block
+      expect(agent.tools.map(&:name)).to include(:check_job_status)
     end
   end
 
@@ -129,6 +147,7 @@ RSpec.describe ADK::Agent do
       # Add tools used in these tests
       agent.add_tool(mock_tool_a)
       agent.add_tool(mock_tool_b)
+      agent.add_tool(mock_async_tool)
     end
 
     context 'pre-execution checks' do
@@ -137,7 +156,8 @@ RSpec.describe ADK::Agent do
         result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
         expect(result).to be_an(ADK::Event)
         expect(result.role).to eq(:agent)
-        expect(result.content).to include("not active")
+        expect(result.content).to eq({ status: :error,
+                                       error_message: "Agent '#{name}' runtime is not active (stopped)." })
       end
 
       it 'returns error hash if session not found' do
@@ -146,7 +166,7 @@ RSpec.describe ADK::Agent do
         result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
         expect(result).to be_an(ADK::Event)
         expect(result.role).to eq(:agent)
-        expect(result.content).to include("Session not found")
+        expect(result.content).to eq({ status: :error, error_message: "Session not found: #{session_id}" })
       end
     end
 
@@ -156,7 +176,7 @@ RSpec.describe ADK::Agent do
       before do
         agent.start
         allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
-        allow(mock_tool_a).to receive(:execute).with({ p: 1 }).and_return(success_hash_a)
+        allow(mock_tool_a).to receive(:execute).with({ p: 1 }, mock_context).and_return(success_hash_a)
       end
 
       it 'records user, tool request, tool result, and agent events' do
@@ -165,12 +185,12 @@ RSpec.describe ADK::Agent do
         agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
       end
 
-      it 'returns the final agent event with the tool result' do
+      it 'returns the final agent event with the tool result hash' do
         final_event = agent.run_task(session_id: session_id, user_input: user_input,
                                      session_service: mock_session_service)
         expect(final_event).to be_an(ADK::Event)
         expect(final_event.role).to eq(:agent)
-        expect(final_event.content).to eq(success_hash_a[:result])
+        expect(final_event.content).to eq(success_hash_a)
       end
     end
 
@@ -180,12 +200,12 @@ RSpec.describe ADK::Agent do
       before do
         agent.start
         allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
-        allow(mock_tool_a).to receive(:execute).with({ p: 1 }).and_return(success_hash_a)
-        allow(mock_tool_b).to receive(:execute).with({ data: 'Result A' }).and_return(success_hash_b)
+        allow(mock_tool_a).to receive(:execute).with({ p: 1 }, mock_context).and_return(success_hash_a)
+        allow(mock_tool_b).to receive(:execute).with({ data: 'Result A' }, mock_context).and_return(success_hash_b)
       end
 
       it 'injects result from step 1 into step 2 params' do
-        expect(mock_tool_b).to receive(:execute).with({ data: 'Result A' }).and_return(success_hash_b)
+        expect(mock_tool_b).to receive(:execute).with({ data: 'Result A' }, mock_context).and_return(success_hash_b)
         agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
       end
 
@@ -200,23 +220,72 @@ RSpec.describe ADK::Agent do
                                      session_service: mock_session_service)
         expect(final_event).to be_an(ADK::Event)
         expect(final_event.role).to eq(:agent)
-        expect(final_event.content).to eq(success_hash_b[:result])
+        expect(final_event.content).to eq(success_hash_b)
+      end
+    end
+
+    context 'when a step returns a pending status' do
+      let(:plan) { [{ tool: :async_tool, params: { input: 'go' } }] }
+
+      before do
+        agent.start
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
+        # Mock the async tool returning the pending hash with job_id
+        allow(mock_async_tool).to receive(:execute).with({ input: 'go' }, mock_context).and_return(pending_hash)
+      end
+
+      it 'returns the final agent event with the pending hash as content' do
+        final_event = agent.run_task(session_id: session_id, user_input: user_input,
+                                     session_service: mock_session_service)
+        expect(final_event).to be_an(ADK::Event)
+        expect(final_event.role).to eq(:agent)
+        expect(final_event.content).to eq(pending_hash) # Expecting the hash with job_id
+      end
+    end
+
+    context 'multi-step execution with job_id injection' do
+      let(:plan) {
+        [{ tool: :async_tool, params: { input: 'start' } },
+         { tool: :check_job_status, params: { job_id: '[Result from step 1]' } }]
+      }
+      let(:check_result_success) { { status: :success, result: 'Job Done' } }
+
+      before do
+        agent.start
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
+        allow(mock_async_tool).to receive(:execute).with({ input: 'start' }, mock_context).and_return(pending_hash)
+        # Mock the check_job_status tool instance (retrieved via registry)
+        mock_check_tool = agent.send(:find_tool, :check_job_status) # Get the mocked instance added during init
+        allow(mock_check_tool).to receive(:execute).with({ job_id: job_id },
+                                                         mock_context).and_return(check_result_success)
+      end
+
+      it 'injects job_id from step 1 into step 2 params' do
+        mock_check_tool = agent.send(:find_tool, :check_job_status)
+        expect(mock_check_tool).to receive(:execute).with({ job_id: job_id },
+                                                          mock_context).and_return(check_result_success)
+        agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+      end
+
+      it 'returns the final agent event with the result of the check tool' do
+        final_event = agent.run_task(session_id: session_id, user_input: user_input,
+                                     session_service: mock_session_service)
+        expect(final_event).to be_an(ADK::Event)
+        expect(final_event.role).to eq(:agent)
+        expect(final_event.content).to eq(check_result_success)
       end
     end
 
     context 'multi-step execution with error and plan halting' do
       let(:plan) { [{ tool: :tool_a, params: { p: 1 } }, { tool: :tool_b, params: { data: '[Result from step 1]' } }] }
-      let(:error_event) {
-        instance_double(ADK::Event, role: :agent,
-                                    content: "Completed plan with error on last step: #{error_hash[:error_message]}")
-      }
+      let(:error_event) { ADK::Event.new(role: :agent, content: error_hash) }
 
       before do
         agent.start
         allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
-        allow(mock_tool_a).to receive(:execute).with({ p: 1 }).and_return(error_hash)
+        allow(mock_tool_a).to receive(:execute).with({ p: 1 }, mock_context).and_return(error_hash)
         allow(ADK::Event).to receive(:new).with(hash_including(role: :agent,
-                                                               content: /Completed plan with error/i)).and_return(error_event)
+                                                               content: error_hash)).and_return(error_event)
       end
 
       it 'stops execution after the failed step' do
@@ -239,9 +308,8 @@ RSpec.describe ADK::Agent do
       it 'returns the final agent event indicating the error' do
         final_event = agent.run_task(session_id: session_id, user_input: user_input,
                                      session_service: mock_session_service)
-        expect(final_event).to be_an(ADK::Event)
         expect(final_event.role).to eq(:agent)
-        expect(final_event.content).to include("Error during processing: #{error_hash[:error_message]}")
+        expect(final_event.content).to eq(error_hash)
       end
     end
 
@@ -255,7 +323,9 @@ RSpec.describe ADK::Agent do
         result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
         expect(result).to be_an(ADK::Event)
         expect(result.role).to eq(:agent)
-        expect(result.content).to include("I cannot fulfill this request with the available tools")
+        expected_error_hash = { status: :error,
+                                error_message: "I cannot fulfill this request with the available tools (empty plan)." }
+        expect(result.content).to eq(expected_error_hash)
       end
     end
 
@@ -269,34 +339,35 @@ RSpec.describe ADK::Agent do
         expect(mock_logger).to receive(:error).with(/Critical error during run_task.*Planner explosion/)
         expect(mock_session_service).to receive(:append_event).with(
           session_id: session_id,
-          event: having_attributes(role: :agent, content: /internal error.*Planner explosion/i)
+          event: having_attributes(role: :agent,
+                                   content: { status: :error,
+                                              error_message: /An internal error occurred.*Planner explosion/i })
         )
 
         result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
         expect(result).to be_an(ADK::Event)
         expect(result.role).to eq(:agent)
-        expect(result.content).to include("An internal error occurred during task processing: Planner explosion")
+        expected_error_hash = { status: :error, error_message: "An internal error occurred: Planner explosion" }
+        expect(result.content).to eq(expected_error_hash)
       end
     end
 
     context 'when finding a tool raises an error' do
       let(:bad_tool_plan) { [{ tool: :missing_tool, params: {} }] }
-      let(:error_event) {
-        instance_double(ADK::Event, role: :agent,
-                                    content: "Completed plan with error on last step: Tool 'missing_tool' not found for this agent.")
-      }
+      let(:expected_error_hash) { { status: :error, error_message: "Tool 'missing_tool' not found for this agent." } }
+      let(:error_event) { ADK::Event.new(role: :agent, content: expected_error_hash) }
 
       before do
         agent.start
         allow(mock_planner).to receive(:plan).with(user_input).and_return(bad_tool_plan)
         allow(ADK::Event).to receive(:new).with(hash_including(role: :agent,
-                                                               content: /Tool 'missing_tool' not found/)).and_return(error_event)
+                                                               content: expected_error_hash)).and_return(error_event)
       end
 
       it 'returns the final agent event with error content' do
         result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
-        expect(result).to eq(error_event)
-        expect(result.content).to include("Tool 'missing_tool' not found")
+        expect(result.role).to eq(error_event.role)
+        expect(result.content).to eq(error_event.content)
       end
     end
   end

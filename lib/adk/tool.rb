@@ -3,6 +3,7 @@
 
 require_relative 'tool_registry'
 require 'logger'
+require_relative 'tool_context'
 
 module ADK
   class Tool
@@ -69,11 +70,15 @@ module ADK
     # --- End Class method ---
 
     # Execute the tool
-    def execute(params = {})
+    # @param params [Hash] Input parameters for the tool.
+    # @param context [ADK::ToolContext, nil] Contextual information (session details).
+    # @return [Hash] A hash with :status (:success, :error, :pending) and :result/:error_message/:workflow_id.
+    def execute(params = {}, context = nil)
       validate_params(params)
       # Log parameters *after* validation succeeds but before execution
-      ADK.logger.debug("Executing tool '#{name}' with validated params: #{params.inspect}")
-      perform_execution(params)
+      ADK.logger.debug("Executing tool '#{name}' with validated params: #{params.inspect} and context: #{context&.to_h.inspect}")
+      # Pass context to perform_execution
+      perform_execution(params, context)
     end
 
     # Validate the parameters
@@ -97,9 +102,10 @@ module ADK
 
     # Perform the actual execution of the tool
     # @param params [Hash] The validated parameters to execute with
+    # @param context [ADK::ToolContext, nil] Contextual information (session details).
     # @return [Object] The result of the execution
-    def perform_execution(params)
-      raise NotImplementedError, "Subclasses must implement #perform_execution"
+    def perform_execution(params, context)
+      raise NotImplementedError, "Subclasses must implement #perform_execution(params, context)"
     end
   end
 end

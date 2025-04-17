@@ -29,8 +29,9 @@ module ADK
 
       private
 
-      # Returns a hash with :status and :result or :error_message
-      def perform_execution(params)
+      # @param params [Hash] Contains min and max.
+      # @param _context [ADK::ToolContext, nil] The execution context (unused here).
+      def perform_execution(params, _context)
         begin
           # Fetch parameters safely, providing defaults
           min_val_str = params.fetch('min') { params.fetch(:min, '1') }

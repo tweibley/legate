@@ -1,0 +1,3 @@
+These are ideas to do when everything else is already done...
+
+(Lower Priority) Cloud-Specific Service: If targeting a specific cloud platform like GCP becomes a goal, a corresponding service (like a FirestoreSessionService or a hypothetical VertexAiSessionService if Ruby SDKs allow) could be added.

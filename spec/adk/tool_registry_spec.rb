@@ -5,7 +5,8 @@ RSpec.describe ADK::Agent do
   let(:description) { 'Test Description' }
   let(:model_name) { 'test-model-123' }
   let(:mock_planner) { instance_double(ADK::Planner) }
-  let(:mock_session) { instance_double(ADK::Session) }
+  let(:session_id) { 'test-session-id' }
+  let(:mock_session) { instance_double(ADK::Session, id: session_id, user_id: 'test_user', app_name: name, events: []) }
   let(:mock_logger) { instance_double(Logger, info: nil, warn: nil, error: nil, debug: nil) }
 
   # Create proper tool mock for testing
@@ -86,63 +87,76 @@ RSpec.describe ADK::Agent do
   describe '#run_task' do
     let(:task) { "Do the thing" }
     let(:plan) { [{ tool: :mock_tool, params: { arg: 'value' } }] }
-    let(:success_result) { { status: :success, result: 'Done' } }
+    let(:success_result_hash) { { status: :success, result: 'Done' } }
+    let(:error_result_hash) { { status: :error, error_message: 'Boom' } }
     let(:session_id) { 'test-session-id' }
     let(:mock_session_service) { instance_double(ADK::SessionService::InMemory) }
+    let(:mock_context) {
+      instance_double(ADK::ToolContext, session_id: session_id, user_id: 'test_user', app_name: name, to_h: {})
+    }
 
     before do
       agent.add_tool(mock_tool)
       allow(mock_planner).to receive(:plan).with(task).and_return(plan)
-      # Mock execute_step directly for focused testing
-      allow(agent).to receive(:execute_step).with(plan.first, session_id,
-                                                  mock_session_service).and_return(success_result)
+      allow(agent).to receive(:execute_step).with(plan.first, mock_session,
+                                                  mock_session_service).and_return(success_result_hash)
       allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
       allow(mock_session_service).to receive(:append_event).and_return(true)
+      allow(ADK::ToolContext).to receive(:new).with(session_id: session_id, user_id: 'test_user',
+                                                    app_name: name).and_return(mock_context)
     end
 
     it 'returns error event if agent is not running' do
-      # Agent starts not running by default
       result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
       expect(result).to be_an(ADK::Event)
       expect(result.role).to eq(:agent)
-      expect(result.content).to include("not active")
+      expect(result.content).to eq({ status: :error,
+                                     error_message: "Agent '#{name}' runtime is not active (stopped)." })
     end
 
     it 'calls planner.plan with the task' do
       agent.start
       expect(mock_planner).to receive(:plan).with(task).and_return(plan)
+      expect(agent).to receive(:execute_step).with(plan.first, mock_session,
+                                                   mock_session_service).and_return(success_result_hash)
       agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
     end
 
     it 'calls execute_plan with the plan' do
       agent.start
-      # This is harder to mock directly, test via execute_step mock
-      expect(agent).to receive(:execute_step).with(plan.first, session_id,
-                                                   mock_session_service).and_return(success_result)
+      expect(agent).to receive(:execute_step).with(plan.first, mock_session,
+                                                   mock_session_service).and_return(success_result_hash)
       agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
     end
 
-    it 'returns the result from execute_plan (single step)' do
+    it 'returns the result event from execute_plan (single step)' do
       agent.start
+      allow(agent).to receive(:execute_step).with(plan.first, mock_session,
+                                                  mock_session_service).and_return(success_result_hash)
       result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
       expect(result).to be_a(ADK::Event)
+      expect(result.role).to eq(:agent)
+      expect(result.content).to eq(success_result_hash)
     end
 
     context 'with multi-step plan' do
       let(:plan) { [{ tool: :tool_a, params: {} }, { tool: :tool_b, params: {} }] }
-      let(:result1) { { status: :success, result: 'Step 1 Done' } }
-      let(:result2) { { status: :success, result: 'Step 2 Done' } }
+      let(:result1_hash) { { status: :success, result: 'Step 1 Done' } }
+      let(:result2_hash) { { status: :success, result: 'Step 2 Done' } }
 
       before do
         agent.start
-        # Need to mock specific calls to execute_step with different steps
-        allow(agent).to receive(:execute_step).with(plan[0], session_id, mock_session_service).and_return(result1)
-        allow(agent).to receive(:execute_step).with(plan[1], session_id, mock_session_service).and_return(result2)
+        allow(agent).to receive(:execute_step).with(plan[0], mock_session,
+                                                    mock_session_service).and_return(result1_hash)
+        allow(agent).to receive(:execute_step).with(plan[1], mock_session,
+                                                    mock_session_service).and_return(result2_hash)
       end
 
-      it 'returns an array of results' do
+      it 'returns the final agent event with the result of the last step' do
         result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
         expect(result).to be_a(ADK::Event)
+        expect(result.role).to eq(:agent)
+        expect(result.content).to eq(result2_hash)
       end
     end
 
@@ -156,21 +170,25 @@ RSpec.describe ADK::Agent do
         result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
         expect(result).to be_an(ADK::Event)
         expect(result.role).to eq(:agent)
-        expect(result.content).to include("Planner boom")
+        expected_error = { status: :error, error_message: "An internal error occurred: Planner boom" }
+        expect(result.content).to eq(expected_error)
       end
     end
 
     context 'when execute_step fails' do
+      let(:exec_error) { ADK::Error.new("Exec boom") }
       before {
         agent.start
-        allow(agent).to receive(:execute_step).and_raise(ADK::Error.new("Exec boom"))
+        allow(agent).to receive(:execute_step).with(plan.first, mock_session,
+                                                    mock_session_service).and_raise(exec_error)
       }
 
       it 'returns an error event' do
         result = agent.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
         expect(result).to be_an(ADK::Event)
         expect(result.role).to eq(:agent)
-        expect(result.content).to include("Exec boom")
+        expected_error = { status: :error, error_message: "An internal error occurred: Exec boom" }
+        expect(result.content).to eq(expected_error)
       end
     end
   end

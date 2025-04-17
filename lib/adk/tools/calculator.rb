@@ -41,9 +41,9 @@ module ADK
 
       private
 
-      # Performs the calculation based on validated parameters.
-      # Returns a hash with :status and either :result or :error_message.
-      def perform_execution(params)
+      # @param params [Hash] Contains operand1, operand2, operation.
+      # @param _context [ADK::ToolContext, nil] The execution context (unused here).
+      def perform_execution(params, _context)
         op1_str = params.fetch('operand1') { params.fetch(:operand1, nil) }
         op2_str = params.fetch('operand2') { params.fetch(:operand2, nil) }
         operation = params.fetch('operation') { params.fetch(:operation, nil) }&.downcase

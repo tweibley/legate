@@ -1,5 +1,7 @@
 # ADK Ruby
 
+[![Gem Version](https://badge.fury.io/rb/adk-ruby.svg)](https://badge.fury.io/rb/adk-ruby)
+
 **Author:** Taylor Weibley  
 **Repository:** [https://github.com/tweibley/adk-ruby](https://github.com/tweibley/adk-ruby)
 
@@ -15,13 +17,20 @@ ADK (Agent Development Kit) for Ruby is a framework for building AI agents with 
 - **Web UI**: Visual interface for agent interaction and monitoring
 - **Event-Based Communication**: Structured events for agent responses and errors
 - **Comprehensive Logging**: Detailed logging of agent operations and planning
+- **Agent Definition**: Define agents with names, descriptions, and specific LLM models
+- **Tool Integration**: Equip agents with custom tools (Ruby classes inheriting `ADK::Tool`)
+- **Automatic Planning**: Uses a specified LLM (e.g., Gemini) to automatically plan which tools to use based on user input
+- **Tool Parameter Injection**: Automatically injects results from previous steps into subsequent tool parameters (using `[Result from step N]` placeholders)
+- **Agent Delegation**: Agents can delegate tasks to other agents using the built-in `:delegate_task` tool
+- **Metrics**: Basic Prometheus metrics endpoint (`/metrics`) via `prometheus-client`
+- **Asynchronous Job Handling**: Support for long-running tasks via background jobs (using Sidekiq). See [Async Jobs with Sidekiq](docs/async_jobs_sidekiq.md)
 
 ## Installation
 
 Add this line to your application's Gemfile:
 
 ```ruby
-gem 'adk'
+gem 'adk-ruby'
 ```
 
 And then execute:
@@ -33,21 +42,35 @@ $ bundle install
 Or install it yourself as:
 
 ```bash
-$ gem install adk
+$ gem install adk-ruby
 ```
+
+## Dependencies
+
+- Ruby >= 3.0.0
+- `concurrent-ruby`
+- `redis` (for Redis session service, agent definitions, and Sidekiq)
+- `thor` (for CLI)
+- `logger`
+- `prometheus-client`
+- `gemini-ai` (or other LLM client gem if using a different planner)
+- `sidekiq` (Required for asynchronous job feature)
+- *(Web UI)* `sinatra`, `sinatra-contrib`, `puma`, `slim`, `sass-embedded`
+- *(Development)* `rspec`, `rake`, `rubocop`, `yard`, `pry`, `pry-byebug`, `dotenv`, `webmock`
 
 ## Configuration
 
 ### Environment Variables
 
 - `RACK_ENV`: Set to `development` or `production` (default: `development`)
-- `GOOGLE_API_KEY`: Your Google API key for the planner (required)
-- `ADK_LOG_LEVEL`: Logging level (default: `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`)
-- `ADK_REDIS_URL`: Redis connection URL (default: `redis://localhost:6379/0`)
+- `ADK_LOG_LEVEL`: Logging level (default: `DEBUG` in development, `WARN` otherwise, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, `NONE`).
+- `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379/0`). Used for session storage (if using Redis) and Sidekiq.
+- `GEMINI_API_KEY`: Your Google API key for the planner (required if using default `ADK::Planner`).
+- `HTTP_PROXY`, `HTTPS_PROXY`: Standard proxy variables if needed for LLM API calls.
 
 ### Redis Setup
 
-ADK uses Redis for session persistence. Ensure Redis is running:
+ADK uses Redis for session persistence (optional) and Sidekiq message broking. Ensure Redis is running:
 
 ```bash
 # macOS (via Homebrew)
@@ -57,21 +80,52 @@ brew services start redis
 sudo service redis-server start
 ```
 
+### Sidekiq Setup
+
+For the asynchronous job feature:
+1. Ensure the `sidekiq` gem is installed (`bundle install`).
+2. Ensure Redis is running and configured via `REDIS_URL`.
+3. Use the ADK CLI to manage Sidekiq workers:
+   ```bash
+   # Start a Sidekiq worker (uses ADK environment by default)
+   adk sidekiq start
+
+   # Start with custom options
+   adk sidekiq start --queue default,critical --concurrency 10 --verbose
+
+   # Check worker status
+   adk sidekiq status
+
+   # List pending jobs
+   adk sidekiq list_jobs
+
+   # Stop workers gracefully
+   adk sidekiq stop
+   ```
+
+   For custom worker configurations, you can specify a require path:
+   ```bash
+   adk sidekiq start --require path/to/your/worker.rb
+   ```
+
 ## Quick Start
 
-1. **Create a `.env` file:**
+1.  **Create a `.env` file:**
    ```
    RACK_ENV=development
-   GOOGLE_API_KEY=your_api_key_here
    ADK_LOG_LEVEL=DEBUG  # Optional, for detailed logging
+   REDIS_URL=redis://localhost:6379/0
+   GEMINI_API_KEY=your_gemini_api_key_here
    ```
 
-2. **Start the Web UI:**
+2.  **(Optional) Run Sidekiq Workers:** If using async tools, start workers using the ADK CLI (see Sidekiq Setup).
+
+3.  **Start the Web UI:**
    ```bash
    adk web start
    ```
 
-3. **Access the Web Interface:**
+4.  **Access the Web Interface:**
    Open your browser to `http://localhost:4567`
 
 ## Examples
@@ -176,6 +230,8 @@ Tools are modular components that agents can use:
 - **CatFacts**: Retrieve random cat facts
 - **RandomNumber**: Generate random numbers
 - **AgentTool**: Delegate tasks to other agents
+- **BaseAsyncJobTool**: Base class for tools starting background jobs via Sidekiq.
+- **CheckJobStatusTool**: Built-in tool to check the status/result of a Sidekiq job started by an `BaseAsyncJobTool`.
 
 ```ruby
 # Register a tool
@@ -200,14 +256,20 @@ Events provide structured communication:
 ```ruby
 # Success event
 ADK::Event.new(
-  role: :assistant,
+  role: :agent,
   content: { status: :success, result: 'Task completed' }
 )
 
 # Error event
 ADK::Event.new(
-  role: :assistant,
+  role: :agent,
   content: { status: :error, error_message: 'Something went wrong' }
+)
+
+# Pending event (for async jobs)
+ADK::Event.new(
+  role: :agent,
+  content: { status: :pending, job_id: 'jid_abc123', message: 'Job enqueued.' }
 )
 ```
 
@@ -222,7 +284,7 @@ After checking out the repo:
 
 2. **Setup Environment:**
    - Ensure Redis is running
-   - Create a `.env` file with required variables
+   - Create a `.env` file with required variables (see Configuration)
    - Set `ADK_LOG_LEVEL=DEBUG` for detailed logging
 
 3. **Run Tests:**
@@ -246,3 +308,14 @@ Bug reports and pull requests are welcome on GitHub at [https://github.com/tweib
 ## License
 
 If you are DHH or work at Basecamp/37signals you absolutely cannot use this.
+
+## Asynchronous Jobs with Sidekiq
+
+ADK supports offloading long-running tasks to Sidekiq background jobs, preventing the agent from blocking.
+
+*   Implement tasks as Sidekiq Workers.
+*   Create an ADK Tool inheriting from `ADK::Tools::BaseAsyncJobTool` to enqueue the job.
+*   Use the built-in `:check_job_status` tool to poll for results using the `job_id` returned by the starting tool.
+*   Requires a running Redis instance and a separate Sidekiq worker process for your jobs.
+
+See the detailed documentation: [docs/async_jobs_sidekiq.md](docs/async_jobs_sidekiq.md)

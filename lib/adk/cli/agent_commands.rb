@@ -44,78 +44,97 @@ module ADK
           JSON.parse(tools_json) rescue [] # Return empty array on parse error
         end
 
-        # --- Updated format_cli_result to handle Event/Error Hash ---
+        # --- Updated format_cli_result to handle Event/Error/Pending Hash ---
         def format_cli_result(result_data)
           content_to_display = nil
           is_error = false
+          is_pending = false
           status_prefix = ""
 
-          # Determine what kind of result we got from run_task
+          # Determine what kind of result we got
           if result_data.is_a?(ADK::Event)
-            if result_data.role == :agent
-              # Standard successful execution returning the final agent event
-              content_to_display = result_data.content
-              # Check if the *content* itself is a status hash (e.g., from AgentTool success)
-              if content_to_display.is_a?(Hash) && content_to_display.key?(:status)
-                is_error = (content_to_display[:status] == :error)
-                status_prefix = "(Nested Result) " # Indicate the origin
-              end
-            elsif result_data.role == :tool_result
-              # Tool result event
+            if result_data.role == :agent || result_data.role == :tool_result
               content_to_display = result_data.content
               if content_to_display.is_a?(Hash) && content_to_display.key?(:status)
                 is_error = (content_to_display[:status] == :error)
+                is_pending = (content_to_display[:status] == :pending)
+                status_prefix = "(Nested Result) " if result_data.role == :agent
               end
             end
           elsif result_data.is_a?(Hash) && result_data.key?(:status)
-            # An error occurred directly during run_task (e.g., agent not running, planning error)
             content_to_display = result_data
-            is_error = true # Assume error if it's a status hash from run_task itself
+            is_error = (result_data[:status] == :error)
+            is_pending = (result_data[:status] == :pending)
           else
-            # Handle simple responses (like strings) as successful results
             content_to_display = result_data
             is_error = false
+            is_pending = false
           end
 
-          # Now format based on the determined content and error status
-          if content_to_display.is_a?(Array) && !is_error # Likely Multi-Step Plan Result
+          # Now format based on the determined content and status
+          if content_to_display.is_a?(Array) && !is_error && !is_pending # Multi-Step Plan Result
             say "#{status_prefix}Multi-Step Result:", :cyan
             any_step_errors = false
+            any_step_pending = false
             content_to_display.each_with_index do |step_hash, index|
-              if step_hash.is_a?(Hash) && step_hash.key?(:status)
-                if step_hash[:status] == :success
+              html_parts << "<li>"
+              if step_hash.is_a?(Hash) # Ensure it's a hash before checking status
+                case step_hash[:status]
+                when :success
                   say "  Step #{index + 1} (Success):", :green
-                  # Handle potential nested results from AgentTool
                   step_result = step_hash[:result]
                   if step_result.is_a?(Hash) && step_result.key?(:status)
                     say "    Result (Nested): #{step_result.inspect}"
                   else
                     say "    Result: #{step_result}"
                   end
-                else # :error or other
+                when :pending
+                  say "  Step #{index + 1} (Pending):", :yellow
+                  say "    Job ID: #{step_hash[:job_id]}"
+                  say "    Message: #{step_hash[:message]}" if step_hash[:message]
+                  any_step_pending = true
+                when :error
                   say "  Step #{index + 1} (Error):", :red
                   say "    Message: #{step_hash[:error_message]}"
+                  any_step_errors = true
+                else
+                  say "  Step #{index + 1} (Unknown Status): #{step_hash.inspect}", :yellow
                   any_step_errors = true
                 end
               else
                 say "  Step #{index + 1} (Unknown Step Format): #{step_hash.inspect}", :yellow
                 any_step_errors = true
               end
+              html_parts << "</li>"
             end
-            say "Overall Plan Status: #{any_step_errors ? 'Completed with errors' : 'Completed successfully'}",
-                (any_step_errors ? :yellow : :green)
+            # --- UPDATED Overall Status ---
+            overall_msg = if any_step_errors then 'Completed with errors'
+                          elsif any_step_pending then 'Completed with pending steps'
+                          else 'Completed successfully' end
+            overall_color = if any_step_errors then :red
+                            elsif any_step_pending then :yellow
+                            else :green end
+            say "Overall Plan Status: #{overall_msg}", overall_color
 
           elsif content_to_display.is_a?(Hash) && content_to_display.key?(:status)
-            # Single step or error
-            if content_to_display[:status] == :success
+            # Single step result or error/pending
+            case content_to_display[:status]
+            when :success
               say "#{status_prefix}Success:", :green
               say "  Result: #{content_to_display[:result]}"
-            else
+            when :pending
+              say "#{status_prefix}Pending:", :yellow
+              say "  Job ID: #{content_to_display[:job_id]}"
+              say "  Message: #{content_to_display[:message]}" if content_to_display[:message]
+            when :error
               say "#{status_prefix}Error:", :red
               say "  Message: #{content_to_display[:error_message]}"
+            else
+              say "#{status_prefix}Unknown Status:", :yellow
+              say "  Data: #{content_to_display.inspect}"
             end
           else
-            # Simple response (like a string)
+            # Simple response (like a string) - Treat as success
             say "#{status_prefix}Success:", :green
             say "  Result: #{content_to_display}"
           end
@@ -387,14 +406,21 @@ module ADK
           else
             say "  - Adding tools: [#{tool_names_to_load.join(', ')}]", :cyan
             tool_names_to_load.each do |t|
-              instance = ADK::ToolRegistry.create_instance(t)
-              if instance
-                agent.add_tool(instance)
+              # Skip check_job_status if already added automatically
+              next if t == :check_job_status && agent.tools.any? { |at| at.name == :check_job_status }
+
+              i = ADK::ToolRegistry.create_instance(t)
+              if i
+                agent.add_tool(i)
                 added_tools << t
               else
-                say "  - Warning: Tool '#{t}' not found in registry", :yellow
+                say "  - Warn: Tool '#{t}' not found in registry.", :yellow
               end
             end
+          end
+          # Display automatically added tools too
+          agent.tools.reject { |t| added_tools.include?(t.name) }.each do |auto_tool|
+            say "  - Includes tool: #{auto_tool.name}", :faint
           end
 
           # Start Agent Runtime
@@ -416,7 +442,7 @@ module ADK
         end
       end
 
-      # --- Updated 'execute' command for Session Handling ---
+      # --- Updated 'execute' command for Session Handling and Pending Status ---
       desc 'execute NAME TASK', 'Execute a task using agent definition (ephemeral)'
       long_desc <<-LONGDESC
         Loads agent definition, instantiates agent, runs TASK within a session context,
@@ -427,11 +453,15 @@ module ADK
 
         Use --redis to use Redis for session storage instead of in-memory storage.
         This allows sessions to persist between CLI invocations.
+
+        If a task results in a :pending status (e.g., for an async job),
+        the job_id will be printed. Use the check_job_status tool
+        in a subsequent call to get the final result.
       LONGDESC
       method_option :session_id, type: :string, desc: 'Optional ID of an existing session to use.'
       method_option :redis, type: :boolean, default: false, desc: 'Use Redis for session storage instead of in-memory.'
       def execute(name, task)
-        say "Loading agent '#{name}' to execute task: \"#{task}\"..."
+        say("Loading agent '#{name}' to execute task: \"#{task}\"...")
         redis = connect_redis
         key = agent_redis_key(name)
         redis_agent_data = redis.hmget(key, 'description', 'tools', 'model')
@@ -442,29 +472,20 @@ module ADK
         unless description then say "Error: Agent definition '#{name}' not found.", :red; exit(1); end
 
         # --- Session Handling ---
-        # Choose session service based on --redis option
         session_service = options[:redis] ? ADK::SessionService::Redis.new : @@session_service
         session_id = options[:session_id]
         adk_session = nil
-
         if session_id
           adk_session = session_service.get_session(session_id: session_id)
-          if adk_session
-            say "Continuing session: #{session_id}", :cyan
-          else
-            say "Warning: Session ID '#{session_id}' provided but not found. Starting a new session.", :yellow
-            session_id = nil # Force creation below
-          end
+          if adk_session then say "Continuing session: #{session_id}", :cyan
+          else say "Warning: Session ID '#{session_id}' provided but not found. Starting a new session.", :yellow;
+               session_id = nil end
         end
-
         unless adk_session
-          # Use agent name for app_name, generic user_id for CLI
           adk_session = session_service.create_session(app_name: name, user_id: 'cli_user')
           session_id = adk_session.id
           say "Started new session: #{session_id}", :cyan
-          if options[:redis]
-            say "  (Using Redis for persistent storage)", :cyan
-          end
+          say "  (Using #{options[:redis] ? 'Redis' : 'in-memory'} session storage)", :cyan
         end
         # --- End Session Handling ---
 
@@ -475,26 +496,42 @@ module ADK
           agent = ADK::Agent.new(name: name, description: description, model_name: model_name)
           say "  - Agent uses model: #{agent.model_name}", :cyan
 
-          # Load Tools
-          tool_names_to_load = parse_tools(tools_json_string).map(&:to_sym); added_tools = [];
-          if tool_names_to_load.empty? then say "  - Warning: No tools configured.", :yellow;
-          else say "  - Adding tools: [#{tool_names_to_load.join(', ')}]", :cyan; tool_names_to_load.each { |t|
-                 i = ADK::ToolRegistry.create_instance(t);
-                 if i then agent.add_tool(i); added_tools << t; else say "  - Warn: Tool '#{t}' not found", :yellow; end
-               }; end
+          # Load Tools (agent init now auto-adds check_job_status)
+          tool_names_to_load = parse_tools(tools_json_string).map(&:to_sym)
+          added_tools = []
+          if tool_names_to_load.empty?
+            say "  - Warning: No tools configured.", :yellow
+          else
+            say "  - Adding tools: [#{tool_names_to_load.join(', ')}]", :cyan
+            tool_names_to_load.each do |t|
+              # Skip check_job_status if already added automatically
+              next if t == :check_job_status && agent.tools.any? { |at| at.name == :check_job_status }
+
+              i = ADK::ToolRegistry.create_instance(t)
+              if i
+                agent.add_tool(i)
+                added_tools << t
+              else
+                say "  - Warn: Tool '#{t}' not found in registry.", :yellow
+              end
+            end
+          end
+          # Display automatically added tools too
+          agent.tools.reject { |t| added_tools.include?(t.name) }.each do |auto_tool|
+            say "  - Includes tool: #{auto_tool.name}", :faint
+          end
 
           # Start Agent Runtime & Execute Task within Session
           say "  - Starting agent runtime...", :cyan, false; agent.start; say "started.", :cyan
-          say "  - Running task in session #{session_id}...", :cyan, false;
-          # Call refactored run_task
+          say "  - Running task in session #{session_id}: '#{task}'...", :cyan, false;
           final_event_or_error = agent.run_task(
             session_id: session_id,
             user_input: task,
             session_service: session_service
-          );
+          )
           say "finished.", :cyan
 
-          # Format and Print Result
+          # Format and Print Result (using updated helper)
           say "\nTask Result:", :bold
           format_cli_result(final_event_or_error) # Use helper method
         rescue StandardError => e # Catch errors during setup or run_task

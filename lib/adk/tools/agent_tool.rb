@@ -59,8 +59,9 @@ module ADK
       #
       # @param params [Hash] Parameters provided by the planner's step.
       #                      Expected keys: :target_agent_name, :task (as Symbols).
+      # @param _context [ADK::ToolContext, nil] The execution context (unused here, but session context is passed implicitly through service).
       # @return [Hash] A hash with :status (:success or :error) and :result or :error_message.
-      def perform_execution(params)
+      def perform_execution(params, _context)
         # Fetch required parameters using symbols (matching planner output)
         target_agent_name = params.fetch(:target_agent_name)
         task_to_delegate = params.fetch(:task)

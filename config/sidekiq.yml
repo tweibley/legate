@@ -1,0 +1,6 @@
+:concurrency: 5
+# Explicitly set Redis URL using the correct :url key
+:url: redis://localhost:6379/0 
+:queues:
+  - default
+:require: ./lib/adk.rb

@@ -44,8 +44,9 @@ module ADK
       # Accepts params hash but ignores it as this tool takes no parameters.
       #
       # @param _params [Hash] Ignored parameters.
+      # @param _context [ADK::ToolContext, nil] The execution context (unused here).
       # @return [Hash] A standardized hash with :status and :result or :error_message.
-      def perform_execution(_params)
+      def perform_execution(_params, _context)
         fetch_cat_fact
       end
 
