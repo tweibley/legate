@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'concurrent'
+require_relative 'base'
 require_relative '../session'
 require_relative '../event'
 
@@ -9,11 +10,17 @@ module ADK
   module SessionService
     # Stores sessions entirely in memory. Data is lost on application restart.
     # Useful for local development, testing, and simple use cases.
-    class InMemory
+    class InMemory < Base
+      attr_reader :sessions
+
       def initialize
-        # Use Concurrent::Map for basic thread safety on the sessions hash itself
         @sessions = Concurrent::Map.new
+        @scoped_states = Concurrent::Map.new
         ADK.logger.info("InMemorySessionService initialized.")
+      end
+
+      def persistent?
+        false
       end
 
       # Creates a new session in memory.
@@ -22,7 +29,12 @@ module ADK
       # @param initial_state [Hash] Optional initial data for the session state.
       # @return [ADK::Session] The newly created session object.
       def create_session(app_name:, user_id:, initial_state: {})
-        session = ADK::Session.new(app_name: app_name, user_id: user_id, initial_state: initial_state)
+        session = ADK::Session.new(
+          app_name: app_name,
+          user_id: user_id,
+          initial_state: initial_state,
+          session_service: self
+        )
         @sessions[session.id] = session
         ADK.logger.info("Created session: #{session.id} for app:#{app_name}, user:#{user_id}")
         session
@@ -66,28 +78,10 @@ module ADK
       # @param event [ADK::Event] The event to append. Must be an instance of ADK::Event.
       # @return [Boolean] True if successful, false if session not found or event is invalid.
       def append_event(session_id:, event:)
-        session = @sessions[session_id]
-        unless session
-          ADK.logger.error("Cannot append event, session not found: #{session_id}")
-          return false
-        end
+        session = get_session(session_id: session_id)
+        return false unless session
 
-        unless event.is_a?(ADK::Event)
-          ADK.logger.error("Cannot append event, invalid event object provided: #{event.inspect}")
-          return false
-        end
-
-        # Add the event to the session's internal history
-        session.add_event(event) # This also updates session.updated_at
-
-        # Apply state changes if the event carries them
-        if event.state_delta && !event.state_delta.empty?
-          ADK.logger.debug("Applying state delta to session #{session_id}: #{event.state_delta.inspect}")
-          session.update_state(event.state_delta) # This also updates session.updated_at
-        end
-
-        # In-memory doesn't need an explicit save step, changes are live.
-        ADK.logger.debug("Appended event and potentially updated state for session: #{session_id}")
+        session.add_event(event)
         true
       end
 
@@ -116,6 +110,28 @@ module ADK
         filtered.select! { |s| s.user_id == user_id } if user_id
         ADK.logger.debug("Listing #{filtered.count} sessions.")
         filtered
+      end
+
+      def save_scoped_state(scope, key, value)
+        state_key = "#{scope}:#{key}"
+        @scoped_states[state_key] = value
+      end
+
+      def load_scoped_state(scope, key)
+        state_key = "#{scope}:#{key}"
+        @scoped_states[state_key]
+      end
+
+      def clear_scoped_state(scope, key)
+        if key == '*'
+          # Clear all states for the given scope
+          @scoped_states.keys.each do |state_key|
+            @scoped_states.delete(state_key) if state_key.start_with?("#{scope}:")
+          end
+        else
+          state_key = "#{scope}:#{key}"
+          @scoped_states.delete(state_key)
+        end
       end
     end
   end

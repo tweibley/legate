@@ -148,8 +148,8 @@ module ADK
             if final_content.is_a?(Hash) && final_content[:status] == :success && final_content.key?(:result)
               final_content = final_content[:result]
             end
-             # Example: Maybe update state based on successful multi-step
-             # state_changes_from_task[:last_successful_result] = final_content
+          # Example: Maybe update state based on successful multi-step
+          # state_changes_from_task[:last_successful_result] = final_content
           elsif last_step_result && last_step_result[:status] == :error
             final_content = "Completed plan with error on last step: #{last_step_result[:error_message]}"
             logger.warn("Agent '#{name}' task completed with error. Last step msg: #{last_step_result[:error_message]}")
@@ -163,8 +163,8 @@ module ADK
             final_content = final_content[:result]
           end
           logger.info("Agent '#{name}' task completed successfully.")
-           # Example: Maybe update state based on successful single step
-           # state_changes_from_task[:last_successful_result] = final_content
+        # Example: Maybe update state based on successful single step
+        # state_changes_from_task[:last_successful_result] = final_content
         else
           final_content = "Task finished with unexpected execution result: #{execution_result.inspect}"
           logger.error(final_content)
@@ -180,7 +180,6 @@ module ADK
           # state_delta: state_changes_from_task # Pass the delta if any state changes occurred
         )
         session_service.append_event(session_id: session_id, event: final_agent_event)
-
       rescue StandardError => e
         # Catch errors during the overall run_task flow (e.g., planner errors not caught internally)
         logger.error("Critical error during run_task for agent '#{name}': #{e.class} - #{e.message}")
@@ -193,7 +192,6 @@ module ADK
 
       # 6. Return the final agent event itself (even if it's an error event)
       final_agent_event
-
     end # end run_task
 
     private
@@ -228,21 +226,21 @@ module ADK
         # --- Input Injection Logic (Updated for nested results) ---
         current_params = step[:params].dup
         current_params.transform_values! do |value|
-           # Placeholder logic - adapt as needed based on placeholder format
-           injection_value = nil
+          # Placeholder logic - adapt as needed based on placeholder format
+          injection_value = nil
           if value.is_a?(String) && value.match?(/\[Result from step \d+\]|\[Result from previous step\]/i)
             if previous_step_result_hash && previous_step_result_hash[:status] == :success
               prev_result = previous_step_result_hash[:result]
               # Handle nested results if previous step was AgentTool
               if prev_result.is_a?(Hash) && prev_result[:status] == :success && prev_result.key?(:result)
-                  injection_value = prev_result[:result]
-                  logger.debug("Injecting nested result...")
+                injection_value = prev_result[:result]
+                logger.debug("Injecting nested result...")
               elsif previous_step_result_hash.key?(:result) # Handle direct results
-                  injection_value = prev_result
-                  logger.debug("Injecting direct result...")
+                injection_value = prev_result
+                logger.debug("Injecting direct result...")
               else # Previous step succeeded but had no :result key? Log warning.
-                  logger.warn("Cannot inject: Previous successful step missing :result key. Prev Hash: #{previous_step_result_hash.inspect}")
-                  value # Keep original placeholder
+                logger.warn("Cannot inject: Previous successful step missing :result key. Prev Hash: #{previous_step_result_hash.inspect}")
+                value # Keep original placeholder
               end
 
             else # Previous step failed or was nil

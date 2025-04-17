@@ -127,7 +127,8 @@ RSpec.describe ADK::SessionService::Redis do
       allow(ADK::Session).to receive(:new).with(
         app_name: app_name,
         user_id: user_id,
-        initial_state: initial_state
+        initial_state: initial_state,
+        session_service: service
       ).and_return(new_session) # Return our object with the expected ID
 
       # Configure mocks for a successful creation
@@ -148,7 +149,8 @@ RSpec.describe ADK::SessionService::Redis do
       expect(ADK::Session).to receive(:new).with(
         app_name: app_name,
         user_id: user_id,
-        initial_state: initial_state
+        initial_state: initial_state,
+        session_service: service
       ).and_return(new_session)
       session = service.create_session(app_name: app_name, user_id: user_id, initial_state: initial_state)
       expect(session).to eq(new_session)
@@ -178,9 +180,15 @@ RSpec.describe ADK::SessionService::Redis do
     end
 
     it 'does not set TTL if session_ttl is nil' do
-      service = described_class.new(redis_client: mock_redis, session_ttl: nil)
+      service_no_ttl = described_class.new(redis_client: mock_redis, session_ttl: nil)
+      allow(ADK::Session).to receive(:new).with(
+        app_name: app_name,
+        user_id: user_id,
+        initial_state: initial_state,
+        session_service: service_no_ttl
+      ).and_return(new_session)
       expect(mock_redis).not_to receive(:expire)
-      service.create_session(app_name: app_name, user_id: user_id, initial_state: initial_state)
+      service_no_ttl.create_session(app_name: app_name, user_id: user_id, initial_state: initial_state)
     end
 
     context 'when state serialization fails' do
@@ -188,7 +196,7 @@ RSpec.describe ADK::SessionService::Redis do
       before do
         # Allow Session.new, but mock state_to_h
         allow(ADK::Session).to receive(:new).with(
-          app_name: app_name, user_id: user_id, initial_state: bad_state
+          app_name: app_name, user_id: user_id, initial_state: bad_state, session_service: service
         ).and_return(instance_double(ADK::Session, id: session_id, app_name: app_name, user_id: user_id,
                                                    state_to_h: bad_state, created_at: now, updated_at: now))
         # Simulate JSON failure
@@ -346,23 +354,24 @@ RSpec.describe ADK::SessionService::Redis do
 
   describe '#append_event' do
     let(:event_json) { redis_event_json(event_no_delta) }
+    let(:session) {
+      instance_double(ADK::Session, id: session_id, app_name: app_name, user_id: user_id,
+                                    state_to_h: initial_state, updated_at: now, add_event: event_no_delta)
+    }
 
     before do
       # Create a standard setup where all mocks default to successful behaviors
       allow(mock_redis).to receive(:exists?).with(session_key).and_return(true)
-      allow(mock_redis).to receive(:watch).with(session_key) do |&block|
-        block.call if block # Important - this is how the watch block gets executed
-      end
-      allow(mock_redis).to receive(:multi) do |&block|
-        block.call(mock_redis) if block
-        [1, 1, 1, 1] # Default success results
-      end
+      allow(mock_redis).to receive(:watch).with(session_key).and_yield
+      allow(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1, 1, 1, 1]) # Default success results
       allow(mock_redis).to receive(:rpush).with(events_key, anything).and_return(1)
       allow(mock_redis).to receive(:hget).with(session_key, 'state').and_return('{}')
       allow(mock_redis).to receive(:hset).with(session_key, anything, anything).and_return(1)
       allow(mock_redis).to receive(:expire).with(any_args).and_return(true)
       allow(JSON).to receive(:generate).and_return('{}')
       allow(JSON).to receive(:parse).and_return({})
+      allow(service).to receive(:get_session).and_return(session)
+      allow(session).to receive(:add_event).and_return(event_no_delta)
     end
 
     it 'returns false if event is not an ADK::Event' do
@@ -395,9 +404,17 @@ RSpec.describe ADK::SessionService::Redis do
     end
 
     context 'when event has state_delta' do
+      let(:session_with_delta) {
+        instance_double(ADK::Session, id: session_id, app_name: app_name, user_id: user_id,
+                                      state_to_h: initial_state.merge(state_delta), updated_at: now,
+                                      add_event: event_with_delta, update_state: nil)
+      }
+
       before do
         allow(mock_redis).to receive(:hget).with(session_key, 'state').and_return('{"key":"value"}')
         allow(JSON).to receive(:parse).with('{"key":"value"}', symbolize_names: true).and_return({ key: 'value' })
+        allow(service).to receive(:get_session).and_return(session_with_delta)
+        allow(session_with_delta).to receive(:update_state).with(anything).and_return(true)
       end
 
       it 'fetches current state, merges delta, and updates state in hash' do

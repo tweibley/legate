@@ -6,16 +6,18 @@ require 'json'
 require 'time' # For iso8601 parsing
 require_relative '../session'
 require_relative '../event'
+require_relative 'base'
 
 module ADK
   module SessionService
     # Stores sessions in Redis for persistence.
     # Uses a Redis Hash for metadata/state and a Redis List for events.
-    class Redis
+    class Redis < Base
       # Key Definitions
       REDIS_SESSION_HASH_PREFIX = "adk:session:"
       REDIS_SESSION_EVENTS_LIST_PREFIX = "adk:session:events:"
       REDIS_SESSIONS_SET_KEY = "adk:sessions:all_ids"
+      REDIS_SCOPED_STATE_PREFIX = "adk:state:"
 
       # Default TTL for session keys (in seconds). Set to nil or 0 for no expiry.
       # Example: 7 days = 7 * 24 * 60 * 60 = 604800
@@ -38,7 +40,12 @@ module ADK
       # @param initial_state [Hash] Optional initial data for the session state.
       # @return [ADK::Session] The newly created session object.
       def create_session(app_name:, user_id:, initial_state: {})
-        session = ADK::Session.new(app_name: app_name, user_id: user_id, initial_state: initial_state)
+        session = ADK::Session.new(
+          app_name: app_name,
+          user_id: user_id,
+          initial_state: initial_state,
+          session_service: self
+        )
         session_key = redis_session_key(session.id)
         events_key = redis_events_key(session.id)
 
@@ -138,17 +145,19 @@ module ADK
             app_name: session_hash_data['app_name'],
             user_id: session_hash_data['user_id'],
             initial_state: state, # Pass parsed state
-            events: events # Pass parsed events
+            events: events, # Pass parsed events
+            session_service: self
           }
           session = ADK::Session.new(**session_data_for_init)
 
           # Manually set timestamps after initialization from stored values
-          session.instance_variable_set(:@created_at, Time.iso8601(session_hash_data['created_at'])) if session_hash_data['created_at']
-          session.instance_variable_set(:@updated_at, Time.iso8601(session_hash_data['updated_at'])) if session_hash_data['updated_at']
+          session.instance_variable_set(:@created_at,
+                                        Time.iso8601(session_hash_data['created_at'])) if session_hash_data['created_at']
+          session.instance_variable_set(:@updated_at,
+                                        Time.iso8601(session_hash_data['updated_at'])) if session_hash_data['updated_at']
 
           ADK.logger.debug("Retrieved session from Redis: #{session_id}")
           session
-
         rescue ::Redis::BaseError => e
           ADK.logger.error("Redis error getting session #{session_id}: #{e.class} - #{e.message}")
           raise ADK::Error, "Redis error during session retrieval."
@@ -164,91 +173,84 @@ module ADK
       # @param event [ADK::Event] The event to append. Must be an instance of ADK::Event.
       # @return [Boolean] True if successful, false otherwise (e.g., session not found, invalid event, Redis error, WATCH conflict).
       def append_event(session_id:, event:)
-        unless event.is_a?(ADK::Event)
-          ADK.logger.error("Cannot append event, invalid event object provided: #{event.inspect}")
-          return false
-        end
+        return false unless event.is_a?(ADK::Event)
 
         session_key = redis_session_key(session_id)
         events_key = redis_events_key(session_id)
+
+        # Check if session exists
+        return false unless @redis_client.exists?(session_key)
+
+        # Get the session
+        session = get_session(session_id: session_id)
+        return false unless session
+
+        # Add the event to the session
+        added_event = session.add_event(event)
+        return false unless added_event
+
+        # Maximum number of retries for optimistic locking
         max_retries = 3
         retries = 0
-        success = false
 
         begin
-          # Optimistic Locking Loop
-          while retries < max_retries
-            # Watch the session key for changes to state
+          loop do
+            # Watch the session key for changes
             @redis_client.watch(session_key) do
-              # Check existence first (inside watch block for consistency)
-              unless @redis_client.exists?(session_key)
-                ADK.logger.error("Cannot append event, session key #{session_key} not found.")
-                @redis_client.unwatch # Explicitly unwatch before returning
-                return false
-              end
-
-              # Prepare event JSON
-              event_json = JSON.generate(event.to_h)
-
-              # --- State Update Logic ---
-              new_state_json = nil
-              # Only update state if event has a delta
+              # If event has state_delta, fetch current state
               if event.state_delta && !event.state_delta.empty?
                 current_state_json = @redis_client.hget(session_key, 'state')
-                current_state = current_state_json ? JSON.parse(current_state_json, symbolize_names: true) : {}
-                # Merge delta into current state
-                new_state = current_state.merge(event.state_delta)
-                new_state_json = JSON.generate(new_state)
+                if current_state_json
+                  begin
+                    current_state = JSON.parse(current_state_json, symbolize_names: true)
+                    session.update_state(current_state.merge(event.state_delta))
+                  rescue JSON::ParserError => e
+                    ADK.logger.error("Failed to parse current state JSON for session #{session_id}: #{e.message}")
+                    return false
+                  end
+                end
               end
-              # --- End State Update Logic ---
 
-              # Execute transaction
+              # Update Redis in a transaction
               results = @redis_client.multi do |multi|
-                multi.rpush(events_key, event_json)
-                # Update state only if it changed
-                multi.hset(session_key, 'state', new_state_json) if new_state_json
-                # Always update timestamp
-                multi.hset(session_key, 'updated_at', Time.now.utc.iso8601(3))
+                # Add event to the events list
+                multi.rpush(events_key, JSON.generate(added_event.to_h))
+
+                # Update session hash with new state and timestamp
+                multi.hset(session_key, 'updated_at', session.updated_at.iso8601(3))
+                multi.hset(session_key, 'state', JSON.generate(session.state_to_h))
+
                 # Refresh TTL if configured
                 if @session_ttl&.positive?
                   multi.expire(session_key, @session_ttl)
                   multi.expire(events_key, @session_ttl)
                 end
-              end # End multi block
-
-              # Check MULTI result
-              if results # results is non-nil if EXEC succeeded (no WATCH conflict)
-                success = true
-                ADK.logger.debug("Appended event and potentially updated state for session: #{session_id}")
-                break # Exit retry loop on success
-              else
-                # WATCH conflict, results is nil
-                ADK.logger.warn("WATCH conflict appending event to session #{session_id}. Retrying (#{retries + 1}/#{max_retries})...")
-                retries += 1
-                # Optional: Add slight delay before retry
-                # sleep(rand(0.05..0.2))
               end
-            end # End watch block
-            break if success # Exit loop if already succeeded
-          end # End while loop
 
-          unless success
-            ADK.logger.error("Failed to append event to session #{session_id} after #{max_retries} retries due to conflicts.")
-            return false
+              # Check if transaction was successful
+              if results.nil?
+                # Watch failed, retry if we haven't exceeded max retries
+                retries += 1
+                if retries >= max_retries
+                  ADK.logger.warn("Max retries (#{max_retries}) exceeded for session #{session_id} event append")
+                  return false
+                end
+                next
+              end
+
+              # Check if all commands succeeded
+              unless results.all?
+                ADK.logger.error("Redis MULTI command failed during event append for session #{session_id}. Results: #{results.inspect}")
+                return false
+              end
+
+              ADK.logger.debug("Appended event to session #{session_id}: #{event.role} - #{event.content}")
+              return true
+            end
           end
-
-          true # Return true if loop completed successfully
-
-        rescue JSON::GeneratorError => e
-          ADK.logger.error("Failed to serialize event or state for #{session_id}: #{e.message}")
-          false
-        rescue JSON::ParserError => e
-          ADK.logger.error("Failed to parse current state JSON during append for session #{session_id}: #{e.message}")
-          false
         rescue ::Redis::BaseError => e
           ADK.logger.error("Redis error appending event to session #{session_id}: #{e.class} - #{e.message}")
-          # Ensure UNWATCH is called if a Redis error occurs within WATCH/MULTI
-          @redis_client.unwatch rescue nil # Best effort unwatch on error
+          @redis_client.unwatch rescue nil # Best effort to unwatch
           false
         end
       end
@@ -313,31 +315,37 @@ module ADK
             # --- Filtering ---
             next if app_name && hash_data['app_name'] != app_name
             next if user_id && hash_data['user_id'] != user_id
+
             # --- End Filtering ---
 
             # Deserialize state
             state = {}
             if hash_data['state']
               begin; state = JSON.parse(hash_data['state'], symbolize_names: true); rescue JSON::ParserError;
-                    state = { _parse_error: "Failed to load state" }; end
+                                                                                      state = { _parse_error: "Failed to load state" };
+              end
             end
 
             # Deserialize events
             events = []
             if events_list
               events_list.each do |event_json|
-                begin; event_h = JSON.parse(event_json, symbolize_names: true); ev = ADK::Event.from_h(event_h); events << ev if ev; rescue JSON::ParserError; end
+                begin;
+ event_h = JSON.parse(event_json, symbolize_names: true);
+ ev = ADK::Event.from_h(event_h); events << ev if ev; rescue JSON::ParserError; end
               end
             end
 
             # Reconstruct Session object
             session_data_for_init = {
               id: session_id, app_name: hash_data['app_name'], user_id: hash_data['user_id'],
-              initial_state: state, events: events
+              initial_state: state, events: events, session_service: self
             }
             session = ADK::Session.new(**session_data_for_init)
-            session.instance_variable_set(:@created_at, Time.iso8601(hash_data['created_at'])) if hash_data['created_at']
-            session.instance_variable_set(:@updated_at, Time.iso8601(hash_data['updated_at'])) if hash_data['updated_at']
+            session.instance_variable_set(:@created_at,
+                                          Time.iso8601(hash_data['created_at'])) if hash_data['created_at']
+            session.instance_variable_set(:@updated_at,
+                                          Time.iso8601(hash_data['updated_at'])) if hash_data['updated_at']
             sessions << session
           rescue ArgumentError, TypeError => e
             ADK.logger.error("Error reconstructing session object during list for ID #{session_id}: #{e.class} - #{e.message}")
@@ -346,11 +354,61 @@ module ADK
 
           ADK.logger.debug("Listed #{sessions.count} sessions from Redis (after filtering).")
           sessions
-
         rescue ::Redis::BaseError => e
           ADK.logger.error("Redis error listing sessions: #{e.class} - #{e.message}")
           [] # Return empty on error
         end
+      end
+
+      def persistent?
+        true
+      end
+
+      def save_scoped_state(scope, key, value)
+        state_key = redis_scoped_state_key(scope, key)
+        begin
+          value_json = JSON.generate(value)
+          @redis_client.set(state_key, value_json)
+          if @session_ttl&.positive?
+            @redis_client.expire(state_key, @session_ttl)
+          end
+        rescue JSON::GeneratorError => e
+          ADK.logger.error("Failed to serialize scoped state value: #{e.message}")
+          raise ADK::Error, "Failed to serialize scoped state value."
+        rescue ::Redis::BaseError => e
+          ADK.logger.error("Redis error saving scoped state: #{e.class} - #{e.message}")
+          raise ADK::Error, "Redis error saving scoped state."
+        end
+      end
+
+      def load_scoped_state(scope, key)
+        state_key = redis_scoped_state_key(scope, key)
+        begin
+          value_json = @redis_client.get(state_key)
+          return nil unless value_json
+
+          JSON.parse(value_json, symbolize_names: true)
+        rescue JSON::ParserError => e
+          ADK.logger.error("Failed to parse scoped state value: #{e.message}")
+          nil
+        rescue ::Redis::BaseError => e
+          ADK.logger.error("Redis error loading scoped state: #{e.class} - #{e.message}")
+          nil
+        end
+      end
+
+      def clear_scoped_state(scope, key)
+        if key == '*'
+          pattern = redis_scoped_state_key(scope, '*')
+          keys = @redis_client.keys(pattern)
+          @redis_client.del(*keys) unless keys.empty?
+        else
+          state_key = redis_scoped_state_key(scope, key)
+          @redis_client.del(state_key)
+        end
+      rescue ::Redis::BaseError => e
+        ADK.logger.error("Redis error clearing scoped state: #{e.class} - #{e.message}")
+        raise ADK::Error, "Redis error clearing scoped state."
       end
 
       private
@@ -379,6 +437,10 @@ module ADK
       # @return [String]
       def redis_events_key(session_id)
         "#{REDIS_SESSION_EVENTS_LIST_PREFIX}#{session_id}"
+      end
+
+      def redis_scoped_state_key(scope, key)
+        "#{REDIS_SCOPED_STATE_PREFIX}#{scope}:#{key}"
       end
     end # End Redis class
   end # End SessionService module

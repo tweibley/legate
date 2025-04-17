@@ -160,7 +160,8 @@ RSpec.describe ADK::Agent do
       end
 
       it 'records user, tool request, tool result, and agent events' do
-        expect(mock_session_service).to receive(:append_event).with(session_id: session_id, event: instance_of(ADK::Event)).exactly(4).times.and_return(true)
+        expect(mock_session_service).to receive(:append_event).with(session_id: session_id,
+                                                                    event: instance_of(ADK::Event)).exactly(4).times.and_return(true)
         agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
       end
 
@@ -189,7 +190,8 @@ RSpec.describe ADK::Agent do
       end
 
       it 'records events for both steps' do
-        expect(mock_session_service).to receive(:append_event).with(session_id: session_id, event: instance_of(ADK::Event)).exactly(6).times
+        expect(mock_session_service).to receive(:append_event).with(session_id: session_id,
+                                                                    event: instance_of(ADK::Event)).exactly(6).times
         agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
       end
 

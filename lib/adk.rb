@@ -43,15 +43,19 @@ module ADK
 end
 
 # --- Require components AFTER logger is configurable ---
-require_relative 'adk/event' # <<< Require Event first
-require_relative 'adk/session' # <<< Session depends on Event
+require_relative 'adk/errors'
+require_relative 'adk/event'
+require_relative 'adk/session'
 require_relative 'adk/tool'
 require_relative 'adk/tool_registry'
 # --- Load dependencies BEFORE Agent ---
 require_relative 'adk/planner'
 # --- Load Services ---
+require_relative 'adk/session_service/base'
 require_relative 'adk/session_service/in_memory'
 require_relative 'adk/session_service/redis'
+# --- Load Migrations ---
+require_relative 'adk/migrations/001_add_state_scoping'
 # --- Now load Agent ---
 require_relative 'adk/agent'
 # --- Load CLI and Tools last ---
