@@ -12,6 +12,17 @@ agent = ADK::Agent.new(
   description: 'An agent that can use multiple tools including echo, calculator, cat facts, random numbers, and task delegation'
 )
 
+# Create calculator agent that will be used for delegation
+calculator_agent = ADK::Agent.new(
+  name: 'calculator_agent',
+  description: 'A calculator agent that can perform basic arithmetic operations',
+  model_name: 'gemini-2.0-flash'
+)
+
+# Add calculator tool to calculator agent
+calculator_tool = ADK::ToolRegistry.create_instance(:calculator)
+calculator_agent.add_tool(calculator_tool)
+
 # 2. --- Add Tools ---
 # Add all available tools
 tools = [
@@ -33,9 +44,12 @@ end
 puts "\nAgent '#{agent.name}' created with tools:"
 agent.tools.each { |tool| puts " - #{tool.name}" }
 
-# 3. --- Start Agent ---
+# 3. --- Start Agents ---
 agent.start
-puts "\nAgent started. Running: #{agent.running?}"
+calculator_agent.start
+puts "\nAgents started:"
+puts " - #{agent.name}: Running: #{agent.running?}"
+puts " - #{calculator_agent.name}: Running: #{calculator_agent.running?}"
 
 # 4. --- Session Setup ---
 session_service = ADK::SessionService::InMemory.new
@@ -48,38 +62,13 @@ tasks = [
   "Echo this message: Hello from multi-tool agent!",
   "Calculate 15 * 7",
   "Get me a cat fact",
-  "Generate a random number between 1 and 10"
+  "Generate a random number between 1 and 10",
+  "Delegate this task to calculator_agent: what is 20 / 4"
 ]
-
-# Add the delegate task only if Redis is available and set up calculator agent
-begin
-  redis = Redis.new
-  redis.ping
-
-  # Set up calculator agent definition in Redis
-  calculator_agent_key = "adk:agent:calculator_agent"
-  calculator_agent_def = {
-    'description' => 'A calculator agent that can perform basic arithmetic operations',
-    'tools' => '["calculator"]',
-    'model' => 'gemini-2.0-flash'
-  }
-  redis.hmset(
-    calculator_agent_key,
-    'description', calculator_agent_def['description'],
-    'tools', calculator_agent_def['tools'],
-    'model', calculator_agent_def['model']
-  )
-
-  tasks << "Delegate this task to calculator_agent: what is 20 / 4"
-  puts "\nRedis connection successful and calculator agent configured. Added delegation task."
-rescue Redis::CannotConnectError => e
-  puts "\nRedis connection failed: #{e.message}"
-  puts "Skipping delegation task as it requires Redis."
-end
 
 tasks.each do |task|
   puts "\nExecuting task: '#{task}'"
-  
+
   begin
     result_event = agent.run_task(
       session_id: session_id,
@@ -128,7 +117,10 @@ tasks.each do |task|
   end
 end
 
-# 6. --- Stop Agent ---
+# 6. --- Stop Agents ---
 agent.stop
-puts "\nAgent stopped. Running: #{agent.running?}"
-puts "\n--- Example Complete ---" 
+calculator_agent.stop
+puts "\nAgents stopped:"
+puts " - #{agent.name}: Running: #{agent.running?}"
+puts " - #{calculator_agent.name}: Running: #{calculator_agent.running?}"
+puts "\n--- Example Complete ---"
