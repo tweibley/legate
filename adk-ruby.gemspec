@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.summary       = 'Agent Development Kit for Ruby'
   spec.description   = 'A framework for building and managing AI agents in Ruby'
   spec.homepage      = 'https://github.com/tweibley/adk-ruby'
-  spec.license       = 'Apache-2.0'
+  spec.license       = 'NODHHLICENSE'
   spec.required_ruby_version = '>= 2.7.0'
 
   spec.metadata['homepage_uri'] = spec.homepage
@@ -17,7 +17,7 @@ Gem::Specification.new do |spec|
   spec.metadata['changelog_uri'] = "#{spec.homepage}/blob/main/CHANGELOG.md"
 
   # Specify which files should be added to the gem when it is released.
-  spec.files = Dir.glob('{bin,lib}/**/*') + %w[README.md LICENSE CHANGELOG.md]
+  spec.files = Dir.glob('{bin,lib}/**/*') + %w[README.md]
   spec.bindir        = 'bin'
   spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
   spec.require_paths = ['lib']
