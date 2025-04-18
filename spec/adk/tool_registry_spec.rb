@@ -75,14 +75,19 @@ RSpec.describe ADK::Agent do # Testing Agent behavior here
       expect(base_agent.tool_registry.find_class(:mock_tool)).to eq(mock_tool_class)
     end
 
-    it 'warns and overwrites when registering a duplicate tool class', :log_level do
-      agent_with_tool = described_class.new(name: name, description: description, planner: mock_planner,
-                                            tool_classes: [mock_tool_class])
-      expect(ADK.logger).to receive(:warn).with(/already registered.*Overwriting/)
-      expect { agent_with_tool.register_tool_class(mock_tool_class) }.not_to change {
-        agent_with_tool.tool_registry.tools.keys.count
-      }
-      expect(agent_with_tool.tool_registry.find_class(:mock_tool)).to eq(mock_tool_class)
+    it 'warns and overwrites when registering a duplicate tool class in agent' do
+      agent = ADK::Agent.new(name: 'test_agent', description: 'Test agent')
+      mock_tool_class = MockToolForAgent
+      tool_name = :mock_tool
+
+      # First registration
+      agent.register_tool_class(mock_tool_class)
+      expect(agent.find_tool_class(tool_name)).to eq(mock_tool_class)
+
+      # Second registration with same tool name - expect both warning messages
+      expect(ADK.logger).to receive(:warn).with("Agent 'test_agent': Tool 'mock_tool' already registered. Overwriting.").ordered
+      expect(ADK.logger).to receive(:warn).with("ToolRegistry: Tool 'mock_tool' is already registered in this registry. Overwriting with class MockToolForAgent.").ordered
+      agent.register_tool_class(mock_tool_class)
     end
 
     it 'logs error and does not register an invalid class', :log_level do
@@ -98,6 +103,60 @@ RSpec.describe ADK::Agent do # Testing Agent behavior here
       expect { base_agent.register_tool_class(bad_tool_class) }.not_to change {
         base_agent.tool_registry.tools.keys.count
       }
+    end
+
+    it "registers a valid tool class" do
+      agent = ADK::Agent.new(name: 'test_agent', description: 'Test agent')
+      mock_tool_class = MockToolForAgent
+      tool_name = :mock_tool
+
+      agent.register_tool_class(mock_tool_class)
+      expect(agent.find_tool_class(tool_name)).to eq(mock_tool_class)
+    end
+
+    it "warns and overwrites when registering a duplicate tool class in agent" do
+      agent = ADK::Agent.new(name: 'test_agent', description: 'Test agent')
+      mock_tool_class = MockToolForAgent
+      tool_name = :mock_tool
+
+      # First registration
+      agent.register_tool_class(mock_tool_class)
+      expect(agent.find_tool_class(tool_name)).to eq(mock_tool_class)
+
+      # Second registration with same tool name - expect both warning messages
+      expect(ADK.logger).to receive(:warn).with("Agent 'test_agent': Tool 'mock_tool' already registered. Overwriting.").ordered
+      expect(ADK.logger).to receive(:warn).with("ToolRegistry: Tool 'mock_tool' is already registered in this registry. Overwriting with class MockToolForAgent.").ordered
+      agent.register_tool_class(mock_tool_class)
+    end
+
+    it "logs error and does not register an invalid class" do
+      agent = ADK::Agent.new(name: 'test_agent', description: 'Test agent')
+      invalid_class = Class.new
+
+      expect(ADK.logger).to receive(:error).with(/Attempted to register invalid object/)
+      agent.register_tool_class(invalid_class)
+    end
+
+    it "logs error and does not register class without metadata" do
+      agent = ADK::Agent.new(name: 'test_agent', description: 'Test agent')
+      invalid_class = Class.new(ADK::Tool)
+
+      expect(ADK.logger).to receive(:error).with("Agent 'test_agent': Tool class #{invalid_class} missing metadata (use define_metadata). Cannot register.")
+      agent.register_tool_class(invalid_class)
+    end
+
+    it "warns and overwrites when registering a duplicate tool directly in registry" do
+      registry = ADK::ToolRegistry.new
+      mock_tool_class = MockToolForAgent
+      tool_name = :mock_tool
+
+      # First registration
+      registry.register(tool_name, mock_tool_class)
+      expect(registry.find_class(tool_name)).to eq(mock_tool_class)
+
+      # Second registration with same tool name - expect only registry warning
+      expect(ADK.logger).to receive(:warn).with("ToolRegistry: Tool 'mock_tool' is already registered in this registry. Overwriting with class MockToolForAgent.")
+      registry.register(tool_name, mock_tool_class)
     end
   end
 
@@ -197,7 +256,14 @@ RSpec.describe ADK::Agent do # Testing Agent behavior here
         described_class.new(name: name, description: description, model_name: model_name,
                             tool_classes: [MockToolForAgent, AnotherMockTool], **options)
       }
-      let(:multi_step_context) { instance_double(ADK::ToolContext, tool_registry: agent_with_tools.tool_registry) }
+      let(:multi_step_context) {
+        instance_double(ADK::ToolContext,
+                        tool_registry: agent_with_tools.tool_registry,
+                        session_id: session_id,
+                        user_id: 'test_user',
+                        app_name: name,
+                        to_h: { session_id: session_id, user_id: 'test_user', app_name: name })
+      }
 
       before do
         agent_with_tools.start
