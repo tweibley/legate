@@ -3,6 +3,7 @@
 
 require 'json'
 require_relative 'connection/stdio'
+require_relative 'connection/sse'
 require_relative 'error'
 
 module ADK
@@ -20,7 +21,7 @@ module ADK
 
       # @param connection_params [Hash] Options for the connection.
       #   For :stdio type: { type: :stdio, command: 'cmd', args: ['arg1'] }
-      #   *(Future: { type: :sse, url: 'http://...' })*
+      #   For :sse type:   { type: :sse, url: 'http://...' }
       def initialize(connection_params)
         @connection_params = connection_params
         @connection = nil
@@ -34,8 +35,8 @@ module ADK
         case @connection_params[:type]
         when :stdio
           raise ArgumentError, 'Missing :command for :stdio connection' unless @connection_params[:command]
-        # when :sse
-        #   raise ArgumentError, 'Missing :url for :sse connection' unless @connection_params[:url]
+        when :sse
+          raise ArgumentError, 'Missing :url for :sse connection' unless @connection_params[:url]
         else
           raise ArgumentError, "Unsupported connection type: #{@connection_params[:type]}"
         end
@@ -63,8 +64,9 @@ module ADK
                 command: @connection_params[:command],
                 args: @connection_params[:args] || []
               )
-            # when :sse
-            #   @connection = Connection::Sse.new(url: @connection_params[:url])
+            when :sse
+              require_relative 'connection/sse' # Ensure SSE connection is loaded
+              @connection = Connection::Sse.new(url: @connection_params[:url])
             else
               # This shouldn't be reachable due to initialize check, but belt-and-suspenders
               raise ConnectionError, "Cannot connect: Unsupported connection type: #{@connection_params[:type]}"
@@ -207,6 +209,22 @@ module ADK
         end
       end
 
+      # Reads the next *notification* received from the server via the connection.
+      # This is primarily useful for SSE connections.
+      # @param timeout [Numeric] Seconds to wait (default 0.1).
+      # @return [Hash, nil] Notification hash or nil.
+      def read_notification(timeout = 0.1)
+        return nil unless connected?
+
+        # Delegate to connection-specific method if it exists, otherwise return nil
+        if @connection.respond_to?(:read_notification)
+          @connection.read_notification(timeout)
+        else
+          ADK.logger.debug("Connection type #{@connection_params[:type]} does not support read_notification.")
+          nil
+        end
+      end
+
       private
 
       # Helper to send a request and wait for the specific response by ID.
@@ -219,42 +237,55 @@ module ADK
         raise ConnectionError, 'Not connected' unless connected?
         raise ArgumentError, 'Request must have an ID' unless request[:id]
 
-        request_id = request[:id]
-        @connection.send_request(request)
+        # --- Handle response differently based on connection type ---
+        if @connection.is_a?(Connection::Sse)
+          # SSE connection returns response directly from send_request (HTTP POST response)
+          ADK.logger.debug("Sending request via SSE POST and expecting immediate response...")
+          response = @connection.send_request(request)
+          # Response already contains the result or error hash
+          ADK.logger.debug("Received direct response for SSE request ID #{request[:id]}")
+          return response
+        elsif @connection.is_a?(Connection::Stdio)
+          # STDIO connection puts response in a queue, need to wait/poll
+          request_id = request[:id]
+          @connection.send_request(request)
+          ADK.logger.debug("Waiting for response to STDIO request ID #{request_id} (timeout: #{timeout}s)")
+          # Simple wait loop - checks queue periodically
+          # A more robust implementation might use ConditionVariable + timeout
+          start_time = Time.now
+          loop do
+            # Check if the connection died
+            raise ConnectionError, "Connection lost while waiting for response ID #{request_id}" unless connected?
 
-        Mcp.logger.debug("Waiting for response to request ID #{request_id} (timeout: #{timeout}s)")
-
-        # Simple wait loop - checks queue periodically
-        # A more robust implementation might use ConditionVariable + timeout
-        start_time = Time.now
-        loop do
-          # Check if the connection died
-          raise ConnectionError, "Connection lost while waiting for response ID #{request_id}" unless connected?
-
-          # Check response queue non-blockingly first
-          begin
-            response = @connection.instance_variable_get(:@response_queue).pop(true)
-            if response && response[:id] == request_id
-              Mcp.logger.debug("Received response for ID #{request_id}")
-              return response
-            elsif response # Got response for a different ID, put it back (or handle if needed)
-              Mcp.logger.warn("Received unexpected response ID #{response[:id]} while waiting for #{request_id}")
-              @connection.instance_variable_get(:@response_queue).push(response)
+            # Check response queue non-blockingly first
+            begin
+              response = @connection.instance_variable_get(:@response_queue).pop(true)
+              if response && response[:id] == request_id
+                ADK.logger.debug("Received response for ID #{request_id}")
+                return response
+              elsif response # Got response for a different ID, put it back (or handle if needed)
+                ADK.logger.warn("Received unexpected response ID #{response[:id]} while waiting for #{request_id}")
+                @connection.instance_variable_get(:@response_queue).push(response)
+              end
+            rescue ThreadError
+              # Queue was empty, continue loop
             end
-          rescue ThreadError
-            # Queue was empty, continue loop
-          end
 
-          # Check timeout
-          if Time.now - start_time > timeout
-            @last_error = "MCP Client timeout waiting for response ID #{request_id}"
-            Mcp.logger.error(@last_error)
-            return nil
-          end
+            # Check timeout
+            if Time.now - start_time > timeout
+              @last_error = "MCP Client timeout waiting for response ID #{request_id}"
+              ADK.logger.error(@last_error)
+              return nil
+            end
 
-          # Sleep between checks
-          sleep(0.01) # 10ms between checks
+            # Sleep between checks
+            sleep(0.01) # 10ms between checks
+          end
+        else
+          # Should not happen if initialize enforces types
+          raise ConnectionError, "Unsupported connection type for sending request: #{@connection.class}"
         end
+        # -------------------------------------------------------------
       end
     end
   end

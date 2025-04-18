@@ -458,6 +458,13 @@ module ADK
       @mcp_servers_config.each do |config|
         ADK.logger.info("Attempting to connect to MCP server: #{config.inspect}")
         begin
+          # --- Add check for :sse type --- >
+          unless [:stdio, :sse].include?(config[:type])
+            ADK.logger.error("Unsupported MCP server type specified: #{config[:type]}. Skipping configuration: #{config.inspect}")
+            next # Skip to the next server config
+          end
+          # <-----------------------------
+
           client = ADK::Mcp::Client.new(config)
           client.connect # This performs handshake and gets capabilities
           @mcp_clients << client

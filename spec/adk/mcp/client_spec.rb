@@ -4,6 +4,7 @@
 require 'spec_helper'
 require 'adk/mcp/client'
 require 'adk/mcp/connection/stdio' # Need the class for mocking
+require 'adk/mcp/connection/sse'   # Add for new tests
 require 'adk/mcp/error'
 require 'adk/mcp' # For logger
 
