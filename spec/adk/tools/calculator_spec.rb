@@ -10,7 +10,7 @@ RSpec.describe ADK::Tools::Calculator do
     end
 
     it 'sets the description correctly' do
-      expect(tool.description).to include('Performs basic arithmetic operations')
+      expect(tool.description).to include('Calculates the result of an arithmetic operation')
     end
 
     it 'defines parameters' do
