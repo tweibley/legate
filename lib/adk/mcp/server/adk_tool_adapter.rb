@@ -50,7 +50,7 @@ module ADK
             description mcp_description
             arguments(&schema_proc) if schema_proc
 
-            Mcp.logger.info("Created fast-mcp adapter for ADK tool: #{adk_tool_class} as '#{mcp_tool_name}'")
+            ADK.logger.info("Created fast-mcp adapter for ADK tool: #{adk_tool_class} as '#{mcp_tool_name}'")
           end
 
           adapter_class
@@ -84,7 +84,7 @@ module ADK
             # No session_service available here easily
           )
 
-          Mcp.logger.info("Executing ADK tool '#{self.class.tool_name}' via MCP adapter with params: #{adk_params.inspect}")
+          ADK.logger.info("Executing ADK tool '#{self.class.tool_name}' via MCP adapter with params: #{adk_params.inspect}")
 
           begin
             result_hash = adk_instance.execute(adk_params, dummy_context)
@@ -95,7 +95,7 @@ module ADK
             raise StandardError, "Execution Error in ADK tool '#{self.class.tool_name}': #{e.message}"
           end
 
-          Mcp.logger.debug("ADK tool '#{self.class.tool_name}' returned hash: #{result_hash.inspect}")
+          ADK.logger.debug("ADK tool '#{self.class.tool_name}' returned hash: #{result_hash.inspect}")
 
           # Translate ADK result hash to MCP return/error
           case result_hash[:status]
@@ -103,13 +103,13 @@ module ADK
             return result_hash[:result] # Return the raw result for MCP
           when :error
             error_message = result_hash[:error_message] || "Unknown error from ADK tool '#{self.class.tool_name}'"
-            Mcp.logger.error("ADK tool '#{self.class.tool_name}' reported error: #{error_message}")
+            ADK.logger.error("ADK tool '#{self.class.tool_name}' reported error: #{error_message}")
             # Raise a standard error, fast-mcp should convert this to an MCP error response
             raise StandardError, error_message
           when :pending
             job_id = result_hash[:job_id] # Assuming the key is :job_id now
             message = result_hash[:message] || "ADK tool '#{self.class.tool_name}' started an async job."
-            Mcp.logger.info("ADK tool '#{self.class.tool_name}' returned pending status (Job ID: #{job_id})")
+            ADK.logger.info("ADK tool '#{self.class.tool_name}' returned pending status (Job ID: #{job_id})")
             # Return a structured hash indicating pending status (as per FR2.2 recommendation)
             # Requires CheckJobStatusTool to be exposed separately via MCP.
             return { status: 'pending', job_id: job_id, message: message }

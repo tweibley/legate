@@ -10,7 +10,7 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
   let(:logger_spy) { spy('Logger') }
 
   before do
-    allow(ADK::Mcp).to receive(:logger).and_return(logger_spy)
+    allow(ADK).to receive(:logger).and_return(logger_spy)
   end
 
   describe '.json_to_adk' do
@@ -76,7 +76,7 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
         result = described_class.json_to_adk(properties)
         expect(result).to have_key(:valid)
         expect(result).not_to have_key(:invalid)
-        expect(logger_spy).to have_received(:warn).with(/Skipping MCP property 'invalid': Invalid schema format/).once
+        expect(ADK.logger).to have_received(:warn).with(/Skipping MCP property 'invalid': Invalid schema format/).once
       end
 
       it 'skips properties with missing type' do
@@ -84,25 +84,25 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
         result = described_class.json_to_adk(properties)
         expect(result).to have_key(:valid)
         expect(result).not_to have_key(:no_type)
-        expect(logger_spy).to have_received(:warn).with(/Skipping MCP property 'no_type': Invalid schema format/).once
+        expect(ADK.logger).to have_received(:warn).with(/Skipping MCP property 'no_type': Invalid schema format/).once
       end
 
       it 'skips and logs warning for unsupported types like array' do
         properties = { 'my_array' => { 'type' => 'array', 'description' => 'List of items' } }
         expect(described_class.json_to_adk(properties)).to be_empty
-        expect(logger_spy).to have_received(:warn).with(/Unsupported JSON Schema type 'array'/)
+        expect(ADK.logger).to have_received(:warn).with(/Unsupported JSON Schema type 'array'/)
       end
 
       it 'skips and logs warning for unsupported types like object' do
         properties = { 'my_object' => { 'type' => 'object', 'description' => 'Some structure' } }
         expect(described_class.json_to_adk(properties)).to be_empty
-        expect(logger_spy).to have_received(:warn).with(/Unsupported JSON Schema type 'object'/)
+        expect(ADK.logger).to have_received(:warn).with(/Unsupported JSON Schema type 'object'/)
       end
 
       it 'skips and logs warning for unknown types' do
         properties = { 'weird_type' => { 'type' => 'custom_blob', 'description' => 'Weird' } }
         expect(described_class.json_to_adk(properties)).to be_empty
-        expect(logger_spy).to have_received(:warn).with(/Unsupported JSON Schema type 'custom_blob'/)
+        expect(ADK.logger).to have_received(:warn).with(/Unsupported JSON Schema type 'custom_blob'/)
       end
     end
   end
@@ -180,7 +180,7 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
         schema = build_schema_from_proc(schema_proc)
         expect(schema.rules.key?(:valid)).to be true
         expect(schema.rules.key?(:invalid)).to be false
-        expect(logger_spy).to have_received(:warn).with("Skipping ADK parameter 'invalid': Invalid definition format or missing type.").once
+        expect(ADK.logger).to have_received(:warn).with("Skipping ADK parameter 'invalid': Invalid definition format or missing type.").once
       end
 
       it 'skips parameters with missing type' do
@@ -189,7 +189,7 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
         schema = build_schema_from_proc(schema_proc)
         expect(schema.rules.key?(:valid)).to be true
         expect(schema.rules.key?(:no_type)).to be false
-        expect(logger_spy).to have_received(:warn).with("Skipping ADK parameter 'no_type': Invalid definition format or missing type.").once
+        expect(ADK.logger).to have_received(:warn).with("Skipping ADK parameter 'no_type': Invalid definition format or missing type.").once
       end
 
       it 'maps :array and logs warning' do
@@ -202,7 +202,7 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
         expect(schema.call({})).to be_success # Optional: passes when absent
         expect(schema.call({ list: 'not_an_array' })).to be_failure # Ensure basic type check works
 
-        expect(logger_spy).to have_received(:warn).with(/ADK parameter 'list': Type :array basic mapping/).once
+        expect(ADK.logger).to have_received(:warn).with(/ADK parameter 'list': Type :array basic mapping/).once
       end
 
       it 'maps :hash/:object and logs warning' do
@@ -215,14 +215,14 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
         expect(schema.call({})).to be_failure # Required: fails when absent
         expect(schema.call({ data: 'not_a_hash' })).to be_failure # Ensure basic type check works
 
-        expect(logger_spy).to have_received(:warn).with(/ADK parameter 'data': Type :hash basic mapping/).once
+        expect(ADK.logger).to have_received(:warn).with(/ADK parameter 'data': Type :hash basic mapping/).once
       end
 
       it 'skips unknown ADK types and logs warning' do
         adk_params = { unknown: { type: :custom_blob, required: true } }
         schema_proc = described_class.adk_to_dry_schema(adk_params)
         expected_log_message = "ADK parameter 'unknown': Unsupported ADK type 'custom_blob'. Skipping."
-        expect(logger_spy).to have_received(:warn).with(expected_log_message).once
+        expect(ADK.logger).to have_received(:warn).with(expected_log_message).once
         schema = build_schema_from_proc(schema_proc)
         expect(schema.rules.key?(:unknown)).to be false
       end

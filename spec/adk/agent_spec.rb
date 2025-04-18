@@ -32,6 +32,7 @@ end
 # Mock client class
 class MockMcpClient
   attr_reader :config, :connected, :tools_listed
+
   def initialize(config)
     @config = config
     @connected = false
@@ -46,10 +47,12 @@ class MockMcpClient
 
   def list_tools
     raise ADK::Mcp::ConnectionError, 'Not connected' unless @connected
+
     @tools_listed = true
     # Return mock schemas - adjust as needed for tests
     [
-      { name: 'mcp_tool_one', description: 'MCP Tool One', inputSchema: { type: 'object', properties: { a: { type: 'string' } } } },
+      { name: 'mcp_tool_one', description: 'MCP Tool One',
+        inputSchema: { type: 'object', properties: { a: { type: 'string' } } } },
       { name: 'mcp_tool_two', description: 'MCP Tool Two', inputSchema: { type: 'object', properties: {} } }
     ]
   end
@@ -549,7 +552,9 @@ RSpec.describe ADK::Agent do
   # Add a new describe block for MCP Integration
   describe 'MCP Integration' do
     let(:mcp_server_config) { { type: :stdio, command: 'dummy-mcp-server' } }
-    let(:mock_mcp_client_instance) { instance_double(ADK::Mcp::Client, connect: true, list_tools: [], disconnect: true) } # Basic stubbing
+    let(:mock_mcp_client_instance) {
+      instance_double(ADK::Mcp::Client, connect: true, list_tools: [], disconnect: true)
+    } # Basic stubbing
 
     before do
       # Stub the client creation to return our instance double
@@ -557,9 +562,11 @@ RSpec.describe ADK::Agent do
 
       # Default stub for list_tools, can be overridden in specific tests
       allow(mock_mcp_client_instance).to receive(:list_tools).and_return([
-        { name: 'mcp_tool_one', description: 'MCP Tool One', inputSchema: { type: 'object', properties: { a: { type: 'string' } } } },
-        { name: 'mcp_tool_two', description: 'MCP Tool Two', inputSchema: { type: 'object', properties: {} } }
-      ])
+                                                                           { name: 'mcp_tool_one', description: 'MCP Tool One',
+                                                                             inputSchema: { type: 'object', properties: { a: { type: 'string' } } } },
+                                                                           { name: 'mcp_tool_two',
+                                                                             description: 'MCP Tool Two', inputSchema: { type: 'object', properties: {} } }
+                                                                         ])
 
       # Stub the ToolWrapper class method. We primarily care that it *is* called.
       # Actual registration verification will be done by checking the agent's registry state.
@@ -588,7 +595,8 @@ RSpec.describe ADK::Agent do
           end
         end
         # <----------------------------------------------------------------
-        allow(mock_specific_registry).to receive(:register).with(:check_job_status, ADK::Tools::CheckJobStatusTool).and_return(true)
+        allow(mock_specific_registry).to receive(:register).with(:check_job_status,
+                                                                 ADK::Tools::CheckJobStatusTool).and_return(true)
 
         # Stub the :tools method to reflect initial state
         initial_tools_state = {
@@ -600,7 +608,9 @@ RSpec.describe ADK::Agent do
         # --- Add stub for list_tools needed by available_tools_metadata --- >
         allow(mock_specific_registry).to receive(:list_tools) do
           # Return metadata based on the *current* state of the :tools stub
-          mock_specific_registry.tools.values.map { |klass| klass.respond_to?(:tool_metadata) ? klass.tool_metadata : { name: klass.name.downcase.to_sym } }
+          mock_specific_registry.tools.values.map { |klass|
+            klass.respond_to?(:tool_metadata) ? klass.tool_metadata : { name: klass.name.downcase.to_sym }
+          }
         end
         # <---------------------------------------------------------------------
 
@@ -620,12 +630,18 @@ RSpec.describe ADK::Agent do
         # Update the stub for :tools to reflect the state *after* MCP tools would be added
         # This is what agent.available_tools_metadata will use internally
         allow(mock_specific_registry).to receive(:tools).and_return({
-          tool_a: MockToolA,
-          check_job_status: ADK::Tools::CheckJobStatusTool,
-          # Simulate that ToolWrapper registration added these
-          mcp_tool_one: Class.new(ADK::Tool) { define_metadata(name: :mcp_tool_one, description: 'd1') },
-          mcp_tool_two: Class.new(ADK::Tool) { define_metadata(name: :mcp_tool_two, description: 'd2') }
-        })
+                                                                      tool_a: MockToolA,
+                                                                      check_job_status: ADK::Tools::CheckJobStatusTool,
+                                                                      # Simulate that ToolWrapper registration added these
+                                                                      mcp_tool_one: Class.new(ADK::Tool) {
+                                                                        define_metadata(name: :mcp_tool_one,
+                                                                                        description: 'd1')
+                                                                      },
+                                                                      mcp_tool_two: Class.new(ADK::Tool) {
+                                                                        define_metadata(name: :mcp_tool_two,
+                                                                                        description: 'd2')
+                                                                      }
+                                                                    })
 
         agent # Return the created agent
       end
@@ -637,7 +653,8 @@ RSpec.describe ADK::Agent do
         agent_with_mcp # Instantiate the agent
         # Verify the registry state *before* start, by checking the keys of the initially stubbed :tools return value
         # Ensure the stub reflects the state BEFORE start is called
-        allow(agent_with_mcp.tool_registry).to receive(:tools).and_return({ tool_a: MockToolA, check_job_status: ADK::Tools::CheckJobStatusTool })
+        allow(agent_with_mcp.tool_registry).to receive(:tools).and_return({ tool_a: MockToolA,
+                                                                            check_job_status: ADK::Tools::CheckJobStatusTool })
         expect(agent_with_mcp.tool_registry.tools.keys).to contain_exactly(:tool_a, :check_job_status)
       end
 
@@ -677,18 +694,22 @@ RSpec.describe ADK::Agent do
 
         # Verify tools are available via the agent's metadata method, which uses the stubbed :list_tools
         available_metadata = agent_with_mcp.available_tools_metadata
-        expect(available_metadata.map { |m| m[:name] }).to contain_exactly(:mcp_tool_one, :mcp_tool_two, :tool_a, :check_job_status)
+        expect(available_metadata.map { |m|
+          m[:name]
+        }).to contain_exactly(:mcp_tool_one, :mcp_tool_two, :tool_a, :check_job_status)
       end
 
       it 'handles connection errors gracefully' do
         allow(ADK::Mcp::Client).to receive(:new).with(mcp_server_config).and_return(mock_mcp_client_instance)
-        allow(mock_mcp_client_instance).to receive(:connect).and_raise(ADK::Mcp::ConnectionError, "Connection timed out")
+        allow(mock_mcp_client_instance).to receive(:connect).and_raise(ADK::Mcp::ConnectionError,
+                                                                       "Connection timed out")
         expect(ADK.logger).to receive(:error).with(/Failed to connect or initialize MCP client.*Connection timed out/)
         expect { agent_with_mcp.start }.not_to raise_error
         expect(mock_mcp_client_instance).not_to have_received(:list_tools)
         expect(ADK::Mcp::ToolWrapper).not_to have_received(:from_mcp_schema)
         # Verify registry state *before* start
-        allow(agent_with_mcp.tool_registry).to receive(:tools).and_return({ tool_a: MockToolA, check_job_status: ADK::Tools::CheckJobStatusTool })
+        allow(agent_with_mcp.tool_registry).to receive(:tools).and_return({ tool_a: MockToolA,
+                                                                            check_job_status: ADK::Tools::CheckJobStatusTool })
         expect(agent_with_mcp.tool_registry.tools.keys).to contain_exactly(:tool_a, :check_job_status)
       end
 
@@ -709,5 +730,4 @@ RSpec.describe ADK::Agent do
       end
     end
   end # End MCP Integration describe block
-
 end # End RSpec.describe ADK::Agent

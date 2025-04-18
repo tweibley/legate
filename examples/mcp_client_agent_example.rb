@@ -1,0 +1,130 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Example: Using an ADK Agent as an MCP Client
+#
+# This example demonstrates how to configure an ADK::Agent to connect to an
+# external MCP server (like the filesystem server) and use its tools.
+#
+# Requires:
+#   - adk-ruby gem with MCP support installed
+#   - An external MCP server running. For testing, you can use:
+#     `npx @modelcontextprotocol/server-filesystem --stdio path/to/a/directory`
+#     (Replace `path/to/a/directory` with a real directory the server can access)
+#
+# To Run:
+#   1. Start the external MCP server in one terminal (e.g., the filesystem server command above).
+#   2. Run this script in another terminal: `bundle exec ruby examples/mcp_client_agent_example.rb`
+#   3. Observe the logs to see the agent initialize and list available tools (including those from the MCP server).
+#   4. (Optional) Uncomment the `run_task` section, ensure your external server provides
+#      a relevant tool (like `filesystem/readFile`), create a dummy file in the server's
+#      directory, and run again to see the agent potentially use the external tool.
+
+require 'bundler/setup'
+require 'adk'
+require 'adk/mcp' # Ensure MCP modules are loaded
+
+# Configure ADK logger
+ADK.configure { |c| c.log_level = Logger::INFO }
+
+# --- 1. Define a Native ADK Tool (Optional) ---
+class NativeEchoTool < ADK::Tool
+  define_metadata(
+    name: :native_echo,
+    description: 'Echoes back the provided message (native ADK tool).',
+    parameters: {
+      message: { type: :string, required: true, description: 'Message to echo' }
+    }
+  )
+  def perform_execution(params, context)
+    ADK.logger.info("[NativeEchoTool] Echoing: #{params[:message]}")
+    { status: :success, result: "Native echo: #{params[:message]}" }
+  end
+end
+
+# --- 2. Configure the External MCP Server Connection ---
+# NOTE: Adjust the command and args based on how you run *your* external server.
+# This example assumes the filesystem server.
+# Make sure the directory path exists and is accessible!
+mcp_server_config = {
+  type: :stdio,
+  command: 'npx', # Command to start the server
+  args: [         # Arguments for the command
+    '@modelcontextprotocol/server-filesystem',
+    '--stdio',
+    # '/tmp/mcp_fs_test_dir' # <<< IMPORTANT: Change this to a real, accessible directory!
+    # Create this directory before running: mkdir /tmp/mcp_fs_test_dir
+  ]
+}
+# Check if args include a placeholder path and warn if so
+if mcp_server_config[:args].any? { |arg| arg.include?('path/to/') || arg.include?('tmp/mcp_fs_test_dir') }
+  ADK.logger.warn("MCP server config in example still uses a placeholder directory.")
+  ADK.logger.warn("Please edit examples/mcp_client_agent_example.rb and set a real directory path in `mcp_server_config[:args]`.")
+  # Optionally exit if you want to enforce configuration
+  # exit(1)
+end
+
+# --- 3. Initialize the ADK Agent ---
+ADK.logger.info("Initializing agent...")
+my_agent = ADK::Agent.new(
+  name: 'mcp_client_agent',
+  description: 'An agent using native and external MCP tools.',
+  tool_classes: [NativeEchoTool],       # Add native tools here
+  mcp_servers: [mcp_server_config]      # Add MCP server configs here
+  # model_name: 'gemini-pro-1.5' # Optional: Specify model
+)
+
+# --- 4. Start the Agent Runtime ---
+# This connects to the MCP server and registers its tools.
+ADK.logger.info("Starting agent runtime...")
+my_agent.start
+ADK.logger.info("Agent started. Available tool names: #{my_agent.tool_registry.tools.keys}")
+ADK.logger.info("Full metadata: #{my_agent.available_tools_metadata.inspect}")
+
+# --- 5. Run a Task (Optional Example) ---
+# Uncomment this section to try running a task.
+# Requires setting up a session service and ensuring the external server
+# provides the tool mentioned in the user_input (e.g., `filesystem/readFile`).
+#
+# puts "\n--- Running Task Example ---"
+# begin
+#   session_service = ADK::SessionService::InMemory.new
+#   session = session_service.create_session(app_name: 'mcp_client_test', user_id: 'test_user')
+#   puts "Created session: #{session.id}"
+#
+#   # Create a dummy file for the filesystem tool to read
+#   # Ensure the directory matches the one in mcp_server_config[:args]
+#   dummy_file_path = '/tmp/mcp_fs_test_dir/hello.txt'
+#   begin
+#     File.write(dummy_file_path, "Hello from ADK client example!")
+#     puts "Created dummy file: #{dummy_file_path}"
+#   rescue => e
+#     puts "Warning: Could not create dummy file '#{dummy_file_path}': #{e.message}"
+#     puts "Filesystem tool example might fail."
+#   end
+#
+#   # Input asking to use a tool likely provided by the filesystem server
+#   user_input = "Read the content of the file named 'hello.txt' using the filesystem tool."
+#   puts "User Input: #{user_input}"
+#
+#   final_event = my_agent.run_task(
+#     session_id: session.id,
+#     user_input: user_input,
+#     session_service: session_service
+#   )
+#
+#   puts "Final Agent Event:"
+#   require 'pp' # Pretty print
+#   pp final_event
+#
+# rescue => e
+#   puts "Error running task: #{e.message}"
+#   puts e.backtrace
+# end
+# puts "--------------------------\n"
+
+# --- 6. Stop the Agent Runtime ---
+# This disconnects from the MCP server.
+ADK.logger.info("Stopping agent runtime...")
+my_agent.stop
+ADK.logger.info("Agent stopped.")

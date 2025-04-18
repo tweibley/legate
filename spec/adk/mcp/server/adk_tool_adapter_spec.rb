@@ -69,7 +69,7 @@ RSpec.describe ADK::Mcp::Server::AdkToolAdapter do
   let(:mock_schema_proc) { Proc.new { required(:param1).filled(:string) } }
 
   before do
-    allow(ADK::Mcp).to receive(:logger).and_return(logger_spy)
+    allow(ADK).to receive(:logger).and_return(logger_spy)
     # Stub the schema converter
     allow(ADK::Mcp::Util::SchemaConverter).to receive(:adk_to_dry_schema)
       .and_return(mock_schema_proc)
@@ -124,7 +124,7 @@ RSpec.describe ADK::Mcp::Server::AdkToolAdapter do
 
     it 'logs creation info' do
       described_class.wrap(MockAdkTool)
-      expect(logger_spy).to have_received(:info).with(/Created fast-mcp adapter for ADK tool: MockAdkTool as 'mock_tool'/)
+      expect(ADK.logger).to have_received(:info).with(/Created fast-mcp adapter for ADK tool: MockAdkTool as 'mock_tool'/)
     end
   end
 

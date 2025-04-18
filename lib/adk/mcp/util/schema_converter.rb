@@ -25,7 +25,7 @@ module ADK
 
           json_schema_properties.each do |name, schema|
             unless schema.is_a?(Hash) && schema.key?('type')
-              Mcp.logger.warn("Skipping MCP property '#{name}': Invalid schema format or missing type.")
+              ADK.logger.warn("Skipping MCP property '#{name}': Invalid schema format or missing type.")
               next
             end
 
@@ -45,7 +45,7 @@ module ADK
             when 'boolean'
               adk_param_def[:type] = :boolean
             else
-              Mcp.logger.warn("MCP property '#{name}': Unsupported JSON Schema type '#{schema['type']}'. Skipping.")
+              ADK.logger.warn("MCP property '#{name}': Unsupported JSON Schema type '#{schema['type']}'. Skipping.")
               next
             end
 
@@ -62,14 +62,14 @@ module ADK
         # @param adk_parameters_hash [Hash] The ADK parameters hash { name: { type:, required:, description: } }.
         # @return [Proc] A Proc containing the Dry::Schema definition.
         def self.adk_to_dry_schema(adk_parameters_hash)
-          Mcp.logger.debug("Converting ADK params to Dry::Schema: #{adk_parameters_hash.inspect}")
+          ADK.logger.debug("Converting ADK params to Dry::Schema: #{adk_parameters_hash.inspect}")
           return Proc.new {} unless adk_parameters_hash.is_a?(Hash)
 
           schema_lines = []
 
           adk_parameters_hash.each do |name, definition|
             unless definition.is_a?(Hash) && definition[:type]
-              Mcp.logger.warn("Skipping ADK parameter '#{name}': Invalid definition format or missing type.")
+              ADK.logger.warn("Skipping ADK parameter '#{name}': Invalid definition format or missing type.")
               next
             end
 
@@ -92,15 +92,15 @@ module ADK
               dry_type_method = 'filled'
               type_spec = ':bool'
             when :array
-              Mcp.logger.warn("ADK parameter '#{name}': Type :array basic mapping to Dry::Schema. Item types/validation not processed in V1.")
+              ADK.logger.warn("ADK parameter '#{name}': Type :array basic mapping to Dry::Schema. Item types/validation not processed in V1.")
               dry_type_method = 'value'
               type_spec = ':array'
             when :hash, :object
-              Mcp.logger.warn("ADK parameter '#{name}': Type :#{definition[:type]} basic mapping to Dry::Schema :hash. Nested schema not processed in V1.")
+              ADK.logger.warn("ADK parameter '#{name}': Type :#{definition[:type]} basic mapping to Dry::Schema :hash. Nested schema not processed in V1.")
               dry_type_method = 'value'
               type_spec = ':hash'
             else
-              Mcp.logger.warn("ADK parameter '#{name}': Unsupported ADK type '#{definition[:type]}'. Skipping.")
+              ADK.logger.warn("ADK parameter '#{name}': Unsupported ADK type '#{definition[:type]}'. Skipping.")
               next
             end
 
@@ -113,7 +113,7 @@ module ADK
           end
 
           schema_definition_string = schema_lines.join("\n")
-          Mcp.logger.debug("Generated Dry::Schema definition string:\n#{schema_definition_string}")
+          ADK.logger.debug("Generated Dry::Schema definition string:\n#{schema_definition_string}")
 
           Proc.new { instance_eval(schema_definition_string) }
         end

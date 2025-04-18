@@ -15,6 +15,8 @@ module ADK
         PROCESS_START_TIMEOUT = 5 # seconds
         # How long to wait when reading a response line
         READ_TIMEOUT = 10 # seconds
+        # Max consecutive JSON parse errors before considering connection broken
+        PARSE_ERROR_THRESHOLD = 5
 
         attr_reader :command, :args, :last_error
 
@@ -33,6 +35,7 @@ module ADK
           @stdout_reader_thread = nil
           @last_error = nil
           @pid = nil
+          @consecutive_parse_errors = 0 # Initialize counter
         end
 
         def connected?
@@ -75,28 +78,35 @@ module ADK
             @stdout_reader_thread = Thread.new do
               begin
                 @stdout.each_line do |line|
-                  Mcp.logger.debug("<- [MCP Server STDOUT] #{line.chomp}")
+                  ADK.logger.debug("<- [MCP Server STDOUT] #{line.chomp}")
                   begin
                     message = JSON.parse(line, symbolize_names: true)
+                    @consecutive_parse_errors = 0
                     if message.key?(:id) && message[:id].nil? # MCP Notifications might have null id
                       @notification_queue << message
                     elsif message.key?(:id)
                       @response_queue << message # Responses have non-null id
                     else # Could be notification without id or invalid message
                       @notification_queue << message # Assume notification for now
-                      Mcp.logger.warn("Received MCP message without explicit id: #{message.inspect}")
+                      ADK.logger.warn("Received MCP message without explicit id: #{message.inspect}")
                     end
                   rescue JSON::ParserError => e
-                    Mcp.logger.error("Failed to parse MCP JSON from stdout: #{e.message}. Line: #{line.chomp}")
-                    # Decide if this should terminate connection
+                    ADK.logger.error("Failed to parse MCP JSON from stdout: #{e.message}. Line: #{line.chomp}")
+                    @consecutive_parse_errors += 1
+                    if @consecutive_parse_errors > PARSE_ERROR_THRESHOLD
+                      ADK.logger.fatal("Too many consecutive JSON parse errors (#{PARSE_ERROR_THRESHOLD} reached). Assuming MCP connection broken.")
+                      @connected = false # Mark connection as broken
+                      @last_error = "Too many consecutive JSON parse errors."
+                      break # Stop reading from stdout
+                    end
                   end
                 end
-                Mcp.logger.info("MCP Server stdout stream ended.")
+                ADK.logger.info("MCP Server stdout stream ended.")
               rescue IOError => e
-                Mcp.logger.info("MCP Server stdout pipe closed: #{e.message}")
+                ADK.logger.info("MCP Server stdout pipe closed: #{e.message}")
               ensure
-                @connected = false # Mark as disconnected if stdout closes
-                Mcp.logger.debug("Stdout reader thread finished.")
+                @connected = false # Mark as disconnected if stdout closes or loop breaks due to errors
+                ADK.logger.debug("Stdout reader thread finished.")
               end
             end
 
