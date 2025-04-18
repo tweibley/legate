@@ -82,4 +82,4 @@ module ADK
       @@defined_tools = {}
     end
   end # End GlobalToolManager module
-end # End ADK module 
+end # End ADK module

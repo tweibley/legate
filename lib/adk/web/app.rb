@@ -218,6 +218,65 @@ module ADK
           # Return final HTML structure
           "<div class='notification #{notification_class} mt-4'>#{html_parts.join}</div>"
         end # end format_execution_result_html
+
+        # --- NEW HELPER: Process agent chat response for display ---
+        def process_agent_response(agent_result)
+          response_data = {
+            msg_class: 'is-warning',
+            display_content: "",
+            raw_json_content: "",
+            event_id: SecureRandom.hex(4) # Default unique ID
+          }
+
+          case agent_result
+          when ADK::Event
+            response_data[:event_id] = agent_result.event_id || response_data[:event_id]
+            if agent_result.role == :agent
+              content = agent_result.content
+              response_data[:raw_json_content] = content.inspect
+
+              if content.is_a?(Hash)
+                case content[:status]
+                when :success
+                  response_data[:msg_class] = 'is-success'
+                  response_data[:display_content] = content[:result]
+                when :error
+                  response_data[:msg_class] = 'is-danger'
+                  response_data[:display_content] = content[:error_message] || "Agent error (no message)"
+                when :pending
+                  response_data[:msg_class] = 'is-warning'
+                  response_data[:display_content] = "Task pending... Job ID: #{content[:job_id]}"
+                  if content[:message] then response_data[:display_content] << " - #{content[:message]}"; end
+                else # Unknown status in hash
+                  response_data[:display_content] = "Agent response has unknown status: #{content[:status]}"
+                  response_data[:raw_json_content] = content.inspect # Ensure raw is set
+                end
+              else # Event Content wasn't a hash
+                response_data[:display_content] = "Agent event content format unexpected: #{content.inspect}"
+                response_data[:raw_json_content] = content.inspect # Ensure raw is set
+              end
+            else # Event not from agent role
+              response_data[:display_content] = "Received non-agent event role: #{agent_result.role}"
+              response_data[:raw_json_content] = agent_result.inspect
+            end
+
+          when Hash
+            response_data[:raw_json_content] = agent_result.inspect
+            if agent_result[:status] == :error # Explicit error hash (e.g., agent not running)
+              response_data[:msg_class] = 'is-danger'
+              response_data[:display_content] = agent_result[:error_message] || "An unspecified error occurred."
+            else # Other hash format?
+              response_data[:display_content] = "Unexpected hash format from server: #{agent_result.inspect}"
+            end
+
+          else # Not Event or Hash
+            response_data[:raw_json_content] = agent_result.inspect
+            response_data[:display_content] = "Unexpected response type from server: #{agent_result.class}"
+          end
+
+          response_data # Return the processed hash
+        end
+        # --- END NEW HELPER ---
       end # end helpers
 
       # --- Routes ---
