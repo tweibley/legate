@@ -12,10 +12,12 @@ module ADK
     # Currently supports STDIO connections.
     class Client
       # Default timeout for waiting for a response to a request
-      DEFAULT_RESPONSE_TIMEOUT = 15 # seconds
+      DEFAULT_RESPONSE_TIMEOUT = 30 # seconds
 
       # Use the constant defined in the Connection module
       PROCESS_START_TIMEOUT = Connection::Stdio::PROCESS_START_TIMEOUT
+      # Increase timeout for starting external processes, especially in tests
+      # PROCESS_START_TIMEOUT = 30 # seconds
 
       attr_reader :connection_params, :server_capabilities, :last_error
 
@@ -237,55 +239,76 @@ module ADK
         raise ConnectionError, 'Not connected' unless connected?
         raise ArgumentError, 'Request must have an ID' unless request[:id]
 
-        # --- Handle response differently based on connection type ---
-        if @connection.is_a?(Connection::Sse)
-          # SSE connection returns response directly from send_request (HTTP POST response)
-          ADK.logger.debug("Sending request via SSE POST and expecting immediate response...")
-          response = @connection.send_request(request)
-          # Response already contains the result or error hash
-          ADK.logger.debug("Received direct response for SSE request ID #{request[:id]}")
-          return response
-        elsif @connection.is_a?(Connection::Stdio)
-          # STDIO connection puts response in a queue, need to wait/poll
-          request_id = request[:id]
+        request_id = request[:id]
+
+        # Store the request ID we are waiting for
+        # Use a thread-safe structure if client methods can be called concurrently
+        # For now, assuming serial calls per client instance for simplicity
+        @pending_requests[request_id] = true # Mark as waiting
+
+        begin
           @connection.send_request(request)
-          ADK.logger.debug("Waiting for response to STDIO request ID #{request_id} (timeout: #{timeout}s)")
-          # Simple wait loop - checks queue periodically
-          # A more robust implementation might use ConditionVariable + timeout
+          ADK.logger.debug("Sent request ID #{request_id}, waiting for response (timeout: #{timeout}s)")
+
           start_time = Time.now
+          message_buffer = [] # Buffer for holding mismatched messages
           loop do
-            # Check if the connection died
+            # Check if the connection died before waiting/reading
             raise ConnectionError, "Connection lost while waiting for response ID #{request_id}" unless connected?
 
-            # Check response queue non-blockingly first
-            begin
-              response = @connection.instance_variable_get(:@response_queue).pop(true)
-              if response && response[:id] == request_id
-                ADK.logger.debug("Received response for ID #{request_id}")
-                return response
-              elsif response # Got response for a different ID, put it back (or handle if needed)
-                ADK.logger.warn("Received unexpected response ID #{response[:id]} while waiting for #{request_id}")
-                @connection.instance_variable_get(:@response_queue).push(response)
+            # --- Check buffer first ---
+            found_in_buffer = false
+            message_buffer.reject! do |buffered_message|
+              if buffered_message[:id] == request_id
+                ADK.logger.debug("Found matching response for ID #{request_id} in buffer")
+                return buffered_message # Found it!
               end
-            rescue ThreadError
-              # Queue was empty, continue loop
+              # Keep messages in buffer if they didn't match (no !found_in_buffer needed here)
+              false # Keep all non-matching messages
             end
+            # --- End Check buffer ---
 
-            # Check timeout
-            if Time.now - start_time > timeout
+            # --- Calculate remaining timeout --- 
+            elapsed_time = Time.now - start_time
+            remaining_time = timeout - elapsed_time
+            if remaining_time <= 0
               @last_error = "MCP Client timeout waiting for response ID #{request_id}"
               ADK.logger.error(@last_error)
-              return nil
+              return nil # Timeout occurred
+            end
+            # --- End Calculate remaining timeout ---
+
+            # Read the next message using the remaining timeout
+            # Let read_message handle the blocking/waiting
+            ADK.logger.debug("Calling read_message with timeout: #{remaining_time.round(3)}s")
+            message = @connection.read_message(remaining_time)
+
+            if message
+              Mcp.logger.debug("[Client send_request_and_wait] Received message: #{message.inspect} while waiting for ID #{request_id}")
+              # Check if it's the response we're waiting for
+              if message[:id] == request_id
+                ADK.logger.debug("Received matching response for ID #{request_id}")
+                return message
+              elsif message[:id] # It's a response for a different request
+                ADK.logger.warn("Received unexpected response ID #{message[:id]} while waiting for #{request_id}. Buffering.")
+                message_buffer << message # Add to buffer
+              else # It's a notification or malformed
+                ADK.logger.debug("Received notification or non-response message while waiting for ID #{request_id}: #{message.inspect}")
+                # Ignore/discard notifications received while waiting for a specific response
+              end
+            else
+              # read_message returned nil, meaning its internal timeout expired.
+              # This implies the overall timeout for this request has effectively been reached.
+              @last_error = "MCP Client timeout waiting for response ID #{request_id} (read_message returned nil)"
+              ADK.logger.error(@last_error)
+              return nil # Timeout occurred
             end
 
-            # Sleep between checks
-            sleep(0.01) # 10ms between checks
+            # No explicit sleep needed here, loop continues if message was buffered
           end
-        else
-          # Should not happen if initialize enforces types
-          raise ConnectionError, "Unsupported connection type for sending request: #{@connection.class}"
+        ensure
+          @pending_requests.delete(request_id) # Clear pending status
         end
-        # -------------------------------------------------------------
       end
     end
   end

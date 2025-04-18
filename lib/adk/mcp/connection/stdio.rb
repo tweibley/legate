@@ -30,8 +30,8 @@ module ADK
           @stderr_thread = nil
           @connected = false
           @request_id_counter = 0
-          @response_queue = Queue.new
-          @notification_queue = Queue.new
+          @response_queue = Queue.new # <-- Back to response_queue
+          @notification_queue = Queue.new # <-- Back to notification_queue
           @stdout_reader_thread = nil
           @last_error = nil
           @pid = nil
@@ -76,29 +76,44 @@ module ADK
 
             # Thread to continuously read stdout and parse JSON-RPC messages
             @stdout_reader_thread = Thread.new do
+              Mcp.logger.debug("[Stdio Connection #{@pid}] stdout_reader_thread starting...")
               begin
                 @stdout.each_line do |line|
-                  ADK.logger.debug("<- [MCP Server STDOUT] #{line.chomp}")
-                  begin
-                    message = JSON.parse(line, symbolize_names: true)
-                    @consecutive_parse_errors = 0
-                    if message.key?(:id) && message[:id].nil? # MCP Notifications might have null id
-                      @notification_queue << message
-                    elsif message.key?(:id)
-                      @response_queue << message # Responses have non-null id
-                    else # Could be notification without id or invalid message
-                      @notification_queue << message # Assume notification for now
-                      ADK.logger.warn("Received MCP message without explicit id: #{message.inspect}")
+                  line.strip! # Remove leading/trailing whitespace
+                  next if line.empty? # Skip empty lines
+
+                  ADK.logger.debug("<- [MCP Server STDOUT Raw] #{line}")
+
+                  # Attempt to parse only if it looks like JSON
+                  if line.start_with?('{') || line.start_with?('[')
+                    begin
+                      message = JSON.parse(line, symbolize_names: true)
+                      @consecutive_parse_errors = 0 # Reset on successful parse
+
+                      # Route to correct queue based on ID presence/value
+                      if message.key?(:id) && message[:id].nil? # MCP Notifications might have null id
+                        @notification_queue << message
+                      elsif message.key?(:id)
+                        Mcp.logger.debug("[Stdio Connection #{@pid}] Queuing response ID: #{message[:id]}")
+                        @response_queue << message # Responses have non-null id
+                      else # Assume notification for now
+                        @notification_queue << message
+                        ADK.logger.warn("Received MCP message without explicit id: #{message.inspect}")
+                      end
+                    rescue JSON::ParserError => e
+                      ADK.logger.error("Failed to parse potential MCP JSON from stdout: #{e.message}. Line: #{line}")
+                      @consecutive_parse_errors += 1
+                      if @consecutive_parse_errors >= PARSE_ERROR_THRESHOLD # Use >= for clarity
+                        ADK.logger.fatal("Too many consecutive JSON parse errors (#{PARSE_ERROR_THRESHOLD} reached). Assuming MCP connection broken.")
+                        @connected = false # Mark connection as broken
+                        @last_error = "Too many consecutive JSON parse errors."
+                        break # Stop reading from stdout
+                      end
                     end
-                  rescue JSON::ParserError => e
-                    ADK.logger.error("Failed to parse MCP JSON from stdout: #{e.message}. Line: #{line.chomp}")
-                    @consecutive_parse_errors += 1
-                    if @consecutive_parse_errors > PARSE_ERROR_THRESHOLD
-                      ADK.logger.fatal("Too many consecutive JSON parse errors (#{PARSE_ERROR_THRESHOLD} reached). Assuming MCP connection broken.")
-                      @connected = false # Mark connection as broken
-                      @last_error = "Too many consecutive JSON parse errors."
-                      break # Stop reading from stdout
-                    end
+                  else
+                    # Log lines that don't look like JSON instead of trying to parse
+                    ADK.logger.debug("Skipping non-JSON line from MCP STDOUT: #{line}")
+                    # Do not increment parse error count for these lines
                   end
                 end
                 ADK.logger.info("MCP Server stdout stream ended.")
@@ -106,7 +121,7 @@ module ADK
                 ADK.logger.info("MCP Server stdout pipe closed: #{e.message}")
               ensure
                 @connected = false # Mark as disconnected if stdout closes or loop breaks due to errors
-                ADK.logger.debug("Stdout reader thread finished.")
+                Mcp.logger.debug("[Stdio Connection #{@pid}] stdout_reader_thread finished.")
               end
             end
 
@@ -175,18 +190,34 @@ module ADK
               # For now, use Queue#pop with timeout (blocks this thread).
               # Note: This waits on the response queue first.
               begin
-                return @response_queue.pop(false, timeout) # block = false, timeout = specified
-              rescue ThreadError # Timeout occurred on response queue
-                begin
-                  return @notification_queue.pop(false, timeout) # Try notification queue
-                rescue ThreadError # Timeout occurred on notification queue too
-                  return nil
+                # Use non-blocking pop with a short sleep loop to approximate timeout
+                # while still allowing connection checks.
+                start_time = Time.now
+                loop do
+                  begin
+                    return @response_queue.pop(true)
+                  rescue ThreadError # Queue empty
+                    # Check notifications non-blockingly as well
+                    begin
+                      return @notification_queue.pop(true)
+                    rescue ThreadError
+                      # Both still empty
+                    end
+
+                    # Check timeout
+                    if timeout && (Time.now - start_time >= timeout)
+                      return nil # Timeout reached
+                    end
+                    # Check connection status inside loop
+                    raise ConnectionError, "Connection lost while waiting for message" unless connected?
+                    sleep(0.01) # Small sleep
+                  end
                 end
               end
             end
           end
         ensure
-          # Check if connection died while waiting
+          # Check if connection died while waiting (important after blocking operations)
           raise ConnectionError, "Connection lost while reading message" unless connected?
         end
 

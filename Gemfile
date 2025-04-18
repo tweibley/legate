@@ -23,4 +23,4 @@ end
 
 gem "sidekiq"
 
-gem "fast-mcp"
+gem "fast-mcp", '~> 1.1.0'

@@ -59,7 +59,7 @@ module ADK
 
         # Register with the PROVIDED registry instance
         begin
-          tool_registry.register(wrapper_class)
+          tool_registry.register(mcp_name.to_sym, wrapper_class)
           Mcp.logger.debug("Registered wrapper for MCP tool '#{mcp_name}' with provided ToolRegistry.")
         rescue ADK::ToolRegistry::ToolExistsError => e
           Mcp.logger.warn("MCP Tool '#{mcp_name}' conflicts with an existing tool in provided registry: #{e.message}")

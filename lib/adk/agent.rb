@@ -493,8 +493,10 @@ module ADK
     # Discovers tools from a connected MCP client and registers them with the agent's registry.
     # @param client [ADK::Mcp::Client]
     def discover_and_register_mcp_tools(client)
+      ADK.logger.debug("[Agent E2E Debug] discover_and_register - @tool_registry ID: #{@tool_registry.object_id}")
       begin
         mcp_tool_schemas = client.list_tools
+        ADK.logger.debug("[Agent E2E Debug] list_tools returned: #{mcp_tool_schemas.inspect}")
         ADK.logger.info("Discovered #{mcp_tool_schemas.count} tools from MCP server.")
         mcp_tool_schemas.each do |schema|
           # Pass the agent's specific registry instance (@tool_registry)

@@ -169,7 +169,6 @@ RSpec.describe ADK::Agent do
     allow(mock_status_tool).to receive(:class).and_return(ADK::Tools::CheckJobStatusTool)
 
     # Mock ToolRegistry
-    allow_any_instance_of(ADK::ToolRegistry).to receive(:register).and_return(true)
     allow_any_instance_of(ADK::ToolRegistry).to receive(:find_class) do |_, name|
       case name.to_sym
       when :tool_a then MockToolA
@@ -730,4 +729,9 @@ RSpec.describe ADK::Agent do
       end
     end
   end # End MCP Integration describe block
+
+  # --- NEW BLOCK --- >
+  describe 'MCP End-to-End Integration', :e2e do
+    
+  end # End MCP End-to-End Integration describe block
 end # End RSpec.describe ADK::Agent
