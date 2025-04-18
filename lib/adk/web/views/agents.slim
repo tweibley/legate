@@ -63,8 +63,8 @@
     tbody#agent-list-tbody
       - if @view_agents && !@view_agents.empty?
         - @view_agents.each do |agent_info|
-          / Pass the agent_info hash which now includes :model
-          == slim :_agent_row, locals: { agent_info: agent_info }
+          / Pass the agent_info hash which now includes :model AND the available_tools list
+          == slim :_agent_row, locals: { agent_info: agent_info, available_tools: @available_tools }
       - else
         tr#no-agents-row
           / --- Adjust colspan ---

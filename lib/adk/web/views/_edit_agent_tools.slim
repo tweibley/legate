@@ -18,7 +18,7 @@
             - tool_name_str = tool_info[:name].to_s
             - is_checked = configured_tool_names.include?(tool_name_str)
             .field
-              label.checkbox
+              label.checkbox class=(is_checked ? 'is-selected-tool' : '') title=tool_info[:description]
                 / Checkbox name is 'tools[]' to submit an array
                 input(type="checkbox" name="tools[]" value=tool_name_str checked=is_checked)
                 strong.ml-2 #{tool_info[:name].to_s.capitalize}:

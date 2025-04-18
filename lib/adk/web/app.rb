@@ -242,7 +242,15 @@ module ADK
                   response_data[:display_content] = content[:result]
                 when :error
                   response_data[:msg_class] = 'is-danger'
-                  response_data[:display_content] = content[:error_message] || "Agent error (no message)"
+                  original_error = content[:error_message] || "Agent error (no message)"
+                  # --- Make planning error friendlier ---
+                  if original_error == "I cannot fulfill this request with the available tools (empty plan)."
+                    response_data[:display_content] =
+                      "Sorry, I couldn't determine how to handle that request with the tools I have available."
+                  else
+                    response_data[:display_content] = original_error
+                  end
+                  # --- End friendly error ---
                 when :pending
                   response_data[:msg_class] = 'is-warning'
                   response_data[:display_content] = "Task pending... Job ID: #{content[:job_id]}"

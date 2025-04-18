@@ -53,12 +53,19 @@
       / New messages will be appended here by HTMX
 
     / Chat Input Form
-    form(hx-post="/agents/#{@view_agent_data[:name]}/chat" hx-target="#chat-history" hx-swap="beforeend" _="on htmx:afterRequest reset()")
+    form#chat-form( hx-post="/agents/#{@view_agent_data[:name]}/chat"
+                 hx-target="#chat-history"
+                 hx-swap="beforeend"
+                 hx-indicator="#send-button-indicator"
+                 _="on htmx:afterRequest reset()" )
       .field.has-addons
         .control.is-expanded
-          input.input#chat-input(type="text" name="message" placeholder="Enter your message..." required=true autofocus disabled=(!@view_agent_data[:running]))
+          textarea.textarea#chat-input(name="message" placeholder="Enter your message..." required=true autofocus rows="1" style="resize: vertical; min-height: 40px;" disabled=(!@view_agent_data[:running]))
         .control
-          button.button.is-info(type="submit" disabled=(!@view_agent_data[:running])) Send
+          button.button.is-info#send-button(type="submit" disabled=(!@view_agent_data[:running]))
+            span Send
+            span.icon.is-small#send-button-indicator.htmx-indicator.ml-2
+              i.fas.fa-spinner.fa-pulse
 
     / Link back to agent details
     .mt-4

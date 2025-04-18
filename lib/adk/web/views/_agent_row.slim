@@ -5,6 +5,7 @@
 /   :model (String or nil) - The configured model name from Redis
 /   :running (Boolean) - Current runtime status
 /   :configured_tools (Array<String>) - List of tool names from Redis
+/ Expects 'available_tools' (Array<Hash>) list passed via locals for descriptions
 
 - agent_name = agent_info[:name]
 - is_running = agent_info[:running]
@@ -13,6 +14,9 @@
 - status_content_id = "agent-status-content-#{agent_name}" # ID for the inner status span (HTMX target)
 - start_button_id = "agent-start-button-#{agent_name}"
 - stop_button_id = "agent-stop-button-#{agent_name}"
+
+/ Helper to find tool description
+- find_tool_desc = lambda { |name| available_tools&.find { |t| t[:name].to_s == name.to_s }&.[](:description) || "Description not found" }
 
 tr(data-agent-name=agent_name)
   / Name Column
@@ -28,8 +32,13 @@ tr(data-agent-name=agent_name)
 
   / Configured Tools Column
   td
-    - if agent_info[:configured_tools] && !agent_info[:configured_tools].empty?
-      span.is-size-7= agent_info[:configured_tools].join(', ')
+    - configured_tools = agent_info[:configured_tools]
+    - if configured_tools && !configured_tools.empty?
+      span.is-size-7
+        - configured_tools.each_with_index do |tool_name, index|
+          - description = find_tool_desc.call(tool_name)
+          a href="/tools/#{tool_name}" title=description = tool_name
+          = ", " if index < configured_tools.length - 1
     - else
       span.is-size-7.has-text-grey -
 
