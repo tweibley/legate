@@ -1,34 +1,61 @@
 # File: examples/workers/sleepy_worker.rb
 # frozen_string_literal: true
 
+# --- Example: Sidekiq Worker for Async ADK Tools ---
+#
+# This script sets up a Sidekiq worker to process async jobs
+# from ADK tools like SleepyTool. It demonstrates how to:
+# 1. Configure Sidekiq with Redis
+# 2. Define a worker class that processes ADK tool jobs
+# 3. Handle job status updates via Redis
+#
+# Prerequisites:
+#   - Redis must be running
+#   - Run this with: bundle exec sidekiq -r ./examples/workers/sleepy_worker.rb
+#
+# -------------------------------------------------------------
+
+require 'bundler/setup'
 require 'sidekiq'
-# Assuming adk-ruby is loaded or required appropriately in your Sidekiq environment
-# If running standalone sidekiq, you might need: require_relative '../../lib/adk'
+require 'adk'
+require 'adk/tools/sleepy_tool'
 
-# A simple worker that simulates a long-running task by sleeping.
-class SleepyWorker
+# Configure Sidekiq to use Redis
+Sidekiq.configure_server do |config|
+  config.redis = { url: 'redis://localhost:6379/0' }
+end
+
+Sidekiq.configure_client do |config|
+  config.redis = { url: 'redis://localhost:6379/0' }
+end
+
+# Define the worker class that will process SleepyTool jobs
+class SleepyToolWorker
   include Sidekiq::Worker
-  sidekiq_options queue: 'default', retry: 1 # Example options
 
-  # @param duration [Integer] How long to sleep in seconds.
-  # @param message [String] The message to return upon completion.
-  def perform(duration, message)
-    jid = self.jid # Get the Job ID
-    puts "[SleepyWorker JID: #{jid}] Starting job. Sleeping for #{duration} seconds..."
+  def perform(job_id, duration)
+    ADK.logger.info("Processing SleepyTool job #{job_id} with duration #{duration}s")
 
-    begin
-      sleep duration.to_i
-      result_message = "Slept for #{duration} seconds. Your message: #{message}"
-      puts "[SleepyWorker JID: #{jid}] Job finished. Storing result."
-      # Store the successful result using the helper from BaseAsyncJobTool
-      ADK::Tools::BaseAsyncJobTool.store_job_result(jid, result_message)
-    rescue => e
-      error_message = "Job failed after starting sleep: #{e.message}"
-      puts "[SleepyWorker JID: #{jid}] Job failed! Storing error. Error: #{error_message}"
-      # Store the error using the helper
-      ADK::Tools::BaseAsyncJobTool.store_job_error(jid, error_message, e.class.name)
-      # Optional: re-raise if you want Sidekiq's retry/deadset logic to trigger based on the exception
-      # raise e
+    # Update job status to running
+    ADK::Tools::CheckJobStatusTool.update_job_status(job_id, :running)
+
+    # Create and execute the tool
+    tool = ADK::Tools::SleepyTool.new
+    result = tool.perform(duration: duration)
+
+    # Update job status with result
+    if result.success?
+      ADK::Tools::CheckJobStatusTool.update_job_status(job_id, :success, result.value)
+    else
+      ADK::Tools::CheckJobStatusTool.update_job_status(job_id, :error, result.error)
     end
+
+    ADK.logger.info("Completed SleepyTool job #{job_id}")
+  rescue StandardError => e
+    ADK.logger.error("Failed to process SleepyTool job #{job_id}: #{e.message}")
+    ADK::Tools::CheckJobStatusTool.update_job_status(job_id, :error, e.message)
   end
 end
+
+# Log that the worker is ready
+ADK.logger.info("SleepyTool worker loaded and ready to process jobs")
