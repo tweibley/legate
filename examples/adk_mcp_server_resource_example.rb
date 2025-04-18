@@ -30,8 +30,9 @@ require 'adk'      # Load ADK framework
 require 'fast_mcp' # Load the fast-mcp library
 require 'thread'   # For Mutex
 require 'json'     # Needed for JSON generation in #content
-require 'singleton'# Needed for Singleton pattern
-require 'logger'   # For Logger
+require 'singleton' # Needed for Singleton pattern
+require 'logger' # For Logger
+require 'securerandom' # For generating random session IDs
 # ---------------------------------------------
 
 # === ADK Components Setup ===
@@ -40,9 +41,10 @@ require 'logger'   # For Logger
 calculator_agent = ADK::Agent.new(
   name: 'calculator_agent_instance', # Runtime instance name
   description: 'An agent that can perform calculations.',
-  model_name: 'gemini-test-model', # Specify a model (even if dummy for this example)
-  tool_classes: [ADK::Tools::Calculator] # Provide the CLASS
+  model_name: 'gemini-1.5-flash', # Specify a model (even if dummy for this example)
+  tool_classes: [ADK::Tools::Calculator] # Provide the tool class directly
 )
+
 # Start the agent runtime (needed for run_task)
 calculator_agent.start
 
@@ -51,7 +53,6 @@ calculator_agent.start
 adk_session_service = ADK::SessionService::InMemory.new
 
 # === End ADK Components Setup ===
-
 
 # === FastMcp Components Setup ===
 
@@ -88,7 +89,7 @@ class IncrementCounterTool < FastMcp::Tool
     counter = CounterResource.instance
     new_value = counter.increment
     # Use notify_resource_updated with the uri
-    notify_resource_updated('counter') 
+    notify_resource_updated('counter')
     "Counter incremented. New value: #{new_value}"
   end
 end
@@ -124,69 +125,58 @@ class InlineAgentToolAdapter < FastMcp::Tool
   description "Runs the internal ADK Calculator Agent with the given prompt."
   tool_name "run_calculator_agent"
 
+  SUPPORTED_OPERATIONS = ['+', '-', '*', '/'].freeze
+
   arguments do
-    required(:prompt).filled(:string).description('The user input/prompt for the agent')
+    required(:operand1).filled(:string).description('The first operand for the calculator')
+    required(:operand2).filled(:string).description('The second operand for the calculator')
+    required(:operation).filled(:string).description('The operation for the calculator (must be one of: +, -, *, /)')
   end
 
   # Reference to the agent and session service (class variables)
   # Will be set before registration
   @@agent = nil
   @@session_service = nil
+  @@calculator_tool = nil
 
   # Class method to set up the references needed for initialization
   def self.setup(agent, session_service)
     @@agent = agent
     @@session_service = session_service
+    @@calculator_tool = ADK::Tools::Calculator.new
   end
 
-  def call(prompt:)
-    # Make sure dependencies are set up
-    raise "Agent not configured" unless @@agent
-    raise "Session service not configured" unless @@session_service
+  def call(operand1:, operand2:, operation:)
+    # Validate operation
+    unless SUPPORTED_OPERATIONS.include?(operation)
+      raise StandardError, "Calculator Error: Operation must be one of: #{SUPPORTED_OPERATIONS.join(', ')}"
+    end
 
-    temp_session = nil
-    
+    # Validate operands are numbers
     begin
-      temp_session = @@session_service.create_session(
-        app_name: @@agent.name,
-        user_id: "mcp_inline_#{SecureRandom.hex(4)}"
-      )
+      Float(operand1)
+      Float(operand2)
+    rescue ArgumentError
+      raise StandardError, "Calculator Error: Both operands must be valid numbers"
+    end
 
-      final_event = @@agent.run_task(
-        session_id: temp_session.id,
-        user_input: prompt,
-        session_service: @@session_service
-      )
+    # Make sure dependencies are set up
+    raise "Calculator tool not configured" unless @@calculator_tool
 
-      unless final_event.is_a?(ADK::Event) && final_event.role == :agent && final_event.content.is_a?(Hash)
-        raise StandardError, "Agent task finished with unexpected event format: #{final_event.inspect}"
-      end
+    # Execute the calculation directly using the calculator tool
+    result = @@calculator_tool.execute(
+      operand1: operand1,
+      operand2: operand2,
+      operation: operation
+    )
 
-      result_content = final_event.content
-
-      case result_content[:status]
-      when :success
-        return result_content[:result]
-      when :error
-        err_msg = result_content[:error_message] || "Agent execution failed."
-        raise StandardError, "Agent Error: #{err_msg}"
-      when :pending
-        job_id = result_content[:job_id]
-        msg = result_content[:message] || "Agent task resulted in a pending job."
-        return { status: 'pending', job_id: job_id, message: msg }
-      else
-        raise StandardError, "Agent task finished with unknown status: #{result_content[:status]}"
-      end
-    rescue StandardError => e
-      raise # Re-raise the error for fast-mcp to handle
-    ensure
-      if temp_session && @@session_service
-        begin
-          @@session_service.delete_session(session_id: temp_session.id)
-        rescue StandardError => del_e
-          # Silently handle session deletion error
-        end
-      end
+    case result[:status]
+    when :success
+      return result[:result]
+    when :error
+      raise StandardError, "Calculator Error: #{result[:error_message]}"
+    else
+      raise StandardError, "Calculator returned unexpected status: #{result[:status]}"
     end
   end
 end
