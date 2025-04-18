@@ -11,12 +11,14 @@ module ADK
     class << self
       attr_reader :tool_name, :description, :parameters_definition
 
+      # Define the tool's static metadata.
+      # This no longer automatically registers the tool globally.
       def define_metadata(name:, description:, parameters: {})
         @tool_name = name.to_sym
         @description = description
         @parameters_definition = parameters
-        # --- Trigger registration AFTER metadata is defined ---
-        register_tool_class
+        # --- REMOVED automatic registration call ---
+        # register_tool_class
       end
 
       # --- ADDED: Method to retrieve all metadata as a hash ---
@@ -29,18 +31,15 @@ module ADK
       end
       # --- End ADDED ---
 
-      # --- Moved Registration Logic Here ---
-      def register_tool_class
-        return unless @tool_name && @description # Check if metadata was set
-
-        ADK.logger.debug("Attempting to register tool '#{@tool_name}' with class #{self}")
-        ADK::ToolRegistry.register(@tool_name, self)
-      end
-      # --- End Moved Registration Logic ---
+      # --- REMOVED Registration Logic Method ---
+      # def register_tool_class
+      #   ...
+      # end
+      # --- End REMOVED Registration Logic Method ---
     end
     # --- End Class-level ---
 
-    # --- Self-Registration Hook (Now less critical but harmless) ---
+    # --- Self-Registration Hook (No longer functional, can be removed or left as is) ---
     def self.inherited(subclass)
       super # Call parent's inherited if necessary
       # The registration now happens when define_metadata is called in the subclass
@@ -65,19 +64,6 @@ module ADK
       # --- REMOVED registration call from initialize ---
       # self.class.register_tool_class
     end
-
-    # --- Add Class method to handle registration ---
-    def self.register_tool_class
-      unless @tool_name && @description && @parameters_definition
-        Logger.new($stdout).error("ToolRegistry: Cannot register #{self}. Metadata not defined via `define_metadata`.")
-        return
-      end
-      # Prevent re-registration if already done
-      unless ADK::ToolRegistry.find_class(@tool_name) == self
-        ADK::ToolRegistry.register(@tool_name, self)
-      end
-    end
-    # --- End Class method ---
 
     # Execute the tool
     # @param params [Hash] Input parameters for the tool.

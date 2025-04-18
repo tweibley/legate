@@ -221,7 +221,7 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
       it 'skips unknown ADK types and logs warning' do
         adk_params = { unknown: { type: :custom_blob, required: true } }
         schema_proc = described_class.adk_to_dry_schema(adk_params)
-        expected_log_message = "ADK parameter 'unknown': Unsupported ADK type ':custom_blob'. Skipping."
+        expected_log_message = "ADK parameter 'unknown': Unsupported ADK type 'custom_blob'. Skipping."
         expect(logger_spy).to have_received(:warn).with(expected_log_message).once
         schema = build_schema_from_proc(schema_proc)
         expect(schema.rules.key?(:unknown)).to be false

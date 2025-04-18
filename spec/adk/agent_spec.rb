@@ -2,6 +2,31 @@
 require 'spec_helper'
 require 'sidekiq/testing'
 
+# --- Mock Tool Classes for Testing ---
+class MockToolA < ADK::Tool
+  define_metadata(name: :tool_a, description: 'Tool A', parameters: { p: { required: true } })
+  def perform_execution(params, context); { status: :success, result: 'Result A' }; end
+end
+
+class MockToolB < ADK::Tool
+  define_metadata(name: :tool_b, description: 'Tool B', parameters: { data: { required: true } })
+  def perform_execution(params, context); { status: :success, result: 'Result B' }; end
+end
+
+class MockAsyncTool < ADK::Tools::BaseAsyncJobTool # Use base class if needed for tests
+  define_metadata(name: :async_tool, description: 'Async Tool', parameters: { input: { required: true } })
+
+  # Define DummyWorker class within the tool class body, but outside methods
+  class DummyWorker
+    include Sidekiq::Job
+    def perform(*args); end # Minimal perform needed for Sidekiq::Testing
+  end
+
+  def sidekiq_worker_class; DummyWorker; end # Return the class constant
+  def prepare_job_arguments(params, context); [params[:input]]; end
+end
+# --- End Mock Tool Classes ---
+
 RSpec.describe ADK::Agent do
   # --- Test Subjects ---
   let(:name) { 'test_agent' }
@@ -44,25 +69,66 @@ RSpec.describe ADK::Agent do
     # Mock Planner before agent initialization
     allow(ADK::Planner).to receive(:new).and_return(mock_planner)
     # Mock ToolContext creation (will be called by execute_step)
-    allow(ADK::ToolContext).to receive(:new).with(session_id: session_id, user_id: user_id,
-                                                  app_name: app_name).and_return(mock_context)
+    allow(ADK::ToolContext).to receive(:new)
+      .with(hash_including(session_id: session_id, user_id: user_id, app_name: name))
+      .and_return(mock_context)
     # Mock ToolRegistry call during agent init for check_job_status
     allow(ADK::ToolRegistry).to receive(:create_instance).with(:check_job_status).and_return(mock_status_tool)
     allow(mock_status_tool).to receive(:is_a?).with(ADK::Tool).and_return(true) # Allow adding the status tool
     # Stub Sidekiq configuration check during init
     allow(Object).to receive(:defined?).with(Sidekiq).and_return(true)
 
-    # Initialize agent
-    described_class.new(name: name, description: description, model_name: model_name, logger: mock_logger)
+    # Initialize agent with TOOL CLASSES - Ensure NO logger is passed
+    described_class.new(
+      name: name,
+      description: description,
+      model_name: model_name,
+      tool_classes: [MockToolA, MockToolB, MockAsyncTool] # Pass classes
+    )
   end
 
   # --- General Setup ---
   before do
+    # Mock ADK.logger instead of ADK::Logger
+    allow(ADK).to receive(:logger).and_return(mock_logger)
+
     # Tool type checking
     allow(mock_tool_a).to receive(:is_a?).with(ADK::Tool).and_return(true)
+    allow(mock_tool_a).to receive(:is_a?).with(Class).and_return(false)
     allow(mock_tool_b).to receive(:is_a?).with(ADK::Tool).and_return(true)
+    allow(mock_tool_b).to receive(:is_a?).with(Class).and_return(false)
     allow(mock_status_tool).to receive(:is_a?).with(ADK::Tool).and_return(true)
+    allow(mock_status_tool).to receive(:is_a?).with(Class).and_return(false)
     allow(mock_async_tool).to receive(:is_a?).with(ADK::Tool).and_return(true)
+    allow(mock_async_tool).to receive(:is_a?).with(Class).and_return(false)
+
+    # Tool name and class setup
+    allow(mock_tool_a).to receive(:name).and_return(:tool_a)
+    allow(mock_tool_a).to receive(:class).and_return(MockToolA)
+    allow(mock_tool_b).to receive(:name).and_return(:tool_b)
+    allow(mock_tool_b).to receive(:class).and_return(MockToolB)
+    allow(mock_status_tool).to receive(:name).and_return(:check_job_status)
+    allow(mock_status_tool).to receive(:class).and_return(ADK::Tools::CheckJobStatusTool)
+
+    # Mock ToolRegistry
+    allow_any_instance_of(ADK::ToolRegistry).to receive(:register).and_return(true)
+    allow_any_instance_of(ADK::ToolRegistry).to receive(:find_class) do |_, name|
+      case name.to_sym
+      when :tool_a then MockToolA
+      when :tool_b then MockToolB
+      when :check_job_status then ADK::Tools::CheckJobStatusTool
+      else nil
+      end
+    end
+    allow_any_instance_of(ADK::ToolRegistry).to receive(:create_instance) do |_, name|
+      case name.to_sym
+      when :tool_a then mock_tool_a
+      when :tool_b then mock_tool_b
+      when :check_job_status then mock_status_tool
+      else nil
+      end
+    end
+
     # Session service interactions
     allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
     allow(mock_session_service).to receive(:append_event).and_return(true)
@@ -88,7 +154,8 @@ RSpec.describe ADK::Agent do
     it 'uses default model if none provided' do
       # We need to re-allow Planner.new for this specific instance creation
       allow(ADK::Planner).to receive(:new).and_return(mock_planner)
-      agent_default = described_class.new(name: name, description: description, logger: mock_logger)
+      # Create agent without model_name
+      agent_default = described_class.new(name: name, description: description)
       expect(agent_default.model_name).to eq(default_model)
       # Verify planner was initialized with default model
       expect(ADK::Planner).to have_received(:new).with(hash_including(model_name: default_model))
@@ -111,20 +178,42 @@ RSpec.describe ADK::Agent do
   end
 
   describe '#add_tool' do
+    let(:mock_registry) { instance_double(ADK::ToolRegistry) }
+
+    before do
+      allow(ADK::ToolRegistry).to receive(:new).and_return(mock_registry)
+      allow(mock_registry).to receive(:tools).and_return({})
+      allow(mock_registry).to receive(:register).with(:check_job_status, ADK::Tools::CheckJobStatusTool)
+      allow(mock_registry).to receive(:register).with(:tool_a, MockToolA)
+      allow(mock_registry).to receive(:register).with(:tool_b, MockToolB)
+      allow(mock_registry).to receive(:create_instance)
+      # Add find_class stub for initialization check
+      allow(mock_registry).to receive(:find_class).with(:check_job_status).and_return(nil)
+      allow(mock_registry).to receive(:find_class).with(:tool_a).and_return(MockToolA)
+      # Mock ADK.logger
+      allow(ADK).to receive(:logger).and_return(mock_logger)
+      # Mock Planner for agent initialization
+      allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+    end
+
     it 'adds a valid tool' do
-      expect { agent.add_tool(mock_tool_a) }.to change { agent.tools.count }.by(1)
-      expect(agent.tools).to include(mock_tool_a)
+      agent = described_class.new(name: 'test_agent', description: 'Test agent for tool tests')
+      expect(mock_registry).to receive(:register).with(:tool_a, MockToolA)
+      expect(agent.add_tool(MockToolA)).to be true
     end
 
-    it 'warns and does not add a duplicate tool', :log_level do
-      agent.add_tool(mock_tool_a) # Add once
-      expect(mock_logger).to receive(:warn).with(/already added/)
-      expect { agent.add_tool(mock_tool_a) }.not_to change { agent.tools.count }
+    it 'warns and overwrites when adding a duplicate tool' do
+      agent = described_class.new(name: 'test_agent', description: 'Test agent for tool tests')
+      allow(mock_registry).to receive(:find_class).with(:tool_a).and_return(MockToolA)
+      expect(mock_logger).to receive(:warn).with(/Tool 'tool_a' already added. Overwriting./)
+      agent.add_tool(MockToolA)
     end
 
-    it 'errors and does not add an invalid object', :log_level do
+    it 'errors and does not add an invalid object' do
+      agent = described_class.new(name: 'test_agent', description: 'Test agent for tool tests')
+      invalid_object = Object.new
       expect(mock_logger).to receive(:error).with(/Attempted to add invalid tool/)
-      expect { agent.add_tool("not a tool") }.not_to change { agent.tools.count }
+      expect(agent.add_tool(invalid_object)).to be false
     end
   end
 
@@ -145,6 +234,23 @@ RSpec.describe ADK::Agent do
   describe '#run_task' do
     before do
       # Add tools used in these tests
+      allow_any_instance_of(ADK::ToolRegistry).to receive(:register).and_return(true)
+      allow_any_instance_of(ADK::ToolRegistry).to receive(:create_instance) do |_, name|
+        case name.to_sym
+        when :tool_a then mock_tool_a
+        when :tool_b then mock_tool_b
+        when :check_job_status then mock_status_tool
+        when :async_tool then mock_async_tool
+        else nil
+        end
+      end
+
+      # Setup logger stubs
+      allow(ADK.logger).to receive(:info)
+      allow(ADK.logger).to receive(:warn)
+      allow(ADK.logger).to receive(:error)
+      allow(ADK.logger).to receive(:debug)
+
       agent.add_tool(mock_tool_a)
       agent.add_tool(mock_tool_b)
       agent.add_tool(mock_async_tool)
@@ -336,15 +442,18 @@ RSpec.describe ADK::Agent do
       end
 
       it 'returns an error event and logs an agent error event', :log_level do
-        expect(mock_logger).to receive(:error).with(/Critical error during run_task.*Planner explosion/)
-        expect(mock_session_service).to receive(:append_event).with(
+        # Run the task first, then check logs with have_received
+        result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+
+        expect(ADK.logger).to have_received(:error).with(/Critical error during run_task.*Planner explosion/)
+        expect(mock_session_service).to have_received(:append_event).with(
           session_id: session_id,
           event: having_attributes(role: :agent,
                                    content: { status: :error,
                                               error_message: /An internal error occurred.*Planner explosion/i })
         )
 
-        result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+        # result expectation remains the same
         expect(result).to be_an(ADK::Event)
         expect(result.role).to eq(:agent)
         expected_error_hash = { status: :error, error_message: "An internal error occurred: Planner explosion" }
@@ -369,6 +478,16 @@ RSpec.describe ADK::Agent do
         expect(result.role).to eq(error_event.role)
         expect(result.content).to eq(error_event.content)
       end
+    end
+  end
+
+  describe '#register_tool_class' do
+    it 'warns and overwrites when registering a duplicate tool class', :log_level do
+      # ToolA is registered during agent init
+      expect(ADK.logger).to receive(:warn).with(/already registered.*Overwriting/)
+      # The ToolRegistry#register validation was simplified, this should pass now.
+      expect { agent.register_tool_class(MockToolA) }.not_to change { agent.tool_registry.tools.keys.count }
+      expect(agent.tool_registry.find_class(:tool_a)).to eq(MockToolA)
     end
   end
 end

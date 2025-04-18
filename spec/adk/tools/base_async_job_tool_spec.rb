@@ -31,7 +31,10 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
   let(:session_id) { 'sess_abc' }
   let(:user_id) { 'user_1' }
   let(:app_name) { 'test_app' }
-  let(:context) { ADK::ToolContext.new(session_id: session_id, user_id: user_id, app_name: app_name) }
+  let(:dummy_registry) { ADK::ToolRegistry.new } # Dummy registry for context
+  let(:context) {
+    ADK::ToolContext.new(session_id: session_id, user_id: user_id, app_name: app_name, tool_registry: dummy_registry)
+  }
   let(:expected_job_id) { 'test_jid_123' }
 
   before do

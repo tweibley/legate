@@ -61,7 +61,7 @@ module ADK
       #                      Expected keys: :target_agent_name, :task (as Symbols).
       # @param _context [ADK::ToolContext, nil] The execution context (unused here, but session context is passed implicitly through service).
       # @return [Hash] A hash with :status (:success or :error) and :result or :error_message.
-      def perform_execution(params, _context)
+      def perform_execution(params, context)
         # Fetch required parameters using symbols (matching planner output)
         target_agent_name = params.fetch(:target_agent_name)
         task_to_delegate = params.fetch(:task)
@@ -124,17 +124,30 @@ module ADK
         )
 
         # 5. Add Tools to Target Agent Instance
+        # --- Get the registry from the context --- #
+        executing_agent_registry = context&.tool_registry
+        unless executing_agent_registry.is_a?(ADK::ToolRegistry)
+          msg = "AgentTool: Tool registry not found or invalid in context. Cannot load tools for target agent '#{target_agent_name}'."
+          ADK.logger.error(msg)
+          # Decide: Error out or proceed without tools?
+          # Let's proceed but log error, as the agent might function without all tools.
+          # return { status: :error, error_message: msg }
+        end
+        # --- End Get Registry --- #
+
         if target_tool_names.empty?
           ADK.logger.warn("AgentTool: Target agent '#{target_agent_name}' has no tools configured (or tools JSON was invalid).")
         else
           ADK.logger.debug("AgentTool: Adding tools #{target_tool_names} to target agent")
           target_tool_names.each do |tool_name|
-            tool_instance = ADK::ToolRegistry.create_instance(tool_name)
-            if tool_instance
-              target_agent.add_tool(tool_instance)
+            # --- Find class using the executing agent's registry --- #
+            tool_class = executing_agent_registry&.find_class(tool_name)
+            if tool_class
+              # --- Register the CLASS with the temporary agent --- #
+              target_agent.register_tool_class(tool_class)
             else
               # Log warning but continue, agent might function with subset of tools
-              ADK.logger.warn("AgentTool: Tool '#{tool_name}' configured for target agent '#{target_agent_name}' not found in ToolRegistry. Skipping.")
+              ADK.logger.warn("AgentTool: Tool '#{tool_name}' configured for target agent '#{target_agent_name}' not found in executing agent's ToolRegistry. Skipping.")
             end
           end
         end

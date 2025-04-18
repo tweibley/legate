@@ -51,9 +51,12 @@ module ADK
         return fallback_plan(task, "Gemini client not available.")
       end
 
-      available_tools = format_tools_for_prompt(agent.tools)
+      # Get available tools metadata from the agent's registry
+      tools_metadata = agent.available_tools_metadata
+      available_tools_prompt_string = format_tools_for_prompt
+
       # --- Use the NEW multi-step prompt ---
-      prompt = build_multi_step_gemini_prompt(task, available_tools)
+      prompt = build_multi_step_gemini_prompt(task, available_tools_prompt_string)
 
       logger.info("Sending multi-step planning request to Gemini (#{@model_name}) for task: #{task}")
       # logger.debug("Gemini Prompt:\n#{prompt}") # Uncomment for deep debugging
@@ -110,21 +113,27 @@ module ADK
 
     private
 
-    # Format tools (remains the same)
-    def format_tools_for_prompt(tools)
-      # ... (implementation from previous response - no change needed) ...
-      return "No tools available." if tools.empty?
+    # Format tools metadata for the prompt
+    # Fetches metadata from the agent instance directly.
+    def format_tools_for_prompt
+      tools_metadata = agent.available_tools_metadata # Fetch metadata here
+      return "No tools available." if tools_metadata.empty?
 
-      tools.map do |tool|
-        params_desc = tool.parameters.map do |name, info|
+      tools_metadata.map do |metadata|
+        # Use metadata hash directly
+        tool_name = metadata[:name]
+        tool_description = metadata[:description]
+        parameters = metadata[:parameters] || {}
+
+        params_desc = parameters.map do |name, info|
           req = info[:required] ? "required" : "optional"
           # Ensure type is displayed, default to 'any' if missing
           type = info[:type] || 'any'
           "- #{name} (#{type}, #{req}): #{info[:description]}"
         end.join("\n    ")
         <<~TOOL_DESC
-          Tool Name: #{tool.name}
-          Description: #{tool.description}
+          Tool Name: #{tool_name}
+          Description: #{tool_description}
           Parameters:
             #{params_desc.empty? ? 'None' : params_desc}
         TOOL_DESC
@@ -213,7 +222,8 @@ module ADK
       end
 
       plan_steps = []
-      available_tool_syms = agent.tools.map(&:name)
+      # Get available symbols from metadata
+      available_tool_syms = agent.available_tools_metadata.map { |m| m[:name] }
 
       parsed_response.each_with_index do |step_data, index|
         unless step_data.is_a?(Hash)
@@ -263,8 +273,8 @@ module ADK
     def fallback_plan(task, reason)
       # ... (implementation from previous response - no change needed) ...
       logger.warn("Falling back to echo plan. Reason: #{reason}")
-      # Find if echo tool exists to use it
-      echo_tool_exists = agent.tools.any? { |t| t.name == :echo }
+      # Find if echo tool exists using metadata
+      echo_tool_exists = agent.available_tools_metadata.any? { |m| m[:name] == :echo }
       if echo_tool_exists
         [
           {

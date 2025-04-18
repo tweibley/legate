@@ -162,7 +162,10 @@ RSpec.describe ADK::Mcp::Server::AdkToolAdapter do
 
       # Verify context content
       expect(ADK::ToolContext).to receive(:new)
-        .with(session_id: 'dummy-session-id', user_id: 'mcp_user', app_name: 'mcp_server')
+        .with(session_id: 'dummy-session-id',
+              user_id: 'mcp_user',
+              app_name: 'mcp_server',
+              tool_registry: instance_of(ADK::ToolRegistry))
         .and_call_original
       adapter_instance.call(**mcp_args)
     end

@@ -79,7 +79,8 @@ module ADK
           dummy_context = ADK::ToolContext.new(
             session_id: SecureRandom.uuid, # Generic ID
             user_id: 'mcp_user',
-            app_name: 'mcp_server'
+            app_name: 'mcp_server',
+            tool_registry: ADK::ToolRegistry.new # Create a new, empty registry for this dummy context
             # No session_service available here easily
           )
 

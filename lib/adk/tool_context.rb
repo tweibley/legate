@@ -3,17 +3,20 @@
 
 module ADK
   # Provides contextual information to ADK::Tool#perform_execution
-  # Currently includes session details. Read-only.
+  # Includes session details and a reference to the agent's tool registry.
+  # Read-only.
   class ToolContext
-    attr_reader :session_id, :user_id, :app_name
+    attr_reader :session_id, :user_id, :app_name, :tool_registry
 
     # @param session_id [String] The ID of the current session.
     # @param user_id [String] The user ID associated with the session.
     # @param app_name [String] The application/agent name associated with the session.
-    def initialize(session_id:, user_id:, app_name:)
+    # @param tool_registry [ADK::ToolRegistry] The tool registry instance of the agent executing the tool.
+    def initialize(session_id:, user_id:, app_name:, tool_registry:)
       @session_id = session_id
       @user_id = user_id
       @app_name = app_name
+      @tool_registry = tool_registry
       freeze # Make context immutable
     end
 
@@ -21,7 +24,8 @@ module ADK
       {
         session_id: @session_id,
         user_id: @user_id,
-        app_name: @app_name
+        app_name: @app_name,
+        tool_registry_object_id: @tool_registry&.object_id
       }
     end
   end

@@ -29,6 +29,18 @@ RSpec.describe ADK::Tools::AgentTool do
   let(:mock_session_service) { instance_double(ADK::SessionService::InMemory) }
   let(:mock_agent_event) { instance_double(ADK::Event, role: :agent, content: expected_target_result) }
 
+  # --- Context Mocking ---
+  let(:mock_executing_registry) { instance_double(ADK::ToolRegistry) }
+  let(:mock_context) {
+    instance_double(ADK::ToolContext,
+                    session_id: 'outer-session', # Different from delegate session
+                    user_id: 'outer-user',
+                    app_name: 'outer-agent',
+                    tool_registry: mock_executing_registry,
+                    to_h: { session_id: 'outer-session', user_id: 'outer-user', app_name: 'outer-agent' })
+  }
+  # --- End Context Mocking ---
+
   before do
     # Mock Redis connection and data loading by default
     allow(Redis).to receive(:new).and_return(mock_redis)
@@ -37,8 +49,13 @@ RSpec.describe ADK::Tools::AgentTool do
       .with(target_key, 'description', 'tools', 'model')
       .and_return(target_definition.values)
 
-    # Mock ToolRegistry for the target agent's tool
-    allow(ADK::ToolRegistry).to receive(:create_instance).with(:calculator).and_return(mock_calculator_tool)
+    # Mock ToolRegistry find_class on the *executing* agent's registry
+    # This registry is passed via context now
+    # Remove stub for global ADK::ToolRegistry.create_instance
+    # allow(ADK::ToolRegistry).to receive(:create_instance).with(:calculator).and_return(mock_calculator_tool)
+    # Ensure ADK::Tools::Calculator is loaded for the test
+    require_relative '../../../lib/adk/tools/calculator' unless defined?(ADK::Tools::Calculator)
+    allow(mock_executing_registry).to receive(:find_class).with(:calculator).and_return(ADK::Tools::Calculator)
 
     # Mock Agent instantiation for the target agent
     allow(ADK::Agent).to receive(:new).and_call_original # Allow normal agent init
@@ -48,7 +65,9 @@ RSpec.describe ADK::Tools::AgentTool do
       .and_return(mock_target_agent)
 
     # Mock methods on the target agent instance
-    allow(mock_target_agent).to receive(:add_tool).with(mock_calculator_tool)
+    # Change add_tool expectation to register_tool_class
+    # allow(mock_target_agent).to receive(:add_tool).with(mock_calculator_tool)
+    allow(mock_target_agent).to receive(:register_tool_class).with(ADK::Tools::Calculator)
     allow(mock_target_agent).to receive(:start)
 
     # Mock session service
@@ -79,8 +98,10 @@ RSpec.describe ADK::Tools::AgentTool do
         expect(mock_redis).to receive(:hmget).with(target_key, 'description', 'tools',
                                                    'model').and_return(target_definition.values)
         expect(ADK::Agent).to receive(:new).with(hash_including(name: matching(/#{target_agent_name}_delegated/))).and_return(mock_target_agent)
-        expect(ADK::ToolRegistry).to receive(:create_instance).with(:calculator).and_return(mock_calculator_tool)
-        expect(mock_target_agent).to receive(:add_tool).with(mock_calculator_tool)
+        # Expect find_class on the registry passed via context
+        expect(mock_executing_registry).to receive(:find_class).with(:calculator).and_return(ADK::Tools::Calculator)
+        # Expect register_tool_class on the temporary agent
+        expect(mock_target_agent).to receive(:register_tool_class).with(ADK::Tools::Calculator)
         expect(mock_target_agent).to receive(:start)
 
         # Expect session service creation
@@ -92,11 +113,11 @@ RSpec.describe ADK::Tools::AgentTool do
           .with(session_id: session_id, user_input: task_to_delegate, session_service: mock_session_service)
           .and_return(mock_agent_event)
 
-        tool.execute(params)
+        tool.execute(params, mock_context)
       end
 
       it 'returns a success hash containing the target agents result' do
-        result = tool.execute(params)
+        result = tool.execute(params, mock_context)
         # Check the overall structure
         expect(result[:status]).to eq(:success)
         # Check that the result is the mock_agent_event
@@ -112,7 +133,7 @@ RSpec.describe ADK::Tools::AgentTool do
       end
 
       it 'returns an error hash' do
-        result = tool.execute(params)
+        result = tool.execute(params, mock_context)
         expect(result[:status]).to eq(:error)
         expect(result[:error_message]).to include("Target agent definition '#{target_agent_name}' not found")
       end
@@ -124,7 +145,7 @@ RSpec.describe ADK::Tools::AgentTool do
       end
 
       it 'returns an error hash' do
-        result = tool.execute(params)
+        result = tool.execute(params, mock_context)
         expect(result[:status]).to eq(:error)
         expect(result[:error_message]).to include("Could not connect to Redis")
       end
@@ -138,7 +159,7 @@ RSpec.describe ADK::Tools::AgentTool do
       end
 
       it 'returns an error hash' do
-        result = tool.execute(params)
+        result = tool.execute(params, mock_context)
         expect(result[:status]).to eq(:error)
         expect(result[:error_message]).to include("Failed to parse tools JSON")
       end
@@ -153,7 +174,7 @@ RSpec.describe ADK::Tools::AgentTool do
       end
 
       it 'returns an error hash capturing the exception' do
-        result = tool.execute(params)
+        result = tool.execute(params, mock_context)
         expect(result[:status]).to eq(:error)
         expect(result[:error_message]).to include("Unexpected error during delegation",
                                                   "StandardError - Target agent failed!")
@@ -163,13 +184,13 @@ RSpec.describe ADK::Tools::AgentTool do
     context 'with missing parameters (base validation)' do
       it 'raises ADK::Error if target_agent_name is missing' do
         expect {
-          tool.execute(task: task_to_delegate)
+          tool.execute({ task: task_to_delegate }, mock_context)
         }.to raise_error(ADK::Error, /Missing required parameters: target_agent_name/)
       end
 
       it 'raises ADK::Error if task is missing' do
         expect {
-          tool.execute(target_agent_name: target_agent_name)
+          tool.execute({ target_agent_name: target_agent_name }, mock_context)
         }.to raise_error(ADK::Error, /Missing required parameters: task/)
       end
     end

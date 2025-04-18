@@ -2,7 +2,16 @@
 require 'spec_helper'
 
 RSpec.describe ADK::Planner do
-  let(:agent) { instance_double(ADK::Agent, tools: [], name: 'test_agent') }
+  # Mock basic metadata for tools used in planner tests
+  let(:echo_tool_metadata) { { name: :echo, description: 'Echoes input', parameters: { message: { required: true } } } }
+  let(:mock_agent_metadata) { [echo_tool_metadata] } # Default metadata for most agent mocks
+  let(:agent_with_echo) {
+    instance_double(ADK::Agent, available_tools_metadata: mock_agent_metadata, name: 'test_agent')
+  }
+  let(:agent_without_tools) { instance_double(ADK::Agent, available_tools_metadata: [], name: 'test_agent') }
+
+  # Use agent_without_tools as the default agent for most tests
+  let(:agent) { agent_without_tools }
   let(:mock_client) { double('Gemini') }
   let(:mock_logger) { instance_double(Logger, info: nil, warn: nil, error: nil, debug: nil) }
   let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
@@ -177,8 +186,8 @@ RSpec.describe ADK::Planner do
   end
 
   describe '#validate_and_format_multi_step_plan' do
-    let(:echo_tool) { instance_double(ADK::Tool, name: :echo) }
-    let(:agent) { instance_double(ADK::Agent, tools: [echo_tool], name: 'test_agent') }
+    # Use agent_with_echo for these tests
+    let(:agent) { agent_with_echo }
     let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
 
     it 'returns an empty array if the parsed response is not an array' do
@@ -228,8 +237,8 @@ RSpec.describe ADK::Planner do
 
   describe '#fallback_plan' do
     context 'when echo tool is available' do
-      let(:echo_tool) { instance_double(ADK::Tool, name: :echo) }
-      let(:agent) { instance_double(ADK::Agent, tools: [echo_tool], name: 'test_agent') }
+      # Use agent_with_echo here
+      let(:agent) { agent_with_echo }
       let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
 
       it 'creates a fallback plan using the echo tool' do
@@ -243,6 +252,9 @@ RSpec.describe ADK::Planner do
     end
 
     context 'when echo tool is not available' do
+      # Use agent_without_tools here (which is the default let(:agent))
+      let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
+
       it 'returns an empty plan' do
         expect(mock_logger).to receive(:warn)
         expect(mock_logger).to receive(:error).with("Fallback failed: Echo tool not available to the agent.")
@@ -253,30 +265,38 @@ RSpec.describe ADK::Planner do
   end
 
   describe '#format_tools_for_prompt' do
-    let(:tool_no_params) { instance_double(ADK::Tool, name: :test, description: 'Test tool', parameters: {}) }
-    let(:tool_with_params) do
-      instance_double(ADK::Tool,
-                      name: :parameterized,
-                      description: 'Tool with params',
-                      parameters: {
-                        required_param: { type: 'string', required: true, description: 'A required param' },
-                        optional_param: { type: 'number', required: false, description: 'An optional param' }
-                      })
+    # Define metadata hashes directly for these tests, agent mock isn't needed
+    let(:tool_no_params_metadata) { { name: :test, description: 'Test tool', parameters: {} } }
+    let(:tool_with_params_metadata) do
+      {
+        name: :parameterized,
+        description: 'Tool with params',
+        parameters: {
+          required_param: { type: 'string', required: true, description: 'A required param' },
+          optional_param: { type: 'number', required: false, description: 'An optional param' }
+        }
+      }
     end
+    # Planner instance for these tests (can use default agent_without_tools)
+    let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
 
     it 'returns a message when no tools are available' do
-      expect(planner.send(:format_tools_for_prompt, [])).to eq("No tools available.")
+      # Stub the call on the specific planner instance for this test
+      allow(planner.agent).to receive(:available_tools_metadata).and_return([])
+      expect(planner.send(:format_tools_for_prompt)).to eq("No tools available.")
     end
 
     it 'formats a tool with no parameters' do
-      result = planner.send(:format_tools_for_prompt, [tool_no_params])
+      allow(planner.agent).to receive(:available_tools_metadata).and_return([tool_no_params_metadata])
+      result = planner.send(:format_tools_for_prompt)
       expect(result).to include("Tool Name: test")
       expect(result).to include("Description: Test tool")
       expect(result).to include("Parameters:\n  None")
     end
 
     it 'formats a tool with parameters' do
-      result = planner.send(:format_tools_for_prompt, [tool_with_params])
+      allow(planner.agent).to receive(:available_tools_metadata).and_return([tool_with_params_metadata])
+      result = planner.send(:format_tools_for_prompt)
       expect(result).to include("Tool Name: parameterized")
       expect(result).to include("Description: Tool with params")
       expect(result).to include("required_param (string, required)")
@@ -284,13 +304,18 @@ RSpec.describe ADK::Planner do
     end
 
     it 'formats multiple tools' do
-      result = planner.send(:format_tools_for_prompt, [tool_no_params, tool_with_params])
+      allow(planner.agent).to receive(:available_tools_metadata).and_return([tool_no_params_metadata,
+                                                                             tool_with_params_metadata])
+      result = planner.send(:format_tools_for_prompt)
       expect(result).to include("Tool Name: test")
       expect(result).to include("Tool Name: parameterized")
     end
   end
 
   describe '#build_multi_step_gemini_prompt' do
+    # Planner instance for these tests (can use default agent_without_tools)
+    let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
+
     it 'includes the task in the prompt' do
       result = planner.send(:build_multi_step_gemini_prompt, 'test task', 'tool descriptions')
       expect(result).to include('User Request: "test task"')

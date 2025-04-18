@@ -8,7 +8,8 @@ RSpec.describe ADK::Tools::CheckJobStatusTool do
   subject(:tool) { described_class.new }
   let(:job_id) { 'jid_test_456' }
   let(:params) { { job_id: job_id } }
-  let(:context) { ADK::ToolContext.new(session_id: 's', user_id: 'u', app_name: 'a') }
+  let(:dummy_registry) { ADK::ToolRegistry.new } # Dummy registry
+  let(:context) { ADK::ToolContext.new(session_id: 's', user_id: 'u', app_name: 'a', tool_registry: dummy_registry) }
   let(:redis_options) { { url: 'redis://localhost:6379/1' } }
   let(:mock_redis) { instance_double(Redis) }
   let(:result_key) { "#{ADK::Tools::BaseAsyncJobTool::JOB_RESULT_REDIS_PREFIX}#{job_id}" }

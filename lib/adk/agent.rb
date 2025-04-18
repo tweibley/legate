@@ -19,7 +19,7 @@ module ADK
   class Agent
     DEFAULT_MODEL = 'gemini-2.0-flash'
 
-    attr_reader :name, :description, :tools, :planner, :logger, :model_name, :state, :tool_registry
+    attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry
 
     # Initializes a new agent instance.
     # Note: Session and Memory are no longer managed directly by the agent instance.
@@ -27,51 +27,109 @@ module ADK
     # @param name [String] The unique name of the agent definition.
     # @param description [String] A description of the agent's purpose.
     # @param model_name [String, nil] The specific LLM model name (optional).
-    # @param tools [Array<ADK::Tool>] An initial list of native tools.
+    # @param tool_classes [Array<Class>] An initial list of native tool *classes* (must inherit from ADK::Tool).
     # @param planner [ADK::Planner] A specific planner instance (default: created automatically).
     # @param mcp_servers [Array<Hash>] Optional configurations for external MCP servers.
     #        Example: [{ type: :stdio, command: 'cmd', args: [] }]
-    def initialize(name:, description:, model_name: DEFAULT_MODEL, tools: [], planner: nil, mcp_servers: [])
+    def initialize(name:, description:, model_name: nil, tool_classes: [], planner: nil, mcp_servers: [])
       ADK.logger.info("Initializing agent '#{name}'...")
       @name = name
       @description = description
-      @model_name = model_name
+      @model_name = model_name || DEFAULT_MODEL
       @state = :idle # Initial state
       @mcp_servers_config = mcp_servers # Store MCP configurations
       @mcp_clients = [] # Store active MCP client instances
 
-      # Each agent instance gets its own registry to allow for agent-specific tools (like MCP ones)
+      # Each agent instance gets its own registry
       @tool_registry = ADK::ToolRegistry.new
-      ADK.logger.debug("Agent '#{name}' created its own ToolRegistry instance.")
+      ADK.logger.debug("Agent '#{name}' created its ToolRegistry instance: #{@tool_registry.object_id}")
 
-      # Register initial native tools
-      tools.each { |tool| add_tool(tool) }
+      # Register initial native tool classes
+      tool_classes.each { |tool_class| register_tool_class(tool_class) }
 
-      # Automatically add the CheckJobStatusTool if async tools might be used
-      # (Consider if native or MCP tools are async - maybe always add it for now?)
-      unless @tool_registry.get_tool_class(:check_job_status)
-        require_relative 'tools/check_job_status_tool' # Ensure loaded
-        add_tool(ADK::Tools::CheckJobStatusTool.new)
+      # Automatically register the CheckJobStatusTool class if Sidekiq is defined
+      if defined?(Sidekiq)
+        unless @tool_registry.find_class(:check_job_status)
+          begin
+            require_relative 'tools/check_job_status_tool' # Ensure loaded
+            register_tool_class(ADK::Tools::CheckJobStatusTool)
+          rescue LoadError => e
+            ADK.logger.error("Failed to load CheckJobStatusTool: #{e.message}")
+          end
+        end
+      else
+        ADK.logger.warn("Sidekiq not defined. Skipping automatic registration of CheckJobStatusTool for agent '#{name}'.")
       end
 
-      @planner = planner || ADK::Planner.new(agent: self)
+      @planner = planner || ADK::Planner.new(agent: self, model_name: @model_name)
 
-      ADK.logger.info("Agent '#{name}' initialized successfully.")
+      ADK.logger.info("Agent '#{name}' initialized successfully with tools: #{@tool_registry.tools.keys.join(', ')}")
     end
 
-    # Adds a tool instance.
+    # Adds a tool instance to the agent's registry
+    # @param tool [ADK::Tool] The tool instance to add
+    # @return [Boolean] True if the tool was added, false otherwise
     def add_tool(tool)
-      unless tool.is_a?(ADK::Tool)
-        logger.error("Attempted to add invalid tool: #{tool.inspect}")
-        return self
+      # Check if it's a valid tool instance or class
+      is_tool_instance = tool.is_a?(ADK::Tool)
+      is_tool_class = tool.is_a?(Class) && tool < ADK::Tool
+
+      unless is_tool_instance || is_tool_class
+        ADK.logger.error("Agent '#{name}': Attempted to add invalid tool: #{tool.inspect}")
+        return false
       end
-      if @tools.any? { |t| t.name == tool.name }
-        logger.warn("Tool '#{tool.name}' already added to agent '#{name}'. Skipping.")
-      else
-        @tools << tool
-        logger.debug("Added tool '#{tool.name}' to agent '#{name}'")
+
+      # Get the tool name, handling both instances and classes
+      tool_name = is_tool_class ? tool.tool_name : tool.name
+      tool_name = tool_name.to_sym
+
+      if @tool_registry.find_class(tool_name)
+        ADK.logger.warn("Agent '#{name}': Tool '#{tool_name}' already added. Overwriting.")
       end
-      self
+
+      # If it's a class, register it directly. If it's an instance, register its class
+      tool_class = is_tool_class ? tool : tool.class
+      @tool_registry.register(tool_name, tool_class)
+      true
+    end
+
+    # Returns the list of tools registered with this agent
+    # @return [Array<ADK::Tool>] Array of tool instances
+    def tools
+      @tool_registry.tools.values.map do |tool_class|
+        @tool_registry.create_instance(tool_class.tool_name)
+      end.compact
+    end
+
+    # Finds a tool instance by name
+    # @param tool_name [Symbol] The name of the tool to find
+    # @return [ADK::Tool, nil] The tool instance if found, nil otherwise
+    def find_tool(tool_name)
+      @tool_registry.create_instance(tool_name.to_sym)
+    end
+
+    # Registers a tool class with the agent's specific registry.
+    # @param tool_class [Class] The tool class to register (must inherit from ADK::Tool).
+    # @return [Boolean] True if registration was successful, false otherwise.
+    def register_tool_class(tool_class)
+      # Basic validation - simplified check
+      unless tool_class < ADK::Tool
+        ADK.logger.error("Agent '#{name}': Attempted to register invalid object (must inherit from ADK::Tool): #{tool_class.inspect}")
+        return false
+      end
+
+      tool_name = tool_class.tool_name
+      unless tool_name
+        ADK.logger.error("Agent '#{name}': Tool class #{tool_class} missing metadata (use define_metadata). Cannot register.")
+        return false
+      end
+
+      if @tool_registry.find_class(tool_name)
+        ADK.logger.warn("Agent '#{name}': Tool '#{tool_name}' already registered. Overwriting.")
+      end
+
+      # Register with the instance registry
+      @tool_registry.register(tool_name, tool_class)
     end
 
     # --- Runtime State Methods (unchanged) ---
@@ -113,7 +171,7 @@ module ADK
     # @param tool_name [Symbol]
     # @return [Class<ADK::Tool>, nil]
     def find_tool_class(tool_name)
-      @tool_registry.get_tool_class(tool_name)
+      @tool_registry.find_class(tool_name.to_sym)
     end
 
     # --- REFACTORED: run_task operates within a session context ---
@@ -131,7 +189,7 @@ module ADK
       adk_session = session_service.get_session(session_id: session_id)
       unless adk_session
         msg = "Session not found: #{session_id}"
-        logger.error(msg)
+        ADK.logger.error(msg)
         error_event = ADK::Event.new(role: :agent, content: { status: :error, error_message: msg })
         session_service.append_event(session_id: session_id, event: error_event) rescue nil
         return error_event
@@ -139,13 +197,13 @@ module ADK
 
       unless running?
         msg = "Agent '#{name}' runtime is not active (stopped)."
-        logger.error(msg)
+        ADK.logger.error(msg)
         error_event = ADK::Event.new(role: :agent, content: { status: :error, error_message: msg })
         session_service.append_event(session_id: session_id, event: error_event)
         return error_event
       end
 
-      logger.info("Agent '#{name}' starting task in session '#{session_id}': #{user_input}")
+      ADK.logger.info("Agent '#{name}' starting task in session '#{session_id}': #{user_input}")
 
       begin
         user_event = ADK::Event.new(role: :user, content: user_input)
@@ -159,26 +217,26 @@ module ADK
         # --- Determine Final Agent Response based on execution result ---
         if execution_result.is_a?(Hash) && execution_result[:status] == :error
           final_content = execution_result
-          logger.error("Agent '#{name}' task failed. Reason: #{execution_result[:error_message]}")
+          ADK.logger.error("Agent '#{name}' task failed. Reason: #{execution_result[:error_message]}")
         elsif execution_result.is_a?(Array)
           last_step = execution_result.last
           if last_step
             # Pass the entire hash from the last step regardless of status (:success, :error, :pending)
             final_content = last_step
             log_level = (last_step[:status] == :error) ? :warn : :info
-            logger.send(log_level,
-                        "Agent '#{name}' task completed multi-step with final status: #{last_step[:status]}. Last step msg: #{last_step&.dig(:error_message) || last_step&.dig(:message) || last_step&.dig(:result)}")
+            ADK.logger.send(log_level,
+                            "Agent '#{name}' task completed multi-step with final status: #{last_step[:status]}. Last step msg: #{last_step&.dig(:error_message) || last_step&.dig(:message) || last_step&.dig(:result)}")
           else # Empty results array
             final_content = { status: :error, error_message: "Multi-step execution resulted in empty result array." }
-            logger.error(final_content[:error_message])
+            ADK.logger.error(final_content[:error_message])
           end
         elsif execution_result.is_a?(Hash) && [:success, :pending].include?(execution_result[:status]) # Single successful or pending step
           final_content = execution_result
-          logger.info("Agent '#{name}' task completed with status: #{execution_result[:status]}. Result: #{final_content[:result] || final_content[:message] || final_content[:job_id]}")
+          ADK.logger.info("Agent '#{name}' task completed with status: #{execution_result[:status]}. Result: #{final_content[:result] || final_content[:message] || final_content[:job_id]}")
         else # Unexpected format
           msg = "Task finished with unexpected execution result: #{execution_result.inspect}"
           final_content = { status: :error, error_message: msg }
-          logger.error(msg)
+          ADK.logger.error(msg)
         end
 
         unless final_content.is_a?(Hash) && final_content.key?(:status)
@@ -189,8 +247,8 @@ module ADK
         final_agent_event = ADK::Event.new(role: :agent, content: final_content)
         session_service.append_event(session_id: session_id, event: final_agent_event)
       rescue StandardError => e
-        logger.error("Critical error during run_task for agent '#{name}': #{e.class} - #{e.message}")
-        logger.error(e.backtrace.join("\n"))
+        ADK.logger.error("Critical error during run_task for agent '#{name}': #{e.class} - #{e.message}")
+        ADK.logger.error(e.backtrace.join("\n"))
         error_event_content = { status: :error, error_message: "An internal error occurred: #{e.message}" }
         final_agent_event = ADK::Event.new(role: :agent, content: error_event_content)
         session_service.append_event(session_id: session_id, event: final_agent_event) if adk_session rescue nil
@@ -212,22 +270,22 @@ module ADK
 
       unless plan.is_a?(Array)
         msg = "Invalid plan received from planner (not an Array)."
-        logger.error("#{msg} Plan: #{plan.inspect}")
+        ADK.logger.error("#{msg} Plan: #{plan.inspect}")
         return { status: :error, error_message: msg }
       end
       if plan.empty?
         msg = "I cannot fulfill this request with the available tools (empty plan)."
-        logger.warn(msg)
+        ADK.logger.warn(msg)
         return { status: :error, error_message: msg }
       end
 
-      logger.debug("Executing plan with #{plan.length} step(s) for session '#{session_id}': #{plan.inspect}")
+      ADK.logger.debug("Executing plan with #{plan.length} step(s) for session '#{session_id}': #{plan.inspect}")
       previous_step_result_hash = nil
       all_results_hashes = []
 
       plan.each_with_index do |step, index|
-        logger.debug("Executing step #{index + 1}/#{plan.length}: #{step.inspect}")
-        logger.debug("  Input (result hash from previous step): #{previous_step_result_hash.inspect}")
+        ADK.logger.debug("Executing step #{index + 1}/#{plan.length}: #{step.inspect}")
+        ADK.logger.debug("  Input (result hash from previous step): #{previous_step_result_hash.inspect}")
 
         # --- Input Injection Logic (Updated for job_id) ---
         current_params = step[:params].dup
@@ -240,23 +298,23 @@ module ADK
                 prev_result = previous_step_result_hash[:result]
                 if prev_result.is_a?(Hash) && prev_result.key?(:status) && prev_result.key?(:result) # AgentTool nested result
                   injection_value = prev_result[:result]
-                  logger.debug("Injecting nested result...")
+                  ADK.logger.debug("Injecting nested result...")
                 else
                   injection_value = prev_result
-                  logger.debug("Injecting direct result...")
+                  ADK.logger.debug("Injecting direct result...")
                 end
               elsif previous_step_result_hash.key?(:job_id) # <-- CHANGED from workflow_id
                 injection_value = previous_step_result_hash[:job_id]
-                logger.debug("Injecting job_id from previous step...")
+                ADK.logger.debug("Injecting job_id from previous step...")
               elsif previous_step_result_hash.key?(:message)
                 injection_value = previous_step_result_hash[:message]
-                logger.debug("Injecting message from previous step...")
+                ADK.logger.debug("Injecting message from previous step...")
               else
-                logger.warn("Cannot inject: Previous successful/pending step missing usable key (:result, :job_id, :message). Prev Hash: #{previous_step_result_hash.inspect}")
+                ADK.logger.warn("Cannot inject: Previous successful/pending step missing usable key (:result, :job_id, :message). Prev Hash: #{previous_step_result_hash.inspect}")
                 value
               end
             else
-              logger.warn("Cannot inject: Previous step failed or absent. Prev Hash: #{previous_step_result_hash.inspect}")
+              ADK.logger.warn("Cannot inject: Previous step failed or absent. Prev Hash: #{previous_step_result_hash.inspect}")
               value
             end
             injection_value || value # Use injection if found, otherwise keep original
@@ -265,7 +323,7 @@ module ADK
           end
         end
         step_with_injected_params = step.merge(params: current_params)
-        logger.debug("  Params after potential injection: #{current_params.inspect}")
+        ADK.logger.debug("  Params after potential injection: #{current_params.inspect}")
         # --- End Input Injection Logic ---
 
         # --- Execute Step (Passes session context) ---
@@ -274,7 +332,7 @@ module ADK
 
         # --- Stop on first error ---
         if current_result_hash[:status] == :error
-          logger.warn("Step #{index + 1} failed, stopping plan execution: #{current_result_hash[:error_message]}")
+          ADK.logger.warn("Step #{index + 1} failed, stopping plan execution: #{current_result_hash[:error_message]}")
           break # Exit the loop
         end
         # --- End Stop on first error ---
@@ -282,7 +340,7 @@ module ADK
         previous_step_result_hash = current_result_hash
       end
 
-      logger.debug("Plan execution finished. Result hashes collected: #{all_results_hashes.inspect}")
+      ADK.logger.debug("Plan execution finished. Result hashes collected: #{all_results_hashes.inspect}")
 
       # Return single hash or array based on *executed* steps length
       # If loop broke early, return array up to that point.
@@ -306,7 +364,7 @@ module ADK
       # --- Basic validation ---
       unless step.is_a?(Hash) && step[:tool].is_a?(Symbol) && step[:params].is_a?(Hash)
         msg = "Invalid step format received: #{step.inspect}"
-        logger.error(msg)
+        ADK.logger.error(msg)
         # Log as tool_result event (even though it failed before tool call)
         error_event = ADK::Event.new(role: :tool_result, tool_name: step[:tool] || :unknown,
                                      content: { status: :error, error_message: msg })
@@ -323,30 +381,35 @@ module ADK
       # 2. Execute Tool <-- MODIFIED Block Start >>
       result_hash = nil
       begin
-        tool = find_tool(tool_name) # Raises ADK::Error if not found
+        # --- Get an *instance* of the tool from the registry ---
+        tool_instance = @tool_registry.create_instance(tool_name)
+        unless tool_instance
+          raise ADK::Error, "Tool '#{tool_name}' not found for this agent."
+        end
 
         # --- Create ToolContext ---
         tool_context = ADK::ToolContext.new(
           session_id: session.id,
           user_id: session.user_id,
-          app_name: session.app_name
+          app_name: session.app_name,
+          tool_registry: @tool_registry
         )
-        logger.info("Executing tool '#{tool_name}' with params: #{params.inspect} and context: #{tool_context.to_h.inspect}")
+        ADK.logger.info("Executing tool '#{tool_name}' with params: #{params.inspect} and context: #{tool_context.to_h.inspect}")
         # --- Pass context to execute ---
-        result_hash = tool.execute(params, tool_context) # <-- MODIFIED: Pass context
+        result_hash = tool_instance.execute(params, tool_context) # <-- MODIFIED: Use instance, Pass context
 
         # Validate tool's return format (including :pending status)
         unless result_hash.is_a?(Hash) && result_hash.key?(:status) && [:success, :error,
                                                                         :pending].include?(result_hash[:status])
-          logger.error("Tool '#{tool_name}' returned invalid hash or status: #{result_hash.inspect}")
+          ADK.logger.error("Tool '#{tool_name}' returned invalid hash or status: #{result_hash.inspect}")
           result_hash = { status: :error, error_message: "Tool '#{tool_name}' failed to return standard hash format." }
         end
       rescue ADK::Error => e # Tool not found or validation error from tool.execute
-        logger.error("ADK::Error executing tool '#{tool_name}': #{e.message}")
+        ADK.logger.error("ADK::Error executing tool '#{tool_name}': #{e.message}")
         result_hash = { status: :error, error_message: e.message }
       rescue StandardError => e # Unexpected error within tool.execute
-        logger.error("Unexpected error executing tool '#{tool_name}': #{e.class} - #{e.message}")
-        logger.error(e.backtrace.join("\n"))
+        ADK.logger.error("Unexpected error executing tool '#{tool_name}': #{e.class} - #{e.message}")
+        ADK.logger.error(e.backtrace.join("\n"))
         result_hash = { status: :error, error_message: "Internal error executing tool '#{tool_name}': #{e.message}" }
       end
       # --- << MODIFIED Block End >> ---
@@ -361,17 +424,6 @@ module ADK
 
       # 4. Return the result hash from the tool execution
       result_hash
-    end
-
-    # --- find_tool remains unchanged ---
-    def find_tool(name_symbol)
-      found_tool = tools.find { |t| t.name == name_symbol }
-      unless found_tool
-        logger.error("Tool not found in agent '#{name}' tool list: #{name_symbol}")
-        logger.debug("Available tools for agent '#{name}': #{tools.map(&:name).join(', ')}")
-        raise ADK::Error, "Tool '#{name_symbol}' not found for this agent."
-      end
-      found_tool
     end
 
     # Connects to all configured MCP servers.
