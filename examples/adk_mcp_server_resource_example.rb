@@ -2,7 +2,7 @@
 # !/usr/bin/env ruby
 # frozen_string_literal: true
 
-# --- Prerequisites & Usage --- (Similar to before, but focuses on agent)
+# --- Example: Exposing a multi-tool ADK Agent via MCP ---
 # -------------------------------------------------------------
 
 ENV['ADK_LOG_LEVEL'] = 'ERROR'
@@ -11,79 +11,131 @@ ENV['ADK_LOG_TARGET'] = 'STDERR'
 require 'bundler/setup'
 require 'adk'
 require 'fast_mcp'
-require 'thread'
-require 'json'
-require 'singleton'
+# require 'thread' # No longer needed
+# require 'json' # No longer needed
+# require 'singleton' # No longer needed
 require 'logger'
 require 'securerandom'
+require 'net/http' # Needed for CatFactResource
+require 'uri'      # Needed for CatFactResource
 
 # Load the necessary ADK MCP components
 require 'adk/mcp'
-# require 'adk/mcp/server/adk_tool_adapter' # No longer needed
-require 'adk/mcp/server/adk_direct_agent_adapter' # Require the new adapter
+require 'adk/mcp/server/adk_direct_agent_adapter'
 
 # Load ADK components for direct agent instantiation
 require 'adk/agent'
-require 'adk/tools/calculator' # Need the Calculator class for agent config
-require 'adk/session_service/in_memory' # Need a session service implementation
+require 'adk/session_service/in_memory'
+
+# --- Load ALL required ADK Tool Classes ---
+require 'adk/tools/calculator'
+require 'adk/tools/agent_tool'
+require 'adk/tools/random_number_tool'
+require 'adk/tools/sleepy_tool'
+require 'adk/tools/cat_facts'
+require 'adk/tools/check_job_status_tool'
+require 'adk/tools/echo'
+# ------------------------------------------
 
 # === FastMcp Components Setup ===
 
-# --- 1. Define the Counter Resource --- (Same as before)
-class CounterResource < FastMcp::Resource
+# --- NEW: Define MCP Resources based on ADK Tool functionality ---
+
+# 1. Random Number Resource
+class RandomNumberResource < FastMcp::Resource
   include Singleton
-  uri 'counter'; resource_name 'Counter'; description 'A simple counter resource.'
+  uri 'random_number';
+  resource_name 'RandomNumber'; description 'Provides a random floating-point number between 0 and 1.'
   mime_type 'application/json'
-  attr_reader :count
 
-  def initialize; @count = 0; @lock = Mutex.new; super; end
-  def read; @lock.synchronize { { value: @count } }; end
-  def content; JSON.generate(read); end
-  def increment; new_value = nil; @lock.synchronize { @count += 1; new_value = @count }; new_value; end
-  def decrement; new_value = nil; @lock.synchronize { @count -= 1; new_value = @count }; new_value; end
-  def get_value; @lock.synchronize { @count }; end
+  def read
+    # Generate a new random number on each read
+    { value: rand }
+  end
+
+  def content
+    JSON.generate(read)
+  end
 end
 
-# --- 2. Define MCP Tools to Interact with the Counter Resource --- (Same as before)
-class IncrementCounterTool < FastMcp::Tool
-  description 'Increments the counter resource by 1'; tool_name 'incrementcounter'; arguments {}
-  def call(**_args);
-    counter = CounterResource.instance;
-    new_value = counter.increment;
-    notify_resource_updated('counter'); "Counter incremented. New value: #{new_value}"; end
+# 2. Cat Fact Resource
+class CatFactResource < FastMcp::Resource
+  include Singleton
+  uri 'catfact'; resource_name 'CurrentCatFact'; description 'Provides a random cat fact from catfact.ninja.'
+  mime_type 'application/json'
+
+  CATFACT_API_URI = URI('https://catfact.ninja/fact')
+
+  def read
+    begin
+      # Fetch a new fact on each read
+      response = Net::HTTP.get_response(CATFACT_API_URI)
+      if response.is_a?(Net::HTTPSuccess)
+        data = JSON.parse(response.body)
+        { fact: data['fact'] || 'Could not retrieve fact.' }
+      else
+        ADK.logger.error("CatFactResource: Failed to fetch cat fact. Status: #{response.code}")
+        { fact: "Error fetching fact: #{response.code}" }
+      end
+    rescue StandardError => e
+      ADK.logger.error("CatFactResource: Error fetching cat fact: #{e.message}")
+      { fact: "Error fetching fact: #{e.message}" }
+    end
+  end
+
+  def content
+    JSON.generate(read)
+  end
 end
 
-class DecrementCounterTool < FastMcp::Tool
-  description 'Decrements the counter resource by 1'; tool_name 'decrementcounter'; arguments {}
-  def call(**_args);
-    counter = CounterResource.instance;
-    new_value = counter.decrement;
-    notify_resource_updated('counter'); "Counter decremented. New value: #{new_value}"; end
+# --- NEW: Define MCP Tools to explicitly interact with the new Resources ---
+
+class GetNewRandomNumberTool < FastMcp::Tool
+  description 'Gets a new random number from the RandomNumber resource.'; tool_name 'getrandomnumber'; arguments {}
+  def call(**_args)
+    # Access the singleton instance and read its current state
+    RandomNumberResource.instance.read[:value]
+  end
 end
 
-class GetCounterTool < FastMcp::Tool
-  description 'Gets the current value of the counter resource'; tool_name 'getcounter'; arguments {}
-  def call(**_args); CounterResource.instance.get_value; end
+class GetNewCatFactTool < FastMcp::Tool
+  description 'Gets a new cat fact from the CatFact resource.'; tool_name 'getcatfact'; arguments {}
+  def call(**_args)
+    # Access the singleton instance and trigger a read
+    CatFactResource.instance.read[:fact]
+  end
 end
 
-# --- 3. Instantiate ADK Agent and Wrap it using the Direct Adapter ---
+# --- 1. Instantiate Master ADK Agent and Wrap it ---
 begin
-  # Create an ADK::Agent instance configured with the calculator tool
-  calculator_agent = ADK::Agent.new(
-    name: 'calculator_agent',
-    description: 'An agent that can perform calculations.',
-    model_name: 'gemini-2.0-flash', # Use Sonnet model
-    tool_classes: [ADK::Tools::Calculator]
+  # List all the tool CLASSES to be given to the agent
+  all_tool_classes = [
+    ADK::Tools::Calculator,
+    ADK::Tools::AgentTool,
+    ADK::Tools::RandomNumberTool,
+    ADK::Tools::SleepyTool,
+    ADK::Tools::CatFacts,
+    ADK::Tools::CheckJobStatusTool,
+    ADK::Tools::Echo,
+    GetNewRandomNumberTool,
+    GetNewCatFactTool
+  ]
+
+  # Create the ADK::Agent instance with all tools
+  master_agent = ADK::Agent.new(
+    name: 'master_agent',
+    description: 'An agent with access to all built-in ADK tools.',
+    model_name: 'gemini-2.0-flash',
+    tool_classes: all_tool_classes
   )
 
-  # Create a session service instance (needed by the adapter)
+  # Create a session service instance
   session_service = ADK::SessionService::InMemory.new
 
-  # Use the new direct adapter to wrap the agent instance
-  AdaptedAgentTool = ADK::Mcp::Server::AdkDirectAgentAdapter.wrap(calculator_agent, session_service)
+  # Use the direct adapter to wrap the master agent instance
+  AdaptedMasterAgentTool = ADK::Mcp::Server::AdkDirectAgentAdapter.wrap(master_agent, session_service)
 rescue StandardError => e
-  # Handle potential errors during agent instantiation or wrapping
-  STDERR.puts "Error setting up ADK Agent or Adapter: #{e.message}"
+  STDERR.puts "Error setting up ADK Master Agent or Adapter: #{e.message}"
   STDERR.puts e.backtrace.join("\n")
   exit(1)
 end
@@ -91,34 +143,27 @@ end
 
 # === Setup and Start the MCP Server ===
 
-# Create the MCP server instance (no logger passed, ADK logger might be used internally by adapter)
 mcp_server = FastMcp::Server.new(
-  name: 'ADK Combined Example Server',
+  name: 'ADK Master Agent Server', # Updated server name
   version: ADK::VERSION
 )
 
-# Assign server instance to tools needing it (Counter tools)
-IncrementCounterTool.server = mcp_server
-DecrementCounterTool.server = mcp_server
-GetCounterTool.server = mcp_server
-# The generated AdaptedAgentTool doesn't need the server ref directly
+# Register the new Resources
+mcp_server.register_resource(RandomNumberResource)
+mcp_server.register_resource(CatFactResource)
 
-# Register the resource class
-mcp_server.register_resource(CounterResource)
-
-# Register the TOOL CLASSES
+# Register the Tools (Master Agent + Resource-specific tools)
 mcp_server.register_tools(
-  IncrementCounterTool,
-  DecrementCounterTool,
-  GetCounterTool,
-  AdaptedAgentTool # Register the *generated* agent adapter class
+  AdaptedMasterAgentTool,
+  GetNewRandomNumberTool,
+  GetNewCatFactTool
 )
 
 # Start the server using STDIO transport
-STDERR.puts "--- Starting ADK Combined MCP Server (STDIO) ---"
-STDERR.puts "Resource URI: counter"
-# Use the generated tool name from the adapter
-STDERR.puts "Tools: incrementcounter, decrementcounter, getcounter, #{AdaptedAgentTool.tool_name}"
+STDERR.puts "--- Starting ADK Master Agent MCP Server (STDIO) ---"
+STDERR.puts "Resources: #{[RandomNumberResource.uri, CatFactResource.uri].join(', ')}"
+STDERR.puts "Tools Available: #{[AdaptedMasterAgentTool.tool_name, GetNewRandomNumberTool.tool_name,
+                                 GetNewCatFactTool.tool_name].join(', ')}"
 STDERR.puts "Waiting for MCP client requests on STDIN..."
 begin
   mcp_server.start
@@ -127,5 +172,5 @@ rescue StandardError => e
   STDERR.puts "MCP server crashed: #{e.class} - #{e.message}"
   STDERR.puts e.backtrace.join("\n")
 ensure
-  STDERR.puts "\n--- ADK Combined MCP Server Stopped ---"
+  STDERR.puts "\n--- ADK Master Agent MCP Server Stopped ---"
 end
