@@ -24,6 +24,7 @@ require_relative '../tool'
 require_relative '../tool_registry'
 require_relative '../session_service/in_memory' # Load Service
 require_relative '../session_service/redis' # Load Redis Service
+require_relative '../global_tool_manager' # <-- ADDED
 # Explicitly require all tools
 require_relative '../tools/echo'
 require_relative '../tools/calculator'
@@ -242,7 +243,7 @@ module ADK
                               configured_tools: configured_tools, model: model }
           end
         else logger.error("Redis unavailable during GET /agents"); end
-        @available_tools = ADK::ToolRegistry.list_tools
+        @available_tools = ADK::GlobalToolManager.list_all_tools
         @available_models = AVAILABLE_MODELS
         slim :agents
       end
@@ -316,7 +317,7 @@ module ADK
         begin tools_json_string && configured_tool_names_str = JSON.parse(tools_json_string) rescue []; end
 
         # --- Get tool info from registry for configured tools ---
-        all_available_tools_list = ADK::ToolRegistry.list_tools
+        all_available_tools_list = ADK::GlobalToolManager.list_all_tools
         @configured_tool_info = configured_tool_names_str.map { |tn|
           all_available_tools_list.find { |t| t[:name].to_s == tn }
         }.compact
@@ -334,7 +335,7 @@ module ADK
           # Create a temporary agent instance just for displaying configured tools
           temp_agent_for_view = ADK::Agent.new(name: name, description: description, model_name: loaded_model)
           configured_tool_names_str.map(&:to_sym).each { |tool_name|
-            inst = ADK::ToolRegistry.create_instance(tool_name);
+            inst = ADK::GlobalToolManager.create_instance(tool_name);
             if inst then temp_agent_for_view.add_tool(inst);
             else logger.warn("Tool '#{tool_name}' not found for display."); end
           }
@@ -363,7 +364,7 @@ module ADK
         if field == 'model'; locals[:available_models] = AVAILABLE_MODELS;
         elsif field == 'tools';
           locals[:configured_tool_names] = configured_tool_names;
-          locals[:all_available_tools] = ADK::ToolRegistry.list_tools; end
+          locals[:all_available_tools] = ADK::GlobalToolManager.list_all_tools; end
         slim :"_edit_agent_#{field}", layout: false, locals: locals
       end
 
@@ -379,10 +380,9 @@ module ADK
           tools_json_string = redis_data[2];
           configured_tool_names_str = [];
           begin tools_json_string && configured_tool_names_str = JSON.parse(tools_json_string) rescue []; end
+          all_tools = ADK::GlobalToolManager.list_all_tools
           response_locals[:configured_tools] = configured_tool_names_str.map { |tn|
-            ADK::ToolRegistry.list_tools.find { |t|
-              t[:name].to_s == tn
-            }
+            all_tools.find { |t| t[:name].to_s == tn }
           }.compact
         end
         slim :"_display_agent_#{field}", layout: false, locals: response_locals
@@ -397,7 +397,8 @@ module ADK
         agent_data_hash = { name: name } # Needed for display partial URLs
 
         if field == 'tools'
-          selected_tools = params['tools'] || []; valid_available_tools = ADK::ToolRegistry.list_tools.map { |t|
+          all_available_tools_list = ADK::GlobalToolManager.list_all_tools
+          selected_tools = params['tools'] || []; valid_available_tools = all_available_tools_list.map { |t|
             t[:name].to_s
           }
           validated_tools = selected_tools.select { |st|
@@ -410,9 +411,7 @@ module ADK
           agent_data_hash[:model] = @redis.hget(key, 'model')
           response_locals[:agent_data] = agent_data_hash
           response_locals[:configured_tools] = validated_tools.map { |tn|
-            ADK::ToolRegistry.list_tools.find { |t|
-              t[:name].to_s == tn
-            }
+            all_available_tools_list.find { |t| t[:name].to_s == tn }
           }.compact
         else # description or model
           new_value_to_save = params['value']&.strip
@@ -462,7 +461,7 @@ module ADK
                                                                                                                          if tools_json && !tools_json.empty? then tool_names = JSON.parse(tools_json).map(&:to_sym) rescue [];
                                                                                                                          end;
                                                                                                                          tool_names.each { |tn|
-                                                                                                                           inst = ADK::ToolRegistry.create_instance(tn);
+                                                                                                                           inst = ADK::GlobalToolManager.create_instance(tn);
                                                                                                                            agent.add_tool(inst) if inst
                                                                                                                          };
                                                                                                                          agent.start;
@@ -493,7 +492,7 @@ module ADK
                                                                                 tool_names = [];
                                                                                 if tools_json && !tools_json.empty? then tool_names = JSON.parse(tools_json).map(&:to_sym) rescue [];
                                                                                 end; tool_names.each { |tn|
-                                                                                       inst = ADK::ToolRegistry.create_instance(tn);
+                                                                                       inst = ADK::GlobalToolManager.create_instance(tn);
                                                                                        agent.add_tool(inst) if inst
                                                                                      };
                                                                                 agent.start;
@@ -686,9 +685,9 @@ module ADK
       end
 
       # --- Tool Routes (Unchanged) ---
-      get('/tools') { @tools_list = ADK::ToolRegistry.list_tools; slim :tools }
+      get('/tools') { @tools_list = ADK::GlobalToolManager.list_all_tools; slim :tools }
       get('/tools/:name') { |n|
-        @tool = ADK::ToolRegistry.create_instance(n.to_sym);
+        @tool = ADK::GlobalToolManager.create_instance(n.to_sym);
         if @tool then slim :tool else halt 404,
                                            slim(:error_404,
                                                 locals: { title: "Tool Not Found", message: "Tool '#{n}' not found." });
@@ -698,7 +697,7 @@ module ADK
         content_type :html; tool_name_sym = n.to_sym; logger.info("Executing Tool '#{n}' via form")
         submitted_params = params.reject { |k, _| ['splat', 'captures', 'name'].include?(k) }
         logger.debug("Params: #{submitted_params.inspect}")
-        tool = ADK::ToolRegistry.create_instance(tool_name_sym)
+        tool = ADK::GlobalToolManager.create_instance(tool_name_sym)
         unless tool;
           err_msg = "Tool '#{Rack::Utils.escape_html(n)}' not found.";
           halt 404, format_execution_result_html({ status: :error, error_message: err_msg }); end
@@ -741,7 +740,7 @@ module ADK
                      a[:name]
                    }
       }
-      get('/api/tools') { content_type :json; json tools: ADK::ToolRegistry.list_tools }
+      get('/api/tools') { content_type :json; json tools: ADK::GlobalToolManager.list_all_tools }
     end # End App class
   end # End Web module
 end # End ADK module

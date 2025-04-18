@@ -12,7 +12,7 @@ module ADK
     # @param user_id [String] The user ID associated with the session.
     # @param app_name [String] The application/agent name associated with the session.
     # @param tool_registry [ADK::ToolRegistry] The tool registry instance of the agent executing the tool.
-    def initialize(session_id:, user_id:, app_name:, tool_registry:)
+    def initialize(session_id:, user_id:, app_name:, tool_registry: nil)
       @session_id = session_id
       @user_id = user_id
       @app_name = app_name

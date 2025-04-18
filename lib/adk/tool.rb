@@ -4,6 +4,7 @@
 require_relative 'tool_registry'
 require 'logger'
 require_relative 'tool_context'
+require_relative 'global_tool_manager'
 
 module ADK
   class Tool
@@ -12,13 +13,12 @@ module ADK
       attr_reader :tool_name, :description, :parameters_definition
 
       # Define the tool's static metadata.
-      # This no longer automatically registers the tool globally.
+      # This now ALSO registers the tool globally.
       def define_metadata(name:, description:, parameters: {})
         @tool_name = name.to_sym
         @description = description
         @parameters_definition = parameters
-        # --- REMOVED automatic registration call ---
-        # register_tool_class
+        ADK::GlobalToolManager.register_tool(self)
       end
 
       # --- ADDED: Method to retrieve all metadata as a hash ---

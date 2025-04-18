@@ -12,52 +12,64 @@
     = user_message
 
 / --- Agent Response ---
-/ Determine display class and content based on agent_result type
-- msg_class = 'is-warning' # Default to warning for unexpected
-- agent_response_content = "[Agent response format error]" # Default content
+- msg_class = 'is-warning'         # Default class
+- display_content = ""             # Content to display simply
+- raw_json_content = ""            # Raw JSON for toggle
+- error_occurred = false
+- event_id = SecureRandom.hex(4) # Unique ID for toggling
 
 - if agent_result.is_a?(ADK::Event) && agent_result.role == :agent
-  / --- CORRECT: Handle successful ADK::Event from agent ---
-  - msg_class = 'is-success'
-  - agent_response_content = agent_result.content # Extract content from the event
+  - content = agent_result.content
+  - event_id = agent_result.event_id || event_id # Use real event ID if available
+  - raw_json_content = content.inspect # Store the raw content hash
 
-- elsif agent_result.is_a?(Array)
-  / Multi-step result (kept for potential future use, though run_task returns final event now)
-  - msg_class = agent_result.any? { |h| h.is_a?(Hash) && h[:status] == :error } ? 'is-danger' : 'is-success'
-  / Format the array - This complex formatting is better handled by a helper if needed often
-  - ob = StringIO.new; ob << "<strong>Multi-step Result:</strong><ol style='margin-left: 1.5em; margin-top: 0.5em;'>"
-  - agent_result.each_with_index do |step_hash, index|
-    - ob << "<li>"
-    - if step_hash.is_a?(Hash) && step_hash[:status] == :success
-      - ob << "<span class='has-text-success-dark'>Step #{index + 1} (Success):</span>"
-      - ob << "<pre style='white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;'>#{Rack::Utils.escape_html(step_hash[:result].to_s)}</pre>"
-    - elsif step_hash.is_a?(Hash) && step_hash[:status] == :error
-      - ob << "<span class='has-text-danger-dark'>Step #{index + 1} (Error):</span>"
-      - ob << "<pre style='white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;'>#{Rack::Utils.escape_html(step_hash[:error_message].to_s)}</pre>"
+  - if content.is_a?(Hash)
+    - if content[:status] == :success
+      - msg_class = 'is-success'
+      - display_content = content[:result]
+    - elsif content[:status] == :error
+      - msg_class = 'is-danger'
+      - display_content = content[:error_message] || "Agent error (no message)"
+      - error_occurred = true
+    - elsif content[:status] == :pending # Handle pending status nicely
+      - msg_class = 'is-warning'
+      - display_content = "Task pending... Job ID: #{content[:job_id]}"
+      - if content[:message] then display_content << " - #{content[:message]}"; end
     - else
-      - ob << "<span>Step #{index + 1} (Unknown Format):</span>"
-      - ob << "<pre style='white-space: pre-wrap; word-break: break-all; margin-top: 0.2em;'>#{Rack::Utils.escape_html(step_hash.inspect)}</pre>"
-    - ob << "</li>"
-  - ob << "</ol>"; agent_response_content = ob.string
+      - display_content = "Agent response has unknown status: #{content[:status]}"
+      - error_occurred = true
+  - else # Content wasn't a hash
+    - display_content = "Agent response format unexpected: #{content.inspect}"
+    - msg_class = 'is-warning'
+    - error_occurred = true
 
 - elsif agent_result.is_a?(Hash) && agent_result[:status] == :error
-  / Handle explicit error hash returned by run_task
+  / Handle explicit error hash (e.g., agent not running)
   - msg_class = 'is-danger'
-  - agent_response_content = agent_result[:error_message] || "An unspecified error occurred."
+  - display_content = agent_result[:error_message] || "An unspecified error occurred."
+  - raw_json_content = agent_result.inspect
+  - error_occurred = true
 
 - else
   / Handle any other unexpected format
-  - msg_class = 'is-warning'
-  - agent_response_content = "Unexpected response format: #{agent_result.inspect}"
+  - display_content = "Unexpected response format: #{agent_result.inspect}"
+  - raw_json_content = agent_result.inspect
+  - error_occurred = true
 
 / Render the message block
 .message class="#{msg_class} is-small mb-4"
   .message-header
     p Agent (#{agent_name})
+    / Add toggle button only if there is raw content
+    - unless raw_json_content.empty?
+      button.button.is-light.is-small style="margin-left: auto;" onclick="var el = document.getElementById('raw-#{event_id}'); el.style.display = (el.style.display == 'none' ? 'block' : 'none');"
+        | Raw
+
   .message-body
-    / Use raw output for agent_response_content if it contains HTML (like the multi-step list)
-    / Otherwise, use pre for simple string content
-    - if agent_response_content.include?('<ol>') || agent_response_content.include?('<pre>')
-      == agent_response_content
-    - else
-      pre style="white-space: pre-wrap; word-break: break-all;" = agent_response_content.to_s
+    / Display the simplified content
+    pre style="white-space: pre-wrap; word-break: break-all; margin-bottom: 0.5rem;" = display_content.to_s
+
+    / Hidden div for raw JSON
+    - unless raw_json_content.empty?
+      #raw-#{event_id} style="display: none; margin-top: 0.5rem; border-top: 1px dashed #ccc; padding-top: 0.5rem;"
+        pre style="white-space: pre-wrap; word-break: break-all; font-size: 0.8em; color: #555;" = raw_json_content
