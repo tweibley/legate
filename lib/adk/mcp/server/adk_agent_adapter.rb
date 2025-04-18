@@ -128,26 +128,22 @@ module ADK
 
             # 3. Instantiate Agent & Add Tools
             Mcp.logger.debug("Instantiating agent '#{agent_name}'...")
-            agent = ADK::Agent.new(name: agent_name, description: description, model_name: model_name)
-
+            # Extract tool classes from the definition
             tool_names_to_load = self.class.parse_tools(tools_json_string).map(&:to_sym)
-            if tool_names_to_load.empty?
-              Mcp.logger.warn("Agent '#{agent_name}' has no tools configured in Redis.")
-            else
-              Mcp.logger.debug("Adding tools from definition: #{tool_names_to_load.inspect}")
-              tool_names_to_load.each do |t|
-                # Check agent's registry first, then global
-                tool_class = agent.find_tool_class(t) || ADK::ToolRegistry.get_tool_class(t)
-                if tool_class
-                  # We need an instance, but add_tool registers the class. Let's use the registry directly.
-                  # This assumes tools have default initializers. Consider tool options later.
-                  agent.tool_registry.register(tool_class) unless agent.find_tool_class(t)
-                  Mcp.logger.debug("Ensured tool '#{t}' is available to agent '#{agent_name}'")
-                else
-                  Mcp.logger.warn("Tool '#{t}' defined for agent '#{agent_name}' not found in ToolRegistry. Skipping.")
-                end
-              end
+            tool_classes_for_init = tool_names_to_load.map do |t_name|
+              ADK::ToolRegistry.get_tool_class(t_name) # Use global registry to find classes
+            end.compact
+
+            if tool_classes_for_init.size != tool_names_to_load.size
+              Mcp.logger.warn("Some tools defined for agent '#{agent_name}' were not found in the global ToolRegistry.")
             end
+
+            agent = ADK::Agent.new(
+              name: agent_name,
+              description: description,
+              model_name: model_name,
+              tool_classes: tool_classes_for_init # Pass classes to agent initializer
+            )
 
             # 4. Start Agent & Run Task
             Mcp.logger.debug("Starting ephemeral agent runtime...")
@@ -175,9 +171,7 @@ module ADK
               Mcp.logger.error("Agent '#{agent_name}' execution failed: #{err_msg}")
               raise StandardError, "Agent Error: #{err_msg}"
             when :pending
-              # Should this adapter support pending? Less useful if session is deleted.
-              # For V1, treat pending like an error or return specific hash.
-              job_id = result_content[:job_id]
+              job_id = result_content[:job_id] # Assuming key is :job_id
               msg = result_content[:message] || "Agent task resulted in a pending job."
               Mcp.logger.warn("Agent '#{agent_name}' execution ended with pending status (Job: #{job_id}). Returning as structured data.")
               # Return pending structure similar to AdkToolAdapter for consistency
@@ -191,7 +185,7 @@ module ADK
             Mcp.logger.error(e.backtrace.join("\n"))
             # Let fast-mcp handle the error
             raise StandardError, "Failed to run agent '#{agent_name}': #{e.message}"
-            finally
+          ensure
             # 6. Cleanup: Stop Agent & Delete Session
             if agent&.running?
               begin

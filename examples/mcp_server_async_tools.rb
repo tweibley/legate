@@ -58,14 +58,14 @@ class SleepyToolWrapper < FastMcp::Tool
       tool_registry: ADK::ToolRegistry.new
     )
     result = tool.execute({ duration: args[:duration], message: args[:message] }, context)
-    
+
     case result[:status]
     when :success
       result[:result]
     when :pending
-      { 
-        status: 'pending', 
-        job_id: result[:job_id], 
+      {
+        status: 'pending',
+        job_id: result[:job_id],
         message: "Sleepy job started with duration #{args[:duration]}s and message: #{args[:message]}"
       }
     when :error
@@ -91,7 +91,7 @@ class CheckJobStatusToolWrapper < FastMcp::Tool
       tool_registry: ADK::ToolRegistry.new
     )
     result = tool.execute({ job_id: args[:job_id] }, context)
-    
+
     case result[:status]
     when :success
       result[:result]
@@ -118,4 +118,4 @@ begin
   server.start
 rescue Interrupt
   ADK.logger.info("Shutting down MCP server...")
-end 
+end

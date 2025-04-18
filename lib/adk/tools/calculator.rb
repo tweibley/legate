@@ -11,7 +11,7 @@ module ADK
       # --- Define Metadata (This triggers registration) ---
       define_metadata(
         name: :calculator,
-        description: 'Performs basic arithmetic operations (add, subtract, multiply, divide).',
+        description: 'Calculates the result of an arithmetic operation. Requires two numbers (operand1, operand2) and the operation name (operation: "add", "subtract", "multiply", "divide", or symbols +, -, *, /).',
         parameters: {
           operand1: {
             type: :numeric,

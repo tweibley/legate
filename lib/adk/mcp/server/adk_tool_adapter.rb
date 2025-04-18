@@ -107,7 +107,7 @@ module ADK
             # Raise a standard error, fast-mcp should convert this to an MCP error response
             raise StandardError, error_message
           when :pending
-            job_id = result_hash[:job_id]
+            job_id = result_hash[:job_id] # Assuming the key is :job_id now
             message = result_hash[:message] || "ADK tool '#{self.class.tool_name}' started an async job."
             Mcp.logger.info("ADK tool '#{self.class.tool_name}' returned pending status (Job ID: #{job_id})")
             # Return a structured hash indicating pending status (as per FR2.2 recommendation)
