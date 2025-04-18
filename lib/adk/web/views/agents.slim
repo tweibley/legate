@@ -43,6 +43,16 @@
         - else
           p No tools available for selection.
 
+    / --- NEW: Fallback Mode Selection ---
+    .field
+      label.label Planning Fallback
+      p.help Select behavior when the agent cannot determine which tool to use.
+      .control
+        .select
+          select(name="fallback_mode")
+            option(value="error" selected=true) Return Error Message
+            option(value="echo") Attempt Echo Tool (if available)
+
     / --- Submit Button ---
     .field
       .control

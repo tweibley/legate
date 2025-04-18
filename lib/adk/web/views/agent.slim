@@ -13,6 +13,10 @@
   div(id="agent-model-display" hx-swap="innerHTML")
     == slim :_display_agent_model, locals: { agent_data: @view_agent_data }
 
+  / --- NEW: Container for Fallback Mode Display/Edit ---
+  div(id="agent-fallback-display" hx-swap="innerHTML")
+    == slim :_display_agent_fallback, locals: { agent_data: @view_agent_data }
+
 / Status Box
 .box.mb-5
   h2.title.is-4 Status & Control

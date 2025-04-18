@@ -1,0 +1,25 @@
+/ File: lib/adk/web/views/_edit_agent_fallback.slim
+/ Expects: agent_data (Hash: {name, fallback_mode})
+
+- current_fallback_mode = agent_data[:fallback_mode] || 'error'
+form( hx-put="/agents/#{agent_data[:name]}/update/fallback"
+      hx-target="this"
+      hx-swap="outerHTML" )
+  label.label Planning Fallback
+  .field.has-addons
+    .control.is-expanded
+      .select.is-fullwidth
+        select(name="value")
+          option(value="error" selected=(current_fallback_mode == 'error')) Return Error Message
+          option(value="echo" selected=(current_fallback_mode == 'echo')) Attempt Echo Tool (if available)
+    .control
+      button.button( type="button"
+                      hx-get="/agents/#{agent_data[:name]}/display/fallback"
+                      hx-target="closest form"
+                      hx-swap="outerHTML" )
+        span Cancel
+    .control
+      button.button.is-success(type="submit")
+        span.icon.is-small
+          i.fas.fa-check
+        span Save 

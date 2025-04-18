@@ -1,0 +1,15 @@
+/ File: lib/adk/web/views/_display_agent_fallback.slim
+/ Expects: agent_data (Hash: {name, fallback_mode})
+
+- fallback_mode = agent_data[:fallback_mode] || 'error'
+- display_text = fallback_mode == 'echo' ? 'Attempt Echo Tool' : 'Return Error Message'
+.field
+  label.label Planning Fallback
+  .control.is-flex.is-align-items-center
+    span.mr-3= display_text
+    button.button.is-small.is-light( hx-get="/agents/#{agent_data[:name]}/edit/fallback"
+                                      hx-target="closest .field"
+                                      hx-swap="outerHTML" )
+      span.icon.is-small
+        i.fas.fa-pencil-alt
+      span Edit 

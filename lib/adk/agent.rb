@@ -19,7 +19,7 @@ module ADK
   class Agent
     DEFAULT_MODEL = 'gemini-2.0-flash'
 
-    attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry
+    attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode
 
     # Initializes a new agent instance.
     # Note: Session and Memory are no longer managed directly by the agent instance.
@@ -31,11 +31,14 @@ module ADK
     # @param planner [ADK::Planner] A specific planner instance (default: created automatically).
     # @param mcp_servers [Array<Hash>] Optional configurations for external MCP servers.
     #        Example: [{ type: :stdio, command: 'cmd', args: [] }]
-    def initialize(name:, description:, model_name: nil, tool_classes: [], planner: nil, mcp_servers: [])
+    # @param fallback_mode [Symbol] Behavior when planning fails (:error or :echo). Default: :error
+    def initialize(name:, description:, model_name: nil, tool_classes: [], planner: nil, mcp_servers: [],
+                   fallback_mode: :error)
       ADK.logger.info("Initializing agent '#{name}'...")
       @name = name
       @description = description
       @model_name = model_name || DEFAULT_MODEL
+      @fallback_mode = fallback_mode == :echo ? :echo : :error # Ensure only valid modes
       @state = :idle # Initial state
       @mcp_servers_config = mcp_servers # Store MCP configurations
       @mcp_clients = [] # Store active MCP client instances
@@ -273,11 +276,35 @@ module ADK
         ADK.logger.error("#{msg} Plan: #{plan.inspect}")
         return { status: :error, error_message: msg }
       end
+
+      # --- Handle Empty Plan based on Fallback Mode ---
       if plan.empty?
-        msg = "I cannot fulfill this request with the available tools (empty plan)."
-        ADK.logger.warn(msg)
-        return { status: :error, error_message: msg }
+        if @fallback_mode == :echo
+          # --- Check if echo tool is actually available to this agent ---
+          if @tool_registry.find_class(:echo)
+            ADK.logger.warn("Plan is empty. Falling back to echo mode for session '#{session_id}'.")
+            # Reconstruct the plan to be a single echo step
+            # We need the original user input for this - fetch it from the session
+            # Find the *last* user event in case of corrections/multiple turns
+            original_user_input = session.events.reverse.find { |e|
+              e.role == :user
+            }&.content || "[Original input not found]"
+            plan = [{ tool: :echo, params: { message: original_user_input } }]
+            ADK.logger.debug("Reconstructed plan for echo fallback: #{plan.inspect}")
+            # Now continue execution with the modified plan
+          else
+            # Echo tool not available, default to error mode
+            msg = "Planning failed and Echo fallback tool is not available to this agent."
+            ADK.logger.warn(msg)
+            return { status: :error, error_message: msg }
+          end
+        else # Default or :error mode
+          msg = "I cannot fulfill this request with the available tools (empty plan)."
+          ADK.logger.warn(msg)
+          return { status: :error, error_message: msg }
+        end
       end
+      # --- End Handle Empty Plan ---
 
       ADK.logger.debug("Executing plan with #{plan.length} step(s) for session '#{session_id}': #{plan.inspect}")
       previous_step_result_hash = nil

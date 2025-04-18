@@ -319,7 +319,9 @@ module ADK
         halt 503, "Redis unavailable." unless @redis
         agent_name = params['name']&.strip; agent_description = params['description']&.strip
         selected_tools = params['tools'] || []; selected_model = params['model']&.strip
+        selected_fallback = params['fallback_mode'] || 'error' # <-- Get fallback mode, default to error
         model_to_save = selected_model && !selected_model.empty? ? selected_model : ADK::Agent::DEFAULT_MODEL
+
         if agent_name.nil? || agent_name.empty? || agent_description.nil? || agent_description.empty?
           status 400; halt "<div class='notification is-danger'>Name and description required.</div>"; end
         key = agent_redis_key(agent_name)
@@ -330,15 +332,20 @@ module ADK
           @redis.multi { |m|
             m.hset(key, 'description', agent_description);
             m.hset(key, 'tools', tools_json);
-            m.hset(key, 'model', model_to_save); m.sadd(REDIS_AGENTS_SET_KEY, agent_name)
+            m.hset(key, 'model', model_to_save);
+            m.hset(key, 'fallback_mode', selected_fallback) # <-- Save fallback mode
+            m.sadd(REDIS_AGENTS_SET_KEY, agent_name)
           }
-          logger.info("Agent '#{agent_name}' definition saved (Model: #{model_to_save}, Tools: #{selected_tools})")
+          logger.info("Agent '#{agent_name}' definition saved (Model: #{model_to_save}, Tools: #{selected_tools}, Fallback: #{selected_fallback})") # <-- Log fallback
         rescue Redis::BaseError => e; logger.error("Redis error: #{e.message}"); halt 500, "DB Error";
         rescue JSON::GeneratorError => e; logger.error("JSON error: #{e.message}"); halt 500, "Internal Error"; end
         content_type :html
         agent_data = { name: agent_name, description: agent_description, running: false,
-                       configured_tools: selected_tools, model: model_to_save }
-        agent_row_html = slim(:_agent_row, layout: false, locals: { agent_info: agent_data })
+                       configured_tools: selected_tools, model: model_to_save, fallback_mode: selected_fallback } # <-- Pass to partial
+        # Pass available tools needed by the partial for rendering tool links/descriptions
+        available_tools = ADK::GlobalToolManager.list_all_tools
+        agent_row_html = slim(:_agent_row, layout: false,
+                                           locals: { agent_info: agent_data, available_tools: available_tools })
         oob_remove_message_html = "<tr id='no-agents-row' hx-swap-oob='true'></tr>"
         agent_row_html + oob_remove_message_html
       end
@@ -368,10 +375,13 @@ module ADK
       get '/agents/:name' do |name|
         halt 503, "Redis unavailable." unless @redis
         key = agent_redis_key(name)
-        redis_agent_data = @redis.hmget(key, 'description', 'tools', 'model')
+        # --- Fetch fallback_mode along with other fields ---
+        redis_agent_data = @redis.hmget(key, 'description', 'tools', 'model', 'fallback_mode')
         description = redis_agent_data[0]
         tools_json_string = redis_agent_data[1]
         loaded_model = redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL
+        fallback_mode = redis_agent_data[3] || 'error' # <-- Get fallback, default to 'error'
+
         unless description then halt 404,
                                      slim(:error_404,
                                           locals: { title: "Agent Not Found",
@@ -379,7 +389,9 @@ module ADK
         end
 
         is_running = @agents.key?(name)
-        @view_agent_data = { name: name, description: description, running: is_running, model: loaded_model }
+        # --- Include fallback_mode in view data ---
+        @view_agent_data = { name: name, description: description, running: is_running,
+                             model: loaded_model, fallback_mode: fallback_mode }
         configured_tool_names_str = [];
         begin tools_json_string && configured_tool_names_str = JSON.parse(tools_json_string) rescue []; end
 
@@ -391,7 +403,11 @@ module ADK
         logger.debug("Agent '#{name}' configured tool info: #{@configured_tool_info.inspect}")
 
         if is_running
-          @agent = @agents[name]; @view_agent_data[:model] = @agent.model_name
+          @agent = @agents[name]
+          @view_agent_data[:model] = @agent.model_name
+          # --- Get fallback mode from running agent instance if available ---
+          @view_agent_data[:fallback_mode] = @agent.fallback_mode.to_s if @agent.respond_to?(:fallback_mode)
+
           # Ensure the live agent's tools are used for display if running
           live_agent_tool_names = @agent.tools.map(&:name)
           @configured_tool_info = live_agent_tool_names.map { |tn|
@@ -400,7 +416,9 @@ module ADK
           logger.debug("Agent '#{name}' live tool info: #{@configured_tool_info.inspect}")
         else
           # Create a temporary agent instance just for displaying configured tools
-          temp_agent_for_view = ADK::Agent.new(name: name, description: description, model_name: loaded_model)
+          # --- Pass fallback_mode to temp agent initializer ---
+          temp_agent_for_view = ADK::Agent.new(name: name, description: description,
+                                               model_name: loaded_model, fallback_mode: fallback_mode.to_sym)
           configured_tool_names_str.map(&:to_sym).each { |tool_name|
             inst = ADK::GlobalToolManager.create_instance(tool_name);
             if inst then temp_agent_for_view.add_tool(inst);
@@ -418,31 +436,50 @@ module ADK
 
       # --- Agent Inline Editing Routes ---
       get '/agents/:name/edit/:field' do |name, field|
-        supported_fields = ['description', 'model', 'tools']
+        supported_fields = ['description', 'model', 'tools', 'fallback']
         halt 404, "Editing field '#{field}' not supported." unless supported_fields.include?(field)
         halt 503, "Redis unavailable." unless @redis
         key = agent_redis_key(name); halt 404 unless @redis.exists?(key)
-        redis_data = @redis.hmget(key, 'description', 'model', 'tools')
-        agent_data = { name: name, description: redis_data[0], model: redis_data[1] }
-        tools_json_string = redis_data[2];
-        configured_tool_names = [];
-        begin tools_json_string && configured_tool_names = JSON.parse(tools_json_string) rescue []; end
+
+        # --- Refactored: Fetch fields explicitly and build hash ---
+        fields_to_fetch = ['description', 'model', 'tools', 'fallback_mode']
+        redis_values = @redis.hmget(key, *fields_to_fetch)
+        agent_definition = Hash[fields_to_fetch.zip(redis_values)]
+
+        agent_data = {
+          name: name,
+          description: agent_definition['description'],
+          model: agent_definition['model'],
+          fallback_mode: agent_definition['fallback_mode'] || 'error' # Default if nil
+        }
+        # --- End Refactor ---
+
         locals = { agent_data: agent_data }
-        if field == 'model'; locals[:available_models] = AVAILABLE_MODELS;
-        elsif field == 'tools';
-          locals[:configured_tool_names] = configured_tool_names;
-          locals[:all_available_tools] = ADK::GlobalToolManager.list_all_tools; end
+
+        # Add field-specific data needed by partials
+        if field == 'model'
+          locals[:available_models] = AVAILABLE_MODELS
+        elsif field == 'tools'
+          tools_json_string = agent_definition['tools'] # Get from fetched hash
+          configured_tool_names = [];
+          begin tools_json_string && configured_tool_names = JSON.parse(tools_json_string) rescue []; end
+          locals[:configured_tool_names] = configured_tool_names
+          locals[:all_available_tools] = ADK::GlobalToolManager.list_all_tools
+        end
+
+        # Render the correct partial
         slim :"_edit_agent_#{field}", layout: false, locals: locals
       end
 
       get '/agents/:name/display/:field' do |name, field|
-        supported_fields = ['description', 'model', 'tools']
+        supported_fields = ['description', 'model', 'tools', 'fallback']
         halt 404, "Displaying field '#{field}' not supported." unless supported_fields.include?(field)
         halt 503, "Redis unavailable." unless @redis
         key = agent_redis_key(name); halt 404 unless @redis.exists?(key)
-        redis_data = @redis.hmget(key, 'description', 'model', 'tools')
+        redis_data = @redis.hmget(key, 'description', 'model', 'tools', 'fallback_mode')
         response_locals = {};
-        response_locals[:agent_data] = { name: name, description: redis_data[0], model: redis_data[1] }
+        response_locals[:agent_data] =
+          { name: name, description: redis_data[0], model: redis_data[1], fallback_mode: redis_data[3] || 'error' }
         if field == 'tools'
           tools_json_string = redis_data[2];
           configured_tool_names_str = [];
@@ -456,11 +493,12 @@ module ADK
       end
 
       put '/agents/:name/update/:field' do |name, field|
-        supported_fields = ['description', 'model', 'tools']
+        supported_fields = ['description', 'model', 'tools', 'fallback']
         halt 404, "Updating field '#{field}' not supported." unless supported_fields.include?(field)
         halt 503, "Redis unavailable." unless @redis
         key = agent_redis_key(name); halt 404 unless @redis.exists?(key)
-        redis_field_to_update = field; new_value_to_save = nil; response_locals = {}
+        redis_field_to_update = field == 'fallback' ? 'fallback_mode' : field
+        new_value_to_save = nil; response_locals = {}
         agent_data_hash = { name: name } # Needed for display partial URLs
 
         if field == 'tools'
@@ -480,22 +518,39 @@ module ADK
           response_locals[:configured_tools] = validated_tools.map { |tn|
             all_available_tools_list.find { |t| t[:name].to_s == tn }
           }.compact
+        elsif field == 'fallback'
+          new_value_to_save = params['value']&.strip
+          logger.debug("Received fallback update for '#{name}'. Value: '#{new_value_to_save}'") # <-- LOGGING
+          unless ['error', 'echo'].include?(new_value_to_save)
+            logger.warn("Update failed for '#{name}', field '#{field}': Invalid value '#{new_value_to_save}'.")
+            redis_data = @redis.hmget(key, 'description', 'model', 'fallback_mode')
+            response_locals[:agent_data] =
+              { name: name, description: redis_data[0], model: redis_data[1], fallback_mode: redis_data[2] || 'error' }
+            halt 400, slim(:"_display_agent_#{field}", layout: false, locals: response_locals)
+          end
+          agent_data_hash[:description] = @redis.hget(key, 'description')
+          agent_data_hash[:model] = @redis.hget(key, 'model')
+          agent_data_hash[:fallback_mode] = new_value_to_save
+          response_locals[:agent_data] = agent_data_hash
+          logger.debug("Prepared response_locals for display: #{response_locals.inspect}") # <-- LOGGING
         else # description or model
           new_value_to_save = params['value']&.strip
           if new_value_to_save.nil? || new_value_to_save.empty?
             logger.warn("Update failed for '#{name}', field '#{field}': Value empty.")
-            redis_data = @redis.hmget(key, 'description', 'model')
-            response_locals[:agent_data] = { name: name, description: redis_data[0], model: redis_data[1] }
+            redis_data = @redis.hmget(key, 'description', 'model', 'fallback_mode')
+            response_locals[:agent_data] =
+              { name: name, description: redis_data[0], model: redis_data[1], fallback_mode: redis_data[2] || 'error' }
             halt 400, slim(:"_display_agent_#{field}", layout: false, locals: response_locals)
           end
           agent_data_hash[:description] = (field == 'description' ? new_value_to_save : @redis.hget(key, 'description'))
           agent_data_hash[:model] = (field == 'model' ? new_value_to_save : @redis.hget(key, 'model'))
+          agent_data_hash[:fallback_mode] = @redis.hget(key, 'fallback_mode') || 'error'
           response_locals[:agent_data] = agent_data_hash
         end
 
         begin # Update Redis
           @redis.hset(key, redis_field_to_update, new_value_to_save)
-          logger.info("Updated agent '#{name}', field '#{redis_field_to_update}'")
+          logger.info("Updated agent '#{name}', field '#{redis_field_to_update}' to '#{new_value_to_save}'") # <-- LOGGING
           slim :"_display_agent_#{field}", layout: false, locals: response_locals # Render display partial
         rescue Redis::BaseError => e;
           logger.error("Redis error updating: #{e.message}"); halt 500, "Error updating definition.";
@@ -512,17 +567,22 @@ module ADK
                                                                                                                    halt 503,
                                                                                                                         "Redis unavailable." unless @redis;
                                                                                                                    key = agent_redis_key(name)
+                                                                                                                   # --- Fetch fallback_mode when starting ---
                                                                                                                    redis_agent_data = @redis.hmget(
-                                                                                                                     key, 'description', 'tools', 'model'
+                                                                                                                     key, 'description', 'tools', 'model', 'fallback_mode'
                                                                                                                    );
-                                                                                                                   agent_description, tools_json, model_name = redis_agent_data[0], redis_agent_data[1],
-                                                                                                                  (redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL)
+                                                                                                                   agent_description, tools_json, model_name, fallback_mode_str = redis_agent_data[0], redis_agent_data[1],
+                                                                                                                                                                                   (redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL),
+                                                                                                                                                                                   redis_agent_data[3]
+                                                                                                                   fallback_mode_sym = (fallback_mode_str == 'echo') ? :echo : :error # Convert to symbol, default error
+
                                                                                                                    unless agent_description then logger.error("Def not found: '#{name}'");
                                                                                                                                                  halt 404;
                                                                                                                    end
-                                                                                                                   begin logger.info("Starting agent '#{name}' (Model: #{model_name})...");
+                                                                                                                   begin logger.info("Starting agent '#{name}' (Model: #{model_name}, Fallback: #{fallback_mode_sym})...");
+                                                                                                                         # --- Pass fallback_mode to initializer ---
                                                                                                                          agent = ADK::Agent.new(
-                                                                                                                           name: name, description: agent_description, model_name: model_name
+                                                                                                                           name: name, description: agent_description, model_name: model_name, fallback_mode: fallback_mode_sym
                                                                                                                          );
                                                                                                                          tool_names = [];
                                                                                                                          if tools_json && !tools_json.empty? then tool_names = JSON.parse(tools_json).map(&:to_sym) rescue [];
@@ -549,22 +609,28 @@ module ADK
         if @agents.key?(name) then agent_data_for_view = @agents[name]; else
                                                                           halt 503, "Redis unavailable." unless @redis;
                                                                           key = agent_redis_key(name)
+                                                                          # --- Fetch fallback_mode when starting (detail view) ---
                                                                           redis_agent_data = @redis.hmget(key,
-                                                                                                          'description', 'tools', 'model');
-                                                                          agent_description, tools_json, model_name = redis_agent_data[0], redis_agent_data[1],
-                                                                         (redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL)
+                                                                                                          'description', 'tools', 'model', 'fallback_mode');
+                                                                          agent_description, tools_json, model_name, fallback_mode_str = redis_agent_data[0], redis_agent_data[1],
+                                                                                                                                         (redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL),
+                                                                                                                                         redis_agent_data[3]
+                                                                          fallback_mode_sym = (fallback_mode_str == 'echo') ? :echo : :error # Convert to symbol, default error
+
                                                                           unless agent_description then halt 404; end
-                                                                          begin agent = ADK::Agent.new(name: name,
-                                                                                                       description: agent_description, model_name: model_name);
-                                                                                tool_names = [];
-                                                                                if tools_json && !tools_json.empty? then tool_names = JSON.parse(tools_json).map(&:to_sym) rescue [];
-                                                                                end; tool_names.each { |tn|
-                                                                                       inst = ADK::GlobalToolManager.create_instance(tn);
-                                                                                       agent.add_tool(inst) if inst
-                                                                                     };
-                                                                                agent.start;
-                                                                                @agents[name] = agent;
-                                                                                agent_data_for_view = agent
+                                                                          begin
+                                                                            # --- Pass fallback_mode to initializer ---
+                                                                            agent = ADK::Agent.new(name: name, description: agent_description, model_name: model_name,
+                                                                                                   fallback_mode: fallback_mode_sym);
+                                                                            tool_names = [];
+                                                                            if tools_json && !tools_json.empty? then tool_names = JSON.parse(tools_json).map(&:to_sym) rescue [];
+                                                                            end; tool_names.each { |tn|
+                                                                              inst = ADK::GlobalToolManager.create_instance(tn);
+                                                                              agent.add_tool(inst) if inst
+                                                                            };
+                                                                            agent.start;
+                                                                            @agents[name] = agent;
+                                                                            agent_data_for_view = agent
                                                                           rescue => e;
                                                                             logger.error("Failed start detail: #{e.message}");
                                                                             halt 500; end
