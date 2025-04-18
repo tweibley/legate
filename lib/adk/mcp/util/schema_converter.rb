@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'set' # Needed for json_to_adk
+require 'dry-types' # Ensure dry-types is available for coercion
 
 module ADK
   module Mcp
@@ -84,8 +85,9 @@ module ADK
               dry_type_method = 'filled'
               type_spec = ':integer'
             when :numeric
+              # Use coercible float type to handle string inputs that represent numbers
               dry_type_method = 'filled'
-              type_spec = ':float'
+              type_spec = 'Dry::Types[\'coercible.float\']'
             when :boolean
               dry_type_method = 'filled'
               type_spec = ':bool'
