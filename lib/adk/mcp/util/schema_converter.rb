@@ -25,10 +25,10 @@ module ADK
           required_set = Set.new(json_schema_required_array || [])
 
           json_schema_properties.each do |name, schema|
-            # ---> MODIFIED Check: Allow string or symbol key for type <--- 
+            # ---> MODIFIED Check: Allow string or symbol key for type <---
             is_valid_schema = schema.is_a?(Hash) && (schema.key?('type') || schema.key?(:type))
             unless is_valid_schema
-            # <-------------------------------------------------------->
+              # <-------------------------------------------------------->
               ADK.logger.warn("Skipping MCP property '#{name}': Invalid schema format or missing type. Schema: #{schema.inspect}")
               next
             end
@@ -38,7 +38,7 @@ module ADK
             schema_type = schema['type'] || schema[:type]
             # Build the inner parameter definition hash
             adk_param_def = {
-              # ---> FIX: Check string name in required_set <--- 
+              # ---> FIX: Check string name in required_set <---
               required: required_set.include?(name.to_s),
               # <------------------------------------------->
               # Use string or symbol key for description

@@ -11,7 +11,6 @@ require_relative 'tool_registry'
 require_relative 'mcp/client'
 require_relative 'mcp/tool_wrapper'
 
-
 module ADK
   class Error < StandardError; end unless defined?(ADK::Error)
 

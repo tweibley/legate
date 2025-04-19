@@ -26,9 +26,8 @@ require 'adk/mcp' # Ensure MCP modules are loaded
 
 # Configure ADK logger
 ENV['ADK_LOG_LEVEL'] = 'DEBUG'
-#ADK.configure { |c| c.log_level = Logger::FATAL }
+# ADK.configure { |c| c.log_level = Logger::FATAL }
 dirname = File.expand_path(File.dirname(File.dirname(__FILE__)))
-  
 
 # --- 1. Define a Native ADK Tool (Optional) ---
 class NativeEchoTool < ADK::Tool
@@ -53,10 +52,10 @@ mcp_server_config = {
   type: :stdio,
   command: 'npx', # Command to start the server
   args: [         # Arguments for the command
-  '--',
+    '--',
     '@modelcontextprotocol/server-filesystem',
-    #'--stdio',
-     dirname # <<< IMPORTANT: Change this to a real, accessible directory!
+    # '--stdio',
+    dirname # <<< IMPORTANT: Change this to a real, accessible directory!
     # Create this directory before running: mkdir /tmp/mcp_fs_test_dir
   ]
 }
@@ -108,8 +107,8 @@ begin
   end
 
   # Input asking to use a tool likely provided by the filesystem server
-  #user_input = "Read the content of the file named 'hello.txt' in #{dirname} using the filesystem tool."
-  user_input = "What are the contents of hello.txt in #{dirname}?"
+  # user_input = "Read the content of the file named 'hello.txt' in #{dirname} using the filesystem tool."
+  user_input = "What files are in the #{dirname}? What are the contents of hello.txt in #{dirname}?"
   puts "User Input: #{user_input}"
 
   final_event = my_agent.run_task(
@@ -121,7 +120,6 @@ begin
   puts "Final Agent Event:"
   require 'pp' # Pretty print
   pp final_event
-
 rescue => e
   puts "Error running task: #{e.message}"
   puts e.backtrace
@@ -132,7 +130,7 @@ puts "--------------------------\n"
 File.delete(dummy_file_path) if File.exist?(dummy_file_path)
 
 #--- 6. Stop the Agent Runtime ---
-#This disconnects from the MCP server.
+# This disconnects from the MCP server.
 ADK.logger.info("Stopping agent runtime...")
 my_agent.stop
 ADK.logger.info("Agent stopped.")

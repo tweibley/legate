@@ -88,13 +88,14 @@ module ADK
                   if line.start_with?('{') || line.start_with?('[')
                     begin
                       message = JSON.parse(line, symbolize_names: true)
+                      ADK.logger.debug("[Stdio Connection #{@pid}] Received Parsed JSON:\n#{JSON.pretty_generate(message)}")
                       @consecutive_parse_errors = 0 # Reset on successful parse
 
                       # Route to correct queue based on ID presence/value
                       if message.key?(:id) && message[:id].nil? # MCP Notifications might have null id
                         @notification_queue << message
                       elsif message.key?(:id)
-                        Mcp.logger.debug("[Stdio Connection #{@pid}] Queuing response ID: #{message[:id]}")
+                        ADK.logger.debug("[Stdio Connection #{@pid}] Queuing response ID: #{message[:id]}")
                         @response_queue << message # Responses have non-null id
                       else # Assume notification for now
                         @notification_queue << message
@@ -210,6 +211,7 @@ module ADK
                     end
                     # Check connection status inside loop
                     raise ConnectionError, "Connection lost while waiting for message" unless connected?
+
                     sleep(0.01) # Small sleep
                   end
                 end
