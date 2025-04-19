@@ -70,11 +70,9 @@ module ADK
     # Get a list of available tools registered in this instance with basic info.
     # @return [Array<Hash>] An array of hashes, each with :name and :description.
     def list_tools
-      @tools.map do |name, klass|
-        {
-          name: klass.tool_name || name, # Fallback to registered name if class metadata missing (shouldn't happen ideally)
-          description: klass.description || "[No description provided]"
-        }
+      @tools.values.map do |klass|
+        metadata = klass.tool_metadata # Get the full { name:, description:, parameters: } hash
+        metadata # Return the full hash
       end.sort_by { |t| t[:name].to_s }
     end
   end # End ToolRegistry class

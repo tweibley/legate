@@ -25,6 +25,14 @@ module ADK
       # @param tool_registry [ADK::ToolRegistry] The specific registry instance to register with.
       # @return [Class] The newly created anonymous ToolWrapper subclass, or nil.
       def self.from_mcp_schema(mcp_schema, mcp_client, tool_registry)
+        # --- Re-ADD DEBUG LOGGING ---
+        Mcp.logger.debug("[ToolWrapper Debug] Received mcp_schema: #{mcp_schema.inspect} (Class: #{mcp_schema.class})")
+        Mcp.logger.debug("[ToolWrapper Debug] mcp_schema[:name]: #{mcp_schema.is_a?(Hash) ? mcp_schema[:name].inspect : 'N/A - Not a hash'}")
+        Mcp.logger.debug("[ToolWrapper Debug] mcp_schema['name']: #{mcp_schema.is_a?(Hash) ? mcp_schema['name'].inspect : 'N/A - Not a hash'}")
+        Mcp.logger.debug("[ToolWrapper Debug] mcp_client.is_a?(ADK::Mcp::Client): #{mcp_client.is_a?(ADK::Mcp::Client)}")
+        Mcp.logger.debug("[ToolWrapper Debug] tool_registry.is_a?(ADK::ToolRegistry): #{tool_registry.is_a?(ADK::ToolRegistry)}")
+        # --- END DEBUG LOGGING ---
+
         # Validate inputs including the registry
         unless mcp_schema.is_a?(Hash) && mcp_schema[:name] &&
                mcp_client.is_a?(ADK::Mcp::Client) &&
@@ -38,21 +46,44 @@ module ADK
         mcp_input_schema = mcp_schema[:inputSchema] || {}
         mcp_properties = mcp_input_schema[:properties] || {}
         mcp_required = mcp_input_schema[:required] || []
+
         adk_params = Util::SchemaConverter.json_to_adk(mcp_properties, mcp_required)
+        Mcp.logger.debug("[ToolWrapper Debug] Result of json_to_adk: #{adk_params.inspect}")
 
         # Create anonymous class
         wrapper_class = Class.new(ToolWrapper) do
+          # --- CAPTURE local variables for use in method definitions ---
+          # It's crucial these are captured here, before the methods are defined.
+          captured_mcp_name_sym = mcp_name.to_sym
+          captured_mcp_description = mcp_description
+          captured_adk_params = adk_params
+
           # Store references needed for execution on the class itself
           self.mcp_client = mcp_client
-          self.mcp_tool_name = mcp_name
+          self.mcp_tool_name = mcp_name # Keep original string name for execution
           self.mcp_input_schema = mcp_input_schema
 
-          # Define ADK metadata for this wrapped tool using keyword arguments
-          Mcp.logger.debug("Defining metadata for wrapper: Name='#{mcp_name.inspect}', Desc='#{mcp_description.inspect}', Params='#{adk_params.inspect}'")
+          # --- Define the tool_metadata method explicitly on this anonymous class ---
+          define_singleton_method(:tool_metadata) do
+            {
+              name: captured_mcp_name_sym,
+              description: captured_mcp_description,
+              parameters: captured_adk_params
+            }
+          end
+
+          # --- ALSO explicitly define the individual readers for robustness ---
+          # (These might be called by other parts of ADK or ToolRegistry indirectly)
+          define_singleton_method(:tool_name) { captured_mcp_name_sym }
+          define_singleton_method(:description) { captured_mcp_description }
+          define_singleton_method(:parameters_definition) { captured_adk_params }
+
+          # --- Keep the original define_metadata call as well for global registration ---
+          # Although redundant for metadata retrieval via tool_metadata, it handles global registration.
           define_metadata(
-            name: mcp_name.to_sym,
-            description: mcp_description,
-            parameters: adk_params
+            name: captured_mcp_name_sym,
+            description: captured_mcp_description,
+            parameters: captured_adk_params
           )
         end
 

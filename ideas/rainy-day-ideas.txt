@@ -1,3 +1,10 @@
 These are ideas to do when everything else is already done...
 
 (Lower Priority) Cloud-Specific Service: If targeting a specific cloud platform like GCP becomes a goal, a corresponding service (like a FirestoreSessionService or a hypothetical VertexAiSessionService if Ruby SDKs allow) could be added.
+
+
+for the planner:
+
+More Advanced (Requires Code Changes):
+Tool Filtering/Retrieval: Implement a mechanism (keyword search, embedding similarity) within the Planner#plan method to select a subset of potentially relevant tools based on the task before building the prompt. Only the metadata for this subset would be included in tools_description. This is akin to Retrieval-Augmented Generation (RAG) for tools.
+Structured Tool Input: Investigate if the gemini-ai gem and the specific model support passing tool schemas as a structured argument (tools or function_declarations parameter) rather than embedding them in the text prompt. This is generally the most robust way for LLMs to handle large toolsets.

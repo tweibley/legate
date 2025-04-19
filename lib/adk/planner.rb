@@ -144,13 +144,16 @@ module ADK
     def build_multi_step_gemini_prompt(task, tools_description)
       <<~PROMPT
         You are an AI planner for an agent. Your goal is to break down the user's request into a sequence of steps. Each step must use exactly one of the available tools. You need to determine the necessary parameters for each tool call based on the user request AND the potential output of previous steps.
+        Carefully analyze the User Request below to understand the core goal. Then, search the following list of Available Tools to find the single best tool or sequence of tools to achieve that goal. Pay close attention to tool descriptions and required parameters.
+        If you find that the user's request can be fulfilled by a single tool call, respond with a JSON array containing only one step object.
+        Otherwise, identify the sequence of tool calls needed to fulfill the request.
+        Only use tools that are directly relevant to fulfilling the user request. Do not select tools speculatively.
 
+        User Request: "#{task}"
         Available Tools:
         ---
         #{tools_description}
         ---
-
-        User Request: "#{task}"
 
         Instructions:
         1. Analyze the user request and the available tools.
