@@ -25,7 +25,8 @@ require 'adk'
 require 'adk/mcp' # Ensure MCP modules are loaded
 
 # Configure ADK logger
-ADK.configure { |c| c.log_level = Logger::INFO }
+ENV['ADK_LOG_LEVEL'] = 'DEBUG'
+#ADK.configure { |c| c.log_level = Logger::FATAL }
 
 # --- 1. Define a Native ADK Tool (Optional) ---
 class NativeEchoTool < ADK::Tool
@@ -51,8 +52,8 @@ mcp_server_config = {
   command: 'npx', # Command to start the server
   args: [         # Arguments for the command
     '@modelcontextprotocol/server-filesystem',
-    '--stdio',
-    # '/tmp/mcp_fs_test_dir' # <<< IMPORTANT: Change this to a real, accessible directory!
+    #'--stdio',
+     '/tmp/mcp_fs_test_dir' # <<< IMPORTANT: Change this to a real, accessible directory!
     # Create this directory before running: mkdir /tmp/mcp_fs_test_dir
   ]
 }
@@ -91,7 +92,7 @@ ADK.logger.info("Full metadata: #{my_agent.available_tools_metadata.inspect}")
 #   session_service = ADK::SessionService::InMemory.new
 #   session = session_service.create_session(app_name: 'mcp_client_test', user_id: 'test_user')
 #   puts "Created session: #{session.id}"
-#
+
 #   # Create a dummy file for the filesystem tool to read
 #   # Ensure the directory matches the one in mcp_server_config[:args]
 #   dummy_file_path = '/tmp/mcp_fs_test_dir/hello.txt'
@@ -102,29 +103,29 @@ ADK.logger.info("Full metadata: #{my_agent.available_tools_metadata.inspect}")
 #     puts "Warning: Could not create dummy file '#{dummy_file_path}': #{e.message}"
 #     puts "Filesystem tool example might fail."
 #   end
-#
+
 #   # Input asking to use a tool likely provided by the filesystem server
 #   user_input = "Read the content of the file named 'hello.txt' using the filesystem tool."
 #   puts "User Input: #{user_input}"
-#
+
 #   final_event = my_agent.run_task(
 #     session_id: session.id,
 #     user_input: user_input,
 #     session_service: session_service
 #   )
-#
+
 #   puts "Final Agent Event:"
 #   require 'pp' # Pretty print
 #   pp final_event
-#
+
 # rescue => e
 #   puts "Error running task: #{e.message}"
 #   puts e.backtrace
 # end
 # puts "--------------------------\n"
 
-# --- 6. Stop the Agent Runtime ---
-# This disconnects from the MCP server.
+#--- 6. Stop the Agent Runtime ---
+#This disconnects from the MCP server.
 ADK.logger.info("Stopping agent runtime...")
 my_agent.stop
 ADK.logger.info("Agent stopped.")

@@ -101,6 +101,8 @@ require_relative 'adk/session_service/in_memory'
 require_relative 'adk/session_service/redis'
 # --- Load Migrations ---
 require_relative 'adk/migrations/001_add_state_scoping'
+
+require_relative 'adk/mcp'
 # --- Now load Agent ---
 require_relative 'adk/agent'
 # --- Load CLI and Tools last ---

@@ -8,22 +8,16 @@ require_relative 'error'
 
 module ADK
   module Mcp
-    # Client for interacting with an MCP server.
-    # Currently supports STDIO connections.
     class Client
-      # Default timeout for waiting for a response to a request
-      DEFAULT_RESPONSE_TIMEOUT = 30 # seconds
-
-      # Use the constant defined in the Connection module
+      DEFAULT_RESPONSE_TIMEOUT = 30
       PROCESS_START_TIMEOUT = Connection::Stdio::PROCESS_START_TIMEOUT
-      # Increase timeout for starting external processes, especially in tests
-      # PROCESS_START_TIMEOUT = 30 # seconds
+      # --- Define the protocol version ADK Client supports ---
+      CLIENT_PROTOCOL_VERSION = "2024-11-05"
+      # -----------------------------------------------------
 
       attr_reader :connection_params, :server_capabilities, :last_error
 
-      # @param connection_params [Hash] Options for the connection.
-      #   For :stdio type: { type: :stdio, command: 'cmd', args: ['arg1'] }
-      #   For :sse type:   { type: :sse, url: 'http://...' }
+      # ... (initialize remains the same) ...
       def initialize(connection_params)
         @connection_params = connection_params
         @connection = nil
@@ -44,22 +38,25 @@ module ADK
         end
       end
 
+
       def connected?
         @connected && @connection&.connected?
       end
 
-      # Establishes the connection and performs the MCP initialize handshake.
-      # @raise [ConnectionError] if connection or handshake fails.
       def connect
         return true if connected?
 
-        @lock.synchronize do
-          return true if @connected # Double check inside lock
+        error_occurred = nil
 
-          Mcp.logger.info("MCP Client connecting...")
+        @lock.synchronize do
+          return true if @connected # Double check
+
+          ADK.logger.info("MCP Client connecting...")
           @last_error = nil
+          @connection = nil
+          @connected = false
+
           begin
-            # Instantiate the connection based on type
             case @connection_params[:type]
             when :stdio
               @connection = Connection::Stdio.new(
@@ -67,249 +64,260 @@ module ADK
                 args: @connection_params[:args] || []
               )
             when :sse
-              require_relative 'connection/sse' # Ensure SSE connection is loaded
+              # require_relative 'connection/sse' # Ensure loaded if not globally required
               @connection = Connection::Sse.new(url: @connection_params[:url])
             else
-              # This shouldn't be reachable due to initialize check, but belt-and-suspenders
               raise ConnectionError, "Cannot connect: Unsupported connection type: #{@connection_params[:type]}"
             end
 
-            # Establish the low-level connection
             @connection.connect
+            @connected = true # Assume connected for handshake
 
-            # Perform MCP Initialize Handshake
-            Mcp.logger.info("Performing MCP initialize handshake...")
+            ADK.logger.info("Performing MCP initialize handshake...")
             id = @connection.next_request_id
+            # --- MODIFICATION: Add protocolVersion to params ---
             request = {
-              jsonrpc: '2.0',
-              id: id,
-              method: 'initialize',
+              jsonrpc: '2.0', id: id, method: 'initialize',
               params: {
-                # TODO: Define client capabilities ADK supports
-                capabilities: {}
+                # --- Added protocolVersion --- >
+                protocolVersion: CLIENT_PROTOCOL_VERSION,
+                # <-----------------------------
+                clientInfo: { name: "adk-ruby-client", version: ADK::VERSION },
+                capabilities: {} # Keep capabilities empty for now
               }
             }
+            # --- End Modification ---
+            ADK.logger.info("Initialize Request: #{request.inspect}") # Log modified request
 
             response = send_request_and_wait(request, timeout: PROCESS_START_TIMEOUT)
 
             unless response && response[:result]
-              @last_error = "MCP Initialize failed: No response or missing result. #{response ? "Resp: #{response.inspect}" : 'Connection likely closed.'}"
-              raise ConnectionError, @last_error
+              error_msg = "MCP Initialize failed: No response or missing result."
+              if response&.dig(:error)
+                err = response[:error]
+                error_msg += " Server Error: #{err[:message]} (Code: #{err[:code]})"
+              elsif !response
+                error_msg += " Connection likely closed or timed out."
+              else
+                 error_msg += " Response: #{response.inspect}"
+              end
+              @last_error = error_msg
+              raise ConnectionError, @last_error # Raise to be caught below
             end
 
-            @server_capabilities = response[:result][:capabilities] || {}
-            Mcp.logger.info("MCP Handshake successful. Server capabilities: #{@server_capabilities.inspect}")
+            # --- Optional: Validate Server Protocol Version ---
+            server_protocol_version = response.dig(:result, :protocolVersion)
+            if server_protocol_version && server_protocol_version != CLIENT_PROTOCOL_VERSION
+               ADK.logger.warn("MCP Protocol version mismatch. Client: #{CLIENT_PROTOCOL_VERSION}, Server: #{server_protocol_version}")
+               # Decide if this is a critical error - for now, just log a warning
+            end
+            # --- End Protocol Version Check ---
 
-            @connected = true
-            Mcp.logger.info("MCP Client connected successfully.")
+            @server_capabilities = response.dig(:result, :capabilities) || {}
+            ADK.logger.info("MCP Handshake successful. Server capabilities: #{@server_capabilities.inspect}")
+            ADK.logger.info("MCP Client connected successfully.")
+
           rescue ConnectionError => e
-            Mcp.logger.error("MCP Client connection failed: #{e.message}")
-            disconnect # Ensure cleanup
-            raise # Re-raise the connection error
+            ADK.logger.error("MCP Client connection/handshake failed: #{e.message}")
+            error_occurred = e
+            @connected = false
           rescue StandardError => e
             @last_error = "MCP Client unexpected error during connect: #{e.class} - #{e.message}"
-            Mcp.logger.error("#{@last_error}\n#{e.backtrace.join("\n")}")
-            disconnect # Ensure cleanup
-            raise ConnectionError, @last_error # Raise as ConnectionError
+            ADK.logger.error("#{@last_error}\n#{e.backtrace.join("\n")}")
+            error_occurred = ConnectionError.new(@last_error)
+            @connected = false
           end
+        end # Lock released
+
+        if error_occurred
+          disconnect
+          raise error_occurred
         end
+
         true
       end
 
-      # Disconnects from the MCP server.
-      def disconnect
-        @lock.synchronize do
-          return unless @connected || @connection # Check if there's anything to disconnect
+      # ... (disconnect, list_tools, call_tool, read_notification methods remain unchanged) ...
+       # Disconnects from the MCP server.
+       def disconnect
+         @lock.synchronize do
+           return unless @connected || @connection # Check if there's anything to disconnect
 
-          Mcp.logger.info("MCP Client disconnecting...")
-          @connected = false
-          @server_capabilities = nil
-          @pending_requests.clear
+           ADK.logger.info("MCP Client disconnecting...")
+           @connected = false
+           @server_capabilities = nil
+           @pending_requests.clear
 
-          @connection&.disconnect
-          @connection = nil
-          Mcp.logger.info("MCP Client disconnected.")
-        end
-      rescue StandardError => e
-        Mcp.logger.error("MCP Client error during disconnect: #{e.message}")
-      ensure
-        # Ensure state is updated even if disconnect fails
-        @connected = false
-        @connection = nil
-      end
+           @connection&.disconnect
+           @connection = nil
+           ADK.logger.info("MCP Client disconnected.")
+         end
+       rescue StandardError => e
+         ADK.logger.error("MCP Client error during disconnect: #{e.message}")
+       ensure
+         # Ensure state is updated even if disconnect fails
+         @connected = false
+         @connection = nil
+       end
 
-      # Lists available tools from the MCP server.
-      # @return [Array<Hash>] List of MCP tool schemas.
-      # @raise [ConnectionError] if not connected.
-      # @raise [ProtocolError] if the server response is invalid.
-      def list_tools
-        raise ConnectionError, 'Not connected' unless connected?
+       # Lists available tools from the MCP server.
+       # @return [Array<Hash>] List of MCP tool schemas.
+       # @raise [ConnectionError] if not connected.
+       # @raise [ProtocolError] if the server response is invalid.
+       def list_tools
+         raise ConnectionError, 'Not connected' unless connected?
 
-        Mcp.logger.debug("Requesting tools list from MCP server...")
-        id = @connection.next_request_id
-        request = {
-          jsonrpc: '2.0',
-          id: id,
-          method: 'tools/list',
-          params: {}
-        }
+         ADK.logger.debug("Requesting tools list from MCP server...")
+         id = @connection.next_request_id
+         request = {
+           jsonrpc: '2.0',
+           id: id,
+           method: 'tools/list',
+           params: {}
+         }
 
-        response = send_request_and_wait(request)
+         response = send_request_and_wait(request)
 
-        if response&.key?(:result)
-          tools = response.dig(:result, :tools)
-          unless tools.is_a?(Array)
-            @last_error = "MCP tools/list invalid response: 'result.tools' is not an Array. Response: #{response.inspect}"
-            raise ProtocolError, @last_error
-          end
-          Mcp.logger.debug("Received #{tools.count} tools from MCP server.")
-          return tools
-        elsif response&.key?(:error)
-          err = response[:error]
-          @last_error = "MCP tools/list failed: #{err[:message]} (Code: #{err[:code]})"
-          Mcp.logger.error(@last_error)
-          raise RemoteToolError.new(@last_error, err[:code], err[:data])
-        else
-          @last_error = "MCP tools/list failed: Invalid or missing response. #{response ? "Resp: #{response.inspect}" : 'Connection likely closed.'}"
-          raise ProtocolError, @last_error
-        end
-      end
+         if response&.key?(:result)
+           tools = response.dig(:result, :tools)
+           unless tools.is_a?(Array)
+             @last_error = "MCP tools/list invalid response: 'result.tools' is not an Array. Response: #{response.inspect}"
+             raise ProtocolError, @last_error
+           end
+           ADK.logger.debug("Received #{tools.count} tools from MCP server.")
+           return tools
+         elsif response&.key?(:error)
+           err = response[:error]
+           @last_error = "MCP tools/list failed: #{err[:message]} (Code: #{err[:code]})"
+           ADK.logger.error(@last_error)
+           raise RemoteToolError.new(@last_error, err[:code], err[:data])
+         else
+           @last_error = "MCP tools/list failed: Invalid or missing response. #{response ? "Resp: #{response.inspect}" : 'Connection likely closed.'}"
+           raise ProtocolError, @last_error
+         end
+       end
 
-      # Calls a tool on the MCP server.
-      # @param name [String] The name of the tool to call.
-      # @param arguments [Hash] The arguments for the tool.
-      # @return [Any] The result payload from the tool execution.
-      # @raise [ConnectionError] if not connected.
-      # @raise [ProtocolError] if the server response is invalid.
-      # @raise [RemoteToolError] if the server returns a tool execution error.
-      def call_tool(name, arguments)
-        raise ConnectionError, 'Not connected' unless connected?
-        raise ArgumentError, 'Arguments must be a Hash' unless arguments.is_a?(Hash)
+       # Calls a tool on the MCP server.
+       # @param name [String] The name of the tool to call.
+       # @param arguments [Hash] The arguments for the tool.
+       # @return [Any] The result payload from the tool execution.
+       # @raise [ConnectionError] if not connected.
+       # @raise [ProtocolError] if the server response is invalid.
+       # @raise [RemoteToolError] if the server returns a tool execution error.
+       def call_tool(name, arguments)
+         raise ConnectionError, 'Not connected' unless connected?
+         raise ArgumentError, 'Arguments must be a Hash' unless arguments.is_a?(Hash)
 
-        Mcp.logger.debug("Calling MCP tool '#{name}' with args: #{arguments.inspect}")
-        id = @connection.next_request_id
-        request = {
-          jsonrpc: '2.0',
-          id: id,
-          method: 'tools/call',
-          params: { name: name, arguments: arguments }
-        }
+         ADK.logger.debug("Calling MCP tool '#{name}' with args: #{arguments.inspect}")
+         id = @connection.next_request_id
+         request = {
+           jsonrpc: '2.0',
+           id: id,
+           method: 'tools/call',
+           params: { name: name, arguments: arguments }
+         }
 
-        response = send_request_and_wait(request)
+         response = send_request_and_wait(request)
 
-        if response&.key?(:result)
-          Mcp.logger.debug("MCP tool '#{name}' call successful. Result: #{response[:result].inspect}")
-          return response[:result]
-        elsif response&.key?(:error)
-          err = response[:error]
-          @last_error = "MCP tool '#{name}' call failed: #{err[:message]} (Code: #{err[:code]})"
-          Mcp.logger.error("#{@last_error} Data: #{err[:data].inspect}")
-          raise RemoteToolError.new(err[:message], err[:code], err[:data])
-        else
-          @last_error = "MCP tool '#{name}' call failed: Invalid or missing response. #{response ? "Resp: #{response.inspect}" : 'Connection likely closed.'}"
-          raise ProtocolError, @last_error
-        end
-      end
+         if response&.key?(:result)
+           ADK.logger.debug("MCP tool '#{name}' call successful. Result: #{response[:result].inspect}")
+           return response[:result]
+         elsif response&.key?(:error)
+           err = response[:error]
+           @last_error = "MCP tool '#{name}' call failed: #{err[:message]} (Code: #{err[:code]})"
+           ADK.logger.error("#{@last_error} Data: #{err[:data].inspect}")
+           raise RemoteToolError.new(err[:message], err[:code], err[:data])
+         else
+           @last_error = "MCP tool '#{name}' call failed: Invalid or missing response. #{response ? "Resp: #{response.inspect}" : 'Connection likely closed.'}"
+           raise ProtocolError, @last_error
+         end
+       end
 
-      # Reads the next *notification* received from the server via the connection.
-      # This is primarily useful for SSE connections.
-      # @param timeout [Numeric] Seconds to wait (default 0.1).
-      # @return [Hash, nil] Notification hash or nil.
-      def read_notification(timeout = 0.1)
-        return nil unless connected?
+       # Reads the next *notification* received from the server via the connection.
+       # This is primarily useful for SSE connections.
+       # @param timeout [Numeric] Seconds to wait (default 0.1).
+       # @return [Hash, nil] Notification hash or nil.
+       def read_notification(timeout = 0.1)
+         return nil unless connected?
 
-        # Delegate to connection-specific method if it exists, otherwise return nil
-        if @connection.respond_to?(:read_notification)
-          @connection.read_notification(timeout)
-        else
-          ADK.logger.debug("Connection type #{@connection_params[:type]} does not support read_notification.")
-          nil
-        end
-      end
+         # Delegate to connection-specific method if it exists, otherwise return nil
+         if @connection.respond_to?(:read_notification)
+           @connection.read_notification(timeout)
+         else
+           ADK.logger.debug("Connection type #{@connection_params[:type]} does not support read_notification.")
+           nil
+         end
+       end
+
 
       private
 
-      # Helper to send a request and wait for the specific response by ID.
-      # This simplifies the request/response handling compared to raw read_message.
-      # @param request [Hash] The JSON-RPC request hash with an ID.
-      # @param timeout [Numeric] Seconds to wait for the response.
-      # @return [Hash, nil] The parsed JSON-RPC response hash, or nil if timeout occurs.
-      # @raise [ConnectionError] if connection lost during wait.
+      # --- send_request_and_wait method remains unchanged ---
       def send_request_and_wait(request, timeout: DEFAULT_RESPONSE_TIMEOUT)
-        raise ConnectionError, 'Not connected' unless connected?
-        raise ArgumentError, 'Request must have an ID' unless request[:id]
+         # REMOVED: raise ConnectionError, 'Not connected' unless connected?
+         raise ArgumentError, 'Request must have an ID' unless request[:id]
 
-        request_id = request[:id]
+         request_id = request[:id]
+         @pending_requests[request_id] = true # Mark as waiting
 
-        # Store the request ID we are waiting for
-        # Use a thread-safe structure if client methods can be called concurrently
-        # For now, assuming serial calls per client instance for simplicity
-        @pending_requests[request_id] = true # Mark as waiting
+         begin
+           # Raise connection error immediately if low-level connection is dead
+           raise ConnectionError, "Connection is not alive." unless @connection&.connected?
 
-        begin
-          @connection.send_request(request)
-          ADK.logger.debug("Sent request ID #{request_id}, waiting for response (timeout: #{timeout}s)")
+           @connection.send_request(request)
+           ADK.logger.debug("Sent request ID #{request_id}, waiting for response (timeout: #{timeout}s)")
 
-          start_time = Time.now
-          message_buffer = [] # Buffer for holding mismatched messages
-          loop do
-            # Check if the connection died before waiting/reading
-            raise ConnectionError, "Connection lost while waiting for response ID #{request_id}" unless connected?
+           start_time = Time.now
+           message_buffer = []
+           loop do
+              # Check if the low-level connection died
+              raise ConnectionError, "Connection lost while waiting for response ID #{request_id}" unless @connection&.connected?
 
-            # --- Check buffer first ---
-            found_in_buffer = false
-            message_buffer.reject! do |buffered_message|
-              if buffered_message[:id] == request_id
-                ADK.logger.debug("Found matching response for ID #{request_id} in buffer")
-                return buffered_message # Found it!
-              end
-              # Keep messages in buffer if they didn't match (no !found_in_buffer needed here)
-              false # Keep all non-matching messages
-            end
-            # --- End Check buffer ---
+             # Check buffer first
+             message_buffer.reject! do |buffered_message|
+               if buffered_message[:id] == request_id
+                 ADK.logger.debug("Found matching response for ID #{request_id} in buffer")
+                 return buffered_message
+               end
+               false # Keep non-matching messages
+             end
 
-            # --- Calculate remaining timeout --- 
-            elapsed_time = Time.now - start_time
-            remaining_time = timeout - elapsed_time
-            if remaining_time <= 0
-              @last_error = "MCP Client timeout waiting for response ID #{request_id}"
-              ADK.logger.error(@last_error)
-              return nil # Timeout occurred
-            end
-            # --- End Calculate remaining timeout ---
+             # Calculate remaining timeout
+             elapsed_time = Time.now - start_time
+             remaining_time = timeout - elapsed_time
+             if remaining_time <= 0
+               @last_error = "MCP Client timeout waiting for response ID #{request_id}"
+               ADK.logger.error(@last_error)
+               return nil # Timeout occurred
+             end
 
-            # Read the next message using the remaining timeout
-            # Let read_message handle the blocking/waiting
-            ADK.logger.debug("Calling read_message with timeout: #{remaining_time.round(3)}s")
-            message = @connection.read_message(remaining_time)
+             # Read the next message using the remaining timeout
+             ADK.logger.debug("Calling read_message with timeout: #{remaining_time.round(3)}s")
+             message = @connection.read_message(remaining_time)
 
-            if message
-              Mcp.logger.debug("[Client send_request_and_wait] Received message: #{message.inspect} while waiting for ID #{request_id}")
-              # Check if it's the response we're waiting for
-              if message[:id] == request_id
-                ADK.logger.debug("Received matching response for ID #{request_id}")
-                return message
-              elsif message[:id] # It's a response for a different request
-                ADK.logger.warn("Received unexpected response ID #{message[:id]} while waiting for #{request_id}. Buffering.")
-                message_buffer << message # Add to buffer
-              else # It's a notification or malformed
-                ADK.logger.debug("Received notification or non-response message while waiting for ID #{request_id}: #{message.inspect}")
-                # Ignore/discard notifications received while waiting for a specific response
-              end
-            else
-              # read_message returned nil, meaning its internal timeout expired.
-              # This implies the overall timeout for this request has effectively been reached.
-              @last_error = "MCP Client timeout waiting for response ID #{request_id} (read_message returned nil)"
-              ADK.logger.error(@last_error)
-              return nil # Timeout occurred
-            end
+             if message
+               ADK.logger.debug("[Client send_request_and_wait] Received message: #{message.inspect} while waiting for ID #{request_id}")
+               if message[:id] == request_id
+                 ADK.logger.debug("Received matching response for ID #{request_id}")
+                 return message
+               elsif message[:id]
+                 ADK.logger.warn("Received unexpected response ID #{message[:id]} while waiting for #{request_id}. Buffering.")
+                 message_buffer << message
+               else
+                 ADK.logger.debug("Received notification or non-response message while waiting for ID #{request_id}: #{message.inspect}")
+               end
+             else
+               # read_message returned nil, indicating timeout within read_message itself
+               @last_error = "MCP Client timeout waiting for response ID #{request_id} (read_message returned nil)"
+               ADK.logger.error(@last_error)
+               return nil
+             end
+           end
+         ensure
+           @pending_requests.delete(request_id) # Clear pending status
+         end
+      end # --- End send_request_and_wait ---
 
-            # No explicit sleep needed here, loop continues if message was buffered
-          end
-        ensure
-          @pending_requests.delete(request_id) # Clear pending status
-        end
-      end
-    end
-  end
-end
+    end # End Client class
+  end # End Mcp module
+end # End ADK module
