@@ -27,6 +27,8 @@ require 'adk/mcp' # Ensure MCP modules are loaded
 # Configure ADK logger
 ENV['ADK_LOG_LEVEL'] = 'DEBUG'
 #ADK.configure { |c| c.log_level = Logger::FATAL }
+dirname = File.expand_path(File.dirname(File.dirname(__FILE__)))
+  
 
 # --- 1. Define a Native ADK Tool (Optional) ---
 class NativeEchoTool < ADK::Tool
@@ -51,9 +53,10 @@ mcp_server_config = {
   type: :stdio,
   command: 'npx', # Command to start the server
   args: [         # Arguments for the command
+  '--',
     '@modelcontextprotocol/server-filesystem',
     #'--stdio',
-     '/tmp/mcp_fs_test_dir' # <<< IMPORTANT: Change this to a real, accessible directory!
+     dirname # <<< IMPORTANT: Change this to a real, accessible directory!
     # Create this directory before running: mkdir /tmp/mcp_fs_test_dir
   ]
 }
@@ -95,7 +98,7 @@ begin
 
   # Create a dummy file for the filesystem tool to read
   # Ensure the directory matches the one in mcp_server_config[:args]
-  dummy_file_path = '/tmp/mcp_fs_test_dir/hello.txt'
+  dummy_file_path = "#{dirname}/hello.txt"
   begin
     File.write(dummy_file_path, "Hello from ADK client example!")
     puts "Created dummy file: #{dummy_file_path}"
@@ -105,7 +108,7 @@ begin
   end
 
   # Input asking to use a tool likely provided by the filesystem server
-  user_input = "Read the content of the file named 'hello.txt' in the directory /tmp/mcp_fs_test_dir using the filesystem tool."
+  user_input = "Read the content of the file named 'hello.txt' in #{dirname} using the filesystem tool."
   puts "User Input: #{user_input}"
 
   final_event = my_agent.run_task(

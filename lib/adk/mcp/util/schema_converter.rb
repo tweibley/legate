@@ -38,7 +38,9 @@ module ADK
             schema_type = schema['type'] || schema[:type]
             # Build the inner parameter definition hash
             adk_param_def = {
-              required: required_set.include?(name),
+              # ---> FIX: Check string name in required_set <--- 
+              required: required_set.include?(name.to_s),
+              # <------------------------------------------->
               # Use string or symbol key for description
               description: schema['description'] || schema[:description] || ''
             }
