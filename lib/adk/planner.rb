@@ -59,7 +59,7 @@ module ADK
       prompt = build_multi_step_gemini_prompt(task, available_tools_prompt_string)
 
       logger.info("Sending multi-step planning request to Gemini (#{@model_name}) for task: #{task}")
-      # logger.debug("Gemini Prompt:\n#{prompt}") # Uncomment for deep debugging
+      logger.debug("Gemini Prompt:\n#{prompt}") # Uncomment for deep debugging
 
       begin
         response = @client.generate_content(

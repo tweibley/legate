@@ -37,13 +37,8 @@
               .message-header
                 p Agent (#{@view_agent_data[:name]})
               .message-body
-                / Indent the logic *under* message-body
-                - if is_complex_content
-                  / Use inspect for complex historical data for simplicity
-                  pre style="white-space: pre-wrap; word-break: break-all;" = agent_response_content.inspect
-                - else
-                  / Render simple string content directly
-                  pre style="white-space: pre-wrap; word-break: break-all;" = agent_response_content.to_s
+                / --- Call helper to format historical content ---
+                pre style="white-space: pre-wrap; word-break: break-all;" = format_historical_agent_content(agent_response_content)
           - else
             / --- Optional: Tool Request/Result Rendering ---
       - else
@@ -59,8 +54,10 @@
                  hx-indicator="#send-button-indicator"
                  _="on htmx:afterRequest reset()" )
       .field.has-addons
-        .control.is-expanded
-          textarea.textarea#chat-input(name="message" placeholder="Enter your message..." required=true autofocus rows="1" style="resize: vertical; min-height: 40px;" disabled=(!@view_agent_data[:running]))
+        .control.is-expanded style="position: relative;"
+          input.input#chat-input(type="text" name="message" placeholder="Enter your message..." required=true autofocus disabled=(!@view_agent_data[:running]))
+          span.icon.is-small.is-right.htmx-indicator style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;"
+            i.fas.fa-spinner.fa-spin
         .control
           button.button.is-info#send-button(type="submit" disabled=(!@view_agent_data[:running]))
             span Send

@@ -58,6 +58,9 @@ div(id="agent-tools-display" hx-swap="innerHTML")
   / --- Pass @view_agent_data and @configured_tool_info as locals ---
   == slim :_display_agent_tools, locals: { agent_data: @view_agent_data, configured_tools: @configured_tool_info }
 
+/ Include the MCP display partial, passing the agent data AND the mcp_tool_results
+== slim :_display_agent_mcp, locals: { agent_data: @view_agent_data, mcp_tool_results: @mcp_tool_results }
+
 / Link back to the main agents list
 .mt-4
   a.button(href="/agents") ← Back to Agents List

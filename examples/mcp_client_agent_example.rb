@@ -49,7 +49,7 @@ end
 # This example assumes the filesystem server.
 # Make sure the directory path exists and is accessible!
 mcp_server_config = {
-  type: :stdio,
+  type: 'stdio',
   command: 'npx', # Command to start the server
   args: [         # Arguments for the command
     '--',

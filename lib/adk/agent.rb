@@ -456,16 +456,26 @@ module ADK
     # Connects to all configured MCP servers.
     def connect_mcp_servers
       @mcp_servers_config.each do |config|
-        ADK.logger.info("Attempting to connect to MCP server: #{config.inspect}")
+        # Transform keys to symbols for the client
+        symbolized_config = config.transform_keys(&:to_sym)
+        ADK.logger.info("Attempting to connect to MCP server: #{symbolized_config.inspect}")
         begin
-          # --- Add check for :sse type --- >
-          unless [:stdio, :sse].include?(config[:type])
-            ADK.logger.error("Unsupported MCP server type specified: #{config[:type]}. Skipping configuration: #{config.inspect}")
+          # --- FIXED: Check using STRING key 'type' --- >
+          unless ['stdio', 'sse'].include?(symbolized_config[:type])
+            # --- FIXED: Log the actual value found using string key ---\
+            ADK.logger.error("Unsupported MCP server type specified: #{symbolized_config[:type].inspect}. Skipping configuration: #{symbolized_config.inspect}")
             next # Skip to the next server config
           end
           # <-----------------------------
 
-          client = ADK::Mcp::Client.new(config)
+          # --- NEW: Explicitly convert known string type values to symbols ---
+          if symbolized_config[:type] == "stdio"
+            symbolized_config[:type] = :stdio
+          elsif symbolized_config[:type] == "sse"
+            symbolized_config[:type] = :sse
+          end
+          # Pass the modified hash
+          client = ADK::Mcp::Client.new(symbolized_config)
           client.connect # This performs handshake and gets capabilities
           @mcp_clients << client
           discover_and_register_mcp_tools(client)

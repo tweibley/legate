@@ -29,6 +29,15 @@
             / Optionally add an option for custom input if needed
             / option(value="") Other (Specify if not listed)
 
+    / --- Add this section for MCP Server Config ---
+    .field
+      label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
+      .control
+        / Textarea for entering JSON array
+        textarea.textarea#mcp_servers_json name="mcp_servers_json" rows="4" placeholder='[{"type": "stdio", "command": "...", "args": ["..."]}]'
+        p.help 
+          | Enter a JSON array of MCP server config objects (e.g., <code>[{"type": "stdio", "command": "npx", "args": ["@mcp/server", "/path/to/dir"]}]</code>). Leave empty if none.
+
     / --- Tool Selection ---
     .field
       label.label Tools
