@@ -108,7 +108,8 @@ begin
   end
 
   # Input asking to use a tool likely provided by the filesystem server
-  user_input = "Read the content of the file named 'hello.txt' in #{dirname} using the filesystem tool."
+  #user_input = "Read the content of the file named 'hello.txt' in #{dirname} using the filesystem tool."
+  user_input = "What are the contents of hello.txt in #{dirname}?"
   puts "User Input: #{user_input}"
 
   final_event = my_agent.run_task(
@@ -126,6 +127,9 @@ rescue => e
   puts e.backtrace
 end
 puts "--------------------------\n"
+
+# Delete the dummy file after the task is complete
+File.delete(dummy_file_path) if File.exist?(dummy_file_path)
 
 #--- 6. Stop the Agent Runtime ---
 #This disconnects from the MCP server.
