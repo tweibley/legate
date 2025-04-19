@@ -47,12 +47,13 @@ module ADK
           self.mcp_tool_name = mcp_name
           self.mcp_input_schema = mcp_input_schema
 
-          # Define ADK metadata for this wrapped tool
-          define_metadata do
-            tool_name mcp_name.to_sym
-            description mcp_description
-            parameters adk_params
-          end
+          # Define ADK metadata for this wrapped tool using keyword arguments
+          Mcp.logger.debug("Defining metadata for wrapper: Name='#{mcp_name.inspect}', Desc='#{mcp_description.inspect}', Params='#{adk_params.inspect}'")
+          define_metadata(
+            name: mcp_name.to_sym,
+            description: mcp_description,
+            parameters: adk_params
+          )
         end
 
         Mcp.logger.info("Created ADK Tool wrapper for MCP tool: '#{mcp_name}'")

@@ -86,43 +86,43 @@ ADK.logger.info("Full metadata: #{my_agent.available_tools_metadata.inspect}")
 # Uncomment this section to try running a task.
 # Requires setting up a session service and ensuring the external server
 # provides the tool mentioned in the user_input (e.g., `filesystem/readFile`).
-#
-# puts "\n--- Running Task Example ---"
-# begin
-#   session_service = ADK::SessionService::InMemory.new
-#   session = session_service.create_session(app_name: 'mcp_client_test', user_id: 'test_user')
-#   puts "Created session: #{session.id}"
 
-#   # Create a dummy file for the filesystem tool to read
-#   # Ensure the directory matches the one in mcp_server_config[:args]
-#   dummy_file_path = '/tmp/mcp_fs_test_dir/hello.txt'
-#   begin
-#     File.write(dummy_file_path, "Hello from ADK client example!")
-#     puts "Created dummy file: #{dummy_file_path}"
-#   rescue => e
-#     puts "Warning: Could not create dummy file '#{dummy_file_path}': #{e.message}"
-#     puts "Filesystem tool example might fail."
-#   end
+puts "\n--- Running Task Example ---"
+begin
+  session_service = ADK::SessionService::InMemory.new
+  session = session_service.create_session(app_name: 'mcp_client_test', user_id: 'test_user')
+  puts "Created session: #{session.id}"
 
-#   # Input asking to use a tool likely provided by the filesystem server
-#   user_input = "Read the content of the file named 'hello.txt' using the filesystem tool."
-#   puts "User Input: #{user_input}"
+  # Create a dummy file for the filesystem tool to read
+  # Ensure the directory matches the one in mcp_server_config[:args]
+  dummy_file_path = '/tmp/mcp_fs_test_dir/hello.txt'
+  begin
+    File.write(dummy_file_path, "Hello from ADK client example!")
+    puts "Created dummy file: #{dummy_file_path}"
+  rescue => e
+    puts "Warning: Could not create dummy file '#{dummy_file_path}': #{e.message}"
+    puts "Filesystem tool example might fail."
+  end
 
-#   final_event = my_agent.run_task(
-#     session_id: session.id,
-#     user_input: user_input,
-#     session_service: session_service
-#   )
+  # Input asking to use a tool likely provided by the filesystem server
+  user_input = "Read the content of the file named 'hello.txt' in the directory /tmp/mcp_fs_test_dir using the filesystem tool."
+  puts "User Input: #{user_input}"
 
-#   puts "Final Agent Event:"
-#   require 'pp' # Pretty print
-#   pp final_event
+  final_event = my_agent.run_task(
+    session_id: session.id,
+    user_input: user_input,
+    session_service: session_service
+  )
 
-# rescue => e
-#   puts "Error running task: #{e.message}"
-#   puts e.backtrace
-# end
-# puts "--------------------------\n"
+  puts "Final Agent Event:"
+  require 'pp' # Pretty print
+  pp final_event
+
+rescue => e
+  puts "Error running task: #{e.message}"
+  puts e.backtrace
+end
+puts "--------------------------\n"
 
 #--- 6. Stop the Agent Runtime ---
 #This disconnects from the MCP server.

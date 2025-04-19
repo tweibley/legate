@@ -18,41 +18,53 @@ module ADK
         # @param json_schema_required_array [Array<String>] The 'required' array from MCP inputSchema.
         # @return [Hash] ADK parameters hash { name: { type:, required:, description: } }.
         def self.json_to_adk(json_schema_properties, json_schema_required_array = [])
+          # Return empty hash if input is invalid or not a Hash
           return {} unless json_schema_properties.is_a?(Hash)
 
-          adk_params = {}
+          adk_params = {} # Reverted: Store a hash of param hashes
           required_set = Set.new(json_schema_required_array || [])
 
           json_schema_properties.each do |name, schema|
-            unless schema.is_a?(Hash) && schema.key?('type')
-              ADK.logger.warn("Skipping MCP property '#{name}': Invalid schema format or missing type.")
+            # ---> MODIFIED Check: Allow string or symbol key for type <--- 
+            is_valid_schema = schema.is_a?(Hash) && (schema.key?('type') || schema.key?(:type))
+            unless is_valid_schema
+            # <-------------------------------------------------------->
+              ADK.logger.warn("Skipping MCP property '#{name}': Invalid schema format or missing type. Schema: #{schema.inspect}")
               next
             end
 
             param_name = name.to_sym
+            # Determine the type using either key
+            schema_type = schema['type'] || schema[:type]
+            # Build the inner parameter definition hash
             adk_param_def = {
               required: required_set.include?(name),
-              description: schema['description'] || ''
+              # Use string or symbol key for description
+              description: schema['description'] || schema[:description] || ''
             }
 
-            case schema['type']
+            # Determine and add the type to the inner hash based on schema_type
+            case schema_type
             when 'string'
               adk_param_def[:type] = :string
             when 'integer'
               adk_param_def[:type] = :integer
-            when 'number' # JSON Schema 'number' maps to Ruby's Float/Numeric
+            when 'number'
               adk_param_def[:type] = :numeric
             when 'boolean'
               adk_param_def[:type] = :boolean
+            when 'array'
+              adk_param_def[:type] = :array
             else
-              ADK.logger.warn("MCP property '#{name}': Unsupported JSON Schema type '#{schema['type']}'. Skipping.")
+              ADK.logger.warn("MCP property '#{name}': Unsupported JSON Schema type '#{schema_type}'. Skipping.")
               next
             end
 
+            # Add the inner hash to the main hash, keyed by param_name
             adk_params[param_name] = adk_param_def
           end
 
-          adk_params
+          adk_params # Return the hash of parameter hashes
         end
 
         # Converts ADK parameters hash into a Proc suitable for Dry::Schema's definition block.

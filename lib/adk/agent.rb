@@ -470,8 +470,10 @@ module ADK
           client.connect # This performs handshake and gets capabilities
           @mcp_clients << client
           discover_and_register_mcp_tools(client)
-        rescue ADK::Mcp::ConnectionError, ArgumentError => e
-          ADK.logger.error("Failed to connect or initialize MCP client for config #{config.inspect}: #{e.message}")
+        rescue ADK::Mcp::ConnectionError, ADK::Mcp::ProtocolError => e # More specific MCP errors
+          ADK.logger.error("Failed to connect or handshake with MCP server #{config.inspect}: #{e.message}")
+        rescue ADK::Mcp::McpError => e # Catch specific MCP errors (typo fix: Error -> McpError)
+          ADK.logger.error("MCP-related error connecting to server #{config.inspect}: #{e.message}")
         rescue StandardError => e
           ADK.logger.error("Unexpected error connecting to MCP server #{config.inspect}: #{e.class} - #{e.message}")
         end
@@ -503,7 +505,7 @@ module ADK
           # Pass the agent's specific registry instance (@tool_registry)
           ADK::Mcp::ToolWrapper.from_mcp_schema(schema, client, @tool_registry)
         end
-      rescue ADK::Mcp::Error => e
+      rescue ADK::Mcp::McpError => e # Corrected typo: Error -> McpError
         ADK.logger.error("Failed to list tools from MCP server: #{e.message}")
       rescue StandardError => e
         ADK.logger.error("Unexpected error discovering MCP tools: #{e.class} - #{e.message}")
