@@ -1,0 +1,80 @@
+Agent Creation/Editing:
+Create agents with various combinations of native and MCP tools.
+Edit tools, models, fallback modes, and MCP configurations for running agents and verify they restart automatically and the changes are applied.
+Edit the same fields for stopped agents and verify the changes persist correctly when the agent is started later.
+
+Tool Execution:
+Initiate chats that require specific tools (native vs. MCP) and check if the planner selects and uses them correctly.
+Test the "Execute Task" functionality with valid JSON for different tools.
+
+Error Handling:
+Try saving invalid MCP JSON (both when creating and editing) and verify the UI shows an error.
+Configure an MCP server that is unreachable or invalid and check if the tool table shows the appropriate error message for that server.
+Send chat messages that the agent cannot handle with its configured tools and verify the expected fallback behavior (error message or echo) occurs.
+
+
+
+
+Okay, that's an interesting idea! Using Gemini itself to generate example inputs based on the agent's configuration could be quite helpful.
+Here's a breakdown of the necessary changes and a plan to implement this:
+Understanding the Goal:
+We want to add a button/link near the "Execute Task (JSON Input)" area. When clicked, it should:
+Send a request to the backend with the current agent's name.
+The backend will determine the agent's configured tools and their parameters.
+The backend will use this tool information to prompt a Gemini model to generate one or more example JSON inputs demonstrating how to use those tools (specifically focusing on the parameters).
+The generated example JSON will be sent back to the frontend.
+The frontend JavaScript will update the "Execute Task" CodeMirror editor with the generated example.
+Research / Code Analysis:
+Tool Metadata: We already have the logic in GET /agents/:name (app.rb) to fetch configured tool names from Redis and gather detailed metadata (description, parameters, source) for both native and MCP tools into the all_available_tools_metadata_map. We can reuse this heavily.
+Gemini API Client: The application already uses Gemini for planning (via Agent and Planner classes). We need to find how the client is initialized and make calls (likely using a library like google-cloud-ai_platform or google-generative_ai configured via environment variables). We'll need to leverage this existing mechanism. Let's assume an appropriate client (gemini_client) can be accessed or created.
+Execute Task Input: Currently, the POST /agents/:name/execute endpoint expects JSON like {"task": "user description"} and passes the description to agent.run_task. Generating example parameter JSON won't directly fit this flow. The generated JSON will serve as an example for the user to adapt or understand the structure, rather than being directly executable by the current "Execute Task" button. We'll simply populate the editor with the example.
+Plan:
+Phase 1: Backend Changes (in lib/adk/web/app.rb)
+New Route:
+Define a new route: GET /agents/:name/generate_example_task.
+Agent Config & Tool Metadata:
+Inside the route handler, get name from params.
+Fetch agent configuration from Redis (especially the tools field).
+Adapt/Reuse Logic: Implement logic similar to the start of GET /agents/:name to:
+Parse the configured tool names (string array from Redis) into symbols.
+Fetch all available native tool metadata (GlobalToolManager.list_all_tools).
+Fetch all available MCP tool metadata (using fetch_mcp_tools and SchemaConverter).
+Create the combined map (all_available_tools_metadata_map).
+Filter this map using the agent's configured_tool_names to get a list/hash (configured_tools_metadata) containing only the metadata for tools this agent actually has. Handle the case where there are no configured tools.
+Gemini Prompt Construction:
+Create a detailed prompt string. It should instruct Gemini to generate example JSON parameter structures for one or more tools from the provided list.
+Input for Prompt: Include the names, descriptions, and crucially, the parameter details (parameters array: name, type, required) from configured_tools_metadata.
+Instructions for Gemini: Specify the desired output format clearly (e.g., "Generate a JSON object representing example parameters for the 'calculator' tool. Only return the raw JSON string." or "Generate a JSON array containing example parameter objects for a few of the following tools... Return only the raw JSON string."). Experimentation might be needed here.
+Example Prompt Snippet:
+Apply to _edit_agent_...
+]
+Gemini API Call:
+Instantiate or retrieve the application's Gemini client.
+Send the constructed prompt to the Gemini API (e.g., using gemini_client.generate_content).
+Handle potential API errors gracefully (e.g., network issues, authentication problems).
+Process Response & Return:
+Extract the generated text content (the expected JSON string) from the Gemini API response.
+Crucially: Add validation. Attempt to parse the response text as JSON (JSON.parse). If it fails, return an error JSON object (e.g., {'error': 'Failed to generate valid JSON example.'}).
+If parsing succeeds, return the validated JSON string with content_type :json and a 200 OK status.
+Phase 2: Frontend Changes (in lib/adk/web/views/agent.slim)
+Add Button:
+Add a new button next to the "Execute Task" controls, e.g., <button type="button" class="button is-info is-light" id="generate-example-task-btn">Generate Example</button>.
+HTMX Trigger:
+Add HTMX attributes to this button:
+hx-get="/agents/#{@view_agent_data[:name]}/generate_example_task"
+hx-indicator="#task-spinner" (reuse existing spinner)
+hx-swap="none" (we will handle the response with JavaScript)
+JavaScript Handling (Update layout.slim or add inline script):
+We need JavaScript to listen for the HTMX response from the "Generate Example" button. Using the global initCodeMirrorEditor function might be tricky here as it's designed for initialization, not updating.
+Recommended: Add a listener in the layout script (or an inline script in agent.slim) for the htmx:afterRequest event specifically triggered by #generate-example-task-btn.
+Event Listener Logic:
+Check if the request was successful (status 200).
+Parse the event.detail.xhr.responseText as JSON.
+If valid JSON and no error key:
+Get the CodeMirror instance for #task-json-editor (it should already be initialized).
+Use cm.setValue(JSON.stringify(parsedResponse, null, 2)) to update the editor content with the nicely formatted example JSON.
+If the response contains an error key or isn't valid JSON, display an alert or update a status area indicating the failure.
+Handle potential XHR errors.
+Summary:
+This involves adding a new backend route that orchestrates fetching tool data, prompting Gemini, and returning JSON, plus frontend changes to trigger this route and update the CodeMirror editor with the result. The core challenge will be crafting an effective Gemini prompt and reliably handling the API response.
+Does this plan sound good? We can start by implementing the backend route first.
