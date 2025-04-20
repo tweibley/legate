@@ -58,14 +58,57 @@ html
         }
       }
 
-      // Listen for htmx:load event on the body
+      // Listen for htmx:load event on the body (for MCP editor)
       document.body.addEventListener('htmx:load', function(event) {
-        // Check if the loaded element (event.target) contains the editor
-        var editorElement = event.target.querySelector('#mcp-json-editor');
-        if (editorElement) {
+        // Check if the loaded element (event.target) contains the mcp editor
+        var mcpEditorElement = event.target.querySelector('#mcp-json-editor');
+        if (mcpEditorElement) {
           console.log("htmx:load event detected containing #mcp-json-editor. Triggering init.");
           initCodeMirrorEditor('mcp-json-editor');
         }
+      });
+
+      // Listen for htmx:afterRequest for the generate example button
+      document.body.addEventListener('htmx:afterRequest', function(event) {
+        // Check if the event was triggered by our button
+        if (event.detail.requestConfig.elt.id === 'generate-example-task-btn') {
+          console.log("htmx:afterRequest event from generate button.");
+          if (event.detail.successful) {
+            // --- Ensure editor is initialized FIRST ---
+            initCodeMirrorEditor('task-json-editor'); 
+            // ----------------------------------------
+            try {
+              var responseJson = event.detail.xhr.responseText;
+              var parsedResponse = JSON.parse(responseJson);
+              if (parsedResponse && !parsedResponse.error) {
+                var taskEditorInstance = document.getElementById('task-json-editor')?.cmInstance;
+                if (taskEditorInstance) {
+                   // Use responseJson directly as it's already pretty-printed by the server
+                   taskEditorInstance.setValue(responseJson); 
+                   console.log("Task editor updated with generated example.");
+                } else {
+                   console.error("Task editor CodeMirror instance not found.");
+                   alert("Could not find the task editor to update.");
+                }
+              } else {
+                console.error("Error received from generate example endpoint:", parsedResponse?.error);
+                alert("Failed to generate example: " + (parsedResponse?.error || "Unknown error"));
+              }
+            } catch (e) {
+              console.error("Error parsing generate example response:", e);
+              alert("Failed to parse example response from server.");
+            }
+          } else {
+            console.error("Generate example request failed. Status:", event.detail.xhr.status);
+            alert("Failed to generate example. Server returned status " + event.detail.xhr.status);
+          }
+        }
+      });
+
+      // Initialize Task Editor on initial page load
+      document.addEventListener('DOMContentLoaded', function() {
+         console.log("LAYOUT SCRIPT: DOMContentLoaded fired. Initializing task editor...");
+         initCodeMirrorEditor('task-json-editor');
       });
 
     / --- Custom Scripts (if any) ---

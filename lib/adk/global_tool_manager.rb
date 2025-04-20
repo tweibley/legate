@@ -43,7 +43,8 @@ module ADK
         metadata = klass.tool_metadata
         {
           name: metadata[:name] || name_sym, # Fallback, though name should always be present if registered
-          description: metadata[:description] || "[No description provided]"
+          description: metadata[:description] || "[No description provided]",
+          parameters: metadata[:parameters] || []
         }
       end.sort_by { |t| t[:name].to_s }
     end

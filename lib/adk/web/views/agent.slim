@@ -38,12 +38,17 @@
       label.label Task (JSON Format: {"task": "your task description"})
       .control
         textarea.textarea(id="task-json-editor" name="task_json" placeholder='{"task": "Describe your task here..."}' required=true rows="3")
-      / --- Script to initialize CodeMirror for this specific textarea ---
-      javascript:
-        window.onload = function() {
-          initCodeMirrorEditor('task-json-editor');
-        }
     .field.is-grouped.is-grouped-right
+      .control
+        / --- Generate Example Button ---
+        button.button.is-info.is-light( type="button" 
+                                      id="generate-example-task-btn" 
+                                      hx-get="/agents/#{@view_agent_data[:name]}/generate_example_task" 
+                                      hx-indicator="#task-spinner" 
+                                      hx-swap="none" )
+          span.icon.is-small
+            i.fas.fa-wand-magic-sparkles
+          span Generate Example
       .control
         span.icon.is-small.htmx-indicator#task-spinner style="margin-right: 8px; vertical-align: middle;"
           i.fas.fa-spinner.fa-spin

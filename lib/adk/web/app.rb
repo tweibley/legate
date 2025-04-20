@@ -14,6 +14,7 @@ require 'redis'
 require 'securerandom' # For session secret
 require 'sidekiq/api'
 require_relative '../mcp/util/schema_converter' # <-- ADDED: For converting MCP tool schemas
+require 'gemini-ai' # Added for Gemini API integration
 
 # --- Load ADK Components ---
 # Load dependencies in a sensible order
@@ -1414,6 +1415,194 @@ module ADK
         @agents.delete(name) # Clean up if partially added
         nil # Failed to start
       end
+
+      # --- NEW ROUTE: Generate Example Task JSON ---
+      get '/agents/:name/generate_example_task' do |name|
+        content_type :json # Default response type
+        logger.info("Received request to generate example task for agent: #{name}")
+
+        # --- 1. Fetch Agent Config & Tools ---
+        halt 503, json(error: "Redis unavailable.") unless @redis
+        key = agent_redis_key(name)
+        # --- Fetch model, tools, and MCP config ---
+        fields_to_fetch = ['model', 'tools', 'mcp_servers_json'] 
+        redis_values = @redis.hmget(key, *fields_to_fetch)
+        agent_model = redis_values[0] || ADK::Agent::DEFAULT_MODEL
+        tools_json_string = redis_values[1]
+        mcp_servers_json = redis_values[2] || '[]'
+
+        # --- Check if agent definition exists ---
+        unless tools_json_string || redis_values[0] # Check if at least model or tools exist
+          halt 404, json(error: "Agent definition not found for '#{name}'")
+        end
+
+        configured_tool_names = []
+        begin
+          configured_tool_names = JSON.parse(tools_json_string).map(&:to_sym) if tools_json_string && !tools_json_string.empty?
+        rescue JSON::ParserError => e
+          logger.error("Invalid JSON in configured tools for agent '#{name}': #{e.message}")
+          # Continue, maybe it has MCP tools only
+        end
+
+        if configured_tool_names.empty? && mcp_servers_json == '[]'
+          return json(example: { task: "Agent '#{name}' has no tools configured. Cannot generate example." })
+        end
+
+        # --- 2. Get All Available Tool Metadata (Native + MCP) ---
+        # Native
+        all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map do |tool_meta|
+          tool_meta.merge(source: :native, source_detail: "Native")
+        end
+
+        # MCP
+        mcp_configs = []
+        begin
+          mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
+        rescue JSON::ParserError => e
+          logger.error("Invalid JSON in mcp_servers_json for agent '#{name}' (generate task): #{e.message}")
+        end
+        mcp_tool_results = fetch_mcp_tools(mcp_configs)
+
+        all_mcp_tools_metadata = []
+        mcp_tool_results.each do |result|
+          next unless result[:status] == :success && result[:tools]
+          result[:tools].each do |mcp_tool_hash|
+            parameters = []
+            begin
+              input_schema = mcp_tool_hash[:inputSchema]
+              if input_schema && input_schema.is_a?(Hash)
+                properties = input_schema['properties'] || {}
+                required = input_schema['required'] || []
+                parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required)
+              end
+            rescue => e
+              logger.error("Error converting MCP schema for tool '#{mcp_tool_hash[:name]}' (generate task): #{e.message}")
+            end
+            all_mcp_tools_metadata << {
+              name: mcp_tool_hash[:name].to_sym,
+              description: mcp_tool_hash[:description] || '',
+              parameters: parameters,
+              source: :mcp,
+              source_detail: "MCP (#{result[:server]})"
+            }
+          end
+        end
+
+        # Combine
+        all_available_tools_metadata_map = {}
+        (all_native_tools_metadata + all_mcp_tools_metadata).each do |tool_meta|
+          all_available_tools_metadata_map[tool_meta[:name]] ||= tool_meta
+        end
+
+        # --- 3. Filter by Configured Tools ---
+        configured_tools_metadata = configured_tool_names.map do |tool_name|
+          all_available_tools_metadata_map[tool_name]
+        end.compact
+
+        # Also add any *selected* MCP tools not found in Global Manager
+        mcp_configured_tools = all_mcp_tools_metadata.select { |mcp_meta| configured_tool_names.include?(mcp_meta[:name]) }
+        configured_tools_metadata.concat(mcp_configured_tools).uniq! { |t| t[:name] }
+
+        if configured_tools_metadata.empty?
+           return json(example: { task: "Agent '#{name}' has tools configured, but metadata couldn't be retrieved. Cannot generate example." })
+        end
+        logger.debug("Metadata for example generation: #{configured_tools_metadata.inspect}")
+
+        # --- 4. Construct Prompt for Gemini ---
+        tool_details = configured_tools_metadata.map do |metadata|
+          # --- Check if parameters exist and are an array before mapping ---
+          params_string = if metadata[:parameters].is_a?(Array) && !metadata[:parameters].empty?
+                          metadata[:parameters].map { |p| "#{p[:name]} (#{p[:type]}, #{p[:required] ? 'required' : 'optional'})" }.join(', ')
+                        else
+                          'None'
+                        end
+          "- Tool: #{metadata[:name]}\n  Description: #{metadata[:description]}\n  Parameters: #{params_string}"
+        end.join("\n")
+
+        prompt = <<~PROMPT
+          Based on the following tools configured for an agent, generate a single, simple example JSON object representing a task that uses ONE of these tools. 
+
+          The JSON object MUST follow this exact structure: 
+          { "task": "A brief description of what the example task does", "parameters": { /* parameters for the chosen tool */ } }
+          
+          RANDOMLY Choose ONE tool from the list that has parameters (if possible) to demonstrate usage. Populate the "parameters" object with example values appropriate for the tool's parameter types and descriptions. If a tool has no parameters, the "parameters" object should be empty: {}. The "task" description should briefly explain the example.
+          
+          Return ONLY the raw JSON object string. Do not include any other text, explanations, markdown formatting like ```json, or anything else.
+
+          Available Tools:
+          ---
+          #{tool_details}
+          ---
+
+          Generate the example JSON object now:
+        PROMPT
+        logger.debug("Prompt for Gemini Example Generation:\n#{prompt}")
+
+        # --- 5. Call Gemini API ---
+        generated_json_string = nil
+        begin
+          api_key = ENV['GOOGLE_API_KEY']
+          unless api_key && !api_key.empty?
+            logger.error("GOOGLE_API_KEY not found. Cannot generate example.")
+            halt 503, json(error: "AI service API key not configured.")
+          end
+
+          # --- Use the fetched agent model --- 
+          logger.info("Using model '#{agent_model}' to generate example task.")
+
+          # Create a temporary client instance
+          temp_gemini_client = Gemini.new(
+            credentials: { service: 'generative-language-api', api_key: api_key },
+            options: { model: agent_model, server_sent_events: false }
+          )
+          
+          response = temp_gemini_client.generate_content(
+             { contents: [{ role: 'user', parts: { text: prompt } }] }
+          )
+          
+          generated_json_string = response.dig('candidates', 0, 'content', 'parts', 0, 'text')
+          
+          unless generated_json_string && !generated_json_string.strip.empty?
+             logger.error("Gemini response was empty or missing text content.")
+             halt 500, json(error: "AI service returned an empty response.")
+          end
+          logger.debug("Raw response from Gemini: #{generated_json_string}")
+          
+          # Clean potential markdown fences ( Gemini sometimes adds them anyway )
+          clean_json_string = generated_json_string.strip
+          if clean_json_string.start_with?('```json') && clean_json_string.end_with?('```')
+            clean_json_string = clean_json_string.delete_prefix('```json').delete_suffix('```').strip
+          elsif clean_json_string.start_with?('```') && clean_json_string.end_with?('```')
+             clean_json_string = clean_json_string.delete_prefix('```').delete_suffix('```').strip
+          end
+
+          # --- 6. Validate & Return Response ---
+          begin
+            parsed_json = JSON.parse(clean_json_string)
+            # Ensure it has the expected keys
+            unless parsed_json.is_a?(Hash) && parsed_json.key?('task') && parsed_json.key?('parameters')
+               raise JSON::ParserError, "Generated JSON missing required 'task' or 'parameters' keys."
+            end
+            # Return the validated, cleaned JSON string, pretty-formatted
+            return JSON.pretty_generate(parsed_json)
+          rescue JSON::ParserError => e
+            logger.error("Gemini generated invalid/unexpected JSON: #{e.message}. Cleaned Response: #{clean_json_string}")
+            halt 500, json(error: "Failed to generate valid JSON example from AI.")
+          end
+        # --- MODIFIED Rescue block ---
+        rescue StandardError => e # Catch other potential API or client errors
+          logger.error("Error calling Gemini API: #{e.class} - #{e.message}")
+          logger.error(e.backtrace.first(5).join("\n"))
+          # Provide a slightly more specific message if it looks like auth error
+          error_message = if e.message.downcase.include?('authenticat') || e.message.include?('API key')
+                          "AI service authentication failed. Check API key."
+                        else
+                          "Error communicating with AI service."
+                        end
+          halt 503, json(error: error_message)
+        end
+      end
+      # --- END NEW ROUTE ---
     end # End App class
   end # End Web module
 end # End ADK module

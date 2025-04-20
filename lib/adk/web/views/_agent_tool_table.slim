@@ -43,7 +43,7 @@
               span.tag class="#{source_tag_class} is-light" = tool_info[:source_detail]
             td= tool_info[:description]
             td
-              - if tool_info[:parameters] && !tool_info[:parameters].empty?
+              - if tool_info[:parameters].is_a?(Array) && !tool_info[:parameters].empty? && tool_info[:parameters].all? { |p| p.is_a?(Hash) }
                 ul.is-small style="margin-left: 1em; list-style-type: disc;"
                   - tool_info[:parameters].each do |param|
                     li
