@@ -54,7 +54,7 @@
     p.has-text-grey Task results will appear here.
 
 / --- Render the full Tool Table partial ---
-== slim :_agent_tool_table, locals: { agent_data: @view_agent_data, configured_tools: @configured_tool_info, mcp_tool_results: @mcp_tool_results }
+== slim :_agent_tool_table, locals: { agent_data: @view_agent_data, view_configured_tools: view_configured_tools, mcp_tool_results: mcp_tool_results }
 
 / Link back to the main agents list
 .mt-4

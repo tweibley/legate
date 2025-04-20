@@ -13,6 +13,7 @@ require 'rack/utils' # For escape_html
 require 'redis'
 require 'securerandom' # For session secret
 require 'sidekiq/api'
+require_relative '../mcp/util/schema_converter' # <-- ADDED: For converting MCP tool schemas
 
 # --- Load ADK Components ---
 # Load dependencies in a sensible order
@@ -486,91 +487,127 @@ module ADK
       get '/agents/:name' do |name|
         halt 503, "Redis unavailable." unless @redis
         key = agent_redis_key(name)
-        # --- Fetch fallback_mode AND mcp_servers_json along with other fields ---
         fields_to_fetch = ['description', 'tools', 'model', 'fallback_mode', 'mcp_servers_json']
         redis_agent_data = @redis.hmget(key, *fields_to_fetch)
-        # <--------------------------------------------------------------------->
         description = redis_agent_data[0]
         tools_json_string = redis_agent_data[1]
         loaded_model = redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL
-        fallback_mode = redis_agent_data[3] || 'error' # <-- Get fallback, default to 'error'
-        mcp_servers_json = redis_agent_data[4] || '[]' # <-- Get MCP JSON, default to '[]'
+        fallback_mode = redis_agent_data[3] || 'error'
+        mcp_servers_json = redis_agent_data[4] || '[]'
 
-        unless description then halt 404,
-                                     slim(:error_404,
-                                          locals: { title: "Agent Not Found",
-                                                    message: "Definition for '#{name}' not found." });
+        unless description
+          halt 404,
+               slim(:error_404, locals: { title: "Agent Not Found", message: "Definition for '#{name}' not found." })
         end
 
         is_running = @agents.key?(name)
         @view_agent_data = { name: name, description: description, running: is_running,
                              model: loaded_model, fallback_mode: fallback_mode,
                              mcp_servers_json: mcp_servers_json }
-        configured_tool_names_str = [];
-        begin tools_json_string && configured_tool_names_str = JSON.parse(tools_json_string) rescue []; end
 
-        # --- Parse MCP configs and Fetch MCP Tools ---
+        # --- Get Configured Tool Names ---
+        configured_tool_names = []
+        begin
+          configured_tool_names = JSON.parse(tools_json_string).map(&:to_sym) if tools_json_string && !tools_json_string.empty?
+        rescue JSON::ParserError => e
+          logger.error("Invalid JSON in configured tools for agent '#{name}': #{e.message}")
+        end
+        logger.debug("Agent '#{name}' configured tool names from Redis: #{configured_tool_names.inspect}")
+
+        # --- Get All Available Native Tool Metadata ---
+        all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map do |tool_meta|
+          tool_meta.merge(source: :native, source_detail: "Native")
+        end
+
+        # --- Fetch MCP Tools and Convert Parameters ---
         mcp_configs = []
         begin
           mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
         rescue JSON::ParserError => e
           logger.error("Invalid JSON in mcp_servers_json for agent '#{name}': #{e.message}")
-          # Optionally add a flash message or error indicator here
-          mcp_configs = [] # Prevent fetch attempt with invalid JSON
+          mcp_configs = []
         end
-        @mcp_tool_results = fetch_mcp_tools(mcp_configs) # Call the helper
-        # <------------------------------------------->
+        @mcp_tool_results = fetch_mcp_tools(mcp_configs) # Keep this for displaying errors
 
-        # Get NATIVE tool info from registry for configured tools
-        all_available_tools_list = ADK::GlobalToolManager.list_all_tools
-        @configured_tool_info = configured_tool_names_str.map { |tn|
-          all_available_tools_list.find { |t| t[:name].to_s == tn }
-        }.compact
-        logger.debug("Agent '#{name}' configured tool info: #{@configured_tool_info.inspect}")
+        all_mcp_tools_metadata = []
+        @mcp_tool_results.each do |result|
+          next unless result[:status] == :success && result[:tools]
 
-        if is_running
-          @agent = @agents[name]
-          @view_agent_data[:model] = @agent.model_name
-          # --- Get fallback mode from running agent instance if available ---
-          @view_agent_data[:fallback_mode] = @agent.fallback_mode.to_s if @agent.respond_to?(:fallback_mode)
-
-          # Ensure the live agent's tools are used for display if running
-          live_agent_tool_names = @agent.tools.map(&:name)
-          @configured_tool_info = live_agent_tool_names.map { |tn|
-            all_available_tools_list.find { |t| t[:name] == tn }
-          }.compact
-          logger.debug("Agent '#{name}' live tool info: #{@configured_tool_info.inspect}")
-        else
-          # Create a temporary agent instance just for displaying configured tools
-          # ---> Parse MCP configs for temp agent <---
-          temp_mcp_configs = []
-          begin
-            if mcp_servers_json && !mcp_servers_json.empty?
-              temp_mcp_configs = JSON.parse(mcp_servers_json)
+          result[:tools].each do |mcp_tool_hash|
+            parameters = []
+            begin
+              input_schema = mcp_tool_hash[:inputSchema]
+              if input_schema && input_schema.is_a?(Hash)
+                properties = input_schema['properties'] || {}
+                required = input_schema['required'] || []
+                parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required)
+              end
+            rescue => e
+              logger.error("Error converting MCP schema for tool '#{mcp_tool_hash[:name]}' in agent '#{name}' detail: #{e.message}")
             end
-          rescue JSON::ParserError => e
-            logger.error("Failed to parse mcp_servers_json for temp agent view '#{name}': #{e.message}")
-            temp_mcp_configs = [] # Ensure empty array on error
+            # Ensure name is a symbol for consistency
+            tool_name_sym = mcp_tool_hash[:name].to_sym
+            all_mcp_tools_metadata << {
+              name: tool_name_sym,
+              description: mcp_tool_hash[:description] || '',
+              parameters: parameters,
+              source: :mcp,
+              source_detail: "MCP (#{result[:server]})" # Include server source
+            }
           end
-          # <--------------------------------------->
-          # --- Pass fallback_mode and mcp_configs to temp agent initializer ---
-          temp_agent_for_view = ADK::Agent.new(name: name, description: description,
-                                               model_name: loaded_model, fallback_mode: fallback_mode.to_sym,
-                                               mcp_servers: temp_mcp_configs) # <-- Pass parsed configs
-          configured_tool_names_str.map(&:to_sym).each { |tool_name|
-            inst = ADK::GlobalToolManager.create_instance(tool_name);
-            if inst then temp_agent_for_view.add_tool(inst);
-            else logger.warn("Tool '#{tool_name}' not found for display."); end
-          }
-          # Also include implicitly added check_workflow_status if applicable
-          if temp_agent_for_view.tools.any? { |t| t.name == :check_workflow_status }
-            status_tool_info = all_available_tools_list.find { |t| t[:name] == :check_workflow_status }
-            @configured_tool_info << status_tool_info if status_tool_info && !@configured_tool_info.include?(status_tool_info)
-          end
-          @agent = temp_agent_for_view # For view, not in @agents
         end
-        # ---> Pass @mcp_tool_results to the view <---
-        slim :agent, locals: { mcp_tool_results: @mcp_tool_results }
+
+        # --- Combine All Available Tools (Prefer Native on Name Clash) ---
+        all_available_tools_metadata_map = {}
+        (all_native_tools_metadata + all_mcp_tools_metadata).each do |tool_meta|
+          # Native tools take precedence if name exists
+          all_available_tools_metadata_map[tool_meta[:name]] ||= tool_meta
+        end
+        logger.debug("Combined available tools map (native+mcp): #{all_available_tools_metadata_map.keys.inspect}")
+
+        # --- Filter Combined List by Configured Names ---
+        @view_configured_tools = configured_tool_names.map do |tool_name|
+          all_available_tools_metadata_map[tool_name]
+        end.compact # Remove nil entries if a configured tool wasn't found
+
+        # Add check_job_status tool if any configured tool is async (has check_workflow_status)
+        # Check *actual* tool objects if agent running, or rely on GlobalToolManager otherwise
+        should_add_status_tool = false
+        if is_running
+          agent_instance = @agents[name]
+          should_add_status_tool = agent_instance && agent_instance.tools.any? { |t|
+            t.respond_to?(:check_workflow_status)
+          }
+        else
+          # Check if any of the configured *native* tools are async based on GlobalToolManager
+          should_add_status_tool = @view_configured_tools.any? do |tool_meta|
+            tool_meta[:source] == :native && ADK::GlobalToolManager.find_class(tool_meta[:name])&.ancestors&.include?(ADK::Tools::BaseAsyncJobTool)
+          end
+          # Note: We currently cannot reliably detect if a *configured* MCP tool is async without starting the agent
+        end
+
+        if should_add_status_tool && !configured_tool_names.include?(:check_job_status)
+          status_tool_meta = all_available_tools_metadata_map[:check_job_status]
+          if status_tool_meta && !@view_configured_tools.any? { |t| t[:name] == :check_job_status }
+            @view_configured_tools << status_tool_meta
+            logger.debug("Implicitly added check_job_status tool to view for agent '#{name}'")
+          end
+        end
+
+        logger.debug("Final list of tools to display for agent '#{name}': #{@view_configured_tools.map { |t|
+          t[:name]
+        }.inspect}")
+
+        # Note: We removed the logic that created a temporary agent instance here,
+        # as we now derive the tool list directly from metadata and config.
+        # The @agent variable is only set if is_running is true.
+        @agent = @agents[name] if is_running
+
+        # Pass the filtered/processed list and the raw MCP results (for errors)
+        slim :agent, locals: {
+          view_configured_tools: @view_configured_tools,
+          mcp_tool_results: @mcp_tool_results # Still needed for error display
+        }
       end
 
       # --- Agent Inline Editing Routes ---
@@ -660,29 +697,36 @@ module ADK
 
         # Fetch all data needed by the _agent_tool_table partial
         fields_to_fetch = ['description', 'tools', 'model', 'fallback_mode', 'mcp_servers_json']
-        redis_agent_data = @redis.hmget(key, *fields_to_fetch)
+        redis_values = @redis.hmget(key, *fields_to_fetch)
+        # --- Create a hash from fetched data ---
+        agent_definition = Hash[fields_to_fetch.zip(redis_values)]
 
+        # --- Use the definition hash ---
         agent_data = {
           name: name,
-          description: redis_agent_data[0],
-          model: redis_agent_data[1] || ADK::Agent::DEFAULT_MODEL, # Add model
-          fallback_mode: redis_agent_data[3] || 'error',
-          mcp_servers_json: redis_agent_data[4] || '[]'
+          description: agent_definition['description'],
+          model: agent_definition['model'] || ADK::Agent::DEFAULT_MODEL,
+          fallback_mode: agent_definition['fallback_mode'] || 'error',
+          mcp_servers_json: agent_definition['mcp_servers_json'] || '[]'
         }
-        # Add running status
         agent_data[:running] = @agents.key?(name)
 
-        # Get configured native tool info
-        tools_json_string = redis_agent_data[2];
-        configured_tool_names_str = [];
-        begin tools_json_string && configured_tool_names_str = JSON.parse(tools_json_string) rescue []; end
-        all_native_tools = ADK::GlobalToolManager.list_all_tools
-        configured_tools_metadata = configured_tool_names_str.map { |tn|
-          all_native_tools.find { |t| t[:name].to_s == tn }
-        }.compact
+        # --- Get configured tool names string from the definition hash ---
+        tools_json_string = agent_definition['tools']
+        # logger.debug(\"[Display Tool Table] Raw tools JSON: \#{tools_json_string.inspect}\") # << DEBUG 1 REMOVED
 
-        # Fetch MCP tool results
-        mcp_servers_json = agent_data[:mcp_servers_json] # Use value already fetched
+        configured_tool_names_str = []
+        begin tools_json_string && configured_tool_names_str = JSON.parse(tools_json_string) rescue [] end
+        # logger.debug(\"[Display Tool Table] Parsed tool names (strings): \#{configured_tool_names_str.inspect}\") # << DEBUG 2 REMOVED
+
+        # Get NATIVE tool info from registry for ALL tools
+        all_native_tools = ADK::GlobalToolManager.list_all_tools
+        # configured_tools_metadata = configured_tool_names_str.map { |tn| # This line seems unused now, removing
+        #   all_native_tools.find { |t| t[:name].to_s == tn }
+        # }.compact
+
+        # --- Fetch MCP tool results and convert parameters ---
+        mcp_servers_json = agent_data[:mcp_servers_json] # Use value from agent_data hash
         mcp_configs = []
         begin
           mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
@@ -691,11 +735,71 @@ module ADK
         end
         mcp_tool_results = fetch_mcp_tools(mcp_configs)
 
+        # Process results to add :parameters and build MCP metadata list
+        all_mcp_tools_metadata = []
+        mcp_tool_results.each do |result|
+          next unless result[:status] == :success && result[:tools]
+
+          result[:tools].each do |mcp_tool_hash|
+            parameters = []
+            begin
+              input_schema = mcp_tool_hash[:inputSchema]
+              if input_schema && input_schema.is_a?(Hash)
+                properties = input_schema['properties'] || {}
+                required = input_schema['required'] || []
+                parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required)
+              end
+            rescue => e
+              logger.error("Error converting MCP schema for tool '#{mcp_tool_hash[:name]}' in tool table display: #{e.message}")
+            end
+            tool_name_sym = mcp_tool_hash[:name].to_sym
+            all_mcp_tools_metadata << {
+              name: tool_name_sym,
+              description: mcp_tool_hash[:description] || '',
+              parameters: parameters,
+              source: :mcp,
+              source_detail: "MCP (#{result[:server]})"
+            }
+          end
+        end
+
+        # Add source info to native tools metadata
+        all_native_tools_metadata = all_native_tools.map do |tool_meta|
+          tool_meta.merge(source: :native, source_detail: "Native")
+        end
+
+        # Combine all available tools map
+        all_available_tools_metadata_map = {}
+        (all_native_tools_metadata + all_mcp_tools_metadata).each do |tool_meta|
+          all_available_tools_metadata_map[tool_meta[:name]] ||= tool_meta
+        end
+
+        # Filter by configured names
+        configured_tool_names = configured_tool_names_str.map(&:to_sym) # Convert strings to symbols
+        # logger.debug(\"[Display Tool Table] Configured tool names (symbols): \#{configured_tool_names.inspect}\") # << DEBUG 4 REMOVED
+
+        view_configured_tools_list = configured_tool_names.map do |tool_name| # Use the symbol list here
+          all_available_tools_metadata_map[tool_name]
+        end.compact
+        # logger.debug(\"[Display Tool Table] Filtered tool list before status check: \#{view_configured_tools_list.map { |t| t[:name] }.inspect}\") # << DEBUG 5 REMOVED
+
+        # Implicitly add check_job_status if needed (simplified check as agent not running)
+        if view_configured_tools_list.any? { |tm|
+          tm[:source] == :native && ADK::GlobalToolManager.find_class(tm[:name])&.ancestors&.include?(ADK::Tools::BaseAsyncJobTool)
+        } && !configured_tool_names.include?(:check_job_status)
+          status_tool_meta = all_available_tools_metadata_map[:check_job_status]
+          if status_tool_meta && !view_configured_tools_list.any? { |t| t[:name] == :check_job_status }
+            view_configured_tools_list << status_tool_meta
+          end
+        end
+
+        # logger.debug(\"[Display Tool Table] Final tool list passed to view: \#{view_configured_tools_list.map { |t| t[:name] }.inspect}\") # << DEBUG 6 REMOVED
+
         # Render the full table partial
         slim :_agent_tool_table, layout: false,
                                  locals: {
                                    agent_data: agent_data,
-                                   configured_tools: configured_tools_metadata,
+                                   view_configured_tools: view_configured_tools_list,
                                    mcp_tool_results: mcp_tool_results
                                  }
       end
@@ -789,7 +893,7 @@ module ADK
           agent_data_hash[:description] = @redis.hget(key, 'description')
           agent_data_hash[:model] = @redis.hget(key, 'model')
           response_locals[:agent_data] = agent_data_hash
-          response_locals[:configured_tools] = validated_tools
+          response_locals[:view_configured_tools] = validated_tools
         elsif field == 'fallback'
           new_value_to_save = params['value']&.strip
           logger.debug("Received fallback update for '#{name}'. Value: '#{new_value_to_save}'") # <-- LOGGING
@@ -871,8 +975,11 @@ module ADK
           # --- Re-fetch data needed for the full tool table partial ---
 
           # --- REPEAT Logic: Get Native + MCP Tool Metadata ---
-          # 1. Get Native Tools
-          native_tools = ADK::GlobalToolManager.list_all_tools
+          # 1. Get Native Tools and add source info
+          native_tools = ADK::GlobalToolManager.list_all_tools.map do |tool_meta|
+            tool_meta.merge(source: :native, source_detail: "Native")
+          end
+
           # 2. Fetch this agent's MCP tools again
           mcp_servers_json = @redis.hget(key, 'mcp_servers_json') || '[]'
           mcp_configs = []
@@ -884,30 +991,49 @@ module ADK
           end
           mcp_tool_results = fetch_mcp_tools(mcp_configs)
           response_locals[:mcp_tool_results] = mcp_tool_results # Pass to partial
-          # 3. Extract successfully fetched MCP tool metadata
+
+          # 3. Extract successfully fetched MCP tool metadata and add source/params
           fetched_mcp_tools = []
           mcp_tool_results.each do |result|
             if result[:status] == :success && result[:tools]
               result[:tools].each do |mcp_tool_schema|
-                mcp_props = mcp_tool_schema[:inputSchema]['properties'] || {}
-                mcp_req = mcp_tool_schema[:inputSchema]['required'] || []
-                adk_params = ADK::Mcp::Util::SchemaConverter.json_to_adk(mcp_props, mcp_req)
+                # Convert params
+                parameters = []
+                begin
+                  input_schema = mcp_tool_schema[:inputSchema]
+                  if input_schema && input_schema.is_a?(Hash)
+                    properties = input_schema['properties'] || {}
+                    required = input_schema['required'] || []
+                    parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required)
+                  end
+                rescue => e
+                  logger.error("Error converting MCP schema post-update for tool '#{mcp_tool_schema[:name]}': #{e.message}")
+                end
+
+                # Add tool metadata with source info
                 fetched_mcp_tools << {
                   name: mcp_tool_schema[:name].to_sym,
                   description: mcp_tool_schema[:description] || "",
-                  parameters: adk_params
+                  parameters: parameters,
+                  source: :mcp,
+                  source_detail: "MCP (#{result[:server]})" # Include server source
                 }
               end
             end
           end
-          # 4. Combine all tool metadata
-          all_tools_metadata = (native_tools + fetched_mcp_tools).uniq { |tool| tool[:name] }
+
+          # 4. Combine all tool metadata (Prefer native on clash)
+          all_tools_metadata_map = {}
+          (native_tools + fetched_mcp_tools).each do |tool_meta|
+            all_tools_metadata_map[tool_meta[:name]] ||= tool_meta
+          end
           # --- END REPEAT Logic ---
 
-          # Use the combined metadata list to find full data for validated tools
-          response_locals[:configured_tools] = validated_tools.map { |tn|
-            all_tools_metadata.find { |t| t[:name].to_s == tn }
-          }.compact
+          # Use the combined metadata map to find full data for validated tools
+          response_locals[:view_configured_tools] = validated_tools.map { |tn|
+            # validated_tools is array of strings from params['tools']
+            all_tools_metadata_map[tn.to_sym] # Find by symbol in the map
+          }.compact # Remove nil if a tool name wasn't found in the map
 
           # Update agent_data_hash with latest running status and potentially other fields if needed
           agent_data_hash[:running] = @agents.key?(name) # Check running status AFTER potential restart
@@ -917,7 +1043,11 @@ module ADK
           # --- End re-fetch data ---
 
           # --- Render the FULL tool table partial ---
-          slim :_agent_tool_table, layout: false, locals: response_locals
+          slim :_agent_tool_table, layout: false, locals: {
+            agent_data: agent_data_hash,
+            view_configured_tools: response_locals[:view_configured_tools],
+            mcp_tool_results: response_locals[:mcp_tool_results]
+          }
         rescue Redis::BaseError => e;
           logger.error("Redis error updating: #{e.message}"); halt 500, "Error updating definition.";
         rescue JSON::GeneratorError => e;
@@ -1094,7 +1224,8 @@ module ADK
         begin
           logger.info("Agent '#{name}' executing direct task: #{task}")
           # Create temporary session using IN-MEMORY service
-          temp_session = @session_service.create_session(app_name: name, user_id: 'direct_execute')
+          temp_session = @session_service.create_session(app_name: name, user_id: 'web_direct_#{SecureRandom.hex(4)}',
+                                                         app_name: 'web_tool_exec')
           # Call run_task with session context
           final_event_or_error = agent.run_task(session_id: temp_session.id, user_input: task,
                                                 session_service: @session_service)

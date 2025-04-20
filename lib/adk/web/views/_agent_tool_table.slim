@@ -2,8 +2,8 @@
 / Renders the complete Configured Tools section including the table.
 / Expects locals:
 /   agent_data (Hash: {name, ...})
-/   configured_tools (Array<Hash>: Native tool metadata)
-/   mcp_tool_results (Array<Hash>: Results from fetch_mcp_tools)
+/   view_configured_tools (Array<Hash>: Filtered list of configured tool metadata)
+/   mcp_tool_results (Array<Hash>: Raw results from fetch_mcp_tools for error display)
 
 .box#agent-tools-display
   / --- Level for Title and Edit Button ---
@@ -25,11 +25,46 @@
         th Name
         th Source
         th Description
-        / th Parameters
+        th Parameters
         / th Actions
     tbody
-      / --- Render Native Tool Rows --- 
-      == slim :_display_agent_tools, locals: { agent_data: agent_data, configured_tools: configured_tools }
-      
-      / --- Render MCP Tool Rows --- 
-      == slim :_display_agent_mcp, locals: { agent_data: agent_data, mcp_tool_results: mcp_tool_results } 
+      / --- Iterate over the filtered list of configured tools --- 
+      - if view_configured_tools && !view_configured_tools.empty?
+        - view_configured_tools.each do |tool_info|
+          tr
+            td
+              / Link to native tool detail page if applicable
+              - if tool_info[:source] == :native
+                a href="/tools/#{tool_info[:name]}" = tool_info[:name]
+              - else
+                = tool_info[:name] 
+            td
+              - source_tag_class = (tool_info[:source] == :native) ? 'is-info' : 'is-link'
+              span.tag class="#{source_tag_class} is-light" = tool_info[:source_detail]
+            td= tool_info[:description]
+            td
+              - if tool_info[:parameters] && !tool_info[:parameters].empty?
+                ul.is-small style="margin-left: 1em; list-style-type: disc;"
+                  - tool_info[:parameters].each do |param|
+                    li
+                      strong= param[:name]
+                      |  (#{param[:type]}) 
+                      - if param[:required]
+                        em.has-text-danger required
+              - else
+                em None
+            / td Actions (TBD)
+      - else
+        tr
+          td colspan="4" 
+            em This agent has no tools configured.
+
+  / --- Display MCP Server Errors (if any) ---
+  - if defined?(mcp_tool_results) && mcp_tool_results.any? { |r| r[:status] == :error }
+    .content.mt-4
+      h4.subtitle.is-6 MCP Server Status:
+      - mcp_tool_results.each do |result|
+        - if result[:status] == :error
+          .notification.is-danger.is-light.is-size-7.p-2
+            strong Error fetching from #{result[:server]}:
+            = " " + result[:message] 
