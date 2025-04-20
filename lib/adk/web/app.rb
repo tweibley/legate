@@ -376,6 +376,17 @@ module ADK
           display_content.to_s
         end
         # --- END NEW HELPER ---
+
+        # --- NEW HELPER: Pretty Print JSON ---
+        def pretty_json(json_string)
+          begin
+            parsed = JSON.parse(json_string || '[]')
+            JSON.pretty_generate(parsed)
+          rescue JSON::ParserError
+            json_string # Fallback to raw string on error
+          end
+        end
+        # --- END NEW HELPER ---
       end # end helpers
 
       # --- Routes ---
@@ -1451,7 +1462,7 @@ module ADK
         halt 503, json(error: "Redis unavailable.") unless @redis
         key = agent_redis_key(name)
         # --- Fetch model, tools, and MCP config ---
-        fields_to_fetch = ['model', 'tools', 'mcp_servers_json'] 
+        fields_to_fetch = ['model', 'tools', 'mcp_servers_json']
         redis_values = @redis.hmget(key, *fields_to_fetch)
         agent_model = redis_values[0] || ADK::Agent::DEFAULT_MODEL
         tools_json_string = redis_values[1]
@@ -1492,6 +1503,7 @@ module ADK
         all_mcp_tools_metadata = []
         mcp_tool_results.each do |result|
           next unless result[:status] == :success && result[:tools]
+
           result[:tools].each do |mcp_tool_hash|
             parameters = []
             begin
@@ -1526,33 +1538,38 @@ module ADK
         end.compact
 
         # Also add any *selected* MCP tools not found in Global Manager
-        mcp_configured_tools = all_mcp_tools_metadata.select { |mcp_meta| configured_tool_names.include?(mcp_meta[:name]) }
+        mcp_configured_tools = all_mcp_tools_metadata.select { |mcp_meta|
+          configured_tool_names.include?(mcp_meta[:name])
+        }
         configured_tools_metadata.concat(mcp_configured_tools).uniq! { |t| t[:name] }
 
         if configured_tools_metadata.empty?
-           return json(example: { task: "Agent '#{name}' has tools configured, but metadata couldn't be retrieved. Cannot generate example." })
+          return json(example: { task: "Agent '#{name}' has tools configured, but metadata couldn't be retrieved. Cannot generate example." })
         end
+
         logger.debug("Metadata for example generation: #{configured_tools_metadata.inspect}")
 
         # --- 4. Construct Prompt for Gemini ---
         tool_details = configured_tools_metadata.map do |metadata|
           # --- Check if parameters exist and are an array before mapping ---
           params_string = if metadata[:parameters].is_a?(Array) && !metadata[:parameters].empty?
-                          metadata[:parameters].map { |p| "#{p[:name]} (#{p[:type]}, #{p[:required] ? 'required' : 'optional'})" }.join(', ')
-                        else
-                          'None'
-                        end
+                            metadata[:parameters].map { |p|
+                              "#{p[:name]} (#{p[:type]}, #{p[:required] ? 'required' : 'optional'})"
+                            }.join(', ')
+                          else
+                            'None'
+                          end
           "- Tool: #{metadata[:name]}\n  Description: #{metadata[:description]}\n  Parameters: #{params_string}"
         end.join("\n")
 
         prompt = <<~PROMPT
-          Based on the following tools configured for an agent, generate a single, simple example JSON object representing a task that uses ONE of these tools. 
+          Based on the following tools configured for an agent, generate a single, simple example JSON object representing a task that uses ONE of these tools.#{' '}
 
-          The JSON object MUST follow this exact structure: 
+          The JSON object MUST follow this exact structure:#{' '}
           { "task": "A brief description of what the example task does", "parameters": { /* parameters for the chosen tool */ } }
-          
+
           RANDOMLY Choose ONE tool from the list that has parameters (if possible) to demonstrate usage. Populate the "parameters" object with example values appropriate for the tool's parameter types and descriptions. If a tool has no parameters, the "parameters" object should be empty: {}. The "task" description should briefly explain the example.
-          
+
           Return ONLY the raw JSON object string. Do not include any other text, explanations, markdown formatting like ```json, or anything else.
 
           Available Tools:
@@ -1573,7 +1590,7 @@ module ADK
             halt 503, json(error: "AI service API key not configured.")
           end
 
-          # --- Use the fetched agent model --- 
+          # --- Use the fetched agent model ---
           logger.info("Using model '#{agent_model}' to generate example task.")
 
           # Create a temporary client instance
@@ -1581,25 +1598,25 @@ module ADK
             credentials: { service: 'generative-language-api', api_key: api_key },
             options: { model: agent_model, server_sent_events: false }
           )
-          
+
           response = temp_gemini_client.generate_content(
-             { contents: [{ role: 'user', parts: { text: prompt } }] }
+            { contents: [{ role: 'user', parts: { text: prompt } }] }
           )
-          
+
           generated_json_string = response.dig('candidates', 0, 'content', 'parts', 0, 'text')
-          
+
           unless generated_json_string && !generated_json_string.strip.empty?
-             logger.error("Gemini response was empty or missing text content.")
-             halt 500, json(error: "AI service returned an empty response.")
+            logger.error("Gemini response was empty or missing text content.")
+            halt 500, json(error: "AI service returned an empty response.")
           end
           logger.debug("Raw response from Gemini: #{generated_json_string}")
-          
+
           # Clean potential markdown fences ( Gemini sometimes adds them anyway )
           clean_json_string = generated_json_string.strip
           if clean_json_string.start_with?('```json') && clean_json_string.end_with?('```')
             clean_json_string = clean_json_string.delete_prefix('```json').delete_suffix('```').strip
           elsif clean_json_string.start_with?('```') && clean_json_string.end_with?('```')
-             clean_json_string = clean_json_string.delete_prefix('```').delete_suffix('```').strip
+            clean_json_string = clean_json_string.delete_prefix('```').delete_suffix('```').strip
           end
 
           # --- 6. Validate & Return Response ---
@@ -1607,8 +1624,9 @@ module ADK
             parsed_json = JSON.parse(clean_json_string)
             # Ensure it has the expected keys
             unless parsed_json.is_a?(Hash) && parsed_json.key?('task') && parsed_json.key?('parameters')
-               raise JSON::ParserError, "Generated JSON missing required 'task' or 'parameters' keys."
+              raise JSON::ParserError, "Generated JSON missing required 'task' or 'parameters' keys."
             end
+
             # Return the validated, cleaned JSON string, pretty-formatted
             return JSON.pretty_generate(parsed_json)
           rescue JSON::ParserError => e
@@ -1621,10 +1639,10 @@ module ADK
           logger.error(e.backtrace.first(5).join("\n"))
           # Provide a slightly more specific message if it looks like auth error
           error_message = if e.message.downcase.include?('authenticat') || e.message.include?('API key')
-                          "AI service authentication failed. Check API key."
-                        else
-                          "Error communicating with AI service."
-                        end
+                            "AI service authentication failed. Check API key."
+                          else
+                            "Error communicating with AI service."
+                          end
           halt 503, json(error: error_message)
         end
       end
