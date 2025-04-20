@@ -844,30 +844,27 @@ module ADK
       end
 
       put '/agents/:name/update/:field' do |name, field|
-        # --- ADDED Logging ---
         # logger.debug("PUT /agents/#{name}/update/#{field} received. PARAMS: #{params.inspect}")
-        # --- END Logging ---
         supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp']
         halt 404, "Updating field '#{field}' not supported." unless supported_fields.include?(field)
         halt 503, "Redis unavailable." unless @redis
         key = agent_redis_key(name); halt 404 unless @redis.exists?(key)
-        # ---> Map mcp field to redis field <---
+
         redis_field_to_update = case field
                                 when 'fallback' then 'fallback_mode'
                                 when 'mcp' then 'mcp_servers_json'
                                 else field
                                 end
-        # <--------------------------------------->
-        new_value_to_save = nil; response_locals = {}
-        agent_data_hash = { name: name } # Needed for display partial URLs
 
+        new_value_to_save = nil
+        response_locals = {} # Locals for rendering success partial
+        agent_data_hash = { name: name } # Base hash for success partials
+
+        # --- Handle specific field updates ---
         if field == 'tools'
-          # --- MODIFIED: Validate against Native + Fetched MCP tools ---
-          # 1. Get Native tool names
+          # 1. Get all available tool names (Native + MCP)
           native_tools_metadata = ADK::GlobalToolManager.list_all_tools
           native_tool_names = native_tools_metadata.map { |t| t[:name].to_s }
-
-          # 2. Fetch this agent's MCP tools
           mcp_servers_json = @redis.hget(key, 'mcp_servers_json') || '[]'
           mcp_configs = []
           begin
@@ -876,20 +873,15 @@ module ADK
             logger.error("Invalid JSON in mcp_servers_json during tool update validation for '#{name}': #{e.message}")
           end
           mcp_tool_results = fetch_mcp_tools(mcp_configs)
-
-          # 3. Extract available MCP tool names (as strings)
           mcp_tool_names = []
           mcp_tool_results.each do |result|
             if result[:status] == :success && result[:tools]
               mcp_tool_names.concat(result[:tools].map { |t| t[:name] }) # Assuming name is already string
             end
           end
-
-          # 4. Combine all valid names
           all_valid_tool_names = (native_tool_names + mcp_tool_names).uniq
-          # logger.debug("Valid tools for agent '#{name}' during update: #{all_valid_tool_names.inspect}")
 
-          # 5. Validate submitted tools against the combined list
+          # 2. Validate submitted tools
           selected_tools = params['tools'] || []
           validated_tools = selected_tools.select { |st|
             if all_valid_tool_names.include?(st) then true
@@ -898,132 +890,15 @@ module ADK
               false
             end
           }
-          # logger.debug("Validated tools for agent '#{name}' during update: #{all_valid_tool_names.inspect}")
-          # --- END MODIFICATION ---
-
           new_value_to_save = validated_tools.to_json
-          # Prepare locals for _display_agent_tools
-          agent_data_hash[:description] = @redis.hget(key, 'description')
-          agent_data_hash[:model] = @redis.hget(key, 'model')
-          response_locals[:agent_data] = agent_data_hash
-          response_locals[:view_configured_tools] = validated_tools
-        elsif field == 'fallback'
-          new_value_to_save = params['value']&.strip
-          logger.debug("Received fallback update for '#{name}'. Value: '#{new_value_to_save}'") # <-- LOGGING
-          unless ['error', 'echo'].include?(new_value_to_save)
-            logger.warn("Update failed for '#{name}', field '#{field}': Invalid value '#{new_value_to_save}'.")
-            redis_data = @redis.hmget(key, 'description', 'model', 'fallback_mode')
-            response_locals[:agent_data] =
-              { name: name, description: redis_data[0], model: redis_data[1], fallback_mode: redis_data[2] || 'error' }
-            halt 400, slim(:"_display_agent_#{field}", layout: false, locals: response_locals)
-          end
-          agent_data_hash[:description] = @redis.hget(key, 'description')
-          agent_data_hash[:model] = @redis.hget(key, 'model')
-          agent_data_hash[:fallback_mode] = new_value_to_save
-          response_locals[:agent_data] = agent_data_hash
-          # logger.debug("Prepared response_locals for display: #{response_locals.inspect}") # <-- LOGGING
-        elsif field == 'mcp'
-          new_value_to_save = params['value']&.strip
-          new_value_to_save = '[]' if new_value_to_save.nil? || new_value_to_save.empty? # Default to empty array JSON
-          # Basic JSON validation
-          begin
-            parsed = JSON.parse(new_value_to_save)
-            unless parsed.is_a?(Array)
-              raise JSON::ParserError, "Input must be a valid JSON array."
-            end
-            # Optionally add more validation on array contents here
-          rescue JSON::ParserError => e
-            logger.warn("Update failed for '#{name}', field '#{field}': Invalid JSON - #{e.message}. Value: '#{new_value_to_save}'")
-            # --- Prepare locals to re-render EDIT form with error ---
-            edit_locals = {}
-            # --- CORRECTED agent_data structure ---
-            edit_locals[:agent_data] = { name: name, mcp_servers_json: new_value_to_save }
-            # --------------------------------------
-            edit_locals[:error_message] = "Invalid JSON format: #{e.message}"
-            # --- Return 200 OK with the edit form containing the error AND HALT ---
-            halt 200, slim(:"_edit_agent_#{field}", layout: false, locals: edit_locals)
-          end
-          # Prepare locals for display (on SUCCESS)
-          agent_data_hash[:description] = @redis.hget(key, 'description')
-          agent_data_hash[:model] = @redis.hget(key, 'model')
-          agent_data_hash[:fallback_mode] = @redis.hget(key, 'fallback_mode') || 'error'
-          agent_data_hash[:mcp_servers_json] = new_value_to_save
-          response_locals[:agent_data] = agent_data_hash
-        else # description or model
-          new_value_to_save = params['value']&.strip
-          if new_value_to_save.nil? || new_value_to_save.empty?
-            logger.warn("Update failed for '#{name}', field '#{field}': Value empty.")
-            redis_data = @redis.hmget(key, 'description', 'model', 'fallback_mode')
-            response_locals[:agent_data] =
-              { name: name, description: redis_data[0], model: redis_data[1], fallback_mode: redis_data[2] || 'error' }
-            halt 400, slim(:"_display_agent_#{field}", layout: false, locals: response_locals)
-          end
-          agent_data_hash[:description] = (field == 'description' ? new_value_to_save : @redis.hget(key, 'description'))
-          agent_data_hash[:model] = (field == 'model' ? new_value_to_save : @redis.hget(key, 'model'))
-          agent_data_hash[:fallback_mode] = @redis.hget(key, 'fallback_mode') || 'error'
-          response_locals[:agent_data] = agent_data_hash
-        end
 
-        begin # Update Redis
-          @redis.hset(key, redis_field_to_update, new_value_to_save)
-          # logger.info("Updated agent '#{name}', field '#{redis_field_to_update}' to '#{new_value_to_save}'") # <-- LOGGING
-
-          # --- ADDED: Restart running agent if necessary ---
-          was_running = @agents.key?(name) # Check status BEFORE potential stop/start
-          if was_running
-            logger.info("Agent '#{name}' tool config updated while running. Triggering automatic restart.")
-            stop_success = _stop_agent(name)
-            if stop_success
-              newly_started_agent = _start_agent(name)
-              agent_data_hash[:running] = !newly_started_agent.nil? # Update status based on actual outcome
-              logger.info("Automatic restart for '#{name}' completed. Running: #{agent_data_hash[:running]}")
-            else
-              logger.error("Failed to stop running agent '#{name}' during automatic restart. State might be inconsistent.")
-              agent_data_hash[:running] = true # Best guess: it might still be running
-            end
-          else
-            logger.info("Agent '#{name}' tool config updated while stopped.")
-            agent_data_hash[:running] = false # Ensure marked as stopped
-          end
-          # --- END RESTART ---
-
-          # --- Re-fetch data needed for the full tool table partial ---
-          # If the updated field wasn't 'tools', fetch the current tool list from Redis
-          if field != 'tools'
-            tools_json = @redis.hget(key, 'tools') || '[]'
-            begin
-              validated_tools = JSON.parse(tools_json)
-            rescue JSON::ParserError
-              validated_tools = []
-              logger.error("Failed to parse tools JSON ('#{tools_json}') after updating field '#{field}' for agent '#{name}'")
-            end
-          end
-          # validated_tools should now be an array (possibly empty) regardless of which field was updated
-
-          # --- REPEAT Logic: Get Native + MCP Tool Metadata ---
-          # 1. Get Native Tools and add source info
-          native_tools = ADK::GlobalToolManager.list_all_tools.map do |tool_meta|
-            tool_meta.merge(source: :native, source_detail: "Native")
-          end
-
-          # 2. Fetch this agent's MCP tools again
-          mcp_servers_json = @redis.hget(key, 'mcp_servers_json') || '[]'
-          mcp_configs = []
-          begin
-            mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
-          rescue JSON::ParserError => e
-            logger.error("Invalid JSON in mcp_servers_json after update for agent '#{name}': #{e.message}")
-            mcp_configs = []
-          end
-          mcp_tool_results = fetch_mcp_tools(mcp_configs)
-          response_locals[:mcp_tool_results] = mcp_tool_results # Pass to partial
-
-          # 3. Extract successfully fetched MCP tool metadata and add source/params
-          fetched_mcp_tools = []
+          # Prepare data for the _agent_tool_table partial (on success)
+          response_locals[:mcp_tool_results] = mcp_tool_results # Pass fresh results
+          # Rebuild full metadata map
+          fetched_mcp_tools_metadata = []
           mcp_tool_results.each do |result|
             if result[:status] == :success && result[:tools]
               result[:tools].each do |mcp_tool_schema|
-                # Convert params
                 parameters = []
                 begin
                   input_schema = mcp_tool_schema[:inputSchema]
@@ -1035,53 +910,122 @@ module ADK
                 rescue => e
                   logger.error("Error converting MCP schema post-update for tool '#{mcp_tool_schema[:name]}': #{e.message}")
                 end
-
-                # Add tool metadata with source info
-                fetched_mcp_tools << {
-                  name: mcp_tool_schema[:name].to_sym,
-                  description: mcp_tool_schema[:description] || "",
-                  parameters: parameters,
-                  source: :mcp,
-                  source_detail: "MCP (#{result[:server]})" # Include server source
-                }
+                fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
+                                                description: mcp_tool_schema[:description] || "", parameters: parameters, source: :mcp, source_detail: "MCP (#{result[:server]})" }
               end
             end
           end
-
-          # 4. Combine all tool metadata (Prefer native on clash)
+          all_native_tools_metadata = native_tools_metadata.map { |tm|
+            tm.merge(source: :native, source_detail: "Native")
+          }
           all_tools_metadata_map = {}
-          (native_tools + fetched_mcp_tools).each do |tool_meta|
-            all_tools_metadata_map[tool_meta[:name]] ||= tool_meta
-          end
-          # --- END REPEAT Logic ---
-
-          # Use the combined metadata map to find full data for validated tools
+          (all_native_tools_metadata + fetched_mcp_tools_metadata).each { |tm|
+            all_tools_metadata_map[tm[:name]] ||= tm
+          }
+          # Filter map by validated tools
           response_locals[:view_configured_tools] = validated_tools.map { |tn|
-            # validated_tools is array of strings from params['tools']
-            all_tools_metadata_map[tn.to_sym] # Find by symbol in the map
-          }.compact # Remove nil if a tool name wasn't found in the map
+            all_tools_metadata_map[tn.to_sym]
+          }.compact
 
-          # Update agent_data_hash with latest running status and potentially other fields if needed
-          agent_data_hash[:running] = @agents.key?(name) # Check running status AFTER potential restart
-          agent_data_hash[:fallback_mode] = @redis.hget(key, 'fallback_mode') || 'error' # Get current fallback
-          agent_data_hash[:mcp_servers_json] = mcp_servers_json # Pass current json
+        elsif field == 'mcp'
+          new_value_to_save = params['value']&.strip
+          new_value_to_save = '[]' if new_value_to_save.nil? || new_value_to_save.empty?
+          # Basic JSON validation
+          begin
+            parsed = JSON.parse(new_value_to_save)
+            unless parsed.is_a?(Array)
+              raise JSON::ParserError, "Input must be a valid JSON array."
+            end
+          rescue JSON::ParserError => e
+            logger.warn("Update failed for '#{name}', field '#{field}': Invalid JSON - #{e.message}. Value: '#{new_value_to_save}'")
+            edit_locals = {
+              agent_data: { name: name, mcp_servers_json: new_value_to_save }, # Pass invalid JSON back
+              error_message: "Invalid JSON format: #{e.message}"
+            }
+            # Return 200 OK with the edit form containing the error AND HALT
+            halt 200, slim(:_edit_agent_mcp, layout: false, locals: edit_locals)
+          end
+          # Value is valid if we reach here
+          agent_data_hash[:mcp_servers_json] = new_value_to_save
+
+        elsif field == 'fallback'
+          new_value_to_save = params['value']&.strip
+          unless ['error', 'echo'].include?(new_value_to_save)
+            logger.warn("Update failed for '#{name}', field '#{field}': Invalid value '#{new_value_to_save}'.")
+            edit_locals = {
+              agent_data: { name: name, fallback_mode: @redis.hget(key, 'fallback_mode') || 'error' }, # Pass current value back
+              error_message: "Invalid fallback mode selected."
+            }
+            halt 400, slim(:_edit_agent_fallback, layout: false, locals: edit_locals) # Re-render edit form with error
+          end
+          agent_data_hash[:fallback_mode] = new_value_to_save
+
+        else # description or model
+          new_value_to_save = params['value']&.strip
+          if new_value_to_save.nil? || new_value_to_save.empty?
+            logger.warn("Update failed for '#{name}', field '#{field}': Value empty.")
+            edit_locals = {
+              agent_data: { name: name, description: @redis.hget(key, 'description'),
+                            model: @redis.hget(key, 'model') },
+              error_message: "#{field.capitalize} cannot be empty."
+            }
+            halt 400, slim(:"_edit_agent_#{field}", layout: false, locals: edit_locals) # Re-render edit form with error
+          end
+          agent_data_hash[field.to_sym] = new_value_to_save # Update the field in the hash for display partial
+        end
+
+        # --- Update Redis ---
+        begin
+          @redis.hset(key, redis_field_to_update, new_value_to_save)
+          logger.info("Agent '#{name}' field '#{redis_field_to_update}' updated successfully.")
+
+          # --- Automatic Restart Logic ---
+          was_running = @agents.key?(name)
+          if was_running
+            logger.info("Agent '#{name}' config updated while running. Triggering automatic restart.")
+            stop_success = _stop_agent(name)
+            if stop_success
+              newly_started_agent = _start_agent(name)
+              agent_data_hash[:running] = !newly_started_agent.nil?
+              logger.info("Automatic restart for '#{name}' completed. Running: #{agent_data_hash[:running]}")
+              # --- Set header to trigger frontend notification ---
+              headers 'HX-Trigger-After-Swap' => 'showRestartToast'
+            else
+              logger.error("Failed to stop running agent '#{name}' during automatic restart. State might be inconsistent.")
+              agent_data_hash[:running] = true # Best guess: it might still be running
+              # --- Set header to trigger frontend error notification ---
+              headers 'HX-Trigger-After-Swap' => 'showRestartErrorToast'
+            end
+          else
+            logger.info("Agent '#{name}' config updated while stopped.")
+            agent_data_hash[:running] = false # Ensure status reflects stopped state
+          end
+
+          # --- Prepare Final Response ---
+          # Update agent_data_hash with potentially changed running status and other current values
+          agent_data_hash[:description] ||= @redis.hget(key, 'description')
+          agent_data_hash[:model] ||= @redis.hget(key, 'model')
+          agent_data_hash[:fallback_mode] ||= @redis.hget(key, 'fallback_mode') || 'error'
+          agent_data_hash[:mcp_servers_json] ||= @redis.hget(key, 'mcp_servers_json') || '[]'
           response_locals[:agent_data] = agent_data_hash
-          # --- End re-fetch data ---
 
           # --- Determine response partial based on updated field ---
-          if field == 'tools'
-            # Render the FULL tool table partial after updating tools
-            slim :_agent_tool_table, layout: false, locals: response_locals
-          else
-            # For other fields (desc, model, fallback, mcp), render the corresponding DISPLAY partial
-            # Ensure agent_data_hash contains the field that was just updated
-            response_locals[:agent_data][redis_field_to_update.to_sym] = new_value_to_save if redis_field_to_update
-            slim :"_display_agent_#{field}", layout: false, locals: { agent_data: response_locals[:agent_data] }
-          end
-        rescue Redis::BaseError => e;
+          main_response_html = if field == 'tools'
+                                 # If tools were updated, response_locals[:view_configured_tools] and [:mcp_tool_results] were already prepared
+                                 slim(:_agent_tool_table, layout: false, locals: response_locals)
+                               else
+                                 # For other fields, render the corresponding DISPLAY partial
+                                 slim(:"_display_agent_#{field}", layout: false,
+                                                                  locals: { agent_data: response_locals[:agent_data] })
+                               end
+
+          # --- Return HTML ---
+          main_response_html # HX headers are set automatically by Sinatra's `headers` call
+        rescue Redis::BaseError => e
           logger.error("Redis error updating: #{e.message}"); halt 500, "Error updating definition.";
-        rescue JSON::GeneratorError => e;
-          logger.error("JSON error updating tools: #{e.message}"); halt 500, "Error saving configuration."; end
+        rescue JSON::GeneratorError => e # Should not happen unless validated_tools is bad
+          logger.error("JSON error saving tools: #{e.message}"); halt 500, "Error saving tool configuration.";
+        end
       end
       # --- End Agent Inline Editing Routes ---
 

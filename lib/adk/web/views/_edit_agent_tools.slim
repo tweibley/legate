@@ -6,7 +6,7 @@
 
 .box.mb-5
   h2.title.is-4 Edit Configured Tools
-  form( hx-put="/agents/#{agent_data[:name]}/update/tools" )
+  form( hx-put="/agents/#{agent_data[:name]}/update/tools" hx-target="closest .box" hx-swap="outerHTML" )
 
     .field
       label.label Available Tools (Select tools for this agent definition):

@@ -105,10 +105,71 @@ html
         }
       });
 
+      // --- Listener for HX-Trigger-After-Swap header to show toasts ---
+      document.body.addEventListener('htmx:afterSwap', function(event) {
+        console.log("LAYOUT SCRIPT: htmx:afterSwap detected."); // DEBUG
+        var triggerHeader = event.detail.xhr.getResponseHeader('HX-Trigger-After-Swap');
+        console.log("LAYOUT SCRIPT: HX-Trigger-After-Swap header:", triggerHeader); // DEBUG
+        if (triggerHeader) {
+          // Potentially dispatch custom events or call functions based on header value
+          if (triggerHeader === 'showRestartToast') {
+            console.log("LAYOUT SCRIPT: Triggering showToast for success..."); // DEBUG
+            showToast("Agent automatically restarted to apply changes.", "is-info");
+          } else if (triggerHeader === 'showRestartErrorToast') {
+            console.log("LAYOUT SCRIPT: Triggering showToast for error..."); // DEBUG
+            showToast("Error: Failed to automatically restart agent. Please stop/start manually.", "is-danger");
+          }
+        }
+
+        // Also check for MCP Editor initialization (from previous unrelated logic)
+        var mcpEditorElement = event.target.querySelector('#mcp-json-editor');
+        if (mcpEditorElement) {
+          console.log("htmx:afterSwap event detected containing #mcp-json-editor. Triggering init.");
+          initCodeMirrorEditor('mcp-json-editor');
+        }
+      });
+      
+      // --- Toast Notification Function ---
+      function showToast(message, type = 'is-info', duration = 4000) {
+          var toastContainer = document.getElementById('toast-container');
+          if (!toastContainer) { // Create container if it doesn't exist
+              toastContainer = document.createElement('div');
+              toastContainer.id = 'toast-container';
+              // Add styles inline or via CSS for positioning (e.g., top-right)
+              toastContainer.style.position = 'fixed';
+              toastContainer.style.top = '1em';
+              toastContainer.style.right = '1em';
+              toastContainer.style.zIndex = '9999'; 
+              document.body.appendChild(toastContainer);
+          }
+
+          var toast = document.createElement('div');
+          toast.className = `notification ${type} is-light`;
+          toast.style.marginBottom = '0.5em'; // Spacing between toasts
+          toast.innerHTML = `
+              <button class="delete" onclick="this.parentElement.remove();"></button>
+              ${message}
+          `;
+          
+          toastContainer.appendChild(toast);
+
+          // Automatically remove the toast after duration
+          setTimeout(() => {
+              toast.remove();
+          }, duration);
+      }
+
       // Initialize Task Editor on initial page load
       document.addEventListener('DOMContentLoaded', function() {
          console.log("LAYOUT SCRIPT: DOMContentLoaded fired. Initializing task editor...");
          initCodeMirrorEditor('task-json-editor');
+      });
+
+      // --- Add listener for notification close buttons ---
+      document.body.addEventListener('click', function(event) {
+        if (event.target.matches('.notification > .delete')) {
+          event.target.parentElement.remove();
+        }
       });
 
     / --- Custom Scripts (if any) ---
