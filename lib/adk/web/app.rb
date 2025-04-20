@@ -732,6 +732,7 @@ module ADK
           mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
         rescue JSON::ParserError => e
           logger.error("Invalid JSON in mcp_servers_json for agent '#{name}' tool table display: #{e.message}")
+          mcp_configs = []
         end
         mcp_tool_results = fetch_mcp_tools(mcp_configs)
 
@@ -921,14 +922,16 @@ module ADK
             # Optionally add more validation on array contents here
           rescue JSON::ParserError => e
             logger.warn("Update failed for '#{name}', field '#{field}': Invalid JSON - #{e.message}. Value: '#{new_value_to_save}'")
-            redis_data = @redis.hmget(key, 'description', 'model', 'fallback_mode', 'mcp_servers_json')
-            response_locals[:agent_data] = {
-              name: name, description: redis_data[0], model: redis_data[1],
-              fallback_mode: redis_data[2] || 'error', mcp_servers_json: redis_data[3] || '[]'
-            }
-            halt 400, slim(:"_display_agent_#{field}", layout: false, locals: response_locals)
+            # --- Prepare locals to re-render EDIT form with error ---
+            edit_locals = {}
+            # --- CORRECTED agent_data structure ---
+            edit_locals[:agent_data] = { name: name, mcp_servers_json: new_value_to_save }
+            # --------------------------------------
+            edit_locals[:error_message] = "Invalid JSON format: #{e.message}"
+            # --- Return 200 OK with the edit form containing the error AND HALT ---
+            halt 200, slim(:"_edit_agent_#{field}", layout: false, locals: edit_locals)
           end
-          # Prepare locals for display
+          # Prepare locals for display (on SUCCESS)
           agent_data_hash[:description] = @redis.hget(key, 'description')
           agent_data_hash[:model] = @redis.hget(key, 'model')
           agent_data_hash[:fallback_mode] = @redis.hget(key, 'fallback_mode') || 'error'
@@ -973,6 +976,17 @@ module ADK
           # --- END RESTART ---
 
           # --- Re-fetch data needed for the full tool table partial ---
+          # If the updated field wasn't 'tools', fetch the current tool list from Redis
+          if field != 'tools'
+            tools_json = @redis.hget(key, 'tools') || '[]'
+            begin
+              validated_tools = JSON.parse(tools_json)
+            rescue JSON::ParserError
+              validated_tools = []
+              logger.error("Failed to parse tools JSON ('#{tools_json}') after updating field '#{field}' for agent '#{name}'")
+            end
+          end
+          # validated_tools should now be an array (possibly empty) regardless of which field was updated
 
           # --- REPEAT Logic: Get Native + MCP Tool Metadata ---
           # 1. Get Native Tools and add source info
@@ -1042,12 +1056,16 @@ module ADK
           response_locals[:agent_data] = agent_data_hash
           # --- End re-fetch data ---
 
-          # --- Render the FULL tool table partial ---
-          slim :_agent_tool_table, layout: false, locals: {
-            agent_data: agent_data_hash,
-            view_configured_tools: response_locals[:view_configured_tools],
-            mcp_tool_results: response_locals[:mcp_tool_results]
-          }
+          # --- Determine response partial based on updated field ---
+          if field == 'tools'
+            # Render the FULL tool table partial after updating tools
+            slim :_agent_tool_table, layout: false, locals: response_locals
+          else
+            # For other fields (desc, model, fallback, mcp), render the corresponding DISPLAY partial
+            # Ensure agent_data_hash contains the field that was just updated
+            response_locals[:agent_data][redis_field_to_update.to_sym] = new_value_to_save if redis_field_to_update
+            slim :"_display_agent_#{field}", layout: false, locals: { agent_data: response_locals[:agent_data] }
+          end
         rescue Redis::BaseError => e;
           logger.error("Redis error updating: #{e.message}"); halt 500, "Error updating definition.";
         rescue JSON::GeneratorError => e;
@@ -1224,8 +1242,7 @@ module ADK
         begin
           logger.info("Agent '#{name}' executing direct task: #{task}")
           # Create temporary session using IN-MEMORY service
-          temp_session = @session_service.create_session(app_name: name, user_id: 'web_direct_#{SecureRandom.hex(4)}',
-                                                         app_name: 'web_tool_exec')
+          temp_session = @session_service.create_session(app_name: name, user_id: 'web_direct_#{SecureRandom.hex(4)}')
           # Call run_task with session context
           final_event_or_error = agent.run_task(session_id: temp_session.id, user_input: task,
                                                 session_service: @session_service)
@@ -1260,8 +1277,7 @@ module ADK
           halt 404, format_execution_result_html({ status: :error, error_message: err_msg }); end
 
         # --- Create dummy context for direct execution --- << ADDED >>
-        dummy_context = ADK::ToolContext.new(session_id: "web_direct_#{SecureRandom.hex(4)}", user_id: 'web_user',
-                                             app_name: 'web_tool_exec')
+        dummy_context = ADK::ToolContext.new(session_id: "web_direct_#{SecureRandom.hex(4)}", user_id: 'web_user')
 
         begin
           symbolized_params = submitted_params.transform_keys(&:to_sym)

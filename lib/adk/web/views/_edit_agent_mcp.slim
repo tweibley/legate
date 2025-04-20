@@ -1,6 +1,11 @@
 / File: lib/adk/web/views/_edit_agent_mcp.slim
 / Form for editing MCP Server JSON
-form hx-put="/agents/#{agent_data[:name]}/update/mcp" hx-target="closest section" hx-swap="outerHTML"
+form(id="mcp-json-editor-form" hx-put="/agents/#{agent_data[:name]}/update/mcp" hx-target="this" hx-swap="outerHTML")
+  / --- Display Error Message if Present ---
+  - if defined?(error_message) && error_message
+    .notification.is-danger.is-light.mb-3
+      = error_message
+
   .field
     label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
     .control
