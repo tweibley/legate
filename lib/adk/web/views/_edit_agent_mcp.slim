@@ -5,8 +5,7 @@ form hx-put="/agents/#{agent_data[:name]}/update/mcp" hx-target="closest section
     label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
     .control
       / Use 'value' as the name for inline edits, matching the PUT route logic
-      textarea.textarea name="value" rows="6" placeholder='[{"type": "stdio", "command": "...", "args": ["..."]}]' == agent_data[:mcp_servers_json]
-      / ... textarea element above ...
+      textarea.textarea(id="mcp-json-editor" name="value" rows="6" placeholder='[{"type": "stdio", "command": "...", "args": ["..."]}]') == agent_data[:mcp_servers_json]
   p.help 
     | Enter a JSON array of MCP server config objects (e.g., <code>[{"type": "stdio", "command": "npx", "args": ["@mcp/server", "/path/to/dir"]}]</code>). Leave empty if none.
   .field.is-grouped
@@ -14,4 +13,4 @@ form hx-put="/agents/#{agent_data[:name]}/update/mcp" hx-target="closest section
       button.button.is-link type="submit" Save
     .control
       / Button to cancel editing and revert to display view
-      button.button.is-light type="button" hx-get="/agents/#{agent_data[:name]}/display/mcp" Cancel
+      button.button.is-light type="button" hx-get="/agents/#{agent_data[:name]}/display/mcp" hx-target="#agent-mcp-display" hx-swap="innerHTML" Cancel

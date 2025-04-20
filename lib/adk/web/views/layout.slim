@@ -11,6 +11,9 @@ html
     link rel="stylesheet" href="/css/main.css"
     script src="https://unpkg.com/htmx.org@1.9.10"
     script src="https://unpkg.com/hyperscript.org@0.9.12"
+    / --- CodeMirror CSS --- 
+    link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"
+    link rel="stylesheet" href="/css/main.css"
   body
     nav.navbar.is-primary
       .navbar-brand
@@ -23,3 +26,47 @@ html
     section.section
       .container
         == yield
+    / --- Font Awesome JS (Optional, if needed) ---
+    / script defer=true src="https://use.fontawesome.com/releases/v5.15.4/js/all.js"
+
+    / --- CodeMirror JS --- 
+    script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"
+    script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"
+
+    / --- Global CodeMirror Initializer Function & Trigger ---
+    javascript:
+      function initCodeMirrorEditor(elementId) {
+        var editorElement = document.getElementById(elementId);
+        if (editorElement && !editorElement.cmInstance) {
+          console.log("Initializing CodeMirror for", elementId);
+          try {
+            editorElement.cmInstance = CodeMirror.fromTextArea(editorElement, {
+              lineNumbers: true,
+              mode: { name: "javascript", json: true },
+              theme: "default"
+            });
+            editorElement.cmInstance.on('change', function(cm) {
+              cm.save(); // Update underlying textarea for HTMX
+            });
+          } catch (e) {
+            console.error("Error initializing CodeMirror:", e);
+          }
+        } else if (editorElement) {
+           console.log("CodeMirror already initialized for", elementId);
+        } else {
+           console.log("Element not found for CodeMirror init:", elementId);
+        }
+      }
+
+      // Listen for htmx:load event on the body
+      document.body.addEventListener('htmx:load', function(event) {
+        // Check if the loaded element (event.target) contains the editor
+        var editorElement = event.target.querySelector('#mcp-json-editor');
+        if (editorElement) {
+          console.log("htmx:load event detected containing #mcp-json-editor. Triggering init.");
+          initCodeMirrorEditor('mcp-json-editor');
+        }
+      });
+
+    / --- Custom Scripts (if any) ---
+    / script src="/js/app.js"

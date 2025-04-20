@@ -1,0 +1,20 @@
+/ File: lib/adk/web/views/_display_agent_mcp.slim
+/ Renders the display block for MCP server configurations.
+/ Expects: agent_data (Hash containing :name and :mcp_servers_json)
+
+section.mt-4 id="agent-mcp-section"
+  .level
+    .level-left
+      label.label MCP Server Configurations (JSON)
+    .level-right
+      button.button.is-link.is-light.level-item( hx-get="/agents/#{agent_data[:name]}/edit/mcp"
+                                                hx-target="closest section"
+                                                hx-swap="outerHTML" )
+        span.icon.is-small
+          i.fas.fa-pencil-alt
+        span Edit
+  
+  .field
+    .control
+      pre style="white-space: pre-wrap; word-break: break-all; background-color: #f5f5f5; padding: 1em; border-radius: 4px;"
+        code == agent_data[:mcp_servers_json] || "[ ]" 
