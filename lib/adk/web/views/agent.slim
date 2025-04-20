@@ -62,7 +62,7 @@
         button.button.is-primary(type="submit" id="execute-task-button" disabled=!@view_agent_data[:running])
           span.icon.is-small
             i.fas.fa-play-circle
-          span Execute (Requires Start)
+          span = @view_agent_data[:running] ? 'Execute' : 'Execute (Requires Start)'
 
   #task-result.mt-4
     p.has-text-grey Task results will appear here.

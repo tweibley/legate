@@ -1094,6 +1094,7 @@ module ADK
         name = params[:name]; content_type :html
         agent = _start_agent(name) # <<< Use helper
         # Prepare data for view
+        is_running = !agent.nil?
         agent_data_for_view = if agent then agent
                               else # Fetch definition from Redis
                                 redis_data = @redis&.hmget(agent_redis_key(name), 'description', 'tools',
@@ -1102,7 +1103,19 @@ module ADK
                                 { name: name, description: redis_data[0], running: false, model: redis_data[2],
                                   configured_tools: tools }
                               end
-        slim :_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view }
+        # Render the status controls partial
+        status_controls_html = slim(:_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view })
+        # --- Manually construct the OOB button HTML ---
+        execute_button_text = is_running ? 'Execute' : 'Execute (Requires Start)'
+        disabled_attr_string = is_running ? '' : 'disabled' # Use standard boolean attribute presence
+        execute_button_oob_html = %(
+          <button class="button is-primary" id="execute-task-button" type="submit" #{disabled_attr_string} hx-swap-oob="true">
+            <span class="icon is-small"><i class="fas fa-play-circle"></i></span>
+            <span>#{execute_button_text}</span>
+          </button>
+        )
+        # --- Return combined HTML ---
+        status_controls_html + execute_button_oob_html
       end
 
       post '/agents/:name/stop' do
@@ -1120,11 +1133,24 @@ module ADK
         name = params[:name]; content_type :html
         _stop_agent(name) # <<< Use helper
         # Fetch definition for display after stopping
+        is_running = false # Agent is stopped
         redis_data = @redis&.hmget(agent_redis_key(name), 'description', 'tools', 'model') || ["N/A", nil, nil]
         tools = []; if redis_data[1] then tools = JSON.parse(redis_data[1]) rescue [] end
-        stopped_agent_data = { name: name, description: redis_data[0], running: false, model: redis_data[2],
+        stopped_agent_data = { name: name, description: redis_data[0], running: is_running, model: redis_data[2],
                                configured_tools: tools }
-        slim :_agent_status_controls, layout: false, locals: { agent_data: stopped_agent_data }
+        # Render the status controls partial
+        status_controls_html = slim(:_agent_status_controls, layout: false, locals: { agent_data: stopped_agent_data })
+        # --- Manually construct the OOB button HTML ---
+        execute_button_text = is_running ? 'Execute' : 'Execute (Requires Start)'
+        disabled_attr_string = is_running ? '' : 'disabled' # Use standard boolean attribute presence
+        execute_button_oob_html = %(
+          <button class="button is-primary" id="execute-task-button" type="submit" #{disabled_attr_string} hx-swap-oob="true">
+            <span class="icon is-small"><i class="fas fa-play-circle"></i></span>
+            <span>#{execute_button_text}</span>
+          </button>
+        )
+        # --- Return combined HTML ---
+        status_controls_html + execute_button_oob_html
       end
 
       # --- Agent Interaction Routes (REFACTORED for Session) ---
