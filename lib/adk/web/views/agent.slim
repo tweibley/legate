@@ -53,35 +53,8 @@
   #task-result.mt-4
     p.has-text-grey Task results will appear here.
 
-/ --- Tool Table ---
-.box#agent-tools-display
-  / --- Level for Title and Edit Button ---
-  .level
-    .level-left
-      h2.title.is-4.level-item Configured Tools
-    .level-right
-      button.button.is-link.is-light.level-item( hx-get="/agents/#{@view_agent_data[:name]}/edit/tools"
-                                                hx-target="#agent-tools-display"
-                                                hx-swap="innerHTML" )
-        span.icon.is-small
-          i.fas.fa-pencil-alt
-        span Edit Tools
-  
-  / --- Table Structure ---
-  table.table.is-fullwidth.is-striped.is-hoverable
-    thead
-      tr
-        th Name
-        th Source
-        th Description
-        / th Parameters
-        / th Actions
-    tbody
-      / --- Render Native Tool Rows --- 
-      == slim :_display_agent_tools, locals: { agent_data: @view_agent_data, configured_tools: @configured_tool_info }
-      
-      / --- Render MCP Tool Rows --- 
-      == slim :_display_agent_mcp, locals: { agent_data: @view_agent_data, mcp_tool_results: @mcp_tool_results }
+/ --- Render the full Tool Table partial ---
+== slim :_agent_tool_table, locals: { agent_data: @view_agent_data, configured_tools: @configured_tool_info, mcp_tool_results: @mcp_tool_results }
 
 / Link back to the main agents list
 .mt-4

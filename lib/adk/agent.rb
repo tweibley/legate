@@ -32,8 +32,9 @@ module ADK
     # @param mcp_servers [Array<Hash>] Optional configurations for external MCP servers.
     #        Example: [{ type: :stdio, command: 'cmd', args: [] }]
     # @param fallback_mode [Symbol] Behavior when planning fails (:error or :echo). Default: :error
+    # @param selected_tool_names [Array<Symbol>] List of tool names explicitly selected in the agent definition.
     def initialize(name:, description:, model_name: nil, tool_classes: [], planner: nil, mcp_servers: [],
-                   fallback_mode: :error)
+                   fallback_mode: :error, selected_tool_names: [])
       ADK.logger.info("Initializing agent '#{name}'...")
       @name = name
       @description = description
@@ -41,6 +42,7 @@ module ADK
       @fallback_mode = fallback_mode == :echo ? :echo : :error # Ensure only valid modes
       @state = :idle # Initial state
       @mcp_servers_config = mcp_servers # Store MCP configurations
+      @selected_tool_names = selected_tool_names # Store selected tool names
       @mcp_clients = [] # Store active MCP client instances
 
       # Each agent instance gets its own registry
@@ -511,8 +513,15 @@ module ADK
         ADK.logger.debug("[Agent E2E Debug] list_tools returned: #{mcp_tool_schemas.inspect}")
         ADK.logger.info("Discovered #{mcp_tool_schemas.count} tools from MCP server.")
         mcp_tool_schemas.each do |schema|
-          # Pass the agent's specific registry instance (@tool_registry)
-          ADK::Mcp::ToolWrapper.from_mcp_schema(schema, client, @tool_registry)
+          # --- ADDED check: Only register if tool was selected ---
+          tool_name_sym = schema[:name].to_sym
+          if @selected_tool_names.include?(tool_name_sym)
+            # Pass the agent's specific registry instance (@tool_registry)
+            ADK::Mcp::ToolWrapper.from_mcp_schema(schema, client, @tool_registry)
+          else
+            ADK.logger.debug("Skipping registration of MCP tool '#{tool_name_sym}' as it was not selected in agent definition.")
+          end
+          # --- END check ---
         end
       rescue ADK::Mcp::McpError => e # Corrected typo: Error -> McpError
         ADK.logger.error("Failed to list tools from MCP server: #{e.message}")

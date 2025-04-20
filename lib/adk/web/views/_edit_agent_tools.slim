@@ -6,9 +6,7 @@
 
 .box.mb-5
   h2.title.is-4 Edit Configured Tools
-  form( hx-put="/agents/#{agent_data[:name]}/update/tools"
-        hx-target="#agent-tools-display"
-        hx-swap="innerHTML" )
+  form( hx-put="/agents/#{agent_data[:name]}/update/tools" )
 
     .field
       label.label Available Tools (Select tools for this agent definition):
@@ -29,9 +27,9 @@
     .field.is-grouped.is-grouped-right.mt-4
       .control
         button.button( type="button"
-                       hx-get="/agents/#{agent_data[:name]}/display/tools"
-                       hx-target="#agent-tools-display"
-                       hx-swap="innerHTML" )
+                       hx-get="/agents/#{agent_data[:name]}/display/tool_table"
+                       hx-target="closest .box"
+                       hx-swap="outerHTML" )
           span Cancel
       .control
         button.button.is-success(type="submit")

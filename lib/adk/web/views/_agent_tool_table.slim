@@ -1,0 +1,35 @@
+/ File: lib/adk/web/views/_agent_tool_table.slim
+/ Renders the complete Configured Tools section including the table.
+/ Expects locals:
+/   agent_data (Hash: {name, ...})
+/   configured_tools (Array<Hash>: Native tool metadata)
+/   mcp_tool_results (Array<Hash>: Results from fetch_mcp_tools)
+
+.box#agent-tools-display
+  / --- Level for Title and Edit Button ---
+  .level
+    .level-left
+      h2.title.is-4.level-item Configured Tools
+    .level-right
+      button.button.is-link.is-light.level-item( hx-get="/agents/#{agent_data[:name]}/edit/tools"
+                                                hx-target="#agent-tools-display"
+                                                hx-swap="outerHTML" )
+        span.icon.is-small
+          i.fas.fa-pencil-alt
+        span Edit Tools
+  
+  / --- Table Structure ---
+  table.table.is-fullwidth.is-striped.is-hoverable
+    thead
+      tr
+        th Name
+        th Source
+        th Description
+        / th Parameters
+        / th Actions
+    tbody
+      / --- Render Native Tool Rows --- 
+      == slim :_display_agent_tools, locals: { agent_data: agent_data, configured_tools: configured_tools }
+      
+      / --- Render MCP Tool Rows --- 
+      == slim :_display_agent_mcp, locals: { agent_data: agent_data, mcp_tool_results: mcp_tool_results } 

@@ -25,14 +25,6 @@ module ADK
       # @param tool_registry [ADK::ToolRegistry] The specific registry instance to register with.
       # @return [Class] The newly created anonymous ToolWrapper subclass, or nil.
       def self.from_mcp_schema(mcp_schema, mcp_client, tool_registry)
-        # --- Re-ADD DEBUG LOGGING ---
-        Mcp.logger.debug("[ToolWrapper Debug] Received mcp_schema: #{mcp_schema.inspect} (Class: #{mcp_schema.class})")
-        Mcp.logger.debug("[ToolWrapper Debug] mcp_schema[:name]: #{mcp_schema.is_a?(Hash) ? mcp_schema[:name].inspect : 'N/A - Not a hash'}")
-        Mcp.logger.debug("[ToolWrapper Debug] mcp_schema['name']: #{mcp_schema.is_a?(Hash) ? mcp_schema['name'].inspect : 'N/A - Not a hash'}")
-        Mcp.logger.debug("[ToolWrapper Debug] mcp_client.is_a?(ADK::Mcp::Client): #{mcp_client.is_a?(ADK::Mcp::Client)}")
-        Mcp.logger.debug("[ToolWrapper Debug] tool_registry.is_a?(ADK::ToolRegistry): #{tool_registry.is_a?(ADK::ToolRegistry)}")
-        # --- END DEBUG LOGGING ---
-
         # Validate inputs including the registry
         unless mcp_schema.is_a?(Hash) && mcp_schema[:name] &&
                mcp_client.is_a?(ADK::Mcp::Client) &&
@@ -48,12 +40,10 @@ module ADK
         mcp_required = mcp_input_schema[:required] || []
 
         adk_params = Util::SchemaConverter.json_to_adk(mcp_properties, mcp_required)
-        Mcp.logger.debug("[ToolWrapper Debug] Result of json_to_adk: #{adk_params.inspect}")
 
         # Create anonymous class
         wrapper_class = Class.new(ToolWrapper) do
           # --- CAPTURE local variables for use in method definitions ---
-          # It's crucial these are captured here, before the methods are defined.
           captured_mcp_name_sym = mcp_name.to_sym
           captured_mcp_description = mcp_description
           captured_adk_params = adk_params

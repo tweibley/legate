@@ -604,7 +604,47 @@ module ADK
           configured_tool_names = [];
           begin tools_json_string && configured_tool_names = JSON.parse(tools_json_string) rescue []; end
           locals[:configured_tool_names] = configured_tool_names
-          locals[:all_available_tools] = ADK::GlobalToolManager.list_all_tools
+
+          # --- MODIFIED: Combine Native and Fetched MCP Tools for display ---
+          # 1. Get Native Tools from Global Manager
+          native_tools = ADK::GlobalToolManager.list_all_tools
+
+          # 2. Fetch tools from this agent's MCP config
+          mcp_servers_json = agent_definition['mcp_servers_json'] || '[]'
+          mcp_configs = []
+          begin
+            mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
+          rescue JSON::ParserError => e
+            logger.error("Invalid JSON in mcp_servers_json while editing tools for agent '#{name}': #{e.message}")
+            mcp_configs = []
+          end
+          mcp_tool_results = fetch_mcp_tools(mcp_configs)
+
+          # 3. Extract successfully fetched MCP tool metadata
+          #    (SchemaConverter already converts MCP schema to ADK format needed by edit partial)
+          fetched_mcp_tools = []
+          mcp_tool_results.each do |result|
+            if result[:status] == :success && result[:tools]
+              result[:tools].each do |mcp_tool_schema|
+                mcp_props = mcp_tool_schema[:inputSchema]['properties'] || {}
+                mcp_req = mcp_tool_schema[:inputSchema]['required'] || []
+                adk_params = ADK::Mcp::Util::SchemaConverter.json_to_adk(mcp_props, mcp_req)
+                fetched_mcp_tools << {
+                  name: mcp_tool_schema[:name].to_sym, # Use symbol consistent with native tools
+                  description: mcp_tool_schema[:description] || "",
+                  parameters: adk_params # Pass the converted params
+                }
+              end
+            end
+          end
+
+          # 4. Combine and remove duplicates (prefer native if name clash)
+          combined_tools = (native_tools + fetched_mcp_tools).uniq { |tool| tool[:name] }
+
+          # 5. Pass the combined list to the partial
+          locals[:all_available_tools] = combined_tools.sort_by { |t| t[:name].to_s }
+          # --- END MODIFICATION ---
+
         elsif field == 'mcp'
           # Nothing specific needed for locals for mcp, agent_data has the json
         end
@@ -612,6 +652,54 @@ module ADK
         # Render the correct partial
         slim :"_edit_agent_#{field}", layout: false, locals: locals
       end
+      # --- << NEW ROUTE >> ---
+      # Renders the full tool table display partial (used by Cancel button in edit view)
+      get '/agents/:name/display/tool_table' do |name|
+        halt 503, "Redis unavailable." unless @redis
+        key = agent_redis_key(name); halt 404 unless @redis.exists?(key)
+
+        # Fetch all data needed by the _agent_tool_table partial
+        fields_to_fetch = ['description', 'tools', 'model', 'fallback_mode', 'mcp_servers_json']
+        redis_agent_data = @redis.hmget(key, *fields_to_fetch)
+
+        agent_data = {
+          name: name,
+          description: redis_agent_data[0],
+          model: redis_agent_data[1] || ADK::Agent::DEFAULT_MODEL, # Add model
+          fallback_mode: redis_agent_data[3] || 'error',
+          mcp_servers_json: redis_agent_data[4] || '[]'
+        }
+        # Add running status
+        agent_data[:running] = @agents.key?(name)
+
+        # Get configured native tool info
+        tools_json_string = redis_agent_data[2];
+        configured_tool_names_str = [];
+        begin tools_json_string && configured_tool_names_str = JSON.parse(tools_json_string) rescue []; end
+        all_native_tools = ADK::GlobalToolManager.list_all_tools
+        configured_tools_metadata = configured_tool_names_str.map { |tn|
+          all_native_tools.find { |t| t[:name].to_s == tn }
+        }.compact
+
+        # Fetch MCP tool results
+        mcp_servers_json = agent_data[:mcp_servers_json] # Use value already fetched
+        mcp_configs = []
+        begin
+          mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
+        rescue JSON::ParserError => e
+          logger.error("Invalid JSON in mcp_servers_json for agent '#{name}' tool table display: #{e.message}")
+        end
+        mcp_tool_results = fetch_mcp_tools(mcp_configs)
+
+        # Render the full table partial
+        slim :_agent_tool_table, layout: false,
+                                 locals: {
+                                   agent_data: agent_data,
+                                   configured_tools: configured_tools_metadata,
+                                   mcp_tool_results: mcp_tool_results
+                                 }
+      end
+      # --- << END NEW ROUTE >> ---
 
       get '/agents/:name/display/:field' do |name, field|
         supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp']
@@ -633,11 +721,15 @@ module ADK
           response_locals[:configured_tools] = configured_tool_names_str.map { |tn|
             all_tools.find { |t| t[:name].to_s == tn }
           }.compact
+          logger.debug("Local tools for agent '#{name}' during display: #{response_locals.inspect}")
         end
         slim :"_display_agent_#{field}", layout: false, locals: response_locals
       end
 
       put '/agents/:name/update/:field' do |name, field|
+        # --- ADDED Logging ---
+        # logger.debug("PUT /agents/#{name}/update/#{field} received. PARAMS: #{params.inspect}")
+        # --- END Logging ---
         supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp']
         halt 404, "Updating field '#{field}' not supported." unless supported_fields.include?(field)
         halt 503, "Redis unavailable." unless @redis
@@ -653,22 +745,51 @@ module ADK
         agent_data_hash = { name: name } # Needed for display partial URLs
 
         if field == 'tools'
-          all_available_tools_list = ADK::GlobalToolManager.list_all_tools
-          selected_tools = params['tools'] || []; valid_available_tools = all_available_tools_list.map { |t|
-            t[:name].to_s
-          }
+          # --- MODIFIED: Validate against Native + Fetched MCP tools ---
+          # 1. Get Native tool names
+          native_tools_metadata = ADK::GlobalToolManager.list_all_tools
+          native_tool_names = native_tools_metadata.map { |t| t[:name].to_s }
+
+          # 2. Fetch this agent's MCP tools
+          mcp_servers_json = @redis.hget(key, 'mcp_servers_json') || '[]'
+          mcp_configs = []
+          begin
+            mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
+          rescue JSON::ParserError => e
+            logger.error("Invalid JSON in mcp_servers_json during tool update validation for '#{name}': #{e.message}")
+          end
+          mcp_tool_results = fetch_mcp_tools(mcp_configs)
+
+          # 3. Extract available MCP tool names (as strings)
+          mcp_tool_names = []
+          mcp_tool_results.each do |result|
+            if result[:status] == :success && result[:tools]
+              mcp_tool_names.concat(result[:tools].map { |t| t[:name] }) # Assuming name is already string
+            end
+          end
+
+          # 4. Combine all valid names
+          all_valid_tool_names = (native_tool_names + mcp_tool_names).uniq
+          # logger.debug("Valid tools for agent '#{name}' during update: #{all_valid_tool_names.inspect}")
+
+          # 5. Validate submitted tools against the combined list
+          selected_tools = params['tools'] || []
           validated_tools = selected_tools.select { |st|
-            if valid_available_tools.include?(st) then true else logger.warn("Invalid tool '#{st}' submitted.");
-                                                                 false; end
+            if all_valid_tool_names.include?(st) then true
+            else
+              logger.warn("Invalid tool '#{st}' submitted for agent '#{name}'. Valid options: #{all_valid_tool_names.join(', ')}")
+              false
+            end
           }
+          # logger.debug("Validated tools for agent '#{name}' during update: #{all_valid_tool_names.inspect}")
+          # --- END MODIFICATION ---
+
           new_value_to_save = validated_tools.to_json
           # Prepare locals for _display_agent_tools
           agent_data_hash[:description] = @redis.hget(key, 'description')
           agent_data_hash[:model] = @redis.hget(key, 'model')
           response_locals[:agent_data] = agent_data_hash
-          response_locals[:configured_tools] = validated_tools.map { |tn|
-            all_available_tools_list.find { |t| t[:name].to_s == tn }
-          }.compact
+          response_locals[:configured_tools] = validated_tools
         elsif field == 'fallback'
           new_value_to_save = params['value']&.strip
           logger.debug("Received fallback update for '#{name}'. Value: '#{new_value_to_save}'") # <-- LOGGING
@@ -683,7 +804,7 @@ module ADK
           agent_data_hash[:model] = @redis.hget(key, 'model')
           agent_data_hash[:fallback_mode] = new_value_to_save
           response_locals[:agent_data] = agent_data_hash
-          logger.debug("Prepared response_locals for display: #{response_locals.inspect}") # <-- LOGGING
+          # logger.debug("Prepared response_locals for display: #{response_locals.inspect}") # <-- LOGGING
         elsif field == 'mcp'
           new_value_to_save = params['value']&.strip
           new_value_to_save = '[]' if new_value_to_save.nil? || new_value_to_save.empty? # Default to empty array JSON
@@ -726,8 +847,77 @@ module ADK
 
         begin # Update Redis
           @redis.hset(key, redis_field_to_update, new_value_to_save)
-          logger.info("Updated agent '#{name}', field '#{redis_field_to_update}' to '#{new_value_to_save}'") # <-- LOGGING
-          slim :"_display_agent_#{field}", layout: false, locals: response_locals # Render display partial
+          # logger.info("Updated agent '#{name}', field '#{redis_field_to_update}' to '#{new_value_to_save}'") # <-- LOGGING
+
+          # --- ADDED: Restart running agent if necessary ---
+          was_running = @agents.key?(name) # Check status BEFORE potential stop/start
+          if was_running
+            logger.info("Agent '#{name}' tool config updated while running. Triggering automatic restart.")
+            stop_success = _stop_agent(name)
+            if stop_success
+              newly_started_agent = _start_agent(name)
+              agent_data_hash[:running] = !newly_started_agent.nil? # Update status based on actual outcome
+              logger.info("Automatic restart for '#{name}' completed. Running: #{agent_data_hash[:running]}")
+            else
+              logger.error("Failed to stop running agent '#{name}' during automatic restart. State might be inconsistent.")
+              agent_data_hash[:running] = true # Best guess: it might still be running
+            end
+          else
+            logger.info("Agent '#{name}' tool config updated while stopped.")
+            agent_data_hash[:running] = false # Ensure marked as stopped
+          end
+          # --- END RESTART ---
+
+          # --- Re-fetch data needed for the full tool table partial ---
+
+          # --- REPEAT Logic: Get Native + MCP Tool Metadata ---
+          # 1. Get Native Tools
+          native_tools = ADK::GlobalToolManager.list_all_tools
+          # 2. Fetch this agent's MCP tools again
+          mcp_servers_json = @redis.hget(key, 'mcp_servers_json') || '[]'
+          mcp_configs = []
+          begin
+            mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
+          rescue JSON::ParserError => e
+            logger.error("Invalid JSON in mcp_servers_json after update for agent '#{name}': #{e.message}")
+            mcp_configs = []
+          end
+          mcp_tool_results = fetch_mcp_tools(mcp_configs)
+          response_locals[:mcp_tool_results] = mcp_tool_results # Pass to partial
+          # 3. Extract successfully fetched MCP tool metadata
+          fetched_mcp_tools = []
+          mcp_tool_results.each do |result|
+            if result[:status] == :success && result[:tools]
+              result[:tools].each do |mcp_tool_schema|
+                mcp_props = mcp_tool_schema[:inputSchema]['properties'] || {}
+                mcp_req = mcp_tool_schema[:inputSchema]['required'] || []
+                adk_params = ADK::Mcp::Util::SchemaConverter.json_to_adk(mcp_props, mcp_req)
+                fetched_mcp_tools << {
+                  name: mcp_tool_schema[:name].to_sym,
+                  description: mcp_tool_schema[:description] || "",
+                  parameters: adk_params
+                }
+              end
+            end
+          end
+          # 4. Combine all tool metadata
+          all_tools_metadata = (native_tools + fetched_mcp_tools).uniq { |tool| tool[:name] }
+          # --- END REPEAT Logic ---
+
+          # Use the combined metadata list to find full data for validated tools
+          response_locals[:configured_tools] = validated_tools.map { |tn|
+            all_tools_metadata.find { |t| t[:name].to_s == tn }
+          }.compact
+
+          # Update agent_data_hash with latest running status and potentially other fields if needed
+          agent_data_hash[:running] = @agents.key?(name) # Check running status AFTER potential restart
+          agent_data_hash[:fallback_mode] = @redis.hget(key, 'fallback_mode') || 'error' # Get current fallback
+          agent_data_hash[:mcp_servers_json] = mcp_servers_json # Pass current json
+          response_locals[:agent_data] = agent_data_hash
+          # --- End re-fetch data ---
+
+          # --- Render the FULL tool table partial ---
+          slim :_agent_tool_table, layout: false, locals: response_locals
         rescue Redis::BaseError => e;
           logger.error("Redis error updating: #{e.message}"); halt 500, "Error updating definition.";
         rescue JSON::GeneratorError => e;
@@ -737,164 +927,54 @@ module ADK
 
       # --- Agent Runtime Routes ---
       post '/agents/:name/start' do
-        # ... (existing start logic - unchanged by session refactor) ...
-        name = params[:name]; agent_data_for_view = nil
-        if @agents.key?(name) then logger.warn("Agent '#{name}' running."); agent_data_for_view = @agents[name]; else
-                                                                                                                   halt 503,
-                                                                                                                        "Redis unavailable." unless @redis;
-                                                                                                                   key = agent_redis_key(name)
-                                                                                                                   # --- Fetch fallback_mode AND MCP config when starting ---
-                                                                                                                   fields_to_fetch = [
-                                                                                                                     'description', 'tools', 'model', 'fallback_mode', 'mcp_servers_json'
-                                                                                                                   ]
-                                                                                                                   redis_agent_data = @redis.hmget(
-                                                                                                                     key, *fields_to_fetch
-                                                                                                                   )
-                                                                                                                   # <------------------------------------------------------>
-                                                                                                                   agent_description, tools_json, model_name, fallback_mode_str, mcp_servers_json = redis_agent_data[0],
-                                                                                                                                                                                   redis_agent_data[1],
-                                                                                                                                                                                   (redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL),
-                                                                                                                                                                                   redis_agent_data[3],
-                                                                                                                                                                                   redis_agent_data[4] # <-- Get MCP JSON
-                                                                                                                   fallback_mode_sym = (fallback_mode_str == 'echo') ? :echo : :error # Convert to symbol, default error
-                                                                                                                   # ---> Parse MCP Servers JSON <---
-                                                                                                                   mcp_configs = []
-                                                                                                                   begin
-                                                                                                                     if mcp_servers_json && !mcp_servers_json.empty?
-                                                                                                                       mcp_configs = JSON.parse(mcp_servers_json)
-                                                                                                                     end
-                                                                                                                   rescue JSON::ParserError => e
-                                                                                                                     logger.error("Failed to parse mcp_servers_json for agent '#{name}', starting without MCP servers. Error: #{e.message}")
-                                                                                                                     mcp_configs = [] # Ensure it's an empty array on error
-                                                                                                                   end
-                                                                                                                   # <------------------------------->
-
-                                                                                                                   unless agent_description then logger.error("Def not found: '#{name}'");
-                                                                                                                                                 halt 404;
-                                                                                                                   end
-                                                                                                                   begin logger.info("Starting agent '#{name}' (Model: #{model_name}, Fallback: #{fallback_mode_sym}, MCP: #{mcp_configs.count} servers)...");
-                                                                                                                         # --- Pass fallback_mode AND mcp_configs to initializer ---
-                                                                                                                         agent = ADK::Agent.new(
-                                                                                                                           name: name, description: agent_description, model_name: model_name,
-                                                                                                                           fallback_mode: fallback_mode_sym,
-                                                                                                                           mcp_servers: mcp_configs # <-- Pass parsed configs
-                                                                                                                         );
-                                                                                                                         tool_names = [];
-                                                                                                                         if tools_json && !tools_json.empty? then tool_names = JSON.parse(tools_json).map(&:to_sym) rescue [];
-                                                                                                                         end;
-                                                                                                                         tool_names.each { |tn|
-                                                                                                                           inst = ADK::GlobalToolManager.create_instance(tn);
-                                                                                                                           agent.add_tool(inst) if inst
-                                                                                                                         };
-                                                                                                                         agent.start;
-                                                                                                                         @agents[name] =
-                                                                                                                           agent;
-                                                                                                                         agent_data_for_view = agent;
-                                                                                                                         logger.info("Agent '#{name}' started.");
-                                                                                                                   rescue StandardError => e;
-                                                                                                                     logger.error("Failed start: #{e.message}");
-                                                                                                                     halt 500;
-                                                                                                                   end
-        end; agent_status_fragments(agent_data_for_view)
+        name = params[:name]
+        agent = _start_agent(name) # <<< Use helper
+        # Prepare data for view - need definition even if start failed or already running
+        agent_data_for_view = if agent then agent # Use running instance if available
+                              else # Fetch definition from Redis if start failed/not running
+                                redis_data = @redis&.hmget(agent_redis_key(name), 'description', 'tools',
+                                                           'model') || ["N/A", nil, nil]
+                                tools = []; if redis_data[1] then tools = JSON.parse(redis_data[1]) rescue [] end
+                                { name: name, description: redis_data[0], running: false, model: redis_data[2],
+                                  configured_tools: tools }
+                              end
+        agent_status_fragments(agent_data_for_view)
       end
 
       post '/agents/:name/start/detail' do
-        # ... (existing start logic - unchanged by session refactor) ...
-        name = params[:name]; content_type :html; agent_data_for_view = nil
-        if @agents.key?(name) then agent_data_for_view = @agents[name]; else
-                                                                          halt 503, "Redis unavailable." unless @redis;
-                                                                          key = agent_redis_key(name)
-                                                                          # --- Fetch fallback_mode AND MCP config when starting (detail view) ---
-                                                                          fields_to_fetch = ['description', 'tools',
-                                                                                             'model', 'fallback_mode', 'mcp_servers_json']
-                                                                          redis_agent_data = @redis.hmget(key,
-                                                                                                          *fields_to_fetch);
-                                                                          # <-------------------------------------------------------------------->
-                                                                          agent_description, tools_json, model_name, fallback_mode_str, mcp_servers_json = redis_agent_data[0],
-                                                                                                                                         redis_agent_data[1],
-                                                                                                                                         (redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL),
-                                                                                                                                         redis_agent_data[3],
-                                                                                                                                         redis_agent_data[4] # <-- Get MCP JSON
-                                                                          fallback_mode_sym = (fallback_mode_str == 'echo') ? :echo : :error # Convert to symbol, default error
-                                                                          # ---> Parse MCP Servers JSON <---
-                                                                          mcp_configs = []
-                                                                          begin
-                                                                            if mcp_servers_json && !mcp_servers_json.empty?
-                                                                              mcp_configs = JSON.parse(mcp_servers_json)
-                                                                            end
-                                                                          rescue JSON::ParserError => e
-                                                                            logger.error("Failed to parse mcp_servers_json for agent '#{name}' (detail start), starting without MCP servers. Error: #{e.message}")
-                                                                            mcp_configs = [] # Ensure it's an empty array on error
-                                                                          end
-                                                                          # <------------------------------->
-
-                                                                          unless agent_description then halt 404; end
-                                                                          begin
-                                                                            # --- Pass fallback_mode AND mcp_configs to initializer ---
-                                                                            agent = ADK::Agent.new(name: name, description: agent_description, model_name: model_name,
-                                                                                                   fallback_mode: fallback_mode_sym,
-                                                                                                   mcp_servers: mcp_configs);
-                                                                            # <-- Pass parsed configs
-                                                                            tool_names = [];
-                                                                            if tools_json && !tools_json.empty? then tool_names = JSON.parse(tools_json).map(&:to_sym) rescue [];
-                                                                            end; tool_names.each { |tn|
-                                                                              inst = ADK::GlobalToolManager.create_instance(tn);
-                                                                              agent.add_tool(inst) if inst
-                                                                            };
-                                                                            agent.start;
-                                                                            @agents[name] = agent;
-                                                                            agent_data_for_view = agent
-                                                                          rescue => e;
-                                                                            logger.error("Failed start detail: #{e.message}");
-                                                                            halt 500; end
-        end; slim :_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view }
+        name = params[:name]; content_type :html
+        agent = _start_agent(name) # <<< Use helper
+        # Prepare data for view
+        agent_data_for_view = if agent then agent
+                              else # Fetch definition from Redis
+                                redis_data = @redis&.hmget(agent_redis_key(name), 'description', 'tools',
+                                                           'model') || ["N/A", nil, nil]
+                                tools = []; if redis_data[1] then tools = JSON.parse(redis_data[1]) rescue [] end
+                                { name: name, description: redis_data[0], running: false, model: redis_data[2],
+                                  configured_tools: tools }
+                              end
+        slim :_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view }
       end
 
       post '/agents/:name/stop' do
-        # ... (existing stop logic - unchanged by session refactor) ...
-        name = params[:name]; agent = @agents[name]; stopped_agent_data = nil
-        if agent;
-          description = agent.description;
-          model = agent.model_name;
-          tools = agent.tools.map(&:name);
-          agent.stop;
-          @agents.delete(name);
-          stopped_agent_data = { name: name, description: description, running: false, model: model,
-                                 configured_tools: tools };
-          logger.info("Agent '#{name}' stopped.");
-        else logger.warn("Stop non-running agent: '#{name}'.");
-             key = agent_redis_key(name);
-             redis_data = @redis&.hmget(key, 'description', 'tools', 'model') || ["N/A", nil, nil];
-             description, tools_json, model = redis_data[0] || "N/A", redis_data[1], redis_data[2];
-             configured_tools = [];
-             if tools_json then configured_tools = JSON.parse(tools_json) rescue [];
-             end;
-             stopped_agent_data = { name: name, description: description, running: false, model: model,
-                                    configured_tools: configured_tools };
-        end
+        name = params[:name]
+        _stop_agent(name) # <<< Use helper
+        # Fetch definition for display after stopping
+        redis_data = @redis&.hmget(agent_redis_key(name), 'description', 'tools', 'model') || ["N/A", nil, nil]
+        tools = []; if redis_data[1] then tools = JSON.parse(redis_data[1]) rescue [] end
+        stopped_agent_data = { name: name, description: redis_data[0], running: false, model: redis_data[2],
+                               configured_tools: tools }
         agent_status_fragments(stopped_agent_data)
       end
 
       post '/agents/:name/stop/detail' do
-        # ... (existing stop logic - unchanged by session refactor) ...
-        name = params[:name]; content_type :html; stopped_agent_data = nil; agent = @agents[name]
-        if agent;
-          description = agent.description;
-          model = agent.model_name;
-          tools = agent.tools.map(&:name);
-          agent.stop;
-          @agents.delete(name);
-          stopped_agent_data = { name: name, description: description, running: false, model: model,
-                                 configured_tools: tools };
-        else key = agent_redis_key(name);
-             redis_data = @redis&.hmget(key, 'description', 'tools', 'model') || ["N/A", nil, nil];
-             description, tools_json, model = redis_data[0] || "N/A", redis_data[1], redis_data[2];
-             configured_tools = [];
-             if tools_json then configured_tools = JSON.parse(tools_json) rescue [];
-             end;
-             stopped_agent_data = { name: name, description: description, running: false, model: model,
-                                    configured_tools: configured_tools };
-        end
+        name = params[:name]; content_type :html
+        _stop_agent(name) # <<< Use helper
+        # Fetch definition for display after stopping
+        redis_data = @redis&.hmget(agent_redis_key(name), 'description', 'tools', 'model') || ["N/A", nil, nil]
+        tools = []; if redis_data[1] then tools = JSON.parse(redis_data[1]) rescue [] end
+        stopped_agent_data = { name: name, description: redis_data[0], running: false, model: redis_data[2],
+                               configured_tools: tools }
         slim :_agent_status_controls, layout: false, locals: { agent_data: stopped_agent_data }
       end
 
@@ -1087,6 +1167,106 @@ module ADK
                    }
       }
       get('/api/tools') { content_type :json; json tools: ADK::GlobalToolManager.list_all_tools }
+
+      # --- Private Helper Methods ---
+      private
+
+      # Stops a running agent instance.
+      # @param name [String] Agent name.
+      # @return [Boolean] True if stopped successfully or was already stopped, false on error.
+      def _stop_agent(name)
+        agent = @agents[name]
+        if agent
+          logger.info("Stopping agent '#{name}'...")
+          begin
+            agent.stop
+            @agents.delete(name)
+            logger.info("Agent '#{name}' stopped.")
+            true
+          rescue => e
+            logger.error("Error stopping agent '#{name}': #{e.message}")
+            false # Indicate error
+          end
+        else
+          logger.warn("Attempted to stop non-running agent: '#{name}'.")
+          true # Considered success as it's already stopped
+        end
+      end
+
+      # Starts an agent instance based on its Redis definition.
+      # @param name [String] Agent name.
+      # @return [ADK::Agent, nil] The started agent instance or nil on failure.
+      def _start_agent(name)
+        return @agents[name] if @agents.key?(name) # Already running
+
+        halt 503, "Redis unavailable." unless @redis
+        key = agent_redis_key(name)
+
+        fields_to_fetch = [
+          'description', 'tools', 'model', 'fallback_mode', 'mcp_servers_json'
+        ]
+        redis_agent_data = @redis.hmget(key, *fields_to_fetch)
+
+        agent_description, tools_json, model_name, fallback_mode_str, mcp_servers_json = redis_agent_data[0],
+                                                                                         redis_agent_data[1],
+                                                                                         (redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL),
+                                                                                         redis_agent_data[3],
+                                                                                         redis_agent_data[4]
+
+        unless agent_description
+          logger.error("Agent definition not found for '#{name}'")
+          return nil # Failed to start
+        end
+
+        fallback_mode_sym = (fallback_mode_str == 'echo') ? :echo : :error
+        mcp_configs = []
+        selected_tool_names = []
+        begin
+          if mcp_servers_json && !mcp_servers_json.empty?
+            mcp_configs = JSON.parse(mcp_servers_json)
+          end
+          if tools_json && !tools_json.empty?
+            selected_tool_names = JSON.parse(tools_json).map(&:to_sym) rescue []
+          end
+        rescue JSON::ParserError => e
+          logger.error("Failed to parse config JSON for agent '#{name}' during start: #{e.message}")
+          mcp_configs = []
+          selected_tool_names = []
+        end
+
+        logger.info("Attempting to start agent '#{name}' (Model: #{model_name}, Fallback: #{fallback_mode_sym}, MCP: #{mcp_configs.count} servers)... Selected Tools: #{selected_tool_names.inspect}")
+        agent = ADK::Agent.new(
+          name: name, description: agent_description, model_name: model_name,
+          fallback_mode: fallback_mode_sym,
+          mcp_servers: mcp_configs,
+          selected_tool_names: selected_tool_names
+        )
+
+        # --- Add explicitly configured NATIVE tools ---
+        # MCP tools are registered during agent.start -> discover_and_register_mcp_tools
+        selected_tool_names.each do |tn|
+          # Check if this selected tool is a known NATIVE tool
+          inst = ADK::GlobalToolManager.create_instance(tn)
+          if inst
+            logger.debug("Adding selected native tool: #{tn}")
+            agent.add_tool(inst)
+          else
+            # Assuming it's an intended MCP tool, do nothing here.
+            # It will be registered later if available on the server and selected.
+            logger.debug("Tool '#{tn}' selected but not found in GlobalToolManager (assuming MCP tool).")
+          end
+        end
+
+        agent.start
+        @agents[name] = agent
+        logger.info("Agent '#{name}' started successfully.")
+        agent # Return the agent instance
+      rescue StandardError => e
+        logger.error("Failed to start agent '#{name}': #{e.class} - #{e.message}")
+        logger.error(e.backtrace.join("\n"))
+        @agents.delete(name) # Clean up if partially added
+        nil # Failed to start
+      end
     end # End App class
   end # End Web module
 end # End ADK module
