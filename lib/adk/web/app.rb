@@ -1204,77 +1204,111 @@ module ADK
       end
 
       # Execute Agent Task Directly (via JSON input) - REFACTORED for Context <-- MODIFIED
+
       post '/agents/:name/execute' do
-        name = params[:name]; content_type :html
+        name = params[:name]; content_type :json # <--- Change default content_type to json for this route
         agent = @agents[name]
 
         html_error = lambda do |message, code = 400|
-                       halt code, format_execution_result_html({ status: :error, error_message: message }); end
+          trigger_event = (code == 400) ? 'showTaskError' : 'showTaskServerError' # Use different events
+          # --- Set HX header to trigger JS event ---
+          headers 'HX-Trigger-After-Swap' => trigger_event
+          # --- Return 200 OK with JSON error message ---
+          halt 200, json(error: message) # Halt stops execution
+        end
+
+        # Define success handler separately for clarity
+        html_success = lambda do |result_hash|
+          # Format result, return 200 OK with HTML body
+          format_execution_result_html(result_hash)
+        end
 
         html_error.call("Error: Agent '#{name}' not found or not running.", 400) unless agent
         json_string = params['task_json'];
         html_error.call("Error: Missing 'task_json' data.", 400) unless json_string && !json_string.empty?
-        task = nil;
-        begin data = JSON.parse(json_string); task = data['task'];
-              html_error.call("Error: Missing 'task' key in JSON.", 400) unless task;
-        rescue JSON::ParserError => e;
-          logger.error("Invalid JSON: #{e.message}"); html_error.call("Error: Invalid JSON format.", 400); end
 
+        # --- Parse and Determine Execution Path ---
+        task_description = nil
+        parameters = nil
+        tool_name_to_execute = nil
+        begin
+          data = JSON.parse(json_string)
+          if data.is_a?(Hash)
+            # Check for direct execution format first
+            if data.key?('tool_name') && data.key?('task') && data.key?('parameters')
+              tool_name_to_execute = data['tool_name']&.strip
+              task_description = data['task'] # Still grab task description if present
+              parameters = data['parameters']
+              html_error.call("Error: Missing 'tool_name' in JSON for direct execution.",
+                              400) if tool_name_to_execute.nil? || tool_name_to_execute.empty?
+              html_error.call("Error: Missing or invalid 'parameters' object in JSON for direct execution.",
+                              400) unless parameters.is_a?(Hash)
+            # Check for standard task format
+            elsif data.key?('task')
+              task_description = data['task']
+              # Check for unexpected extra keys if not direct execution
+              unless (data.keys - ['task']).empty?
+                html_error.call(
+                  "Error: Invalid JSON structure. Use either {'task': '...'} or {'tool_name': '...', 'task': '...', 'parameters': {...}}.", 400
+                )
+              end
+            else # Hash doesn't match expected structures
+              html_error.call("Error: Invalid JSON structure. Missing required 'task' key.", 400)
+            end
+          else # Not a hash
+            html_error.call("Error: Input must be a JSON object.", 400)
+          end
+        rescue JSON::ParserError => e
+          # JSON parsing failed
+          logger.warn("Invalid JSON submitted to /execute: #{e.message}. Input: #{json_string}")
+          html_error.call("Error: Invalid JSON format - #{e.message}", 400)
+        end
+        # Ensure task description is present if we fell through to planning mode
+        html_error.call("Error: Missing task description.",
+                        400) if tool_name_to_execute.nil? && (task_description.nil? || task_description.empty?)
+        # -------------------------------------
+
+        # --- Execute based on path ---
         temp_session = nil
         begin
-          logger.info("Agent '#{name}' executing direct task: #{task}")
-          # Create temporary session using IN-MEMORY service
-          temp_session = @session_service.create_session(app_name: name, user_id: 'web_direct_#{SecureRandom.hex(4)}')
-          # Call run_task with session context
-          final_event_or_error = agent.run_task(session_id: temp_session.id, user_input: task,
-                                                session_service: @session_service)
-          logger.info("Agent '#{name}' direct execution result: #{final_event_or_error.inspect}")
-
-          content_to_display = final_event_or_error.is_a?(ADK::Event) ? final_event_or_error.content : final_event_or_error
-          format_execution_result_html(content_to_display)
+          if tool_name_to_execute
+            # --- Direct Tool Execution ---
+            logger.info("Agent '#{name}' executing DIRECT tool '#{tool_name_to_execute}' with params: #{parameters.inspect}")
+            tool_instance = agent.find_tool(tool_name_to_execute.to_sym)
+            html_error.call("Error: Tool '#{tool_name_to_execute}' not configured for agent '#{name}'.",
+                            400) unless tool_instance
+            temp_session = @session_service.create_session(app_name: name, user_id: "web_direct_#{SecureRandom.hex(4)}")
+            tool_context = ADK::ToolContext.new(
+              session_id: temp_session.id,
+              user_id: temp_session.user_id,
+              app_name: temp_session.app_name,
+              tool_registry: agent.tool_registry
+            )
+            result_hash = tool_instance.execute(parameters.transform_keys(&:to_sym), tool_context)
+            # --- Call success lambda for HTML response ---
+            html_success.call(result_hash)
+          else
+            # --- Standard Planning Execution ---
+            logger.info("Agent '#{name}' executing task via PLANNER: #{task_description}")
+            temp_session = @session_service.create_session(app_name: name, user_id: "web_direct_#{SecureRandom.hex(4)}")
+            final_event_or_error = agent.run_task(
+              session_id: temp_session.id,
+              user_input: task_description,
+              session_service: @session_service
+            )
+            logger.info("Agent '#{name}' planning execution result: #{final_event_or_error.inspect}")
+            content_to_display = final_event_or_error.is_a?(ADK::Event) ? final_event_or_error.content : final_event_or_error
+            # --- Call success lambda for HTML response ---
+            html_success.call(content_to_display)
+          end
         rescue => e
-          logger.error "Error during direct agent execution for '#{name}': #{e.message}\n#{e.backtrace.join("\n")}"
+          # --- Use single quotes for the outer string to avoid escape sequence conflicts ---
+          logger.error 'Error during agent execution for \'#{name}\': #{e.class} - #{e.message}\n' + e.backtrace.join("\n")
+          # --- Use the error lambda, passing 500 for internal errors ---
           html_error.call("Error: Internal server error during task execution: #{e.message}", 500)
         ensure
           @session_service.delete_session(session_id: temp_session.id) if temp_session
         end
-      end
-
-      # --- Tool Routes (Unchanged) ---
-      get('/tools') { @tools_list = ADK::GlobalToolManager.list_all_tools; slim :tools }
-      get('/tools/:name') { |n|
-        @tool = ADK::GlobalToolManager.create_instance(n.to_sym);
-        if @tool then slim :tool else halt 404,
-                                           slim(:error_404,
-                                                locals: { title: "Tool Not Found", message: "Tool '#{n}' not found." });
-        end
-      }
-      post '/tools/:name/execute' do |n|
-        content_type :html; tool_name_sym = n.to_sym; logger.info("Executing Tool '#{n}' via form")
-        submitted_params = params.reject { |k, _| ['splat', 'captures', 'name'].include?(k) }
-        logger.debug("Params: #{submitted_params.inspect}")
-        tool = ADK::GlobalToolManager.create_instance(tool_name_sym)
-        unless tool;
-          err_msg = "Tool '#{Rack::Utils.escape_html(n)}' not found.";
-          halt 404, format_execution_result_html({ status: :error, error_message: err_msg }); end
-
-        # --- Create dummy context for direct execution --- << ADDED >>
-        dummy_context = ADK::ToolContext.new(session_id: "web_direct_#{SecureRandom.hex(4)}", user_id: 'web_user')
-
-        begin
-          symbolized_params = submitted_params.transform_keys(&:to_sym)
-          logger.info("Attempting tool.execute: #{symbolized_params.inspect} with context: #{dummy_context.to_h.inspect}")
-          # --- Pass context --- << MODIFIED >>
-          result_hash = tool.execute(symbolized_params, dummy_context)
-
-          logger.info("Tool execute returned: #{result_hash.inspect}")
-          format_execution_result_html(result_hash)
-        rescue ADK::Error, ArgumentError => e;
-          logger.warn("Tool Error: #{e.message}");
-          format_execution_result_html({ status: :error, error_message: e.message });
-        rescue StandardError => e;
-          logger.error("Unexpected Tool Error: #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}");
-          format_execution_result_html({ status: :error, error_message: "Unexpected error: #{e.message}" }); end
       end
 
       # --- API Endpoints (Unchanged) ---
@@ -1510,9 +1544,9 @@ module ADK
           Based on the following tools configured for an agent, generate a single, simple example JSON object representing a task that uses ONE of these tools.#{' '}
 
           The JSON object MUST follow this exact structure:#{' '}
-          { "task": "A brief description of what the example task does", "parameters": { /* parameters for the chosen tool */ } }
+          { "tool_name": "chosen_tool_name", "task": "A brief description of what the example task does", "parameters": { /* parameters for the chosen tool */ } }
 
-          RANDOMLY Choose ONE tool from the list that has parameters (if possible) to demonstrate usage. Populate the "parameters" object with example values appropriate for the tool's parameter types and descriptions. If a tool has no parameters, the "parameters" object should be empty: {}. The "task" description should briefly explain the example.
+          Choose ONE tool from the list that has parameters (if possible) to demonstrate usage. Populate the "parameters" object with example values appropriate for the tool's parameter types and descriptions. If a tool has no parameters, the "parameters" object should be empty: {}. The "task" description should briefly explain the example. Include the chosen tool's name in the "tool_name" field.
 
           Return ONLY the raw JSON object string. Do not include any other text, explanations, markdown formatting like ```json, or anything else.
 
@@ -1567,8 +1601,8 @@ module ADK
           begin
             parsed_json = JSON.parse(clean_json_string)
             # Ensure it has the expected keys
-            unless parsed_json.is_a?(Hash) && parsed_json.key?('task') && parsed_json.key?('parameters')
-              raise JSON::ParserError, "Generated JSON missing required 'task' or 'parameters' keys."
+            unless parsed_json.is_a?(Hash) && parsed_json.key?('tool_name') && parsed_json.key?('task') && parsed_json.key?('parameters')
+              raise JSON::ParserError, "Generated JSON missing required 'tool_name', 'task' or 'parameters' keys."
             end
 
             # Return the validated, cleaned JSON string, pretty-formatted

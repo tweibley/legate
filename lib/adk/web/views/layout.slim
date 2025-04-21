@@ -68,9 +68,9 @@ html
         }
       });
 
-      // Listen for htmx:afterRequest for the generate example button
+      // Listener for Generate Example Button Response AND Execute Task Errors
       document.body.addEventListener('htmx:afterRequest', function(event) {
-        // Check if the event was triggered by our button
+        // Check if the event was triggered by the Generate Example button
         if (event.detail.requestConfig.elt.id === 'generate-example-task-btn') {
           console.log("htmx:afterRequest event from generate button.");
           if (event.detail.successful) {
@@ -102,6 +102,35 @@ html
             console.error("Generate example request failed. Status:", event.detail.xhr.status);
             alert("Failed to generate example. Server returned status " + event.detail.xhr.status);
           }
+        }
+        
+        // Check if the event was triggered by the Execute Task Form (by URL)
+        // AND if it has the custom error event trigger header
+        var triggerHeader = event.detail.xhr.getResponseHeader('HX-Trigger-After-Swap');
+        if (event.detail.requestConfig.path.includes('/execute') && triggerHeader && triggerHeader.startsWith('showTask')) {
+            console.log("htmx:afterRequest event from execute task with error trigger:", triggerHeader);
+            try {
+                var responseJson = event.detail.xhr.responseText;
+                var parsedResponse = JSON.parse(responseJson);
+                var errorMessage = parsedResponse?.error || "An unknown error occurred.";
+                var errorHtml = 
+                  `<div class="notification is-danger is-light mt-4">
+                     <button class="delete" onclick="this.parentElement.remove();"></button>
+                     ${errorMessage}
+                   </div>`;
+                var targetElement = document.getElementById('task-result');
+                if (targetElement) {
+                    targetElement.innerHTML = errorHtml;
+                } else {
+                    console.error("Could not find #task-result element to display error.");
+                }
+            } catch (e) {
+                console.error("Error parsing error response from /execute:", e);
+                var targetElement = document.getElementById('task-result');
+                if (targetElement) {
+                    targetElement.innerHTML = '<div class="notification is-danger">Failed to parse error response from server.</div>';
+                }
+            }
         }
       });
 
