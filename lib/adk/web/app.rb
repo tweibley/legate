@@ -1331,6 +1331,26 @@ module ADK
       }
       get('/api/tools') { content_type :json; json tools: ADK::GlobalToolManager.list_all_tools }
 
+      # --- Health Check Endpoint ---
+      get '/healthz' do
+        begin
+          # Check essential services. Currently only Redis if configured.
+          if @redis
+            @redis.ping
+          end
+          status 200
+          body 'OK'
+        rescue Redis::BaseError => e
+          logger.error("Health check failed: Redis ping error - #{e.message}")
+          status 503
+          body 'Service Unavailable (Redis)'
+        rescue => e
+          logger.error("Health check failed: Unexpected error - #{e.class}: #{e.message}")
+          status 503
+          body 'Service Unavailable (Internal)'
+        end
+      end
+
       # --- Private Helper Methods ---
       private
 

@@ -26,6 +26,23 @@ html
     section.section
       .container
         == yield
+
+    /! Bulma Modal for Health Check
+    #health-check-modal.modal
+      .modal-background
+      .modal-content
+        .box
+          p.has-text-centered
+            span.icon.is-large.has-text-warning
+              i.fas.fa-exclamation-triangle.fa-3x
+          p.has-text-centered.is-size-5.mt-3 Server unavailable...
+          p.has-text-centered.has-text-grey Retrying connection.
+      /! No close button - it should close automatically on success
+
+    /! Footer
+    footer.footer.mt-auto
+      .content.has-text-centered
+
     / --- Font Awesome JS (Optional, if needed) ---
     / script defer=true src="https://use.fontawesome.com/releases/v5.15.4/js/all.js"
 
@@ -200,6 +217,41 @@ html
           event.target.parentElement.remove();
         }
       });
+
+      // -------- NEW: Health Check Polling --------
+      const healthCheckModal = document.getElementById('health-check-modal');
+      let isServerUnavailable = false;
+
+      function checkServerHealth() {
+        fetch('/healthz')
+          .then(response => {
+            if (!response.ok) {
+              // Throw an error to be caught by the catch block
+              throw new Error(`Server status: ${response.status}`);
+            }
+            // Server is OK
+            if (isServerUnavailable) {
+              console.log("Server connection restored.");
+              healthCheckModal.classList.remove('is-active');
+              isServerUnavailable = false;
+            }
+          })
+          .catch(error => {
+            // Server is down or fetch failed
+            console.warn("Health check failed:", error.message);
+            if (!isServerUnavailable) {
+              console.log("Server connection lost. Displaying modal.");
+              healthCheckModal.classList.add('is-active');
+              isServerUnavailable = true;
+            }
+          });
+      }
+
+      // Check immediately on load
+      checkServerHealth();
+      // Then check every 5 seconds
+      setInterval(checkServerHealth, 5000);
+      // -------- END: Health Check Polling --------
 
     / --- Custom Scripts (if any) ---
     / script src="/js/app.js"
