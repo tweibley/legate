@@ -288,16 +288,6 @@ module ADK
               ADK.logger.debug("Parsed SSE notification (event: #{event_type || 'message'}): #{message.inspect}")
               # Assume all messages via SSE are notifications
               @notification_queue << message
-              begin
-                parsed_data = JSON.parse(message.data, symbolize_names: true)
-                ADK.logger.debug("[SSE Connection] Received Parsed JSON:\n#{JSON.pretty_generate(parsed_data)}")
-                if parsed_data[:id]
-                  ADK.logger.debug("[SSE Connection] Queuing response ID: #{parsed_data[:id]}")
-                end
-              rescue JSON::ParserError => e
-                ADK.logger.error("Failed to parse JSON from SSE data: #{e.message}. Data: #{data_buffer.inspect}")
-                # Maybe increment a parse error counter here too?
-              end
             rescue JSON::ParserError => e
               ADK.logger.error("Failed to parse JSON from SSE data: #{e.message}. Data: #{data_buffer.inspect}")
               # Maybe increment a parse error counter here too?

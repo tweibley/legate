@@ -22,7 +22,7 @@ module ADK
           return {} unless json_schema_properties.is_a?(Hash)
 
           adk_params = {} # Reverted: Store a hash of param hashes
-          required_set = Set.new(json_schema_required_array || [])
+          required_set = Set.new((json_schema_required_array || []).map(&:to_s))
 
           json_schema_properties.each do |name, schema|
             # ---> MODIFIED Check: Allow string or symbol key for type <---

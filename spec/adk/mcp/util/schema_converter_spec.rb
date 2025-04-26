@@ -62,6 +62,25 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
       end
     end
 
+    context 'with symbol keys in properties' do
+      let(:properties) do
+        {
+          name: { type: 'string', description: 'User name' },
+          age: { type: 'integer' } # Missing description
+        }
+      end
+      let(:required) { [:name] } # Use symbol in required array
+
+      it 'handles symbol keys correctly' do
+        expected_params = {
+          name: { type: :string, required: true, description: 'User name' },
+          age: { type: :integer, required: false, description: '' }
+        }
+        # Pass symbols for properties and required list
+        expect(described_class.json_to_adk(properties, required)).to eq(expected_params)
+      end
+    end
+
     context 'with invalid or unsupported input' do
       it 'returns empty hash for nil properties' do
         expect(described_class.json_to_adk(nil)).to eq({})
@@ -89,8 +108,8 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
 
       it 'skips and logs warning for unsupported types like array' do
         properties = { 'my_array' => { 'type' => 'array', 'description' => 'List of items' } }
-        expect(described_class.json_to_adk(properties)).to be_empty
-        expect(ADK.logger).to have_received(:warn).with(/Unsupported JSON Schema type 'array'/)
+        expected_params = { my_array: { type: :array, required: false, description: 'List of items' } }
+        expect(described_class.json_to_adk(properties)).to eq(expected_params)
       end
 
       it 'skips and logs warning for unsupported types like object' do
@@ -159,6 +178,22 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
         expect(result_optional_absent.to_h).not_to have_key(:score)
         expect(result_optional_absent.to_h).not_to have_key(:active)
       end
+
+      it 'handles numeric type coercion from string' do
+        adk_params = { num_val: { type: :numeric, required: true } }
+        schema_proc = described_class.adk_to_dry_schema(adk_params)
+        schema = build_schema_from_proc(schema_proc)
+
+        # Test coercion from string
+        result_coerced = schema.call({ num_val: "123.45" })
+        expect(result_coerced).to be_success
+        expect(result_coerced.to_h[:num_val]).to eq(123.45)
+
+        # Test failure for non-numeric string
+        result_fail = schema.call({ num_val: "abc" })
+        expect(result_fail).to be_failure
+        expect(result_fail.errors[:num_val]).to include('must be a float') # Dry::Types specific message
+      end
     end
 
     context 'with invalid or unsupported ADK parameters' do
@@ -216,6 +251,19 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
         expect(schema.call({ data: 'not_a_hash' })).to be_failure # Ensure basic type check works
 
         expect(ADK.logger).to have_received(:warn).with(/ADK parameter 'data': Type :hash basic mapping/).once
+      end
+
+      it 'maps :object like :hash and logs warning' do
+        adk_params = { obj_data: { type: :object, required: true, description: 'Some object' } }
+        schema_proc = described_class.adk_to_dry_schema(adk_params)
+        schema = build_schema_from_proc(schema_proc)
+
+        # Test validation like :hash
+        expect(schema.call({ obj_data: { a: 1 } })).to be_success
+        expect(schema.call({})).to be_failure # Required
+        expect(schema.call({ obj_data: 'not_an_object' })).to be_failure
+
+        expect(ADK.logger).to have_received(:warn).with(/ADK parameter 'obj_data': Type :object basic mapping/).once
       end
 
       it 'skips unknown ADK types and logs warning' do
