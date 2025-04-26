@@ -135,7 +135,6 @@ module ADK
         true
       end
 
-      # ... (disconnect, list_tools, call_tool, read_notification methods remain unchanged) ...
       # Disconnects from the MCP server.
       def disconnect
         @lock.synchronize do
@@ -146,12 +145,15 @@ module ADK
           @server_capabilities = nil
           @pending_requests.clear
 
-          @connection&.disconnect
+          begin
+            @connection&.disconnect
+          rescue StandardError => e
+            ADK.logger.error("MCP Client error during disconnect: #{e.message}")
+          end
+
           @connection = nil
           ADK.logger.info("MCP Client disconnected.")
         end
-      rescue StandardError => e
-        ADK.logger.error("MCP Client error during disconnect: #{e.message}")
       ensure
         # Ensure state is updated even if disconnect fails
         @connected = false
