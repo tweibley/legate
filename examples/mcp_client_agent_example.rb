@@ -4,7 +4,15 @@
 # Example: Using an ADK Agent as an MCP Client
 #
 # This example demonstrates how to configure an ADK::Agent to connect to an
-# external MCP server (like the filesystem server) and use its tools.
+# external MCP server (like the @modelcontextprotocol/server-filesystem) and use its tools.
+#
+# Key Concepts:
+#   - MCP Server Configuration: Defining how to connect to the external server (e.g., via stdio).
+#   - Selected Tool Names: Explicitly telling the agent which tools from the MCP server it is allowed to use.
+#     The names provided in `selected_tool_names` MUST exactly match the tool names exposed by the specific
+#     MCP server you are connecting to (check server logs or capabilities if unsure).
+#   - Runtime Start/Stop: Managing the connection lifecycle to the MCP server.
+#   - Using External Tools: Making requests that the agent's planner can map to the available MCP tools.
 #
 # Requires:
 #   - adk-ruby gem with MCP support installed
@@ -14,11 +22,11 @@
 #
 # To Run:
 #   1. Start the external MCP server in one terminal (e.g., the filesystem server command above).
-#   2. Run this script in another terminal: `bundle exec ruby examples/mcp_client_agent_example.rb`
-#   3. Observe the logs to see the agent initialize and list available tools (including those from the MCP server).
-#   4. (Optional) Uncomment the `run_task` section, ensure your external server provides
-#      a relevant tool (like `filesystem/readFile`), create a dummy file in the server's
-#      directory, and run again to see the agent potentially use the external tool.
+#   2. Ensure the directory specified in `mcp_server_config[:args]` exists and is accessible.
+#   3. Run this script in another terminal: `bundle exec ruby examples/mcp_client_agent_example.rb`
+#   4. Observe the logs: The agent should initialize, connect to the MCP server, and list available tools
+#      (including the ones explicitly selected via `selected_tool_names`, like `:read_file` in this example).
+#   5. The script will then attempt to run a task using the `read_file` tool from the MCP server.
 
 require 'bundler/setup'
 require 'adk'
@@ -26,7 +34,6 @@ require 'adk/mcp' # Ensure MCP modules are loaded
 
 # Configure ADK logger
 ENV['ADK_LOG_LEVEL'] = 'DEBUG'
-# ADK.configure { |c| c.log_level = Logger::FATAL }
 dirname = File.expand_path(File.dirname(File.dirname(__FILE__)))
 
 # --- 1. Define a Native ADK Tool (Optional) ---
@@ -73,7 +80,8 @@ my_agent = ADK::Agent.new(
   name: 'mcp_client_agent',
   description: 'An agent using native and external MCP tools.',
   tool_classes: [NativeEchoTool],       # Add native tools here
-  mcp_servers: [mcp_server_config]      # Add MCP server configs here
+  mcp_servers: [mcp_server_config],      # Add MCP server configs here
+  selected_tool_names: [:read_file] # <<< CHANGED: Match actual tool name from server logs
   # model_name: 'gemini-pro-1.5' # Optional: Specify model
 )
 
@@ -107,8 +115,8 @@ begin
   end
 
   # Input asking to use a tool likely provided by the filesystem server
-  # user_input = "Read the content of the file named 'hello.txt' in #{dirname} using the filesystem tool."
-  user_input = "What files are in the #{dirname}? What are the contents of hello.txt in #{dirname}?"
+  # user_input = "What files are in the #{dirname}? What are the contents of hello.txt in #{dirname}?"
+  user_input = "Read the content of the file named 'hello.txt' in #{dirname} using the filesystem tool." # <<< MODIFIED: More specific input
   puts "User Input: #{user_input}"
 
   final_event = my_agent.run_task(
