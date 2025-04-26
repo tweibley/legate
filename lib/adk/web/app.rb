@@ -1,108 +1,132 @@
 # File: lib/adk/web/app.rb
 # frozen_string_literal: true
 
+# This file defines the main Sinatra application for the ADK Web UI.
+# It handles agent definition management (via Redis), runtime management (in-memory),
+# user interactions (chat, direct execution), tool discovery (native and MCP),
+# and provides a dynamic web interface using HTMX.
+
 # STDOUT.sync = true # Uncomment for immediate output flushing if needed
+# --- Core Web Framework Dependencies ---
 require 'sinatra/base'
 require 'sinatra/json'
 require 'sinatra/custom_logger' # For using helpers Sinatra::CustomLogger
 require 'sinatra/reloader'
-require 'slim'
+require 'slim' # Templating engine
 require 'json'
-require_relative 'sass_compiler'
+require_relative 'sass_compiler' # For compiling Sass/SCSS to CSS
 require 'rack/utils' # For escape_html
-require 'redis'
-require 'securerandom' # For session secret
-require 'sidekiq/api'
-require_relative '../mcp/util/schema_converter' # <-- ADDED: For converting MCP tool schemas
-require 'gemini-ai' # Added for Gemini API integration
+require 'redis' # For agent definition persistence
+require 'securerandom' # For session secret generation
+require 'sidekiq/api' # Used for potential future async job display (not currently used in active logic)
+require_relative '../mcp/util/schema_converter' # For converting MCP tool schemas
+require 'gemini-ai' # For example task generation via Gemini API
 
 # --- Load ADK Components ---
-# Load dependencies in a sensible order
-require_relative '../event'   # Load Event first as Session uses it
-require_relative '../session' # Load Session next
-require_relative '../tool_context' # <--- ADDED
-require_relative '../agent' # Agent needs default model constant
-require_relative '../tool'
-require_relative '../tool_registry'
-require_relative '../session_service/in_memory' # Load Service
-require_relative '../session_service/redis' # Load Redis Service
-require_relative '../global_tool_manager' # <-- ADDED
-# Explicitly require all tools
+# Order matters: Load core concepts before components that depend on them.
+require_relative '../event'   # Core event structure used by sessions
+require_relative '../session' # Session structure for conversation history
+require_relative '../tool_context' # Context object passed to tools during execution
+require_relative '../agent' # Core Agent class (defines DEFAULT_MODEL)
+require_relative '../tool' # Base Tool class
+require_relative '../tool_registry' # Manages tools within an agent instance
+require_relative '../session_service/in_memory' # Default in-memory session storage
+require_relative '../session_service/redis' # Alternative Redis-based session storage (not currently used by default)
+require_relative '../global_tool_manager' # Discovers and manages native tools available to the application
+# Explicitly require built-in native tools so GlobalToolManager can find them
 require_relative '../tools/echo'
 require_relative '../tools/calculator'
 require_relative '../tools/cat_facts'
 require_relative '../tools/random_number_tool'
-require_relative '../tools/agent_tool' # Load AgentTool
-require_relative '../tools/base_async_job_tool' # <--- ADDED
-require_relative '../tools/check_job_status_tool' # <--- ADDED
-require_relative '../tools/sleepy_tool' # <--- ADDED for SleepyTool
+require_relative '../tools/agent_tool' # Tool that allows an agent to call another agent
+require_relative '../tools/base_async_job_tool' # Base class for tools that run asynchronously
+require_relative '../tools/check_job_status_tool' # Tool to check the status of async jobs
+require_relative '../tools/sleepy_tool' # Example async tool
 
-# Load dotenv for development AFTER other requires if needed
+# Load dotenv for development environment variables
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
   begin; require 'dotenv/load'; rescue LoadError; end
 end
 
 module ADK
   module Web
-    # Web interface for ADK
+    # Sinatra application providing a web UI for managing and interacting with ADK Agents.
+    # Uses Redis for agent definition persistence and an in-memory hash for running agent instances.
+    # Leverages HTMX for dynamic UI updates and communicates with external tools via MCP.
     class App < Sinatra::Base
-      helpers Sinatra::CustomLogger # Use ADK.logger via 'logger' helper
+      helpers Sinatra::CustomLogger # Integrate Sinatra logging with the central ADK logger
 
+      # Development-specific configurations
       configure :development do
-        register Sinatra::Reloader
+        register Sinatra::Reloader # Enable automatic code reloading
         # Optional: Increase logging level specifically for development web server
         # ADK.logger.level = Logger::DEBUG if ADK.logger
       end
 
-      # Configure the logger and session support for all environments
+      # General configurations for all environments
       configure do
-        set :logger, ADK.logger # Use the central ADK logger for Sinatra's logging
-        # --- Enable Sinatra Sessions ---
+        set :logger, ADK.logger # Use the central ADK logger
+        # Enable Sinatra sessions for storing user-specific chat session IDs
         enable :sessions
-        # IMPORTANT: Set a strong secret key in production (e.g., via ENV variable)
+        # Set session secret. Use environment variable in production for security.
         set :session_secret, ENV['SESSION_SECRET'] || SecureRandom.hex(64)
       end
 
       # --- Sinatra Settings ---
-      set :root, File.expand_path('../../..', __dir__)
-      set :views, File.expand_path('../views', __FILE__)
-      set :public_folder, File.expand_path('../public', __FILE__)
-      set :slim, pretty: true
+      set :root, File.expand_path('../../..', __dir__) # Project root directory
+      set :views, File.expand_path('../views', __FILE__) # Views directory for Slim templates
+      set :public_folder, File.expand_path('../public', __FILE__) # Directory for static assets (CSS, JS, images)
+      set :slim, pretty: true # Configure Slim for readable HTML output
 
       # --- Constants ---
+      # Prefix for Redis keys storing agent definition hashes.
       REDIS_AGENT_HASH_PREFIX = "adk:agent:"
+      # Redis key for the set containing all defined agent names.
       REDIS_AGENTS_SET_KEY = "adk:agents:all_names"
+      # List of available Gemini models selectable in the UI.
       AVAILABLE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro'].freeze
 
       # --- Instance Variables ---
-      # Initialize agent registry, Redis client, AND Session Service
+      # Initializes application state, including connections and services.
       def initialize
         super
-        # In-memory store for LIVE/RUNNING agent *runtime* instances
+        # In-memory hash storing active/running ADK::Agent instances, keyed by agent name.
         @agents = {}
-        # Session service to manage conversation state
+        # Service responsible for managing chat sessions (stores conversation history).
+        # Defaulting to in-memory storage.
         @session_service = ADK::SessionService::InMemory.new
-        # Redis client for persistent agent *definitions*
+        # Redis client connection for persisting agent definitions.
+        # Application can function without Redis, but agent definitions won't be saved.
         begin
-          @redis = Redis.new # Assumes default connection
+          @redis = Redis.new # Assumes default connection (e.g., localhost:6379)
           @redis.ping
           logger.info("Successfully connected to Redis.")
         rescue Redis::CannotConnectError => e
           logger.error("Could not connect to Redis. Persistence disabled. #{e.message}")
           @redis = nil
         end
-        # Compile Sass on startup
+        # Compile SASS/SCSS files in public/styles to CSS in public/css on application startup.
         SassCompiler.compile_all
       end
 
-      # Helper to generate Redis key for an agent definition hash
+      # Generates the Redis hash key for a specific agent's definition.
+      # @param name [String] The name of the agent.
+      # @return [String] The Redis key.
       def agent_redis_key(name)
         "#{REDIS_AGENT_HASH_PREFIX}#{name}"
       end
 
       # --- Sinatra Helpers ---
+      # Utility methods accessible within route handlers and Slim templates.
       helpers do
-        # ---> ADDED: Helper to fetch tools from MCP servers <---
+        # Fetches tool lists from one or more MCP (Multi-Capability Protocol) servers.
+        # Connects to each server defined in the mcp_configs array, lists its tools,
+        # and handles connection errors or timeouts.
+        # @param mcp_configs [Array<Hash>] Array of hashes, each defining an MCP server connection (e.g., {type: :stdio, command: "...", name: "..."}, {type: :tcp, url: "...", name: "..."}).
+        # @param timeout_seconds [Integer] Connection/fetch timeout per server.
+        # @return [Array<Hash>] An array of result hashes, one for each config.
+        #   Success: { status: :success, server: String, config: Hash, tools: Array<Hash> }
+        #   Error:   { status: :error, server: String, config: Hash, message: String }
         def fetch_mcp_tools(mcp_configs, timeout_seconds = 5)
           # Ensure necessary ADK::Mcp classes are loaded (might be redundant if loaded globally, but safe)
           require_relative '../mcp/client'
@@ -390,13 +414,20 @@ module ADK
       end # end helpers
 
       # --- Routes ---
+      # Defines the HTTP endpoints for the web application.
 
+      # GET / - Main welcome page.
       get '/' do
         logger.debug("GET / route handler entered")
         slim :index
       end
 
-      # --- Agent Definition Management Routes ---
+      # --- Agent Definition Management Routes (Redis Persistence) ---
+      # These routes handle CRUD operations for agent *definitions*, which are stored in Redis.
+
+      # GET /agents - Display the main agent management page.
+      # Lists all agents defined in Redis, showing their status (Running/Stopped)
+      # and providing controls to create, manage, and start/stop agents.
       get '/agents' do
         @view_agents = []
         if @redis
@@ -417,6 +448,12 @@ module ADK
         slim :agents
       end
 
+      # POST /agents - Create a new agent definition in Redis.
+      # Receives form data (name, description, tools, model, fallback, MCP config),
+      # validates input, and saves the definition as a hash in Redis.
+      # Also adds the agent name to the central set of agent names.
+      # Returns HTML fragments for the new agent row and potentially removes the
+      # "no agents" message via HTMX OOB swap.
       post '/agents' do
         halt 503, "Redis unavailable." unless @redis
         agent_name = params['name']&.strip; agent_description = params['description']&.strip
@@ -474,6 +511,10 @@ module ADK
         agent_row_html + oob_remove_message_html
       end
 
+      # DELETE /agents/:name - Delete an agent definition from Redis.
+      # Stops the agent runtime instance if it's currently running.
+      # Removes the agent's definition hash and its name from the set in Redis.
+      # Returns an empty 200 OK response, triggering HTMX to remove the corresponding row.
       delete '/agents/:name' do |name|
         logger.info("Received request to delete agent '#{name}'")
         halt 503, "Redis unavailable." unless @redis
@@ -495,7 +536,13 @@ module ADK
           halt 500, "Database error during deletion."; end
       end
 
-      # Agent Detail Page
+      # GET /agents/:name - Display the detail page for a specific agent.
+      # Fetches the agent's definition from Redis.
+      # Fetches metadata for available native tools (from GlobalToolManager) and
+      # remote MCP tools (using fetch_mcp_tools helper based on agent's MCP config).
+      # Displays the combined list of tools *configured* for this agent.
+      # Shows agent details, runtime status, chat link, and task execution controls.
+      # Implicitly adds 'check_job_status' tool to the view if any configured tool is async.
       get '/agents/:name' do |name|
         halt 503, "Redis unavailable." unless @redis
         key = agent_redis_key(name)
@@ -622,7 +669,15 @@ module ADK
         }
       end
 
-      # --- Agent Inline Editing Routes ---
+      # --- Agent Inline Editing Routes (HTMX) ---
+      # These routes handle the display and update of agent definition fields inline
+      # using HTMX, avoiding full page reloads.
+
+      # GET /agents/:name/edit/:field - Display an inline edit form for a specific agent field.
+      # Renders a partial (`_edit_agent_*.slim`) containing the form elements
+      # for the specified field (description, model, tools, fallback, mcp).
+      # Fetches the current value from Redis to populate the form.
+      # For 'tools', it fetches all available native and MCP tools to populate the selector.
       get '/agents/:name/edit/:field' do |name, field|
         supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp']
         halt 404, "Editing field '#{field}' not supported." unless supported_fields.include?(field)
@@ -701,8 +756,11 @@ module ADK
         # Render the correct partial
         slim :"_edit_agent_#{field}", layout: false, locals: locals
       end
-      # --- << NEW ROUTE >> ---
-      # Renders the full tool table display partial (used by Cancel button in edit view)
+
+      # GET /agents/:name/display/tool_table - Render the tool table display partial.
+      # Used by the "Cancel" button in the 'tools' edit view to revert to the display state.
+      # Fetches agent definition and tool metadata (native+MCP) similar to the GET /agents/:name route
+      # to render the `_agent_tool_table.slim` partial.
       get '/agents/:name/display/tool_table' do |name|
         halt 503, "Redis unavailable." unless @redis
         key = agent_redis_key(name); halt 404 unless @redis.exists?(key)
@@ -816,8 +874,10 @@ module ADK
                                    mcp_tool_results: mcp_tool_results
                                  }
       end
-      # --- << END NEW ROUTE >> ---
 
+      # GET /agents/:name/display/:field - Render the display partial for a field.
+      # Used by the "Cancel" button in most inline edit forms (except 'tools')
+      # to swap the edit form back to the static display view (`_display_agent_*.slim`).
       get '/agents/:name/display/:field' do |name, field|
         supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp']
         halt 404, "Displaying field '#{field}' not supported." unless supported_fields.include?(field)
@@ -843,6 +903,15 @@ module ADK
         slim :"_display_agent_#{field}", layout: false, locals: response_locals
       end
 
+      # PUT /agents/:name/update/:field - Update a specific field in an agent's Redis definition.
+      # Receives the new value from the inline edit form.
+      # Validates the input (e.g., checks MCP JSON format, fallback mode value).
+      # Updates the corresponding field in the agent's Redis hash.
+      # **Crucially, if the agent was running, it automatically stops and restarts it**
+      # to apply the configuration change to the runtime instance.
+      # Returns the updated display partial (`_display_agent_*.slim` or `_agent_tool_table.slim`).
+      # May include an `HX-Trigger-After-Swap` header to show a toast notification
+      # on the frontend about the automatic restart (`showRestartToast` or `showRestartErrorToast`).
       put '/agents/:name/update/:field' do |name, field|
         # logger.debug("PUT /agents/#{name}/update/#{field} received. PARAMS: #{params.inspect}")
         supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp']
@@ -1029,7 +1098,14 @@ module ADK
       end
       # --- End Agent Inline Editing Routes ---
 
-      # --- Agent Runtime Routes ---
+      # --- Agent Runtime Management Routes (In-Memory Instances) ---
+      # These routes handle starting and stopping the *runtime* instances of agents,
+      # which are stored in the @agents in-memory hash.
+
+      # POST /agents/:name/start - Start a runtime instance (from main agent list view).
+      # Calls the `_start_agent` helper method.
+      # Returns HTML fragments (via `agent_status_fragments`) for HTMX OOB swap
+      # to update the agent's status indicator and buttons in the main list.
       post '/agents/:name/start' do
         name = params[:name]
         agent = _start_agent(name) # <<< Use helper
@@ -1045,6 +1121,10 @@ module ADK
         agent_status_fragments(agent_data_for_view)
       end
 
+      # POST /agents/:name/start/detail - Start a runtime instance (from agent detail view).
+      # Calls the `_start_agent` helper method.
+      # Returns the `_agent_status_controls.slim` partial for the detail view's status section,
+      # plus an OOB swap fragment to enable/update the "Execute Task" button.
       post '/agents/:name/start/detail' do
         name = params[:name]; content_type :html
         agent = _start_agent(name) # <<< Use helper
@@ -1073,6 +1153,10 @@ module ADK
         status_controls_html + execute_button_oob_html
       end
 
+      # POST /agents/:name/stop - Stop a running agent instance (from main agent list view).
+      # Calls the `_stop_agent` helper method.
+      # Returns HTML fragments (via `agent_status_fragments`) for HTMX OOB swap
+      # to update the agent's status indicator and buttons in the main list.
       post '/agents/:name/stop' do
         name = params[:name]
         _stop_agent(name) # <<< Use helper
@@ -1084,6 +1168,10 @@ module ADK
         agent_status_fragments(stopped_agent_data)
       end
 
+      # POST /agents/:name/stop/detail - Stop a running agent instance (from agent detail view).
+      # Calls the `_stop_agent` helper method.
+      # Returns the `_agent_status_controls.slim` partial for the detail view's status section,
+      # plus an OOB swap fragment to disable/update the "Execute Task" button.
       post '/agents/:name/stop/detail' do
         name = params[:name]; content_type :html
         _stop_agent(name) # <<< Use helper
@@ -1108,9 +1196,14 @@ module ADK
         status_controls_html + execute_button_oob_html
       end
 
-      # --- Agent Interaction Routes (REFACTORED for Session) ---
+      # --- Agent Interaction Routes ---
+      # Routes for interacting with running agent instances (chat, direct execution).
 
-      # Agent Chat Page (Manages Session)
+      # GET /agents/:name/chat - Render the chat interface page.
+      # Requires the agent to be running.
+      # Retrieves or creates an ADK chat session using the `@session_service`.
+      # The ADK session ID is stored in the user's Sinatra session cookie (`session[:adk_session_id]`).
+      # Loads chat history from the ADK session and renders the `chat.slim` template.
       get '/agents/:name/chat' do |name|
         @agent = @agents[name] # Get running agent instance
         # Agent must be running to enter chat
@@ -1155,7 +1248,13 @@ module ADK
         slim :chat
       end
 
-      # Process Chat Message (Uses Session)
+      # POST /agents/:name/chat - Process a user message from the chat interface.
+      # Requires the agent to be running and a valid ADK session ID in the Sinatra session.
+      # Retrieves the message from the form data.
+      # Calls the agent's `run_task` method, passing the user input and session ID.
+      # The `run_task` method handles planning, tool execution, and updating the session history.
+      # Returns an HTML fragment (`_chat_message.slim`) containing the user message
+      # and the agent's processed response, intended for HTMX append swap into the chat log.
       post '/agents/:name/chat' do |name| # <<< ENSURE THIS LINE EXISTS AND IS CORRECT
         content_type :html
         @agent = @agents[name] # Agent must be running
@@ -1203,8 +1302,19 @@ module ADK
         end
       end
 
-      # Execute Agent Task Directly (via JSON input) - REFACTORED for Context <-- MODIFIED
-
+      # POST /agents/:name/execute - Execute a task directly via JSON input.
+      # Requires the agent to be running. Bypasses the chat UI and session history persistence.
+      # Accepts a JSON payload in the `task_json` form field. Supports two formats:
+      # 1. Planner execution: `{"task": "User's natural language task description"}`
+      # 2. Direct tool execution: `{"tool_name": "tool_symbol", "task": "Optional task description", "parameters": {"param1": "value1", ...}}`
+      # Creates a temporary ADK session for the execution context.
+      # If direct execution: Finds the specified tool, creates a ToolContext, and calls `tool.execute`.
+      # If planner execution: Calls `agent.run_task` with the task description.
+      # Returns:
+      #   - Success (200 OK): HTML body containing the formatted result (using `format_execution_result_html`). Target element updated via HTMX.
+      #   - Input Error (200 OK + JSON): `{"error": "..."}`. Triggers `showTaskError` JS event via `HX-Trigger-After-Swap`.
+      #   - Server Error (200 OK + JSON): `{"error": "..."}`. Triggers `showTaskServerError` JS event via `HX-Trigger-After-Swap`.
+      # Note: Returning 200 OK even for errors allows HTMX to process the response and trigger events.
       post '/agents/:name/execute' do
         name = params[:name]; content_type :json # <--- Change default content_type to json for this route
         agent = @agents[name]
@@ -1311,7 +1421,11 @@ module ADK
         end
       end
 
-      # --- API Endpoints (Unchanged) ---
+      # --- API Endpoints (JSON) ---
+      # Provide simple JSON data about the system state.
+
+      # GET /api/agents - List all defined agents and their status.
+      # Returns JSON: `{"agents": [{"name": ..., "description": ..., "running": ..., "model": ...}, ...]}`
       get('/api/agents') {
         content_type :json;
         agents_data = [];
@@ -1329,129 +1443,44 @@ module ADK
                      a[:name]
                    }
       }
+
+      # GET /api/tools - List all available *native* tools known to the GlobalToolManager.
+      # Does not include MCP tools.
+      # Returns JSON: `{"tools": [{"name": ..., "description": ..., "parameters": [...]}, ...]}`
       get('/api/tools') { content_type :json; json tools: ADK::GlobalToolManager.list_all_tools }
 
       # --- Health Check Endpoint ---
+      # Standard endpoint for monitoring systems.
       get '/healthz' do
         begin
-          # Check essential services. Currently only Redis if configured.
+          # Check connectivity to essential services (currently only Redis if available).
           if @redis
             @redis.ping
           end
           status 200
           body 'OK'
         rescue Redis::BaseError => e
+          # Handle Redis connection error.
           logger.error("Health check failed: Redis ping error - #{e.message}")
           status 503
           body 'Service Unavailable (Redis)'
         rescue => e
+          # Handle other unexpected errors.
           logger.error("Health check failed: Unexpected error - #{e.class}: #{e.message}")
           status 503
           body 'Service Unavailable (Internal)'
         end
       end
 
-      # --- Private Helper Methods ---
-      private
-
-      # Stops a running agent instance.
-      # @param name [String] Agent name.
-      # @return [Boolean] True if stopped successfully or was already stopped, false on error.
-      def _stop_agent(name)
-        agent = @agents[name]
-        if agent
-          logger.info("Stopping agent '#{name}'...")
-          begin
-            agent.stop
-            @agents.delete(name)
-            logger.info("Agent '#{name}' stopped.")
-            true
-          rescue => e
-            logger.error("Error stopping agent '#{name}': #{e.message}")
-            false # Indicate error
-          end
-        else
-          logger.warn("Attempted to stop non-running agent: '#{name}'.")
-          true # Considered success as it's already stopped
-        end
-      end
-
-      # Starts an agent instance based on its Redis definition.
-      # @param name [String] Agent name.
-      # @return [ADK::Agent, nil] The started agent instance or nil on failure.
-      def _start_agent(name)
-        return @agents[name] if @agents.key?(name) # Already running
-
-        halt 503, "Redis unavailable." unless @redis
-        key = agent_redis_key(name)
-
-        fields_to_fetch = [
-          'description', 'tools', 'model', 'fallback_mode', 'mcp_servers_json'
-        ]
-        redis_agent_data = @redis.hmget(key, *fields_to_fetch)
-
-        agent_description, tools_json, model_name, fallback_mode_str, mcp_servers_json = redis_agent_data[0],
-                                                                                         redis_agent_data[1],
-                                                                                         (redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL),
-                                                                                         redis_agent_data[3],
-                                                                                         redis_agent_data[4]
-
-        unless agent_description
-          logger.error("Agent definition not found for '#{name}'")
-          return nil # Failed to start
-        end
-
-        fallback_mode_sym = (fallback_mode_str == 'echo') ? :echo : :error
-        mcp_configs = []
-        selected_tool_names = []
-        begin
-          if mcp_servers_json && !mcp_servers_json.empty?
-            mcp_configs = JSON.parse(mcp_servers_json)
-          end
-          if tools_json && !tools_json.empty?
-            selected_tool_names = JSON.parse(tools_json).map(&:to_sym) rescue []
-          end
-        rescue JSON::ParserError => e
-          logger.error("Failed to parse config JSON for agent '#{name}' during start: #{e.message}")
-          mcp_configs = []
-          selected_tool_names = []
-        end
-
-        logger.info("Attempting to start agent '#{name}' (Model: #{model_name}, Fallback: #{fallback_mode_sym}, MCP: #{mcp_configs.count} servers)... Selected Tools: #{selected_tool_names.inspect}")
-        agent = ADK::Agent.new(
-          name: name, description: agent_description, model_name: model_name,
-          fallback_mode: fallback_mode_sym,
-          mcp_servers: mcp_configs,
-          selected_tool_names: selected_tool_names
-        )
-
-        # --- Add explicitly configured NATIVE tools ---
-        # MCP tools are registered during agent.start -> discover_and_register_mcp_tools
-        selected_tool_names.each do |tn|
-          # Check if this selected tool is a known NATIVE tool
-          inst = ADK::GlobalToolManager.create_instance(tn)
-          if inst
-            logger.debug("Adding selected native tool: #{tn}")
-            agent.add_tool(inst)
-          else
-            # Assuming it's an intended MCP tool, do nothing here.
-            # It will be registered later if available on the server and selected.
-            logger.debug("Tool '#{tn}' selected but not found in GlobalToolManager (assuming MCP tool).")
-          end
-        end
-
-        agent.start
-        @agents[name] = agent
-        logger.info("Agent '#{name}' started successfully.")
-        agent # Return the agent instance
-      rescue StandardError => e
-        logger.error("Failed to start agent '#{name}': #{e.class} - #{e.message}")
-        logger.error(e.backtrace.join("\n"))
-        @agents.delete(name) # Clean up if partially added
-        nil # Failed to start
-      end
-
-      # --- NEW ROUTE: Generate Example Task JSON ---
+      # GET /agents/:name/generate_example_task - Generate example JSON task using Gemini.
+      # Fetches the agent's configured tools (native + MCP metadata).
+      # Constructs a prompt asking the Gemini API to generate a sample JSON task
+      # in the direct execution format `{"tool_name": ..., "task": ..., "parameters": ...}`
+      # based on the agent's available tools and their parameters.
+      # Requires `GOOGLE_API_KEY` environment variable.
+      # Returns:
+      #   - Success (200 OK): JSON body containing the pretty-printed example task object.
+      #   - Error (various codes): JSON body `{"error": "..."}`.
       get '/agents/:name/generate_example_task' do |name|
         content_type :json # Default response type
         logger.info("Received request to generate example task for agent: #{name}")
@@ -1645,6 +1674,110 @@ module ADK
         end
       end
       # --- END NEW ROUTE ---
+
+      # --- Private Helper Methods ---
+      private
+
+      # Stops a running agent instance and removes it from the in-memory @agents hash.
+      # @param name [String] The name of the agent to stop.
+      # @return [Boolean] True if the agent was stopped successfully or was already stopped, false if an error occurred during stopping.
+      def _stop_agent(name)
+        agent = @agents[name]
+        if agent
+          logger.info("Stopping agent '#{name}'...")
+          begin
+            agent.stop
+            @agents.delete(name)
+            logger.info("Agent '#{name}' stopped.")
+            true
+          rescue => e
+            logger.error("Error stopping agent '#{name}': #{e.message}")
+            false # Indicate error
+          end
+        else
+          logger.warn("Attempted to stop non-running agent: '#{name}'.")
+          true # Considered success as it's already stopped
+        end
+      end
+
+      # Starts an agent instance based on its definition stored in Redis.
+      # If the agent is already running, returns the existing instance.
+      # Fetches configuration (description, tools, model, fallback, MCP) from Redis.
+      # Instantiates `ADK::Agent`, adds configured native tools, calls `agent.start`
+      # (which handles MCP tool registration), and stores the instance in @agents.
+      # @param name [String] The name of the agent to start.
+      # @return [ADK::Agent, nil] The started (or already running) agent instance, or nil if starting failed (e.g., definition not found, error during initialization).
+      def _start_agent(name)
+        return @agents[name] if @agents.key?(name) # Already running
+
+        halt 503, "Redis unavailable." unless @redis
+        key = agent_redis_key(name)
+
+        fields_to_fetch = [
+          'description', 'tools', 'model', 'fallback_mode', 'mcp_servers_json'
+        ]
+        redis_agent_data = @redis.hmget(key, *fields_to_fetch)
+
+        agent_description, tools_json, model_name, fallback_mode_str, mcp_servers_json = redis_agent_data[0],
+                                                                                         redis_agent_data[1],
+                                                                                         (redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL),
+                                                                                         redis_agent_data[3],
+                                                                                         redis_agent_data[4]
+
+        unless agent_description
+          logger.error("Agent definition not found for '#{name}'")
+          return nil # Failed to start
+        end
+
+        fallback_mode_sym = (fallback_mode_str == 'echo') ? :echo : :error
+        mcp_configs = []
+        selected_tool_names = []
+        begin
+          if mcp_servers_json && !mcp_servers_json.empty?
+            mcp_configs = JSON.parse(mcp_servers_json)
+          end
+          if tools_json && !tools_json.empty?
+            selected_tool_names = JSON.parse(tools_json).map(&:to_sym) rescue []
+          end
+        rescue JSON::ParserError => e
+          logger.error("Failed to parse config JSON for agent '#{name}' during start: #{e.message}")
+          mcp_configs = []
+          selected_tool_names = []
+        end
+
+        logger.info("Attempting to start agent '#{name}' (Model: #{model_name}, Fallback: #{fallback_mode_sym}, MCP: #{mcp_configs.count} servers)... Selected Tools: #{selected_tool_names.inspect}")
+        agent = ADK::Agent.new(
+          name: name, description: agent_description, model_name: model_name,
+          fallback_mode: fallback_mode_sym,
+          mcp_servers: mcp_configs,
+          selected_tool_names: selected_tool_names
+        )
+
+        # --- Add explicitly configured NATIVE tools ---
+        # MCP tools are registered during agent.start -> discover_and_register_mcp_tools
+        selected_tool_names.each do |tn|
+          # Check if this selected tool is a known NATIVE tool
+          inst = ADK::GlobalToolManager.create_instance(tn)
+          if inst
+            logger.debug("Adding selected native tool: #{tn}")
+            agent.add_tool(inst)
+          else
+            # Assuming it's an intended MCP tool, do nothing here.
+            # It will be registered later if available on the server and selected.
+            logger.debug("Tool '#{tn}' selected but not found in GlobalToolManager (assuming MCP tool).")
+          end
+        end
+
+        agent.start
+        @agents[name] = agent
+        logger.info("Agent '#{name}' started successfully.")
+        agent # Return the agent instance
+      rescue StandardError => e
+        logger.error("Failed to start agent '#{name}': #{e.class} - #{e.message}")
+        logger.error(e.backtrace.join("\n"))
+        @agents.delete(name) # Clean up if partially added
+        nil # Failed to start
+      end
     end # End App class
   end # End Web module
 end # End ADK module
