@@ -1567,9 +1567,22 @@ module ADK
               end
             end
           end
-          all_native_tools_metadata = native_tools_metadata.map { |tm|
-            tm.merge(source: :native, source_detail: "Native")
-          }
+          # <<< START CHANGE: Convert native params hash to array >>>
+          all_native_tools_metadata = native_tools_metadata.map do |tm|
+            parameters_array = []
+            if tm[:parameters].is_a?(Hash) && !tm[:parameters].empty?
+              tm[:parameters].each do |param_name, details|
+                parameters_array << {
+                  name: param_name,
+                  type: details[:type],
+                  description: details[:description],
+                  required: details[:required]
+                }
+              end
+            end
+            tm.merge(parameters: parameters_array, source: :native, source_detail: "Native") # Use the converted array
+          end
+          # <<< END CHANGE >>>
           all_tools_metadata_map = {}
           (all_native_tools_metadata + fetched_mcp_tools_metadata).each { |tm|
             all_tools_metadata_map[tm[:name]] ||= tm
@@ -1743,7 +1756,20 @@ module ADK
         # (This logic is similar to GET /agents/:name, could potentially be refactored)
         # Native
         all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map do |tool_meta|
-          tool_meta.merge(source: :native, source_detail: "Native")
+          # <<< START CHANGE: Convert native params hash to array >>>
+          parameters_array = []
+          if tool_meta[:parameters].is_a?(Hash) && !tool_meta[:parameters].empty?
+            tool_meta[:parameters].each do |param_name, details|
+              parameters_array << {
+                name: param_name,
+                type: details[:type],
+                description: details[:description],
+                required: details[:required]
+              }
+            end
+          end
+          # <<< END CHANGE >>>
+          tool_meta.merge(parameters: parameters_array, source: :native, source_detail: "Native") # Use the converted array
         end
 
         # MCP
@@ -1804,6 +1830,7 @@ module ADK
         tool_details = configured_tools_metadata.map do |metadata|
           params_string = if metadata[:parameters].is_a?(Array) && !metadata[:parameters].empty?
                             metadata[:parameters].map { |p|
+                              # <<< CHANGE: Add required/optional status >>>
                               "#{p[:name]} (#{p[:type]}, #{p[:required] ? 'required' : 'optional'})"
                             }.join(', ')
                           else
@@ -1818,7 +1845,15 @@ module ADK
           The JSON object MUST follow this exact structure:#{' '}
           { "tool_name": "chosen_tool_name", "task": "A brief description of what the example task does", "parameters": { /* parameters for the chosen tool */ } }
 
-          Choose ONE tool from the list that has parameters (if possible) to demonstrate usage. Populate the "parameters" object with example values appropriate for the tool's parameter types and descriptions. If a tool has no parameters, the "parameters" object should be empty: {}. The "task" description should briefly explain the example. Include the chosen tool's name in the "tool_name" field.
+          **Instructions for choosing a tool and generating parameters:**
+          1.  ** You can pick any tool you want. Do not pick the calculator or cat fact tool every time if others are available. **
+          2.  If multiple tools have required parameters, choose one that seems suitable for a simple example.
+          3.  If no tools have required parameters, you may choose a tool with only optional parameters or one with no parameters.
+          4.  If the chosen tool has parameters (required or optional), populate the `parameters` object in the JSON with plausible example values matching their specified types and descriptions.
+          5.  **Crucially, if the chosen tool has REQUIRED parameters, the generated `parameters` object MUST include ALL of those required parameters.**
+          6.  If the chosen tool has no parameters, the `parameters` object MUST be empty: {}.
+          7.  The `task` description should briefly explain what the example task does.
+          8.  Include the chosen tool's exact name in the `tool_name` field.
 
           Return ONLY the raw JSON object string. Do not include any other text, explanations, markdown formatting like ```json, or anything else.
 
@@ -1826,7 +1861,7 @@ module ADK
           ---
           #{tool_details}
           ---
-
+          You should generate engaging examples!
           Generate the example JSON object now:
         PROMPT
         logger.debug("Prompt for Gemini Example Generation:\n#{prompt}") # Keep log for debugging prompt issues
