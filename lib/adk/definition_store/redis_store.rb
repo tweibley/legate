@@ -364,7 +364,8 @@ module ADK
         begin
           result = @redis.ping
           is_ok = (result == "PONG")
-          @logger.debug("Redis connection check (PING): #{is_ok ? 'OK' : 'Failed'}")
+          # Silence because it's too noisy
+          # @logger.debug("Redis connection check (PING): #{is_ok ? 'OK' : 'Failed'}")
           is_ok
         rescue Redis::BaseError => e
           @logger.error("Redis connection check failed: #{e.class} - #{e.message}")
