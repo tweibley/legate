@@ -2,15 +2,15 @@
 
 .container
   section.section
-    h1.title Chat with Agent: #{@view_agent_data[:name]}
-    p.subtitle Send messages to the agent and see its responses.
+    h1.title Chat with Agent: #{@agent_data[:name]}
+    p.subtitle #{@agent_data[:description]}
 
     / Agent Status Box
     .box
       p
         strong Status:
-        span.tag.ml-2 class=(@view_agent_data[:running] ? 'is-success' : 'is-danger')
-          = @view_agent_data[:running] ? 'Running' : 'Stopped (Go to agent page to start)'
+        span.tag.ml-2 class=(@agent_data[:running] ? 'is-success' : 'is-danger')
+          = @agent_data[:running] ? 'Running' : 'Stopped (Go to agent page to start)'
 
     / Chat History Display Area
     #chat-history.box( style="height: 400px; overflow-y: scroll; margin-bottom: 1rem;"
@@ -31,11 +31,22 @@
             / --- Agent Message (Corrected Structure) ---
             - agent_response_content = event.content
             - is_complex_content = (agent_response_content.is_a?(Hash) && agent_response_content.key?(:status)) || (agent_response_content.is_a?(Array) && agent_response_content.first.is_a?(Hash) && agent_response_content.first.key?(:status))
-            - msg_class = (is_complex_content && agent_response_content.is_a?(Hash) && agent_response_content[:status] == :error) ? 'is-danger' : 'is-success'
+            - msg_class = 'is-light' # Default
+            - if is_complex_content
+              - status = agent_response_content.is_a?(Array) ? agent_response_content.first[:status] : agent_response_content[:status]
+              - case status
+              - when :error
+                - msg_class = 'is-danger'
+              - when :pending
+                - msg_class = 'is-warning'
+              - else
+                - msg_class = 'is-success' # success or other
+            - else # Simple string content assumed success
+              - msg_class = 'is-success'
 
             .message class="#{msg_class} is-small mb-4" id="event-#{event.event_id}"
               .message-header
-                p Agent (#{@view_agent_data[:name]})
+                p Agent (#{@agent_data[:name]})
               .message-body
                 / --- Call helper to format historical content ---
                 pre style="white-space: pre-wrap; word-break: break-all;" = format_historical_agent_content(agent_response_content)
@@ -48,22 +59,22 @@
       / New messages will be appended here by HTMX
 
     / Chat Input Form
-    form#chat-form( hx-post="/agents/#{@view_agent_data[:name]}/chat"
+    form#chat-form( hx-post="/agents/#{@agent_data[:name]}/chat"
                  hx-target="#chat-history"
                  hx-swap="beforeend"
                  hx-indicator="#send-button-indicator"
                  _="on htmx:afterRequest reset()" )
       .field.has-addons
         .control.is-expanded style="position: relative;"
-          input.input#chat-input(type="text" name="message" placeholder="Enter your message..." required=true autofocus disabled=(!@view_agent_data[:running]))
+          input.input#chat-input(type="text" name="message" placeholder="Enter your message..." required=true autofocus disabled=(!@agent_data[:running]))
           span.icon.is-small.is-right.htmx-indicator style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;"
             i.fas.fa-spinner.fa-spin
         .control
-          button.button.is-info#send-button(type="submit" disabled=(!@view_agent_data[:running]))
+          button.button.is-info#send-button(type="submit" disabled=(!@agent_data[:running]))
             span Send
             span.icon.is-small#send-button-indicator.htmx-indicator.ml-2
               i.fas.fa-spinner.fa-pulse
 
     / Link back to agent details
     .mt-4
-      a.button(href="/agents/#{@view_agent_data[:name]}") ← Back to Agent Details
+      a.button(href="/agents/#{@agent_data[:name]}") ← Back to Agent Details

@@ -41,7 +41,27 @@ module ADK
       @model_name = model_name || DEFAULT_MODEL
       @fallback_mode = fallback_mode == :echo ? :echo : :error # Ensure only valid modes
       @state = :idle # Initial state
-      @mcp_servers_config = mcp_servers # Store MCP configurations
+
+      # --- Parse MCP Server Config ---
+      if mcp_servers.is_a?(String) && !mcp_servers.strip.empty?
+        begin
+          @mcp_servers_config = JSON.parse(mcp_servers)
+          unless @mcp_servers_config.is_a?(Array)
+            ADK.logger.warn("Agent '#{name}': MCP server config parsed but is not an Array: #{@mcp_servers_config.inspect}. Defaulting to empty array.")
+            @mcp_servers_config = []
+          end
+        rescue JSON::ParserError => e
+          ADK.logger.error("Agent '#{name}': Failed to parse MCP server config JSON: #{e.message}. Config string: '#{mcp_servers}'. Defaulting to empty array.")
+          @mcp_servers_config = []
+        end
+      elsif mcp_servers.is_a?(Array)
+        @mcp_servers_config = mcp_servers # Already an array
+      else
+        ADK.logger.debug("Agent '#{name}': No valid MCP server config provided. Defaulting to empty array.")
+        @mcp_servers_config = []
+      end
+      # -------------------------------
+
       @selected_tool_names = selected_tool_names # Store selected tool names
       @mcp_clients = [] # Store active MCP client instances
 
