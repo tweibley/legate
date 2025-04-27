@@ -578,7 +578,20 @@ module ADK
 
         # --- Get All Available Native Tool Metadata ---
         all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map do |tool_meta|
-          tool_meta.merge(source: :native, source_detail: "Native")
+          # <<< START CHANGE: Convert native params hash to array >>>
+          parameters_array = []
+          if tool_meta[:parameters].is_a?(Hash) && !tool_meta[:parameters].empty?
+            tool_meta[:parameters].each do |param_name, details|
+              parameters_array << {
+                name: param_name,
+                type: details[:type],
+                description: details[:description],
+                required: details[:required]
+              }
+            end
+          end
+          # <<< END CHANGE >>>
+          tool_meta.merge(parameters: parameters_array, source: :native, source_detail: "Native") # Use the converted array
         end
 
         # --- Fetch MCP Tools and Convert Parameters ---
@@ -659,6 +672,9 @@ module ADK
         logger.debug("Final list of tools to display for agent '#{name}': #{@view_configured_tools.map { |t|
           t[:name]
         }.inspect}")
+
+        # <<< ADD DEBUGGING HERE >>>
+        logger.debug("VIEW_CONFIGURED_TOOLS for agent '#{name}': #{@view_configured_tools.inspect}")
 
         # Note: We removed the logic that created a temporary agent instance here,
         # as we now derive the tool list directly from metadata and config.
@@ -1343,32 +1359,69 @@ module ADK
         # Convert to symbols for internal processing
         configured_tool_syms = configured_tool_names.map(&:to_sym)
 
-        # Get NATIVE tool info from registry for ALL tools
-        all_native_tools = ADK::GlobalToolManager.list_all_tools
+        # --- START: Refactored Tool Metadata Fetching ---
 
-        # --- Fetch MCP tool results and convert parameters ---
+        # 1. Get NATIVE tool info from registry
+        all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map do |tm|
+          tm.merge(source: :native, source_detail: "Native")
+        end
+
+        # 2. Fetch MCP tool results and convert parameters
         mcp_servers_json = agent_data[:mcp_servers_json] # Use value from agent_data hash
         mcp_configs = []
         begin
           mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
         rescue JSON::ParserError => e
-          logger.error("Invalid JSON in mcp_servers_json for agent '#{name}': #{e.message}")
-          mcp_configs = []
+          logger.error("Invalid JSON in mcp_servers_json for agent '#{name}' (display table): #{e.message}")
+          mcp_configs = [] # Continue without MCP if JSON is invalid
         end
-        mcp_tool_results = fetch_mcp_tools(mcp_configs)
+        mcp_tool_results = fetch_mcp_tools(mcp_configs) # Contains raw results and status
 
-        # Filter by configured symbols
+        fetched_mcp_tools_metadata = []
+        mcp_tool_results.each do |result|
+          if result[:status] == :success && result[:tools]
+            result[:tools].each do |mcp_tool_schema|
+              parameters = []
+              begin
+                input_schema = mcp_tool_schema[:inputSchema]
+                if input_schema && input_schema.is_a?(Hash)
+                  properties = input_schema['properties'] || {}
+                  required = input_schema['required'] || []
+                  parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required)
+                end
+              rescue => e
+                logger.error("Error converting MCP schema for tool '#{mcp_tool_schema[:name]}' (display table): #{e.message}")
+              end
+              fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
+                                              description: mcp_tool_schema[:description] || "",
+                                              parameters: parameters,
+                                              source: :mcp,
+                                              source_detail: "MCP (#{result[:server]})" }
+            end
+          end
+        end
+
+        # 3. Merge native and processed MCP metadata into a single map
+        all_available_tools_metadata_map = {}
+        (all_native_tools_metadata + fetched_mcp_tools_metadata).each do |tm|
+          all_available_tools_metadata_map[tm[:name]] ||= tm # Prioritize native if name collision
+        end
+
+        # 4. Filter map by configured symbols
         logger.debug("[Display Tool Table] Configured tool names (symbols): #{configured_tool_syms.inspect}")
-
         view_configured_tools_list = configured_tool_syms.map do |tool_sym|
           all_available_tools_metadata_map[tool_sym]
-        end.compact
+        end.compact # Remove nil entries if a configured tool wasn't found in the merged map
 
-        # logger.debug("[Display Tool Table] Filtered tool list before status check: #{view_configured_tools_list.map { |t| t[:name] }.inspect}")
+        logger.debug("[Display Tool Table] Filtered tool list count: #{view_configured_tools_list.length}")
+        # logger.debug("[Display Tool Table] Filtered tool list details: #{view_configured_tools_list.inspect}") # Verbose
+
+        # --- END: Refactored Tool Metadata Fetching ---
 
         # Implicitly add check_job_status if needed (simplified check as agent not running)
+        # Check if *any* of the *configured* tools are async
         if view_configured_tools_list.any? { |tm|
-          !ADK::GlobalToolManager.find_class(tm[:name])&.ancestors&.include?(ADK::Tools::BaseAsyncJobTool)
+          ADK::GlobalToolManager.find_class(tm[:name])&.ancestors&.include?(ADK::Tools::BaseAsyncJobTool)
         }
           status_tool_meta = all_available_tools_metadata_map[:check_job_status]
           if status_tool_meta && !view_configured_tools_list.any? { |t| t[:name] == :check_job_status }
@@ -1377,11 +1430,12 @@ module ADK
           end
         end
 
-        # logger.debug("[Display Tool Table] Filtered tool list before status check: #{view_configured_tools_list.map { |t| t[:name] }.inspect}")
+        # logger.debug("[Display Tool Table] Final tool list count: #{view_configured_tools_list.length}")
 
         slim :_agent_tool_table, layout: false, locals: {
           agent_data: agent_data,
-          view_configured_tools: view_configured_tools_list
+          view_configured_tools: view_configured_tools_list,
+          mcp_tool_results: mcp_tool_results # Pass raw results for error display in partial
         }
       end
 
