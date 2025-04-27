@@ -1131,6 +1131,29 @@ module ADK
         end
       end
 
+      # --- NEW: Tools Page Route ---
+      # GET /tools - Display available native tools
+      get '/tools' do
+        logger.info("GET /tools route handler entered")
+        @native_tools = ADK::GlobalToolManager.list_all_tools.map do |tool_meta|
+          # Convert parameter hash to array format for consistency (like in agent detail view)
+          parameters_array = []
+          if tool_meta[:parameters].is_a?(Hash) && !tool_meta[:parameters].empty?
+            tool_meta[:parameters].each do |param_name, details|
+              parameters_array << {
+                name: param_name,
+                type: details[:type],
+                description: details[:description],
+                required: details[:required]
+              }
+            end
+          end
+          tool_meta.merge(parameters: parameters_array) # Use the converted array
+        end
+        slim :tools # Render the new tools view
+      end
+      # --- END Tools Page Route ---
+
       # --- Private Helper Methods ---
       private
 

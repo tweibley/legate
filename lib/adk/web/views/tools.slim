@@ -2,15 +2,37 @@
   h1.title Tools
   p.subtitle Browse and manage available tools
 
-#tool-list.mt-4
-  .columns.is-multiline
-    / Check if @tools_list exists and is not empty
-    - if @tools_list && !@tools_list.empty?
-      / Iterate over the tools provided by the route
-      - @tools_list.each do |tool_info|
-        / Render the partial for each tool
-        == slim :_tool_card, locals: { tool_info: tool_info }
+section.section
+  .container
+    h1.title Available Native Tools
+    p.subtitle Shows tools built directly into this ADK application.
+
+    - if @native_tools.nil? || @native_tools.empty?
+      .notification.is-warning No native tools found.
     - else
-      / Show a message if no tools are available
-      .column
-        p No tools currently available.
+      .box
+        table.table.is-striped.is-hoverable.is-fullwidth
+          thead
+            tr
+              th Name
+              th Description
+              th Parameters
+          tbody
+            - @native_tools.each do |tool|
+              tr
+                td
+                  strong = tool[:name]
+                td = tool[:description]
+                td
+                  - if tool[:parameters].empty?
+                    em None
+                  - else
+                    ul style="list-style: none; margin-left: 0; padding-left: 0;"
+                      - tool[:parameters].each do |param|
+                        li
+                          code = param[:name]
+                          |  (#{param[:type]})
+                          - if param[:required]
+                            == ' <span class="tag is-danger is-light is-small">Required</span>'
+                          div style="padding-left: 1em;"
+                            small = param[:description]
