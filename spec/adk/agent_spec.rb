@@ -110,8 +110,8 @@ RSpec.describe ADK::Agent do
   let(:success_hash_a) { { status: :success, result: 'Result A' } }
   let(:success_hash_b) { { status: :success, result: 'Result B' } }
   let(:job_id) { 'jid_xyz789' }
-  let(:pending_hash) { { status: :pending, job_id: job_id, message: 'Job enqueued.' } }
-  let(:error_hash) { { status: :error, error_message: 'Something failed' } }
+  let(:pending_hash) { { status: :pending, job_id: job_id, message: "Job enqueued." } }
+  let(:error_hash) { { status: :error, error_message: "Something failed" } }
 
   # Events
   let(:user_input) { "Test user input" }
@@ -353,12 +353,17 @@ RSpec.describe ADK::Agent do
                                      session_service: mock_session_service)
         expect(final_event).to be_an(ADK::Event)
         expect(final_event.role).to eq(:agent)
-        expect(final_event.content).to eq(success_hash_a)
+        expected_content = success_hash_a.merge(
+          plan_details: [{ tool_name: :tool_a, params: { p: 1 }, result: success_hash_a }]
+        )
+        expect(final_event.content).to eq(expected_content)
       end
     end
 
     context 'successful multi-step execution with injection' do
       let(:plan) { [{ tool: :tool_a, params: { p: 1 } }, { tool: :tool_b, params: { data: '[Result from step 1]' } }] }
+      let(:sanitized_result_a) { { status: :success, result: "Result A" } } # Simplified for plan details
+      let(:sanitized_result_b) { { status: :success, result: "Result B" } } # Simplified for plan details
 
       before do
         agent.start
@@ -383,12 +388,22 @@ RSpec.describe ADK::Agent do
                                      session_service: mock_session_service)
         expect(final_event).to be_an(ADK::Event)
         expect(final_event.role).to eq(:agent)
-        expect(final_event.content).to eq(success_hash_b)
+        expected_content = success_hash_b.merge(
+          plan_details: [
+            { tool_name: :tool_a, params: { p: 1 }, result: sanitized_result_a },
+            { tool_name: :tool_b, params: { data: 'Result A' }, result: sanitized_result_b } # Injected params
+          ]
+        )
+        expect(final_event.content).to eq(expected_content)
       end
     end
 
     context 'when a step returns a pending status' do
       let(:plan) { [{ tool: :async_tool, params: { input: 'go' } }] }
+      # Sanitized version for plan_details (job_id is included)
+      let(:sanitized_pending_hash) {
+        { status: :pending, job_id: job_id, message: pending_hash[:message], result: nil }
+      }
 
       before do
         agent.start
@@ -402,7 +417,11 @@ RSpec.describe ADK::Agent do
                                      session_service: mock_session_service)
         expect(final_event).to be_an(ADK::Event)
         expect(final_event.role).to eq(:agent)
-        expect(final_event.content).to eq(pending_hash) # Expecting the hash with job_id
+        expected_content = pending_hash.merge(
+          result: nil,
+          plan_details: [{ tool_name: :async_tool, params: { input: 'go' }, result: sanitized_pending_hash }]
+        )
+        expect(final_event.content).to eq(expected_content)
       end
     end
 
@@ -412,6 +431,11 @@ RSpec.describe ADK::Agent do
          { tool: :check_job_status, params: { job_id: '[Result from step 1]' } }]
       }
       let(:check_result_success) { { status: :success, result: 'Job Done' } }
+      # Sanitized versions for plan_details
+      let(:sanitized_pending_hash) {
+        { status: :pending, job_id: job_id, message: pending_hash[:message], result: nil }
+      }
+      let(:sanitized_check_result) { { status: :success, result: "Job Done" } }
 
       before do
         agent.start
@@ -435,20 +459,43 @@ RSpec.describe ADK::Agent do
                                      session_service: mock_session_service)
         expect(final_event).to be_an(ADK::Event)
         expect(final_event.role).to eq(:agent)
-        expect(final_event.content).to eq(check_result_success)
+        expected_content = check_result_success.merge(
+          plan_details: [
+            { tool_name: :async_tool, params: { input: 'start' }, result: sanitized_pending_hash },
+            { tool_name: :check_job_status, params: { job_id: job_id }, result: sanitized_check_result } # Injected job_id
+          ]
+        )
+        expect(final_event.content).to eq(expected_content)
       end
     end
 
     context 'multi-step execution with error and plan halting' do
       let(:plan) { [{ tool: :tool_a, params: { p: 1 } }, { tool: :tool_b, params: { data: '[Result from step 1]' } }] }
-      let(:error_event) { ADK::Event.new(role: :agent, content: error_hash) }
+      # Error hash already includes :status and :error_message, which is what the sanitized version contains
+      let(:sanitized_error_hash) { { status: :error, error_message: error_hash[:error_message], result: nil } }
+      # The final content should be the error hash from the *first* step,
+      # and plan details should ONLY include the first (failed) step.
+      let(:expected_final_content_on_error) {
+        error_hash.merge(
+          result: nil,
+          plan_details: [{ tool_name: :tool_a, params: { p: 1 }, result: sanitized_error_hash }]
+        )
+      }
+      # We need an Event object for the final agent event check
+      let(:final_error_event) { ADK::Event.new(role: :agent, content: expected_final_content_on_error) }
 
       before do
         agent.start
         allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
         allow(mock_tool_a).to receive(:execute).with({ p: 1 }, mock_context).and_return(error_hash)
-        allow(ADK::Event).to receive(:new).with(hash_including(role: :agent,
-                                                               content: error_hash)).and_return(error_event)
+        # Mock the *final* agent event creation specifically
+        allow(ADK::Event).to receive(:new).with(role: :user, content: user_input).and_call_original
+        allow(ADK::Event).to receive(:new).with(role: :tool_request, tool_name: :tool_a,
+                                                content: { p: 1 }).and_call_original
+        allow(ADK::Event).to receive(:new).with(role: :tool_result, tool_name: :tool_a,
+                                                content: error_hash).and_call_original
+        allow(ADK::Event).to receive(:new).with(role: :agent,
+                                                content: expected_final_content_on_error).and_return(final_error_event)
       end
 
       it 'stops execution after the failed step' do
@@ -472,7 +519,7 @@ RSpec.describe ADK::Agent do
         final_event = agent.run_task(session_id: session_id, user_input: user_input,
                                      session_service: mock_session_service)
         expect(final_event.role).to eq(:agent)
-        expect(final_event.content).to eq(error_hash)
+        expect(final_event.content).to eq(expected_final_content_on_error)
       end
     end
 
@@ -521,19 +568,38 @@ RSpec.describe ADK::Agent do
     context 'when finding a tool raises an error' do
       let(:bad_tool_plan) { [{ tool: :missing_tool, params: {} }] }
       let(:expected_error_hash) { { status: :error, error_message: "Tool 'missing_tool' not found for this agent." } }
-      let(:error_event) { ADK::Event.new(role: :agent, content: expected_error_hash) }
+      # When the tool isn't found in execute_step, the plan_details will contain that single failed step.
+      let(:expected_final_content_tool_not_found) {
+        expected_error_hash.merge(
+          result: nil,
+          plan_details: [{
+            tool_name: :missing_tool,
+            params: {},
+            result: { status: :error, error_message: "Tool 'missing_tool' not found for this agent.", result: nil }
+          }]
+        )
+      }
+      let(:error_event) { ADK::Event.new(role: :agent, content: expected_final_content_tool_not_found) }
 
       before do
         agent.start
         allow(mock_planner).to receive(:plan).with(user_input).and_return(bad_tool_plan)
-        allow(ADK::Event).to receive(:new).with(hash_including(role: :agent,
-                                                               content: expected_error_hash)).and_return(error_event)
+        # Mock the final agent event creation
+        allow(ADK::Event).to receive(:new).with(role: :user, content: user_input).and_call_original
+        allow(ADK::Event).to receive(:new).with(role: :tool_request, tool_name: :missing_tool,
+                                                content: {}).and_call_original
+        # The :tool_result event will contain the "tool not found" error hash
+        allow(ADK::Event).to receive(:new).with(role: :tool_result, tool_name: :missing_tool,
+                                                content: expected_error_hash).and_call_original
+        # The final :agent event will contain the error hash *plus* the plan details
+        allow(ADK::Event).to receive(:new).with(role: :agent,
+                                                content: expected_final_content_tool_not_found).and_return(error_event)
       end
 
       it 'returns the final agent event with error content' do
         result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
         expect(result.role).to eq(error_event.role)
-        expect(result.content).to eq(error_event.content)
+        expect(result.content).to eq(expected_final_content_tool_not_found)
       end
     end
   end

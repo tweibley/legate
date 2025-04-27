@@ -49,7 +49,7 @@
                 p Agent (#{@agent_data[:name]})
               .message-body
                 / --- Call helper to format historical content ---
-                pre style="white-space: pre-wrap; word-break: break-all;" = format_historical_agent_content(agent_response_content)
+                div style="white-space: pre-wrap; word-break: break-all;" = format_historical_agent_content(agent_response_content)
           - else
             / --- Optional: Tool Request/Result Rendering ---
       - else

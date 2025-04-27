@@ -244,7 +244,14 @@ RSpec.describe ADK::Agent do # Testing Agent behavior here
       result = agent_with_tool.run_task(session_id: session_id, user_input: task, session_service: mock_session_service)
       expect(result).to be_a(ADK::Event)
       expect(result.role).to eq(:agent)
-      expect(result.content).to eq(success_result_hash)
+      expected_content = success_result_hash.merge(
+        plan_details: [{
+          tool_name: :mock_tool,
+          params: { arg: 'value' },
+          result: success_result_hash
+        }]
+      )
+      expect(result.content).to eq(expected_content)
     end
 
     context 'with multi-step plan' do
@@ -252,6 +259,9 @@ RSpec.describe ADK::Agent do # Testing Agent behavior here
       let(:result1_hash) { { status: :success, result: 'Step 1 Done' } }
       let(:result2_hash) { { status: :success, result: 'Step 2 Done' } }
       let(:mock_tool_b_instance) { instance_double(AnotherMockTool, name: :another_tool, execute: result2_hash) }
+      let(:sanitized_result1) { { status: :success, result: 'Step 1 Done' } }
+      let(:sanitized_result2) { { status: :success, result: 'Step 2 Done' } }
+
       let(:agent_with_tools) {
         described_class.new(name: name, description: description, model_name: model_name,
                             tool_classes: [MockToolForAgent, AnotherMockTool], **options)
@@ -284,7 +294,13 @@ RSpec.describe ADK::Agent do # Testing Agent behavior here
                                            session_service: mock_session_service)
         expect(result).to be_a(ADK::Event)
         expect(result.role).to eq(:agent)
-        expect(result.content).to eq(result2_hash)
+        expected_content = result2_hash.merge(
+          plan_details: [
+            { tool_name: :mock_tool, params: { arg: 'value' }, result: sanitized_result1 },
+            { tool_name: :another_tool, params: {}, result: sanitized_result2 }
+          ]
+        )
+        expect(result.content).to eq(expected_content)
       end
     end
 
@@ -306,6 +322,17 @@ RSpec.describe ADK::Agent do # Testing Agent behavior here
 
     context 'when execute_step fails' do
       let(:exec_error) { ADK::Error.new("Exec boom") }
+      let(:expected_final_content_on_exec_error) {
+        { status: :error, error_message: "Exec boom" }.merge(
+          result: nil,
+          plan_details: [{
+            tool_name: :mock_tool,
+            params: { arg: 'value' },
+            result: { status: :error, error_message: "Exec boom", result: nil }
+          }]
+        )
+      }
+
       before {
         agent_with_tool.start
         allow(agent_with_tool.tool_registry).to receive(:create_instance).with(:mock_tool).and_return(mock_tool_instance)
@@ -317,8 +344,7 @@ RSpec.describe ADK::Agent do # Testing Agent behavior here
                                           session_service: mock_session_service)
         expect(result).to be_an(ADK::Event)
         expect(result.role).to eq(:agent)
-        expected_error = { status: :error, error_message: "Exec boom" }
-        expect(result.content).to eq(expected_error)
+        expect(result.content).to eq(expected_final_content_on_exec_error)
       end
     end
   end

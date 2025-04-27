@@ -331,13 +331,18 @@ module ADK
             response_data[:event_id] = agent_result.event_id || response_data[:event_id]
             if agent_result.role == :agent
               content = agent_result.content
+              # --- Ensure raw content is always the full hash inspection ---
               response_data[:raw_json_content] = content.inspect
 
               if content.is_a?(Hash)
+                # Extract the primary result/message based on status
                 case content[:status]
                 when :success
                   response_data[:msg_class] = 'is-success'
-                  response_data[:display_content] = content[:result]
+                  # --- MODIFIED: Explicitly convert only the result value to string ---
+                  result_value = content[:result]
+                  response_data[:display_content] = result_value.to_s # Explicit .to_s here
+                  # --------------------------------------------------------------------
                 when :error
                   response_data[:msg_class] = 'is-danger'
                   original_error = content[:error_message] || "Agent error (no message)"
@@ -355,11 +360,11 @@ module ADK
                   if content[:message] then response_data[:display_content] << " - #{content[:message]}"; end
                 else # Unknown status in hash
                   response_data[:display_content] = "Agent response has unknown status: #{content[:status]}"
-                  response_data[:raw_json_content] = content.inspect # Ensure raw is set
+                  # Raw content is already set above
                 end
               else # Event Content wasn't a hash
                 response_data[:display_content] = "Agent event content format unexpected: #{content.inspect}"
-                response_data[:raw_json_content] = content.inspect # Ensure raw is set
+                # Raw content is already set above
               end
             else # Event not from agent role
               response_data[:display_content] = "Received non-agent event role: #{agent_result.role}"
@@ -415,12 +420,13 @@ module ADK
         # --- END NEW HELPER ---
 
         # --- NEW HELPER: Pretty Print JSON ---
-        def pretty_json(json_string)
+        # --- MODIFIED: Accepts Ruby object, not just JSON string ---
+        def pretty_json(object)
           begin
-            parsed = JSON.parse(json_string || '[]')
-            JSON.pretty_generate(parsed)
-          rescue JSON::ParserError
-            json_string # Fallback to raw string on error
+            JSON.pretty_generate(object)
+          rescue => e # Catch errors during generation (like NestingError)
+            # Fallback to inspect on error
+            object.inspect
           end
         end
         # --- END NEW HELPER ---

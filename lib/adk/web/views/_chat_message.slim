@@ -26,7 +26,32 @@
 
   .message-body
     / Display the simplified content
-    pre style="white-space: pre-wrap; word-break: break-all; margin-bottom: 0.5rem;" = response_data[:display_content].to_s
+    div style="white-space: pre-wrap; word-break: break-all; margin-bottom: 0.5rem;" = response_data[:display_content]
+
+    / --- ADDED: Execution Plan Details --- 
+    - if agent_result.is_a?(ADK::Event) && agent_result.content.is_a?(Hash) && agent_result.content[:plan_details].is_a?(Array) && !agent_result.content[:plan_details].empty?
+      details style="margin-top: 1rem; border-top: 1px solid #eee; padding-top: 0.5rem;"
+        summary style="cursor: pointer; font-weight: bold; color: #363636; font-size: 0.9em;"
+          | Execution Plan (#{agent_result.content[:plan_details].size} step#{'s' if agent_result.content[:plan_details].size != 1})
+        div style="margin-top: 0.5rem; padding-left: 1em; border-left: 3px solid #dbdbdb;"
+          - agent_result.content[:plan_details].each_with_index do |step_detail, index|
+            div style="margin-bottom: 1rem;"
+              p style="font-weight: bold; font-size: 0.85em; margin-bottom: 0.25rem;"
+                | Step #{index + 1}: #{step_detail[:tool_name]}
+              
+              p style="font-size: 0.8em; color: #555; margin-bottom: 0.1rem;" Parameters:
+              pre style="font-size: 0.8em; white-space: pre-wrap; word-break: break-all; background-color: #f5f5f5; padding: 0.5em; border-radius: 3px; margin-bottom: 0.5rem;"
+                = pretty_json(step_detail[:params])
+              
+              - result_status = step_detail[:result][:status]
+              - # Assign class based on status - using a single '-' block
+              - result_class = case result_status when :success then 'has-text-success-dark' when :error then 'has-text-danger-dark' when :pending then 'has-text-warning-dark' else 'has-text-grey' end
+              
+              p class="#{result_class}" style="font-size: 0.8em; color: #555; margin-bottom: 0.1rem;"
+                | Result (#{result_status}):
+              pre class="#{result_class}" style="font-size: 0.8em; white-space: pre-wrap; word-break: break-all; background-color: #f5f5f5; padding: 0.5em; border-radius: 3px;"
+                = pretty_json(step_detail[:result])
+    / --- END: Execution Plan Details --- 
 
     / Hidden div for raw JSON
     - unless response_data[:raw_json_content].empty?
