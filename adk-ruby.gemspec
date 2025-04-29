@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |spec|
   spec.name          = 'adk-ruby'
-  spec.version       = '0.2.0'
+  spec.version       = '0.4.0'
   spec.authors       = ['Taylor Weibley']
   spec.email         = ['spam@taylorw.com']
 
@@ -28,6 +28,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'thor', '~> 1.2'
   spec.add_dependency 'logger', '~> 1.5'
   spec.add_dependency 'prometheus-client', '~> 2.1'
+  spec.add_dependency 'sidekiq'
   
   
   # Web UI dependencies
