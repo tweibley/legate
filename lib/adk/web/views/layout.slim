@@ -209,6 +209,10 @@ html
       document.addEventListener('DOMContentLoaded', function() {
          console.log("LAYOUT SCRIPT: DOMContentLoaded fired. Initializing task editor...");
          initCodeMirrorEditor('task-json-editor');
+         // --- ADDED: Initialize MCP Editor on initial page load (agent create form) ---
+         console.log("LAYOUT SCRIPT: Initializing MCP editor...");
+         initCodeMirrorEditor('mcp_servers_json');
+         // --------------------------------------------------------------------------
       });
 
       // --- Add listener for notification close buttons ---
