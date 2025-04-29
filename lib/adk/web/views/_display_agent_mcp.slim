@@ -16,6 +16,6 @@ section.mt-4 id="agent-mcp-section"
   
   .field
     .control
-      / --- Use helper for Pretty Print JSON ---
-      pre style="white-space: pre-wrap; word-break: break-all; background-color: #f5f5f5; padding: 1em; border-radius: 4px;"
-        code == pretty_json(agent_data[:mcp_servers_json]) 
+      / --- MODIFIED: Use textarea for CodeMirror ---
+      textarea.textarea(id="mcp-json-display" readonly=true rows="6") == agent_data[:mcp_servers_json]
+      / --- REMOVED pre/code block 

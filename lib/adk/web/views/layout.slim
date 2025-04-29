@@ -52,16 +52,19 @@ html
 
     / --- Global CodeMirror Initializer Function & Trigger ---
     javascript:
-      function initCodeMirrorEditor(elementId) {
+      function initCodeMirrorEditor(elementId, options = {}) {
         var editorElement = document.getElementById(elementId);
         if (editorElement && !editorElement.cmInstance) {
-          console.log("Initializing CodeMirror for", elementId);
+          console.log("Initializing CodeMirror for", elementId, "with options:", options);
           try {
-            editorElement.cmInstance = CodeMirror.fromTextArea(editorElement, {
+            // --- Merge default and passed options ---
+            var cmOptions = Object.assign({}, {
               lineNumbers: true,
               mode: { name: "javascript", json: true },
               theme: "default"
-            });
+            }, options);
+            // -------------------------------------
+            editorElement.cmInstance = CodeMirror.fromTextArea(editorElement, cmOptions);
             editorElement.cmInstance.on('change', function(cm) {
               cm.save(); // Update underlying textarea for HTMX
             });
@@ -167,12 +170,19 @@ html
           }
         }
 
-        // Also check for MCP Editor initialization (from previous unrelated logic)
+        // --- MODIFIED: Check for both MCP editor and display textareas after swap ---
         var mcpEditorElement = event.target.querySelector('#mcp-json-editor');
+        var mcpDisplayElement = event.target.querySelector('#mcp-json-display');
+        
         if (mcpEditorElement) {
           console.log("htmx:afterSwap event detected containing #mcp-json-editor. Triggering init.");
-          initCodeMirrorEditor('mcp-json-editor');
+          initCodeMirrorEditor('mcp-json-editor'); // Initialize editable editor
         }
+        if (mcpDisplayElement) {
+          console.log("htmx:afterSwap event detected containing #mcp-json-display. Triggering init.");
+          initCodeMirrorEditor('mcp-json-display', { readOnly: true }); // Initialize read-only display editor
+        }
+        // --- END MODIFICATION ---
       });
       
       // --- Toast Notification Function ---
@@ -210,8 +220,11 @@ html
          console.log("LAYOUT SCRIPT: DOMContentLoaded fired. Initializing task editor...");
          initCodeMirrorEditor('task-json-editor');
          // --- ADDED: Initialize MCP Editor on initial page load (agent create form) ---
-         console.log("LAYOUT SCRIPT: Initializing MCP editor...");
+         console.log("LAYOUT SCRIPT: Initializing MCP editor (create form)...");
          initCodeMirrorEditor('mcp_servers_json');
+         // --- ADDED: Initialize MCP display editor (agent detail view) ---
+         console.log("LAYOUT SCRIPT: Initializing MCP editor (display)...");
+         initCodeMirrorEditor('mcp-json-display', { readOnly: true });
          // --------------------------------------------------------------------------
       });
 
