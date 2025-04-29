@@ -152,7 +152,7 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
         name: :summarizer,
         description: 'Summarizes a list of provided articles using an LLM.',
         parameters: {
-          articles: { type: :array, description: 'An array of article hashes, each with :title and :description.', required: true }
+          articles: { type: :array, description: 'An array of article hashes, each with :title, :link, and :description.', required: true }
         }
       )
 
@@ -173,34 +173,30 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
           return { status: :error, error_message: msg }
         end
 
-        # Format articles for the prompt
-        # Limit description length to avoid overly long prompts
-        formatted_text = articles.map do |article|
+        # Format articles for the prompt, numbered
+        formatted_text = articles.each_with_index.map do |article, index|
           title = article[:title] || article['title'] || 'No Title'
           desc = article[:description] || article['description'] || 'No Description'
-          "Title: #{title}\nDescription: #{desc[0, 500]}...\n---"
-        end.join("\n\n")
+          plain_desc = desc.gsub(/<[^>]*>/, ' ').gsub(/\s+/, ' ').strip
+          "#{index + 1}. Title: #{title}\n   Description: #{plain_desc[0, 400]}...\n"
+        end.join("\n")
 
-        prompt = "Please provide a concise summary of the following articles:\n\n#{formatted_text}"
+        # Adjust the prompt to ask for a numbered list output
+        prompt = "Based *only* on the following article titles and descriptions snippets, provide a very concise (1-sentence) summary for each, matching the numbering:\n\n#{formatted_text}"
 
-        ADK.logger.info("#{self.class.name}") { "Sending summarization request to Gemini for #{articles.size} articles." }
-        ADK.logger.debug("#{self.class.name}") { "Summarization Prompt Snippet: #{prompt[0, 200]}..." }
+        ADK.logger.info("#{self.class.name}") { "Sending request to Gemini for #{articles.size} articles." }
+        ADK.logger.debug("#{self.class.name}") { "Gemini Prompt Snippet: #{prompt[0, 200]}..." }
 
         begin
-          # Initialize the Gemini client using the correct model for the generative-language-api service
           client = Gemini.new(
             credentials: { service: 'generative-language-api', api_key: api_key },
             options: { model: 'gemini-1.5-flash', server_sent_events: false } # Use flash model
           )
-          
-          # Use stream_generate_content as it might be more broadly supported
-          # Collect the response chunks and join the text parts
+
           response_chunks = client.stream_generate_content(
             { contents: { role: 'user', parts: { text: prompt } } }
           )
 
-          # Process the response chunks to extract the full text
-          # Check if response_chunks is an array and handle potential errors
           if response_chunks.is_a?(Array) && !response_chunks.empty?
             # Check the first chunk for immediate errors if the API returns them that way
             # (The gem might raise exceptions on HTTP errors already)
@@ -213,21 +209,34 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
             end
 
             # Join text parts from all chunks and candidates
-            summary = response_chunks.map do |chunk|
+            llm_summary_text = response_chunks.map do |chunk|
               chunk&.dig('candidates', 0, 'content', 'parts')&.map { |part| part['text'] }&.join
-            end.compact.join
-            
-            if summary.nil? || summary.empty?
-               # Handle cases where the response structure is unexpected or content is empty
-               ADK.logger.error("#{self.class.name}: Gemini API response structure unexpected or content empty. Chunks: #{response_chunks.inspect}")
-               return { status: :error, error_message: "Gemini API returned empty or unparsable summary." }
-            end
+            end.compact.join.strip
 
-            ADK.logger.info("#{self.class.name}") { "Received summary from Gemini." }
-            { status: :success, result: summary.strip }
+            if llm_summary_text.empty?
+              ADK.logger.error("#{self.class.name}: Gemini API response structure unexpected or content empty. Chunks: #{response_chunks.inspect}")
+              return { status: :error, error_message: "Gemini API returned empty or unparsable summary." }
+            end
+            ADK.logger.info("#{self.class.name}") { "Received summary text from Gemini." }
+            ADK.logger.debug("#{self.class.name}") { "Raw summary text: #{llm_summary_text}" }
+
+            # --- Parse the numbered list and combine with original articles ---
+            summaries = llm_summary_text.split(/\n\s*(?:\d+\.\s*|\*\s*|-\s*)/).reject(&:empty?).map(&:strip)
+            
+            results_array = articles.each_with_index.map do |article, index|
+              summary = summaries[index] || "(Summary not generated)"
+              {
+                title: article[:title] || article['title'],
+                link: article[:link] || article['link'] || '#', # Provide a fallback link
+                summary: summary
+              }
+            end
+            # Ensure we didn't get more summaries than articles somehow
+            results_array = results_array.first(articles.size)
+
+            { status: :success, result: results_array } # Return the structured array
           else
-            # Handle cases where response_chunks is not as expected
-            ADK.logger.error("#{self.class.name}: Unexpected response format from stream_generate_content: #{response_chunks.inspect}")
+            ADK.logger.error("#{self.class.name}") { "Unexpected response format from stream_generate_content: #{response_chunks.inspect}" }
             return { status: :error, error_message: "Gemini API returned unexpected response format." }
           end
 
@@ -306,24 +315,97 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
     )
 
     # --- 6. Display Result ---
-    puts "\n--- Agent Result ---"
-    require 'json'
-    # Improve output clarity for success
-    if result_event.content[:status] == :success
-      puts "Status: Success"
-      puts "Summary:\n#{result_event.content[:result]}"
-      # Optionally show plan details for debugging/demo
-      if result_event.content[:plan_details]
-        puts "\n--- Plan Details ---"
-        puts JSON.pretty_generate(result_event.content[:plan_details])
+    puts "\n-------------------- AGENT RESPONSE --------------------"
+    require 'json' # Keep require for potential plan_details debugging
+
+    agent_event = result_event # Rename for clarity
+    agent_content = agent_event.content
+
+    if agent_content[:status] == :success
+      puts "✅ Agent Task Succeeded!"
+
+      # --- Workaround: Fetch the session object and access its events ---
+      retrieved_session = session_service.get_session(session_id: session.id) # Use the original session_id with keyword arg
+      unless retrieved_session
+        puts "\n⚠️ Error: Could not retrieve session #{session.id} after task execution."
+        return # Or handle error appropriately
       end
+
+      all_events = retrieved_session.events # Assuming the attribute is named :events
+      unless all_events.is_a?(Array)
+        puts "\n⚠️ Error: Session object does not have an accessible :events array."
+        puts "   Session Object: #{retrieved_session.inspect}"
+        return
+      end
+
+      last_tool_name_str = (agent_content.dig(:plan_details, -1, :tool_name) || :summarizer).to_s
+
+      last_tool_result_event = all_events.reverse.find do |event|
+        # Revert to checking event.tool_name
+        event && event.role == :tool_result && event.tool_name&.to_s == last_tool_name_str
+      end
+
+      if last_tool_result_event
+        # Assign the whole content hash, not just the nested :result
+        last_tool_result_hash = last_tool_result_event.content
+
+        if last_tool_result_hash.is_a?(Hash) && last_tool_result_hash[:status] == :success && last_tool_result_hash[:result].is_a?(Array)
+          puts "\n📰 Here's your news summary:"
+          puts "--------------------------------------------------------"
+          last_tool_result_hash[:result].each do |item|
+            puts "🔹 Title: #{item[:title]}"
+            puts "   Link: #{item[:link]}"
+            puts "   Summary: #{item[:summary]}"
+            puts "--------------------------------------------------------"
+          end
+        else
+          # Handle cases where the raw tool result event shows an error or unexpected format
+          tool_name_str = last_tool_result_event.content[:tool_name] || '?'
+          status_str = last_tool_result_hash.is_a?(Hash) ? last_tool_result_hash[:status] : 'N/A'
+          message_str = if last_tool_result_hash.is_a?(Hash)
+                          last_tool_result_hash[:error_message] || last_tool_result_hash[:result] || '(No specific message)'
+                        else
+                          last_tool_result_hash.inspect
+                        end
+
+          puts "\n⚠️ Agent finished, but the final tool step (#{tool_name_str}) reported an issue (found via raw event):"
+          puts "   Status: #{status_str}"
+          puts "   Message: #{message_str}"
+          puts "--------------------------------------------------------"
+        end
+      else
+        # Fallback if the specific tool_result event couldn't be found
+        puts "\nℹ️ Agent finished successfully, but couldn't find the raw result event for the last tool (#{last_tool_name_str})."
+        puts "   Checking event history (#{all_events.size} events):"
+        # Update debug print to use evt.tool_name
+        all_events.each_with_index do |evt, idx|
+          puts "     [#{idx}] Role: #{evt&.role}, Tool: #{evt&.tool_name&.inspect}"
+        end
+        puts "   Top-Level Agent Result: #{agent_content[:result].inspect}"
+        puts "--------------------------------------------------------"
+      end
+      # --- End Workaround ---
+
+      # Uncomment below to see the full execution plan details from the *agent* event (may contain stringified results):
+      # if agent_content[:plan_details]
+      #   puts "\n--- Plan Details ---"
+      #   puts JSON.pretty_generate(agent_content[:plan_details])
+      # end
     else
-      puts "Status: Error"
-      puts JSON.pretty_generate(result_event.to_h) # Show full event on error
+      puts "❌ Error!"
+      error_message = agent_content[:error_message] || "An unknown error occurred."
+      puts "Error Message: #{error_message}"
+      # Optionally print the full event for detailed debugging on error
+      # puts "\n--- Full Error Event ---"
+      # puts JSON.pretty_generate(result_event.to_h)
     end
-    puts "--------------------\n"
+    puts "--------------------------------------------------------\n"
     ```
-7. **Environment Setup:** Create `.env` file in `adk-news-demo/` with `GEMINI_API_KEY`.
+7. **Environment Setup:** Create `.env` file in `adk-news-demo/` with your API key and desired log level:
+   ```dotenv
+   GOOGLE_API_KEY=your_actual_google_api_key_here
+   ADK_LOG_LEVEL=INFO # Or DEBUG, WARN, ERROR, FATAL
+   ```
 8. **Testing:** Navigate to `adk-news-demo/` and run `bundle exec ruby run_news_agent.rb`. Verify the output includes a summary.
 9. **Documentation (in `adk-ruby` repo):** Create/update guide (e.g., `docs/demos/news_agent_guide.md`) explaining setup and execution.
 
