@@ -1,5 +1,25 @@
 # File: spec/spec_helper.rb
 require 'bundler/setup'
+
+require 'simplecov'
+
+SimpleCov.profiles.define 'adk' do
+  add_group 'Tools', 'lib/adk/tools'
+  add_group 'Workers', 'lib/adk/workers'
+  add_group 'Agents', 'lib/adk/agents'
+  add_group 'Events', 'lib/adk/events'
+  add_group 'Stores', 'lib/adk/stores'
+  add_group 'Utils', 'lib/adk/utils'
+  add_group 'Examples', 'examples'
+  add_group 'MCP', 'lib/adk/mcp'
+  add_group 'CLI', 'lib/adk/cli'
+  add_group 'Config', 'lib/adk/config'
+  add_group 'Core', 'lib/adk/core'
+  add_group 'Errors', 'lib/adk/errors'
+end
+
+SimpleCov.start 'adk'
+
 # --- Load ADK Library ---
 require 'adk'
 require 'gemini-ai'

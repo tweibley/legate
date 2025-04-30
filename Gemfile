@@ -7,6 +7,8 @@ gemspec
 
 gem 'puma' # Add puma for Sinatra's default server
 
+gem 'simplecov', require: false, group: :test
+
 group :development, :test do
   gem 'rspec', '~> 3.12'
   gem 'rake', '~> 13.0'
