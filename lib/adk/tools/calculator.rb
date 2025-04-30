@@ -43,7 +43,7 @@ module ADK
       def perform_execution(params, _context)
         op1_str = params.fetch('operand1') { params.fetch(:operand1, nil) }
         op2_str = params.fetch('operand2') { params.fetch(:operand2, nil) }
-        operation = params.fetch('operation') { params.fetch(:operation, nil) }&.downcase
+        operation = params.fetch('operation') { params.fetch(:operation, nil) }&.to_s&.downcase
 
         begin
           # Validate inputs first

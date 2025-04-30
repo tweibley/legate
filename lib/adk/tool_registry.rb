@@ -41,30 +41,18 @@ module ADK
     # @param name_symbol [Symbol] The symbolic name of the tool.
     # @return [Class, nil] The tool class or nil if not found.
     def find_class(name_symbol)
-      @tools[name_symbol.to_sym]
+      found_class = @tools[name_symbol.to_sym]
+      ADK.logger.debug("[ToolRegistry #{@object_id}] find_class(#{name_symbol.inspect}): Found class in @tools: #{found_class.inspect}")
+      found_class
     end
 
     # Create an instance of a tool by its name symbol using the class registered here.
     # @param name_symbol [Symbol] The symbolic name of the tool.
     # @return [ADK::Tool, nil] An instance of the tool or nil if instantiation fails or class not found.
     def create_instance(name_symbol)
-      logger = ADK.logger # Get logger instance
-      klass = find_class(name_symbol.to_sym)
-
-      if klass
-        begin
-          instance = klass.new
-          logger.debug("ToolRegistry: Successfully instantiated tool '#{name_symbol}' from this registry.")
-          instance
-        rescue StandardError => e
-          logger.error("ToolRegistry: Failed to instantiate tool '#{name_symbol}' (Class: #{klass}) from this registry: #{e.class} - #{e.message}")
-          logger.error(e.backtrace.first(5).join("\n"))
-          nil
-        end
-      else
-        logger.warn("ToolRegistry: Attempted to create instance of tool '#{name_symbol}' which is not registered in this registry.")
-        nil
-      end
+      klass = find_class(name_symbol)
+      ADK.logger.debug("[ToolRegistry #{@object_id}] create_instance(#{name_symbol.inspect}): Found class: #{klass.inspect}")
+      klass ? klass.new : nil
     end
 
     # Get a list of available tools registered in this instance with basic info.

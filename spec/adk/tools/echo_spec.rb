@@ -56,5 +56,42 @@ RSpec.describe ADK::Tools::Echo do
         expect(result).to eq({ status: :success, result: 'Hello string key' })
       end
     end
+
+    # --- Test perform_execution specific error handling ---
+    context 'when message is unexpectedly nil in perform_execution (post-validation)' do
+      let(:params) { { message: 'Exists' } } # Start with valid params
+
+      it 'logs an error and raises a ToolError' do
+        # Stub fetch to simulate the parameter disappearing after validation
+        allow(params).to receive(:fetch).with('message').and_return(nil)
+        allow(params).to receive(:fetch).with(:message, nil).and_return(nil)
+
+        allow(ADK.logger).to receive(:error) # Prevent logging noise
+
+        expect { tool.execute(params) }
+          .to raise_error(ADK::ToolError, /Internal Error: Message parameter missing/)
+
+        expect(ADK.logger).to have_received(:error).with(/Internal Error: Message parameter missing/).at_least(:once)
+      end
+    end
+
+    context 'when an unexpected error occurs during fetch' do
+      let(:params) { { message: 'Exists' } } # Start with valid params
+      let(:fetch_error) { StandardError.new('Something broke!') }
+
+      it 'logs the error and raises a ToolError' do
+        # Stub fetch to raise an unexpected error
+        allow(params).to receive(:fetch).with('message').and_raise(fetch_error)
+        allow(params).to receive(:fetch).with(:message, nil).and_raise(fetch_error)
+
+        allow(ADK.logger).to receive(:error) # Prevent logging noise
+
+        expect { tool.execute(params) }
+          .to raise_error(ADK::ToolError, /Unexpected error in Echo tool: Something broke!/)
+
+        expect(ADK.logger).to have_received(:error).with("Echo Tool: Unexpected error: StandardError - Something broke!")
+      end
+    end
+    # --- End perform_execution specific error handling ---
   end
 end

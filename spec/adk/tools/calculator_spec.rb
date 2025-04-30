@@ -64,6 +64,46 @@ RSpec.describe ADK::Tools::Calculator do
       end
     end
 
+    context 'with symbol keys for parameters' do
+      let(:params) { { operand1: 15, operand2: 5, operation: :divide } } # Use symbols
+
+      it 'correctly processes symbol keys' do
+        result = tool.execute(params)
+        expect(result).to eq({ status: :success, result: 3.0 })
+      end
+    end
+
+    context 'with uppercase operation' do
+      let(:params) { { operand1: 2, operand2: 8, operation: 'MULTIPLY' } } # Uppercase
+
+      it 'correctly handles case-insensitive operation' do
+        result = tool.execute(params)
+        expect(result).to eq({ status: :success, result: 16.0 })
+      end
+    end
+
+    context 'with operation aliases' do
+      it 'handles "+" alias for addition' do
+        result = tool.execute({ operand1: 1, operand2: 2, operation: '+' })
+        expect(result).to eq({ status: :success, result: 3.0 })
+      end
+
+      it 'handles "-" alias for subtraction' do
+        result = tool.execute({ operand1: 5, operand2: 2, operation: '-' })
+        expect(result).to eq({ status: :success, result: 3.0 })
+      end
+
+      it 'handles "multiply" alias' do
+        result = tool.execute({ operand1: 3, operand2: 4, operation: 'multiply' })
+        expect(result).to eq({ status: :success, result: 12.0 })
+      end
+
+      it 'handles "divide" alias' do
+        result = tool.execute({ operand1: 9, operand2: 3, operation: 'divide' })
+        expect(result).to eq({ status: :success, result: 3.0 })
+      end
+    end
+
     context 'with division by zero' do
       let(:params) { { operand1: 10, operand2: 0, operation: 'divide' } }
 
@@ -91,6 +131,16 @@ RSpec.describe ADK::Tools::Calculator do
         expect {
           tool.execute(params)
         }.to raise_error(ADK::ToolArgumentError, /Invalid numeric input/i)
+      end
+    end
+
+    context 'with nil input causing TypeError during Float conversion' do
+      let(:params) { { operand1: 10, operand2: nil, operation: 'add' } }
+
+      it 'raises ToolArgumentError wrapping the TypeError' do
+        expect {
+          tool.execute(params)
+        }.to raise_error(ADK::ToolArgumentError, /Invalid numeric input.*Op2: ''/i) # nil becomes ''
       end
     end
 

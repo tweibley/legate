@@ -17,8 +17,10 @@ end
 
 # --- Dummy Tool Implementation ---
 class MyAsyncJobTool < ADK::Tools::BaseAsyncJobTool
-  define_metadata(name: :my_async_job, description: 'Starts a dummy job',
-                  parameters: { input_data: { type: :string, required: true } })
+  # Replaced define_metadata with new DSL
+  self.explicit_tool_name = :my_async_job
+  tool_description 'Starts a dummy job'
+  parameter :input_data, type: :string, required: true
 
   def sidekiq_worker_class; DummySidekiqWorker; end
   # Use default job options
@@ -50,16 +52,22 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
 
   it 'requires subclasses to implement sidekiq_worker_class' do
     class AbstractSubclass < ADK::Tools::BaseAsyncJobTool
-      define_metadata(name: :abstract_job, description: 'Abstract job tool', parameters: {})
+      # Replaced define_metadata
+      self.explicit_tool_name = :abstract_job
+      tool_description 'Abstract job tool'
+      # No parameters defined
     end
     expect { AbstractSubclass.new.send(:sidekiq_worker_class) }.to raise_error(NotImplementedError)
   end
 
   it 'requires subclasses to implement prepare_job_arguments' do
-    class AbstractSubclass < ADK::Tools::BaseAsyncJobTool
-      define_metadata(name: :abstract_job, description: 'Abstract job tool', parameters: {})
+    # Reline the class here as RSpec often doesn't reuse the one from the previous example
+    class AbstractSubclassAgain < ADK::Tools::BaseAsyncJobTool
+      # Replaced define_metadata
+      self.explicit_tool_name = :abstract_job
+      tool_description 'Abstract job tool'
     end
-    expect { AbstractSubclass.new.send(:prepare_job_arguments, {}, context) }.to raise_error(NotImplementedError)
+    expect { AbstractSubclassAgain.new.send(:prepare_job_arguments, {}, context) }.to raise_error(NotImplementedError)
   end
 
   describe '#perform_execution' do
@@ -133,6 +141,24 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
         }.to raise_error(ADK::ToolError, /Could not connect to Redis.*Connection refused/)
       end
     end
+
+    context 'when perform_async raises a generic StandardError' do
+      let(:generic_error) { StandardError.new('Something else broke') }
+      before do
+        allow(DummySidekiqWorker).to receive(:set).and_return(DummySidekiqWorker)
+        allow(DummySidekiqWorker).to receive(:perform_async).and_raise(generic_error)
+        allow(ADK.logger).to receive(:error) # Stub logger to check calls
+      end
+      it 'rescues, logs, and raises ToolError' do
+        expect {
+          tool.send(:perform_execution, params, context)
+        }.to raise_error(ADK::ToolError, /Unexpected error enqueuing Sidekiq job.*Something else broke/)
+
+        expect(ADK.logger).to have_received(:error).with(/Unexpected error.*StandardError - Something else broke/)
+        # Check that error was called again (for backtrace), without being too specific about content
+        expect(ADK.logger).to have_received(:error).twice
+      end
+    end
   end
 
   describe '.store_job_result' do
@@ -190,6 +216,52 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
     it 'calls redis.setex with correct key, ttl, and error JSON data' do
       expect(mock_redis).to receive(:setex).with(expected_key, expected_ttl, expected_json)
       described_class.store_job_error(jid, error_msg, error_cls)
+    end
+
+    it 'logs error and does not raise if Redis fails' do
+      allow(mock_redis).to receive(:setex).and_raise(Redis::TimeoutError)
+      expect(ADK.logger).to receive(:error).with(/Failed to store error for job #{jid}/)
+      expect { described_class.store_job_error(jid, error_msg, error_cls) }.not_to raise_error
+    end
+
+    it 'closes the Redis connection' do
+      expect(mock_redis).to receive(:close)
+      described_class.store_job_error(jid, error_msg, error_cls)
+    end
+  end
+
+  # --- Tests for Static Helper Methods --- #
+  describe '.store_job_pending' do
+    let(:mock_redis) { instance_double(Redis, close: nil) }
+    let(:jid) { 'pending_jid_1' }
+    let(:expected_key) { "#{ADK::Tools::BaseAsyncJobTool::JOB_RESULT_REDIS_PREFIX}#{jid}" }
+    let(:expected_ttl) { ADK::Tools::BaseAsyncJobTool::JOB_RESULT_TTL }
+    let(:expected_json) { { status: :pending, message: "Job processing started." }.to_json }
+
+    before do
+      allow(Redis).to receive(:new).and_return(mock_redis)
+      allow(mock_redis).to receive(:setex).with(expected_key, expected_ttl, expected_json)
+    end
+
+    it 'connects to Redis with correct options' do
+      expect(Redis).to receive(:new).with(ADK.redis_options).and_return(mock_redis)
+      described_class.store_job_pending(jid)
+    end
+
+    it 'calls redis.setex with correct key, ttl, and JSON data' do
+      expect(mock_redis).to receive(:setex).with(expected_key, expected_ttl, expected_json)
+      described_class.store_job_pending(jid)
+    end
+
+    it 'logs error and does not raise if Redis fails' do
+      allow(mock_redis).to receive(:setex).and_raise(Redis::TimeoutError)
+      expect(ADK.logger).to receive(:error).with(/Failed to store pending status for job #{jid}/)
+      expect { described_class.store_job_pending(jid) }.not_to raise_error
+    end
+
+    it 'closes the Redis connection' do
+      expect(mock_redis).to receive(:close)
+      described_class.store_job_pending(jid)
     end
   end
 end

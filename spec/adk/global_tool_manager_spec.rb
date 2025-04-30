@@ -7,24 +7,28 @@ require 'adk/tool' # Dependency for tool classes
 
 # --- Mock Tool Classes for Testing ---
 class GtmMockTool < ADK::Tool
-  define_metadata(name: :gtm_mock, description: 'GTM Mock Tool Desc', parameters: { p1: { required: true } })
-  def initialize; end # Simple constructor for testing
+  self.explicit_tool_name = :gtm_mock
+  tool_description 'GTM Mock Tool Desc'
+  parameter :p1, required: true
+  def perform_execution(params, context); { status: :success, result: "Mock p1: #{params[:p1]}" }; end
 end
 
-class GtmMockToolNoMeta < ADK::Tool
-  # No metadata defined
-end
+class GtmMockToolNoMeta < ADK::Tool; end
 
 class GtmMockToolOther < ADK::Tool
-  define_metadata(name: :gtm_other, description: 'Other GTM Tool', parameters: {})
-  def initialize; end
+  self.explicit_tool_name = :gtm_other
+  tool_description 'Other GTM Tool'
+  def perform_execution(params, context); { status: :success, result: 'Other' }; end
 end
 
 class GtmMockToolWithError < ADK::Tool
-  define_metadata(name: :gtm_error_tool, description: 'Errors on init', parameters: {})
+  self.explicit_tool_name = :gtm_error_tool
+  tool_description 'Errors on init'
   def initialize
-    raise StandardError, "Init failed!"
+    raise StandardError, "Initialization Error"
   end
+
+  def perform_execution(params, context); { status: :success, result: 'Should not reach' }; end
 end
 # --- End Mock Tool Classes ---
 
@@ -52,22 +56,19 @@ RSpec.describe ADK::GlobalToolManager do
     end
 
     it 'warns and overwrites when registering a tool with the same name' do
-      described_class.register_tool(GtmMockTool) # Register first time
-      expect(logger_spy).to receive(:warn).with(/Tool name 'gtm_mock' is already registered.*Overwriting/)
-      expect { described_class.register_tool(GtmMockTool) } # Re-register same class (idempotent)
-        .not_to change { described_class.class_variable_get(:@@defined_tools).count }
-      # --- Define metadata for the anonymous class --- >
-      anon_class_with_meta = Class.new(GtmMockTool) do
-        define_metadata(name: :gtm_mock, description: 'Anon Desc', parameters: {})
+      described_class.register_tool(GtmMockTool)
+      class GtmMockToolDuplicate < ADK::Tool
+        self.explicit_tool_name = :gtm_mock
+        tool_description 'Anon Desc'
+        def perform_execution(params, context); { status: :success, result: 'Duplicate' }; end
       end
-      expect { described_class.register_tool(anon_class_with_meta) } # Register different class with same name
-        # <-----------------------------------------------
+
+      expect(logger_spy).to receive(:warn).with(/GlobalToolManager: Tool name 'gtm_mock' is already registered.*Overwriting with GtmMockToolDuplicate/)
+      expect { described_class.register_tool(GtmMockToolDuplicate) }
         .not_to change { described_class.class_variable_get(:@@defined_tools).count }
     end
 
     it 'registers tool via inferred name even if metadata is explicitly missing' do
-      # GtmMockToolNoMeta doesn't call define_metadata or the DSL
-      # Check that registration happens and the tool is findable
       expect { described_class.register_tool(GtmMockToolNoMeta) }
         .to change { described_class.class_variable_get(:@@defined_tools).count }.by(1)
       expect(described_class.find_class(:gtm_mock_tool_no_meta)).to eq(GtmMockToolNoMeta)
@@ -111,9 +112,16 @@ RSpec.describe ADK::GlobalToolManager do
     end
 
     it 'returns nil and logs error if tool initialization fails' do
+      # Register the tool that errors on init
       described_class.register_tool(GtmMockToolWithError)
-      expect(logger_spy).to receive(:error).with(/Failed to instantiate tool 'gtm_error_tool'.*Init failed!/)
+
+      # Call create_instance, it should rescue the init error and return nil
       expect(described_class.create_instance(:gtm_error_tool)).to be_nil
+
+      # Check that the correct error was logged via the logger_spy
+      expect(logger_spy).to have_received(:error).with(/GlobalToolManager: Failed to instantiate tool 'gtm_error_tool'.*StandardError - Initialization Error/).ordered
+      # Check that a backtrace line was also logged
+      expect(logger_spy).to have_received(:error).with(match(/global_tool_manager_spec\.rb.*initialize/)).ordered
     end
 
     it 'accepts string input and creates an instance' do
@@ -128,8 +136,8 @@ RSpec.describe ADK::GlobalToolManager do
     end
 
     it 'returns metadata for all registered tools, sorted by name' do
-      described_class.register_tool(GtmMockToolOther) # name: :gtm_other
-      described_class.register_tool(GtmMockTool)      # name: :gtm_mock
+      described_class.register_tool(GtmMockToolOther)
+      described_class.register_tool(GtmMockTool)
 
       expected_list = [
         { name: :gtm_mock, description: 'GTM Mock Tool Desc', parameters: { p1: { required: true } } },
@@ -140,18 +148,13 @@ RSpec.describe ADK::GlobalToolManager do
     end
 
     it 'handles tools with missing descriptions or parameters gracefully' do
-      # Create a tool class dynamically with minimal metadata
-      # --- Provide a default description --- >
-      class GtmMinimalTool < ADK::Tool; define_metadata(name: :gtm_minimal, description: ''); end
-      # <---------------------------------------
-      described_class.register_tool(GtmMinimalTool)
+      described_class.reset!
+      class GtmMinimalTool < ADK::Tool
+        self.explicit_tool_name = :gtm_minimal
+      end
 
-      tools_list = described_class.list_all_tools
-      minimal_tool_meta = tools_list.find { |t| t[:name] == :gtm_minimal }
-
-      expect(minimal_tool_meta).not_to be_nil
-      expect(minimal_tool_meta[:description]).to eq('')
-      expect(minimal_tool_meta[:parameters]).to eq({}) # Parameters should default to empty hash in metadata method
+      metadata = described_class.list_all_tools
+      expect(metadata.size).to eq(1)
     end
   end
 

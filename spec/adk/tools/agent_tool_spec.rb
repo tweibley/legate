@@ -138,6 +138,22 @@ RSpec.describe ADK::Tools::AgentTool do
       end
     end
 
+    context 'when definition is loaded from Redis (not memory)' do
+      before do
+        # Stub find to return nil, load_from_redis to return definition
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_s).and_return(nil)
+        allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(target_agent_name.to_s).and_return(target_definition_hash)
+      end
+
+      it 'successfully loads from Redis and executes' do
+        # Minimal check: ensure it doesn't raise 'not found' and returns success
+        expect(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(target_agent_name.to_s).and_return(target_definition_hash)
+        result = tool.execute(params, mock_context)
+        expect(result[:status]).to eq(:success)
+        expect(result[:result]).to eq(expected_target_result)
+      end
+    end
+
     context 'when target agent definition is not found' do
       before do
         # Default mocks already handle not found case (return nil)
@@ -168,6 +184,56 @@ RSpec.describe ADK::Tools::AgentTool do
         expect {
           tool.execute(params, mock_context)
         }.to raise_error(ADK::ToolError, /Unexpected error during delegation.*StandardError - Target agent failed!/)
+      end
+    end
+
+    context 'when context does not provide a valid tool registry' do
+      let(:invalid_context) { instance_double(ADK::ToolContext, tool_registry: nil, to_h: {}) }
+      before do
+        # Definition needs to be found for this test
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_s).and_return(target_definition_hash)
+      end
+
+      it 'raises ToolError' do
+        expect {
+          tool.execute(params, invalid_context)
+        }.to raise_error(ADK::ToolError, /Tool registry not found or invalid/)
+      end
+    end
+
+    context 'when target agent definition has no tools listed' do
+      let(:definition_no_tools) { target_definition_hash.merge(tools: []) }
+      before do
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_s).and_return(definition_no_tools)
+        # Ensure agent mock doesn't expect tool registration
+        allow(mock_target_agent).to receive(:register_tool_class) # Allow 0 calls
+      end
+
+      it 'warns but proceeds successfully' do
+        expect(ADK.logger).to receive(:warn).with(/Target agent 'calculator_agent' has no tools configured/)
+        expect(mock_target_agent).not_to receive(:register_tool_class) # Verify no registration attempts
+
+        result = tool.execute(params, mock_context)
+        expect(result[:status]).to eq(:success) # Should still succeed, just with no tools
+      end
+    end
+
+    context 'when a needed tool is not found in the executing registry' do
+      let(:definition_missing_tool) { target_definition_hash.merge(tools: ['calculator', 'missing_tool']) }
+      before do
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_s).and_return(definition_missing_tool)
+        # Make executing registry return nil for the missing tool
+        allow(mock_executing_registry).to receive(:find_class).with(:calculator).and_return(ADK::Tools::Calculator)
+        allow(mock_executing_registry).to receive(:find_class).with(:missing_tool).and_return(nil)
+      end
+
+      it 'warns about the missing tool but continues with found tools' do
+        expect(ADK.logger).to receive(:warn).with(/Tool 'missing_tool'.*not found.*Skipping/)
+        expect(mock_target_agent).to receive(:register_tool_class).with(ADK::Tools::Calculator) # Register found tool
+        expect(mock_target_agent).not_to receive(:register_tool_class).with(nil) # Don't register nil
+
+        result = tool.execute(params, mock_context)
+        expect(result[:status]).to eq(:success) # Execution proceeds
       end
     end
 

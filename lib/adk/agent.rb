@@ -55,25 +55,30 @@ module ADK
 
       # --- Automatic Tool Discovery ---
       _discover_and_load_tools(@tool_paths)
-      # -------------------------------
+      # --- End Tool Discovery ---
 
       # --- Determine newly registered tools ---
-      # Get tool names registered globally *after* discovery
       current_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
       newly_discovered_tool_names = (current_global_tools - initial_global_tools).to_a
-      ADK.logger.debug("Newly discovered tools from paths [#{@tool_paths.join(', ')}]: #{newly_discovered_tool_names.inspect}")
+      ADK.logger.debug("[Agent Init '#{name}'] Initial global tools: #{initial_global_tools.inspect}")
+      ADK.logger.debug("[Agent Init '#{name}'] Current global tools: #{current_global_tools.inspect}")
+      ADK.logger.debug("[Agent Init '#{name}'] Newly discovered tool names: #{newly_discovered_tool_names.inspect}")
       # ------------------------------------
 
       # Register initial native tool *classes* passed directly
       tool_classes.each { |tool_class| register_tool_class(tool_class) }
 
       # Instantiate and add *newly discovered* tools from paths
+      ADK.logger.debug("[Agent Init '#{name}'] Adding newly discovered tools: #{newly_discovered_tool_names.inspect}")
       newly_discovered_tool_names.each do |tool_name|
-        tool_instance = ADK::GlobalToolManager.create_instance(tool_name)
-        if tool_instance
-          add_tool(tool_instance) # Add to agent's specific registry
+        ADK.logger.debug("[Agent Init '#{name}'] Processing discovered tool: #{tool_name.inspect}")
+        # Fetch the CLASS from the global manager, not an instance
+        tool_class = ADK::GlobalToolManager.find_class(tool_name)
+        if tool_class
+          ADK.logger.debug("[Agent Init '#{name}'] Found class #{tool_class} for #{tool_name.inspect}, attempting register_tool_class...")
+          register_tool_class(tool_class) # Register the class in the agent's registry
         else
-          ADK.logger.error("Failed to create instance for discovered tool '#{tool_name}' from GlobalToolManager.")
+          ADK.logger.error("[Agent Init '#{name}'] Failed to find class for discovered tool '#{tool_name}' in GlobalToolManager.")
         end
       end
 
@@ -129,21 +134,33 @@ module ADK
       is_tool_class = tool.is_a?(Class) && tool < ADK::Tool
 
       unless is_tool_instance || is_tool_class
-        ADK.logger.error("Agent '#{name}': Attempted to add invalid tool: #{tool.inspect}")
+        ADK.logger.error("Agent '#{name}' add_tool: Attempted to add invalid tool: #{tool.inspect}")
         return false
       end
 
       # Determine the actual tool class
       tool_class = is_tool_class ? tool : tool.class
 
-      # Get metadata reliably from the class
-      metadata = tool_class.tool_metadata
+      # --- Determine Tool Name with Fallbacks --- #
+      metadata = tool_class.tool_metadata # No rescue - let errors propagate if metadata itself fails
       tool_name = metadata[:name]&.to_sym
 
+      if tool_name.nil? || tool_name == :''
+        # Check deprecated @tool_name
+        if tool_class.instance_variable_defined?(:@tool_name)
+          tool_name = tool_class.instance_variable_get(:@tool_name)&.to_sym
+          ADK.logger.debug("Agent '#{name}' add_tool: using name from deprecated @tool_name: #{tool_name.inspect}")
+        elsif tool_class.respond_to?(:inferred_name)
+          # Try inference
+          tool_name = tool_class.inferred_name
+          ADK.logger.debug("Agent '#{name}' add_tool: using inferred name: #{tool_name.inspect}")
+        end
+      end
+      # --- End Determine Tool Name --- #
+
       # Validate name was found
-      unless tool_name
-        # If name is still nil here, registration likely failed or metadata is truly missing.
-        ADK.logger.error("Agent '#{name}': Could not determine tool name for class #{tool_class} from its metadata: #{metadata.inspect}. Cannot add tool.")
+      unless tool_name && tool_name != :''
+        ADK.logger.error("Agent '#{name}' add_tool: Could not determine tool name for class #{tool_class}. Cannot add tool.")
         return false
       end
 
@@ -153,8 +170,12 @@ module ADK
       end
 
       # Register the class using the determined name
-      @tool_registry.register(tool_name, tool_class)
-      true
+      ADK.logger.debug("Agent '#{name}' add_tool: Registering tool_name=#{tool_name.inspect} with class=#{tool_class.inspect} in registry=#{@tool_registry.object_id}")
+      registration_result = @tool_registry.register(tool_name, tool_class)
+      ADK.logger.debug("Agent '#{name}' add_tool: Registry after registration for #{tool_name.inspect}: #{@tool_registry.tools.keys.inspect}")
+
+      # Explicitly return the boolean result from the registry
+      registration_result
     end
 
     # Returns the list of tools registered with this agent
@@ -341,26 +362,23 @@ module ADK
       ADK.logger.debug("Starting tool discovery in paths: #{paths.inspect}")
 
       paths.each do |path|
-        # Ensure path is absolute for Dir.glob and require
-        absolute_path = File.expand_path(path)
+        absolute_dir_path = File.expand_path(path, Dir.pwd)
 
-        unless Dir.exist?(absolute_path)
-          ADK.logger.warn("Tool discovery path does not exist or is not a directory: '#{path}' (resolved to '#{absolute_path}'). Skipping.")
+        unless Dir.exist?(absolute_dir_path)
+          ADK.logger.warn("Tool discovery path does not exist or is not a directory: '#{path}' (resolved to '#{absolute_dir_path}'). Skipping.")
           next
         end
 
-        # Find all .rb files directly within the directory (non-recursive)
-        Dir.glob(File.join(absolute_path, '*.rb')).each do |file_path|
+        Dir.glob(File.join(absolute_dir_path, '*.rb')).each do |absolute_file_path|
           begin
-            ADK.logger.debug("Attempting to load tool file: #{file_path}")
-            require file_path # Let Ruby handle require logic (idempotency, etc.)
-            ADK.logger.debug("Successfully loaded: #{file_path}")
+            ADK.logger.debug("Attempting to load tool file using 'load': #{absolute_file_path}")
+            load absolute_file_path # Use load
+            ADK.logger.debug("Successfully loaded: #{absolute_file_path}")
+            # Reverted: No direct add here
           rescue LoadError, SyntaxError => e
-            ADK.logger.error("Failed to load tool file '#{file_path}': #{e.class} - #{e.message}")
-            # Optionally log backtrace e.backtrace.first(5).join("\n")
+            ADK.logger.error("Failed to load/eval tool file '#{absolute_file_path}': #{e.class} - #{e.message}")
           rescue StandardError => e
-            ADK.logger.error("Error encountered while loading tool file '#{file_path}': #{e.class} - #{e.message}")
-            # Optionally log backtrace e.backtrace.first(5).join("\n")
+            ADK.logger.error("Error encountered while loading/processing tool file '#{absolute_file_path}': #{e.class} - #{e.message}")
           end
         end
       end
