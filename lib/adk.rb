@@ -117,14 +117,13 @@ require_relative 'adk/session'
 require_relative 'adk/tool_context'
 require_relative 'adk/tool'
 require_relative 'adk/tool_registry'
+require_relative 'adk/global_tool_manager'
 # --- Load dependencies BEFORE Agent ---
 require_relative 'adk/planner'
 # --- Load Services ---
 require_relative 'adk/session_service/base'
 require_relative 'adk/session_service/in_memory'
 require_relative 'adk/session_service/redis'
-# --- Load Migrations ---
-require_relative 'adk/migrations/001_add_state_scoping'
 
 require_relative 'adk/mcp'
 # --- Now load Agent ---
