@@ -133,28 +133,40 @@ For the asynchronous job feature:
 ADK comes with several examples demonstrating different capabilities:
 
 ### 1. Simple Echo Agent (`examples/simple_agent.rb`)
-A basic example showing session-based agent interaction:
+A basic example showing session-based agent interaction using `ADK::Agent.define`:
 ```ruby
-# Assuming ADK::Tools::Echo is available via the gem or in a ./tools directory
-agent = ADK::Agent.new(
-  name: 'simple_echo_agent',
-  description: 'A simple agent that can echo messages',
-  tool_paths: './tools' # Automatically loads tools like Echo if defined in ./tools
-  # Or, if Echo is built-in/required elsewhere, you might not need tool_paths for it.
-)
-# Manual tool addition is no longer needed if tools are discovered:
-# agent.add_tool(ADK::ToolRegistry.create_instance(:echo))
+require 'adk'
+require 'adk/tools/echo' # Make sure the built-in tool class is loaded
+
+agent = ADK::Agent.define do |a|
+  a.name = 'simple_echo_agent'
+  a.description = 'A simple agent that can echo messages'
+  # Explicitly add the built-in Echo tool class
+  a.add_tool_classes ADK::Tools::Echo
+  # No need for discover_tools_in for just this built-in tool
+end
 
 # Create session
 session_service = ADK::SessionService::InMemory.new
 session = session_service.create_session(app_name: agent.name, user_id: 'example_user')
 
-# Run task
-result = agent.run_task(
-  session_id: session.id,
-  user_input: 'Hello, world!',
-  session_service: session_service
-)
+begin
+  # Start the agent (connects to MCP if configured, sets state)
+  agent.start
+
+  # Run task
+  result = agent.run_task(
+    session_id: session.id,
+    user_input: 'Hello, world!',
+    session_service: session_service
+  )
+
+  puts "Agent Response: #{result.inspect}"
+
+ensure
+  # Stop the agent (disconnects from MCP, sets state)
+  agent.stop
+end
 ```
 
 ### 2. Random Calculator (`examples/random_calculator.rb`)
@@ -221,13 +233,45 @@ Agents are the core components that can:
 - Plan multi-step operations
 - Handle errors gracefully
 
+Agents can be initialized directly using `ADK::Agent.new`:
+
 ```ruby
 agent = ADK::Agent.new(
   name: 'my_agent',
   description: 'Description of what the agent does',
-  # Optionally load all .rb files from a directory:
-  tool_paths: 'path/to/my/tools'
+  tool_classes: [MyToolClass], # Explicitly list tool classes
+  tool_paths: 'path/to/my/tools', # Or discover tools in a directory
+  model_name: 'gemini-2.0-pro' # Optional: specify the LLM model
 )
+```
+
+Alternatively, use the `ADK::Agent.define` block for a more structured setup:
+
+```ruby
+require 'adk'
+
+# Assuming MyToolClass and AnotherToolClass are defined
+agent = ADK::Agent.define do |a|
+  a.name = 'defined_agent'
+  a.description = 'An agent configured using the define block.'
+  a.model_name = 'gemini-1.5-flash'
+
+  # Discover tools in directories
+  a.discover_tools_in 'path/to/tools', 'path/to/more_tools'
+
+  # Add specific tool classes
+  a.add_tool_classes MyToolClass, AnotherToolClass
+
+  # Specify which discovered/added tools the agent should actually *use*
+  # If omitted, the agent uses all discovered/added tools.
+  a.selected_tool_names = [:my_tool, :another_tool]
+
+  # Configure MCP connection (if needed)
+  # a.mcp_servers = ['host1:port1', 'host2:port2']
+
+  # Set fallback mode (optional)
+  # a.fallback_mode = :delegate_to_planner
+end
 ```
 
 ### Tools
@@ -277,23 +321,42 @@ end
 
 **Adding Tools to Agents:**
 ```ruby
-# Add tools automatically during agent initialization via discovery:
-agent = ADK::Agent.new(
+# 1. Automatic discovery during agent initialization via tool_paths (using new):
+agent_new = ADK::Agent.new(
   name: 'my_agent',
   description: 'Agent with discovered tools',
   tool_paths: './tools' # Loads *.rb files defining ADK::Tool subclasses
 )
 
-# Or add tool classes explicitly:
-agent = ADK::Agent.new(
+# 2. Automatic discovery using the define block:
+agent_define_discover = ADK::Agent.define do |a|
+  a.name = 'my_agent'
+  a.discover_tools_in './tools'
+end
+
+# 3. Add tool classes explicitly (using new):
+agent_new_explicit = ADK::Agent.new(
   name: 'my_agent',
   description: 'Agent with explicit tools',
   tool_classes: [MyCustomTool, ADK::Tools::Calculator]
 )
 
-# Manual instance addition (less common):
+# 4. Add tool classes explicitly using the define block:
+agent_define_explicit = ADK::Agent.define do |a|
+  a.name = 'my_agent'
+  a.add_tool_classes MyCustomTool, ADK::Tools::Calculator
+end
+
+# 5. Combine discovery and explicit classes using the define block:
+agent_define_mixed = ADK::Agent.define do |a|
+  a.name = 'my_mixed_agent'
+  a.discover_tools_in './tools'
+  a.add_tool_classes AnotherSpecificTool
+end
+
+# Manual instance addition (less common, generally use classes/discovery):
 # tool_instance = MyCustomTool.new
-# agent.add_tool(tool_instance)
+# agent.add_tool(tool_instance) # This method still exists but isn't the primary way
 ```
 
 **Tool Implementation Notes:**

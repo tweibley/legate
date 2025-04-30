@@ -22,6 +22,84 @@ module ADK
 
     attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode
 
+    # --- Builder Class for `define` method ---
+    class AgentBuilder
+      attr_accessor :name, :description, :model_name, :fallback_mode, :mcp_servers, :selected_tool_names
+      attr_reader :tool_paths, :tool_classes # Keep track of both
+
+      def initialize
+        @name = nil
+        @description = nil
+        @model_name = nil
+        @fallback_mode = :error
+        @tool_paths = []
+        @tool_classes = []
+        @mcp_servers = []
+        @selected_tool_names = []
+        # Planner is not directly configured here, it's created by Agent#initialize
+      end
+
+      # Sets the paths for automatic tool discovery.
+      # @param paths [String, Array<String>] One or more directory paths.
+      def discover_tools_in(*paths)
+        @tool_paths.concat(Array(paths).flatten.compact.uniq)
+      end
+
+      # Adds native tool classes directly.
+      # @param classes [Class, Array<Class>] One or more classes inheriting from ADK::Tool.
+      def add_tool_classes(*classes)
+        @tool_classes.concat(Array(classes).flatten.compact.uniq)
+      end
+
+      # Builds the Agent instance using the collected configuration.
+      # @return [ADK::Agent] The configured agent instance.
+      # @raise [ArgumentError] if required attributes like name or description are missing.
+      def build
+        raise ArgumentError, "Agent name must be set in the define block." unless @name && !@name.strip.empty?
+
+        raise ArgumentError,
+              "Agent description must be set in the define block." unless @description && !@description.strip.empty?
+
+        ADK::Agent.new(
+          name: @name,
+          description: @description,
+          model_name: @model_name, # Defaults handled in initialize
+          tool_classes: @tool_classes,
+          tool_paths: @tool_paths,
+          mcp_servers: @mcp_servers,
+          fallback_mode: @fallback_mode,
+          selected_tool_names: @selected_tool_names
+          # Planner is created internally by ADK::Agent.new
+        )
+      end
+    end
+    # --- End Builder Class ---
+
+    # --- Class Method for Configuration DSL ---
+    # Provides a block-based DSL for configuring and creating an Agent instance.
+    #
+    # @example
+    #   agent = ADK::Agent.define do |a|
+    #     a.name = 'news_agent'
+    #     a.description = 'Summarizes news articles.'
+    #     a.model_name = 'gemini-pro'
+    #     a.discover_tools_in 'path/to/my_tools'
+    #     a.add_tool_classes MyCustomTool
+    #     a.fallback_mode = :echo
+    #   end
+    #
+    # @yieldparam builder [ADK::Agent::AgentBuilder] The builder object to configure the agent.
+    # @return [ADK::Agent] The newly configured agent instance.
+    # @raise [ArgumentError] if the block is not provided or required attributes are missing.
+    def self.define
+      raise ArgumentError, "ADK::Agent.define requires a block." unless block_given?
+
+      builder = AgentBuilder.new
+      yield builder
+      builder.build
+    end
+    # --- End Class Method ---
+
     # Initializes a new agent instance.
     # Note: Session and Memory are no longer managed directly by the agent instance.
     #
@@ -54,7 +132,9 @@ module ADK
       @tool_paths = Array(tool_paths).compact.uniq
 
       # --- Automatic Tool Discovery ---
-      _discover_and_load_tools(@tool_paths)
+      unless @tool_paths.empty?
+        _discover_and_load_tools(@tool_paths)
+      end
       # --- End Tool Discovery ---
 
       # --- Determine newly registered tools ---
@@ -78,6 +158,7 @@ module ADK
           ADK.logger.debug("[Agent Init '#{name}'] Found class #{tool_class} for #{tool_name.inspect}, attempting register_tool_class...")
           register_tool_class(tool_class) # Register the class in the agent's registry
         else
+          # This logic path was hit in some spec failures with the other approach
           ADK.logger.error("[Agent Init '#{name}'] Failed to find class for discovered tool '#{tool_name}' in GlobalToolManager.")
         end
       end
@@ -371,14 +452,14 @@ module ADK
 
         Dir.glob(File.join(absolute_dir_path, '*.rb')).each do |absolute_file_path|
           begin
-            ADK.logger.debug("Attempting to load tool file using 'load': #{absolute_file_path}")
-            load absolute_file_path # Use load
-            ADK.logger.debug("Successfully loaded: #{absolute_file_path}")
-            # Reverted: No direct add here
+            ADK.logger.debug("Attempting to load tool file using 'require': #{absolute_file_path}")
+            # Use require instead of load to prevent re-registration issues
+            require absolute_file_path
+            ADK.logger.debug("Successfully required (or already required): #{absolute_file_path}")
           rescue LoadError, SyntaxError => e
-            ADK.logger.error("Failed to load/eval tool file '#{absolute_file_path}': #{e.class} - #{e.message}")
+            ADK.logger.error("Failed to require/eval tool file '#{absolute_file_path}': #{e.class} - #{e.message}")
           rescue StandardError => e
-            ADK.logger.error("Error encountered while loading/processing tool file '#{absolute_file_path}': #{e.class} - #{e.message}")
+            ADK.logger.error("Error encountered while requiring/processing tool file '#{absolute_file_path}': #{e.class} - #{e.message}")
           end
         end
       end
