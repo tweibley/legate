@@ -5,7 +5,8 @@ require 'redis'
 require 'json'
 
 RSpec.describe ADK::Tools::CheckJobStatusTool do
-  subject(:tool) { described_class.new }
+  let(:tool_class) { described_class }
+  let(:metadata) { tool_class.tool_metadata }
   let(:job_id) { 'jid_test_456' }
   let(:params) { { job_id: job_id } }
   let(:dummy_registry) { ADK::ToolRegistry.new } # Dummy registry
@@ -41,13 +42,26 @@ RSpec.describe ADK::Tools::CheckJobStatusTool do
     allow(mock_dead_set).to receive(:find_job).with(job_id).and_return(nil)
   end
 
-  it 'has correct metadata' do
-    expect(tool.name).to eq(:check_job_status)
-    expect(tool.parameters).to have_key(:job_id)
-    expect(tool.parameters[:job_id][:required]).to be true
+  # Test Class Metadata directly
+  describe 'Class Metadata' do
+    it 'has the correct explicit name' do
+      expect(metadata[:name]).to eq(:check_job_status)
+    end
+
+    it 'has the correct description' do
+      expect(metadata[:description]).to include('Checks the status and retrieves the result')
+    end
+
+    it 'defines the job_id parameter correctly' do
+      expect(metadata[:parameters].keys).to eq([:job_id])
+      expect(metadata[:parameters][:job_id][:required]).to be true
+      expect(metadata[:parameters][:job_id][:type]).to eq(:string)
+    end
   end
 
   describe '#perform_execution' do
+    subject(:tool) { tool_class.new } # Create instance for execution tests
+
     context 'when job_id is missing' do
       it 'raises ToolArgumentError' do
         expect {

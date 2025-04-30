@@ -8,36 +8,33 @@ module ADK
   module Tools
     # A simple calculator tool supporting basic arithmetic operations.
     class Calculator < Tool
-      # --- Define Metadata (This triggers registration) ---
-      define_metadata(
-        name: :calculator,
-        description: 'Calculates the result of an arithmetic operation. Requires two numbers (operand1, operand2) and the operation name (operation: "add", "subtract", "multiply", "divide", or symbols +, -, *, /).',
-        parameters: {
-          operand1: {
-            type: :numeric,
-            description: 'The first number for the calculation.',
-            required: true
-          },
-          operand2: {
-            type: :numeric,
-            description: 'The second number for the calculation.',
-            required: true
-          },
-          operation: {
-            type: :string,
-            description: 'The operation to perform (e.g., "add", "subtract", "multiply", "divide", "+", "-", "*", "/").',
-            required: true
-          }
-        }
-      )
-      # --- End Metadata ---
+      # --- New DSL Metadata ---
+      # Name :calculator will be inferred
+      tool_description 'Calculates the result of an arithmetic operation. Requires two numbers (operand1, operand2) and the operation name (operation: "add", "subtract", "multiply", "divide", or symbols +, -, *, /).'
 
-      # REMOVED: LOGGER = Logger.new($stdout)
+      parameter :operand1,
+                type: :numeric,
+                description: 'The first number for the calculation.',
+                required: true
 
-      def initialize(**options)
-        super(**options)
-        # No specific initialization needed for this tool
-      end
+      parameter :operand2,
+                type: :numeric,
+                description: 'The second number for the calculation.',
+                required: true
+
+      parameter :operation,
+                type: :string,
+                description: 'The operation to perform (e.g., "add", "subtract", "multiply", "divide", "+", "-", "*", "/").',
+                required: true
+      # --- End New DSL Metadata ---
+
+      # REMOVED: Old define_metadata block
+
+      # REMOVED: explicit initialize is no longer needed as superclass handles it.
+      # def initialize(**options)
+      #   super(**options)
+      #   # No specific initialization needed for this tool
+      # end
 
       private
 

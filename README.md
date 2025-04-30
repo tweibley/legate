@@ -232,32 +232,73 @@ agent = ADK::Agent.new(
 
 ### Tools
 
-Tools are modular components that agents can use:
-- **Echo**: Simple message echoing
-- **Calculator**: Basic arithmetic operations
-- **CatFacts**: Retrieve random cat facts
-- **RandomNumber**: Generate random numbers
-- **AgentTool**: Delegate tasks to other agents
-- **BaseAsyncJobTool**: Base class for tools starting background jobs via Sidekiq.
-- **CheckJobStatusTool**: Built-in tool to check the status/result of a Sidekiq job started by an `BaseAsyncJobTool`.
+Tools are modular components that agents can use. Tools inherit from `ADK::Tool`.
+Define tool metadata using the simple class-level DSL:
 
 ```ruby
-# Add tools automatically during agent initialization:
+require 'adk/tool'
+
+class MyCustomTool < ADK::Tool
+  # Description (required)
+  tool_description 'Performs a custom action with input.'
+
+  # Optional: Explicitly set the name if inference isn't desired
+  # self.explicit_tool_name = :my_tool # Defaults to :my_custom_tool otherwise
+
+  # Define parameters (optional)
+  parameter :input_data,
+            type: :string,
+            description: 'The data needed for the action',
+            required: true
+
+  parameter :optional_flag,
+            type: :boolean,
+            description: 'An optional flag',
+            required: false
+
+  # Implement the execution logic
+  private def perform_execution(params, context)
+    input = params[:input_data]
+    flag = params[:optional_flag] # Will be nil if not provided
+    # ... do work ...
+    { status: :success, result: "Action performed on #{input}" }
+  end
+end
+```
+
+**Built-in Tools:**
+- **Echo**: Simple message echoing (`:echo`)
+- **Calculator**: Basic arithmetic operations (`:calculator`)
+- **CatFacts**: Retrieve random cat facts (`:cat_facts`)
+- **RandomNumber**: Generate random numbers (`:random_number`)
+- **AgentTool**: Delegate tasks to other agents (`:delegate_task`)
+- **BaseAsyncJobTool**: Base class for tools starting background jobs via Sidekiq.
+- **CheckJobStatusTool**: Built-in tool to check the status/result of a Sidekiq job started by an `BaseAsyncJobTool` (`:check_job_status`).
+
+**Adding Tools to Agents:**
+```ruby
+# Add tools automatically during agent initialization via discovery:
 agent = ADK::Agent.new(
   name: 'my_agent',
   description: 'Agent with discovered tools',
-  tool_paths: './tools' # Loads *.rb files from ./tools
+  tool_paths: './tools' # Loads *.rb files defining ADK::Tool subclasses
 )
 
-# Alternatively, add tools manually (e.g., for tools not in discovered paths):
+# Or add tool classes explicitly:
+agent = ADK::Agent.new(
+  name: 'my_agent',
+  description: 'Agent with explicit tools',
+  tool_classes: [MyCustomTool, ADK::Tools::Calculator]
+)
+
+# Manual instance addition (less common):
 # tool_instance = MyCustomTool.new
 # agent.add_tool(tool_instance)
-# Or add by class:
-# agent.add_tool(MyOtherCustomTool)
 ```
 
 **Tool Implementation Notes:**
-- Define metadata using `define_metadata` class method.
+- Define metadata using the `tool_description` and `parameter` class methods (or `self.explicit_tool_name = ...`).
+- The old `define_metadata` method is **deprecated** but still functional for backward compatibility.
 - Implement the core logic in the `perform_execution(params, context)` method.
 - Return `{ status: :success, result: ... }` on success.
 - Return `{ status: :pending, job_id: ... }` for asynchronous jobs started via `BaseAsyncJobTool`.

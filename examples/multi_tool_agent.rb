@@ -7,49 +7,45 @@ require_relative '../lib/adk'
 puts "--- Multi-Tool Agent Example ---"
 
 # 1. --- Agent Setup ---
+# Add required tool classes directly during initialization
 agent = ADK::Agent.new(
   name: 'multi_tool_agent',
-  description: 'An agent that can use multiple tools including echo, calculator, cat facts, random numbers, and task delegation'
+  description: 'An agent that can use multiple tools including echo, calculator, cat facts, random numbers, and task delegation',
+  tool_classes: [
+    ADK::Tools::Echo,
+    ADK::Tools::Calculator,
+    ADK::Tools::CatFacts,
+    ADK::Tools::RandomNumberTool,
+    ADK::Tools::AgentTool # Note: AgentTool provides :delegate_task
+  ]
 )
 
-# Create calculator agent that will be used for delegation
-calculator_agent = ADK::Agent.new(
-  name: 'calculator_agent',
+# Create definition for the calculator agent that will be used for delegation
+calculator_agent_def = {
+  name: :calculator_agent,
   description: 'A calculator agent that can perform basic arithmetic operations',
-  model_name: 'gemini-2.0-flash'
-)
+  model: 'gemini-2.0-flash',
+  tools: ['calculator'] # Tool names as strings
+}
 
-# Add calculator tool to calculator agent
-calculator_tool = ADK::ToolRegistry.create_instance(:calculator)
-calculator_agent.add_tool(calculator_tool)
-
-# 2. --- Add Tools ---
-# Add all available tools
-tools = [
-  ADK::ToolRegistry.create_instance(:echo),
-  ADK::ToolRegistry.create_instance(:calculator),
-  ADK::ToolRegistry.create_instance(:cat_facts),
-  ADK::ToolRegistry.create_instance(:random_number),
-  ADK::ToolRegistry.create_instance(:delegate_task)
-]
-
-tools.each do |tool|
-  unless tool
-    puts "Error: Tool not found in registry."
-    exit 1
-  end
-  agent.add_tool(tool)
+# --- Register Calculator Agent Definition In-Memory for this run --- >
+# This makes it findable by the AgentTool without needing Redis persistence for the example.
+# In a real application, definitions would typically be saved/loaded via CLI or other means.
+if ADK::AgentDefinitionStore.register(calculator_agent_def[:name], calculator_agent_def)
+  puts "\nRegistered definition for '#{calculator_agent_def[:name]}' in memory for this execution."
+else
+  puts "\nFailed to register definition for '#{calculator_agent_def[:name]}'."
+  exit 1
 end
+# <--------------------------------------------------------------------------
 
 puts "\nAgent '#{agent.name}' created with tools:"
 agent.tools.each { |tool| puts " - #{tool.name}" }
 
-# 3. --- Start Agents ---
+# 3. --- Start Agent ---
 agent.start
-calculator_agent.start
-puts "\nAgents started:"
+puts "\nAgent started:"
 puts " - #{agent.name}: Running: #{agent.running?}"
-puts " - #{calculator_agent.name}: Running: #{calculator_agent.running?}"
 
 # 4. --- Session Setup ---
 session_service = ADK::SessionService::InMemory.new
@@ -119,8 +115,7 @@ end
 
 # 6. --- Stop Agents ---
 agent.stop
-calculator_agent.stop
 puts "\nAgents stopped:"
 puts " - #{agent.name}: Running: #{agent.running?}"
-puts " - #{calculator_agent.name}: Running: #{calculator_agent.running?}"
+
 puts "\n--- Example Complete ---"

@@ -9,17 +9,10 @@ puts "--- Simple Echo Agent Example (Session-Based) ---"
 # 1. --- Agent Setup ---
 agent = ADK::Agent.new(
   name: 'simple_echo_agent',
-  description: 'A simple agent that can echo messages'
+  description: 'A simple agent that can echo messages',
+  tool_classes: [ADK::Tools::Echo]
 )
 
-# 2. --- Add Tool ---
-# Add the echo tool (it should auto-register, just need to add instance to agent)
-echo_tool = ADK::ToolRegistry.create_instance(:echo)
-unless echo_tool
-  puts "Error: Echo tool not found in registry."
-  exit 1
-end
-agent.add_tool(echo_tool)
 puts "\nAgent '#{agent.name}' created with tool: #{agent.tools.first.name}"
 
 # 3. --- Start Agent ---

@@ -65,10 +65,12 @@ RSpec.describe ADK::GlobalToolManager do
         .not_to change { described_class.class_variable_get(:@@defined_tools).count }
     end
 
-    it 'warns and skips registration if tool class has no name metadata' do
-      expect(logger_spy).to receive(:warn).with(/Tool class GtmMockToolNoMeta has no name defined/)
+    it 'registers tool via inferred name even if metadata is explicitly missing' do
+      # GtmMockToolNoMeta doesn't call define_metadata or the DSL
+      # Check that registration happens and the tool is findable
       expect { described_class.register_tool(GtmMockToolNoMeta) }
-        .not_to change { described_class.class_variable_get(:@@defined_tools).count }
+        .to change { described_class.class_variable_get(:@@defined_tools).count }.by(1)
+      expect(described_class.find_class(:gtm_mock_tool_no_meta)).to eq(GtmMockToolNoMeta)
     end
 
     it 'warns and skips registration if object is not an ADK::Tool subclass' do

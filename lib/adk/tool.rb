@@ -5,46 +5,45 @@ require_relative 'tool_registry'
 require 'logger'
 require_relative 'tool_context'
 require_relative 'global_tool_manager'
+require_relative 'tool/metadata_dsl'
 
 module ADK
   class Tool
-    # --- Class-level attributes ---
+    # --- Include the DSL ---
+    include MetadataDsl
+
+    # --- Class-level attributes --- Accessors defined via DSL, but keep old readers/define_metadata for backward compat ---
     class << self
+      # Keep old readers for define_metadata compatibility
       attr_reader :tool_name, :description, :parameters_definition
 
       # Define the tool's static metadata.
-      # This now ALSO registers the tool globally.
+      # DEPRECATED: Use `tool_description`, `parameter`, and automatic name inference instead.
       def define_metadata(name:, description:, parameters: {})
+        warn "[DEPRECATION] `define_metadata` is deprecated. Use `tool_description`, `parameter`, and rely on class name inference (or `self.explicit_tool_name = :my_name`) instead. Called from #{caller_locations(
+          1, 1
+        )[0].label}"
+
         @tool_name = name.to_sym
         @description = description
         @parameters_definition = parameters
-        ADK::GlobalToolManager.register_tool(self)
       end
 
-      # --- ADDED: Method to retrieve all metadata as a hash ---
-      def tool_metadata
-        {
-          name: @tool_name,
-          description: @description,
-          parameters: @parameters_definition
-        }
-      end
-      # --- End ADDED ---
-
-      # --- REMOVED Registration Logic Method ---
-      # def register_tool_class
+      # --- Fallback Metadata Method (Commented out as DSL version takes precedence) ---
+      # def tool_metadata
       #   ...
       # end
-      # --- End REMOVED Registration Logic Method ---
-    end
+      # --- End Fallback Metadata Method ---
+    end # End Class-level
     # --- End Class-level ---
 
-    # --- Self-Registration Hook (No longer functional, can be removed or left as is) ---
+    # --- Self-Registration Hook ---
     def self.inherited(subclass)
       super # Call parent's inherited if necessary
-      # The registration now happens when define_metadata is called in the subclass
-      ADK.logger.debug("Tool subclass #{subclass} inherited from ADK::Tool.")
-      # Registration now triggered by define_metadata in subclass
+
+      # Registration now happens automatically via the inherited hook
+      ADK.logger.debug("Tool subclass #{subclass} inherited. Attempting registration.")
+      ADK::GlobalToolManager.register_tool(subclass)
     end
     # --- End Hook ---
 
@@ -53,16 +52,23 @@ module ADK
 
     # Initialize - Sets instance vars from class metadata
     def initialize(**_options)
-      @name = self.class.tool_name
-      @description = self.class.description
-      @parameters = self.class.parameters_definition || {}
+      # Fetch metadata using the primary tool_metadata method (defined by DSL)
+      metadata = self.class.tool_metadata
+      @name = metadata[:name]
+      @description = metadata[:description]
+      @parameters = metadata[:parameters] || {}
 
-      unless @name && @description
-        raise ArgumentError, "Tool class #{self.class} must define :name and :description using `define_metadata`."
+      # Lenient check for missing metadata
+      if @name.nil? || @name == :'' || @description.nil? || @description.empty?
+        is_anonymous = !self.class.name || self.class.name.empty? || self.class.name.start_with?('#<Class:')
+        unless is_anonymous
+          missing = []
+          missing << ':name' if @name.nil? || @name == :''
+          missing << ':description' if @description.nil? || @description.empty?
+          ADK.logger.warn("Tool class #{self.class} initialized with missing metadata: [#{missing.join(', ')}] using #{self.class.tool_metadata}. Tool may not function correctly.")
+        end
+        @description ||= ""
       end
-
-      # --- REMOVED registration call from initialize ---
-      # self.class.register_tool_class
     end
 
     # Execute the tool
@@ -71,27 +77,21 @@ module ADK
     # @return [Hash] A hash with :status (:success, :error, :pending) and :result/:error_message/:workflow_id.
     def execute(params = {}, context = nil)
       validate_params(params)
-      # Log parameters *after* validation succeeds but before execution
-      ADK.logger.debug("Executing tool '#{name}' with validated params: #{params.inspect} and context: #{context&.to_h.inspect}")
-      # Pass context to perform_execution
+      ADK.logger.debug("Executing tool '#{@name}' with validated params: #{params.inspect} and context: #{context&.to_h.inspect}")
       perform_execution(params, context)
     end
 
     # Validate the parameters
     def validate_params(params)
-      # ... (validation logic remains the same) ...
-      required_param_names = @parameters.select { |_, p| p[:required] }.keys.map(&:to_s)
+      current_parameters = @parameters || {}
+      required_param_names = current_parameters.select { |_, p| p[:required] }.keys.map(&:to_s)
       present_keys = params.keys.map(&:to_s)
       missing_params = required_param_names - present_keys
       unless missing_params.empty?
-        # --- Use the central ADK logger here ---
         log_message = "Validation failed for tool '#{@name}'. Required(string): #{required_param_names.inspect}, Received keys(string): #{present_keys.inspect}, Received params: #{params.inspect}"
-        ADK.logger.error(log_message) # Log the specific error
-        # --- End logger usage ---
-        # Raise the error with just the user-facing message
-        raise ADK::Error, "Missing required parameters: #{missing_params.join(', ')}"
+        ADK.logger.error(log_message)
+        raise ADK::ToolArgumentError, "Missing required parameters: #{missing_params.join(', ')}"
       end
-      # Optional: Add type validation here later if needed
     end
 
     private

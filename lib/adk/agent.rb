@@ -133,26 +133,26 @@ module ADK
         return false
       end
 
-      # Get the tool name, handling both instances and classes
-      tool_name = is_tool_class ? tool.tool_name : tool.name # Assumes tool class responds to tool_name
-      unless tool_name
-        # Try getting name from instance's class if instance was passed without name attribute (shouldn't happen often)
-        tool_name = tool.class.tool_name if is_tool_instance && tool.class.respond_to?(:tool_name)
-      end
+      # Determine the actual tool class
+      tool_class = is_tool_class ? tool : tool.class
 
+      # Get metadata reliably from the class
+      metadata = tool_class.tool_metadata
+      tool_name = metadata[:name]&.to_sym
+
+      # Validate name was found
       unless tool_name
-        ADK.logger.error("Agent '#{name}': Could not determine tool name for #{tool.inspect}. Ensure class uses define_metadata or instance has a name.")
+        # If name is still nil here, registration likely failed or metadata is truly missing.
+        ADK.logger.error("Agent '#{name}': Could not determine tool name for class #{tool_class} from its metadata: #{metadata.inspect}. Cannot add tool.")
         return false
       end
 
-      tool_name = tool_name.to_sym
-
+      # Check for overwrite
       if @tool_registry.find_class(tool_name)
-        ADK.logger.warn("Agent '#{name}': Tool '#{tool_name}' already added. Overwriting.")
+        ADK.logger.warn("Agent '#{name}': Tool '#{tool_name}' already added. Overwriting with class #{tool_class}.")
       end
 
-      # If it's a class, register it directly. If it's an instance, register its class
-      tool_class = is_tool_class ? tool : tool.class
+      # Register the class using the determined name
       @tool_registry.register(tool_name, tool_class)
       true
     end
@@ -161,7 +161,14 @@ module ADK
     # @return [Array<ADK::Tool>] Array of tool instances
     def tools
       @tool_registry.tools.values.map do |tool_class|
-        @tool_registry.create_instance(tool_class.tool_name)
+        # Get name reliably using the unified metadata method
+        tool_name = tool_class.tool_metadata[:name]
+        if tool_name
+          @tool_registry.create_instance(tool_name)
+        else
+          ADK.logger.warn("Agent '#{name}': Skipping tool instance creation for class #{tool_class} as it has no retrievable name.")
+          nil
+        end
       end.compact
     end
 
@@ -176,15 +183,19 @@ module ADK
     # @param tool_class [Class] The tool class to register (must inherit from ADK::Tool).
     # @return [Boolean] True if registration was successful, false otherwise.
     def register_tool_class(tool_class)
-      # Basic validation - simplified check
+      # Basic validation
       unless tool_class < ADK::Tool
         ADK.logger.error("Agent '#{name}': Attempted to register invalid object (must inherit from ADK::Tool): #{tool_class.inspect}")
         return false
       end
 
-      tool_name = tool_class.tool_name
+      # Get name via metadata method
+      metadata = tool_class.tool_metadata
+      tool_name = metadata[:name]&.to_sym
+
       unless tool_name
-        ADK.logger.error("Agent '#{name}': Tool class #{tool_class} missing metadata (use define_metadata). Cannot register.")
+        # Use logger method, not direct access
+        ADK.logger.error("Agent '#{name}': Tool class #{tool_class} missing name in its metadata. Cannot register.")
         return false
       end
 
@@ -194,6 +205,7 @@ module ADK
 
       # Register with the instance registry
       @tool_registry.register(tool_name, tool_class)
+      true # Return true on success
     end
 
     # --- Runtime State Methods (unchanged) ---

@@ -934,91 +934,99 @@ RSpec.describe ADK::Agent do
     let(:temp_dir_2) { Dir.mktmpdir } # Create second temp dir
     let(:tool_c_path) { File.join(temp_dir_1, 'mock_tool_c.rb') }
     let(:tool_d_path) { File.join(temp_dir_2, 'mock_tool_d.rb') }
-    let(:invalid_tool_path) { File.join(temp_dir_1, 'invalid_tool.rb') }
+    let(:invalid_tool_path) { File.join(temp_dir_1, 'invalid_syntax.rb') }
     let(:non_existent_path) { './non_existent_tools' }
 
-    # Simple Tool C definition
+    # --- Revert: Define Classes inside file content --- >
     let(:tool_c_content) do
       <<~RUBY
         require 'adk/tool'
         class MockToolC < ADK::Tool
+          # Using deprecated method for this test case
           define_metadata(name: :tool_c, description: 'Tool C')
           def execute(params, context); { status: :success, result: 'C' }; end
         end
       RUBY
     end
 
-    # Simple Tool D definition
     let(:tool_d_content) do
       <<~RUBY
         require 'adk/tool'
         class MockToolD < ADK::Tool
+          # Using deprecated method for this test case
           define_metadata(name: :tool_d, description: 'Tool D')
           def execute(params, context); { status: :success, result: 'D' }; end
         end
       RUBY
     end
+    # <---------------------------------------------
 
     # Invalid Ruby code file
-    let(:invalid_tool_content) do
-      "class Invalid Tool This Will Cause LoadError"
+    let(:invalid_syntax_content) do
+      "class Invalid Tool Syntax This Will Cause SyntaxError"
     end
 
     around(:each) do |example|
-      # Reset global manager before each test in this context
       ADK::GlobalToolManager.reset!
-
-      # Ensure temp directories are created
       FileUtils.mkdir_p(temp_dir_1)
       FileUtils.mkdir_p(temp_dir_2)
 
-      # Write mock tool files
+      # Write mock tool files with full definitions
       File.write(tool_c_path, tool_c_content)
       File.write(tool_d_path, tool_d_content)
-      File.write(invalid_tool_path, invalid_tool_content)
+      File.write(invalid_tool_path, invalid_syntax_content)
 
       example.run # Run the actual test
 
-      # Clean up temp directories
       FileUtils.remove_entry(temp_dir_1, true)
       FileUtils.remove_entry(temp_dir_2, true)
-      # Reset global manager again after test
       ADK::GlobalToolManager.reset!
+
+      # Undefine constants defined by the required files
+      Object.send(:remove_const, :MockToolC) if defined?(::MockToolC)
+      Object.send(:remove_const, :MockToolD) if defined?(::MockToolD)
     end
 
-    # Moved Sidekiq mock setup here
     before(:each) do
       allow(Object).to receive(:defined?).with(Sidekiq).and_return(true)
-      allow(ADK::Planner).to receive(:new).and_return(mock_planner) # Ensure planner is mocked globally for tests in this block
+      allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+    end
+
+    # Helper to safely get class constant
+    def get_tool_class(class_name)
+      Object.const_get(class_name) if Object.const_defined?(class_name)
     end
 
     context 'when tool_paths is provided' do
       it 'loads tools from a single valid directory path' do
         agent = described_class.new(name: 'discovery_agent', description: 'desc', tool_paths: temp_dir_1)
-        expect(agent.find_tool(:tool_c)).to be_an_instance_of(MockToolC)
-        expect(agent.find_tool(:invalid_tool)).to be_nil # Should not be loaded due to error
-        expect(agent.find_tool(:tool_d)).to be_nil # Not in this path
-        expect(ADK.logger).to have_received(:error).with(/Failed to load tool file.*invalid_tool.rb.*SyntaxError/) # Check for SyntaxError log
+        tool_c_class = get_tool_class('MockToolC')
+        expect(tool_c_class).not_to be_nil # Verify class was defined
+        expect(agent.find_tool(:tool_c)).to be_an_instance_of(tool_c_class) # Check instance type
+        expect(agent.find_tool(:invalid_syntax)).to be_nil
+        expect(agent.find_tool(:tool_d)).to be_nil
+        expect(ADK.logger).to have_received(:error).with(/Failed to load tool file.*invalid_syntax.rb.*SyntaxError/)
       end
 
       it 'loads tools from an array of valid directory paths' do
         agent = described_class.new(name: 'discovery_agent', description: 'desc', tool_paths: [temp_dir_1, temp_dir_2])
-        expect(agent.find_tool(:tool_c)).to be_an_instance_of(MockToolC)
-        expect(agent.find_tool(:tool_d)).to be_an_instance_of(MockToolD)
-        expect(agent.find_tool(:invalid_tool)).to be_nil # Should not be loaded
-        expect(ADK.logger).to have_received(:error).with(/Failed to load tool file.*invalid_tool.rb.*SyntaxError/)
+        tool_c_class = get_tool_class('MockToolC')
+        tool_d_class = get_tool_class('MockToolD')
+        expect(tool_c_class).not_to be_nil
+        expect(tool_d_class).not_to be_nil
+        expect(agent.find_tool(:tool_c)).to be_an_instance_of(tool_c_class)
+        expect(agent.find_tool(:tool_d)).to be_an_instance_of(tool_d_class)
+        expect(agent.find_tool(:invalid_syntax)).to be_nil
+        expect(ADK.logger).to have_received(:error).with(/Failed to load tool file.*invalid_syntax.rb.*SyntaxError/)
       end
 
       it 'loads tools passed via tool_classes alongside discovered tools' do
-        # Register Tool A globally *before* initializing the agent with discovery
-        # This simulates a tool defined elsewhere in the user's codebase
-        ADK::GlobalToolManager.register_tool(MockToolA)
-
         agent = described_class.new(name: 'discovery_agent', description: 'desc', tool_paths: temp_dir_1,
-                                    tool_classes: [MockToolB])
-        # expect(agent.find_tool(:tool_a)).to be_an_instance_of(MockToolA) # REMOVED: Agent should NOT automatically add globally registered tools unless discovered or passed in tool_classes
-        expect(agent.find_tool(:tool_b)).to be_an_instance_of(MockToolB) # Added via tool_classes
-        expect(agent.find_tool(:tool_c)).to be_an_instance_of(MockToolC) # Added via tool_paths discovery
+                                    tool_classes: [MockToolB]) # MockToolB is defined higher up
+        tool_c_class = get_tool_class('MockToolC')
+        expect(tool_c_class).not_to be_nil
+        expect(agent.find_tool(:tool_b)).to be_an_instance_of(MockToolB) # Corrected symbol: :tool_b
+        expect(agent.find_tool(:tool_c)).to be_an_instance_of(tool_c_class) # Check tool from tool_paths
         expect(agent.find_tool(:tool_d)).to be_nil
       end
 
@@ -1026,30 +1034,33 @@ RSpec.describe ADK::Agent do
         expect(ADK.logger).to receive(:warn).with(/Tool discovery path does not exist.*non_existent_tools/).at_least(:once)
         agent = described_class.new(name: 'discovery_agent', description: 'desc',
                                     tool_paths: [temp_dir_1, non_existent_path])
-        expect(agent.find_tool(:tool_c)).to be_an_instance_of(MockToolC)
+        tool_c_class = get_tool_class('MockToolC')
+        expect(tool_c_class).not_to be_nil
+        expect(agent.find_tool(:tool_c)).to be_an_instance_of(tool_c_class)
         expect(agent.find_tool(:tool_d)).to be_nil
       end
 
       it 'handles load errors in specific tool files gracefully' do
-        # The setup already includes an invalid file in temp_dir_1
-        expect(ADK.logger).to receive(:error).with(/Failed to load tool file.*invalid_tool.rb.*SyntaxError/).at_least(:once)
+        expect(ADK.logger).to receive(:error).with(/Failed to load tool file.*invalid_syntax.rb.*SyntaxError/).at_least(:once)
         agent = described_class.new(name: 'discovery_agent', description: 'desc', tool_paths: temp_dir_1)
+        tool_c_class = get_tool_class('MockToolC')
+        expect(tool_c_class).not_to be_nil
         # Should still load the valid tool from the same directory
-        expect(agent.find_tool(:tool_c)).to be_an_instance_of(MockToolC)
-        expect(agent.find_tool(:invalid_tool)).to be_nil
+        expect(agent.find_tool(:tool_c)).to be_an_instance_of(tool_c_class)
+        expect(agent.find_tool(:invalid_syntax)).to be_nil
       end
     end
 
     context 'when tool_paths is not provided or empty' do
       it 'does not attempt discovery if tool_paths is empty array' do
-        expect(Dir).not_to receive(:glob) # Ensure glob isn't called
+        expect(Dir).not_to receive(:glob)
         agent = described_class.new(name: 'no_discovery_agent', description: 'desc', tool_paths: [])
         expect(agent.tools.map(&:name)).not_to include(:tool_c, :tool_d)
       end
 
       it 'does not attempt discovery if tool_paths is not provided' do
         expect(Dir).not_to receive(:glob)
-        agent = described_class.new(name: 'no_discovery_agent', description: 'desc') # Default is []
+        agent = described_class.new(name: 'no_discovery_agent', description: 'desc')
         expect(agent.tools.map(&:name)).not_to include(:tool_c, :tool_d)
       end
     end

@@ -99,7 +99,7 @@ RSpec.describe ADK::Agent do # Testing Agent behavior here
 
     it 'logs error and does not register class without metadata', :log_level do
       bad_tool_class = Class.new(ADK::Tool) # No metadata
-      expect(ADK.logger).to receive(:error).with(/missing metadata/)
+      expect(ADK.logger).to receive(:error).with("Agent 'test_agent': Tool class #{bad_tool_class} missing name in its metadata. Cannot register.")
       expect { base_agent.register_tool_class(bad_tool_class) }.not_to change {
         base_agent.tool_registry.tools.keys.count
       }
@@ -141,7 +141,7 @@ RSpec.describe ADK::Agent do # Testing Agent behavior here
       agent = ADK::Agent.new(name: 'test_agent', description: 'Test agent')
       invalid_class = Class.new(ADK::Tool)
 
-      expect(ADK.logger).to receive(:error).with("Agent 'test_agent': Tool class #{invalid_class} missing metadata (use define_metadata). Cannot register.")
+      expect(ADK.logger).to receive(:error).with("Agent 'test_agent': Tool class #{invalid_class} missing name in its metadata. Cannot register.")
       agent.register_tool_class(invalid_class)
     end
 

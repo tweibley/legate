@@ -31,13 +31,16 @@ This document tracks efforts to make defining and registering tools in `adk-ruby
 ### Concise Metadata DSL (Completed)
 
 *   Introduced `ADK::Tool::MetadataDsl` module included in `ADK::Tool`.
-*   New class methods:
-    *   `description "Your tool description"`
-    *   `parameter :param_name, type: :string, required: true, description: "..."`
-    *   `name :explicit_tool_name` (Optional: overrides inferred name)
-*   Tool name is inferred from the class name (e.g., `MySpecialTool` -> `:my_special_tool`) by default.
-*   Registration is handled via the `inherited` hook in `ADK::Tool`, calling `ADK::GlobalToolManager.register_tool` which uses the `tool_metadata` method from the DSL.
-*   Original `define_metadata` logs a deprecation warning but still functions for backward compatibility during transition.
-*   Refactored built-in tools (`Calculator`, `Echo`, `CatFacts`, `RandomNumberTool`, `AgentTool`, `CheckJobStatusTool`, `SleepyTool`) and relevant tests (`tool_spec.rb`) to use the new DSL.
+*   New class methods provided by the DSL:
+    *   `tool_description "Your tool description"` (Sets the description)
+    *   `parameter :param_name, type: :string, required: true, description: "..."` (Defines a single parameter)
+    *   `self.explicit_tool_name = :your_custom_name` (Optional setter to override inferred name)
+*   Tool name is inferred from the class name (e.g., `MySpecialTool` becomes `:my_special_tool`) by default.
+*   Registration is handled automatically via the `ADK::Tool.inherited` hook, which calls `ADK::GlobalToolManager.register_tool`.
+*   The `tool_metadata` class method now consolidates metadata defined via the DSL or the old `define_metadata` method, prioritizing DSL values if both are present.
+*   The `effective_tool_name` class method determines the final name (Priority: `explicit_tool_name` -> `define_metadata` name -> inferred name).
+*   Original `define_metadata` method remains functional for backward compatibility but issues a deprecation warning.
+*   Refactored built-in tools (`Calculator`, `Echo`, `CatFacts`, `RandomNumberTool`, `AgentTool`, `CheckJobStatusTool`, `SleepyTool`) to use the new DSL.
+*   Updated relevant specs (`agent_spec.rb`, `global_tool_manager_spec.rb`, individual tool specs) to test the new DSL and registration mechanism, ensuring compatibility with the old method during the transition.
 
 *(This section can be used to document design choices, progress, and examples as we implement these features.)* 

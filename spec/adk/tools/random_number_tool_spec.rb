@@ -2,27 +2,31 @@
 require 'spec_helper'
 
 RSpec.describe ADK::Tools::RandomNumberTool do
-  subject(:tool) { described_class.new }
+  let(:tool_class) { described_class }
+  let(:metadata) { tool_class.tool_metadata }
 
-  describe '#initialize' do
-    it 'sets the name correctly' do
-      expect(tool.name).to eq(:random_number)
+  # Test Class Metadata directly
+  describe 'Class Metadata' do
+    it 'has the correct explicit name' do
+      expect(metadata[:name]).to eq(:random_number)
     end
 
-    it 'sets the description correctly' do
-      expect(tool.description).to include('Generates a random integer')
+    it 'has the correct description' do
+      expect(metadata[:description]).to include('Generates a random integer')
     end
 
-    it 'defines optional parameters :min and :max' do
-      expect(tool.parameters.keys).to contain_exactly(:min, :max)
-      expect(tool.parameters[:min][:required]).to eq(false)
-      expect(tool.parameters[:max][:required]).to eq(false)
-      expect(tool.parameters[:min][:type]).to eq(:integer)
-      expect(tool.parameters[:max][:type]).to eq(:integer)
+    it 'defines optional parameters :min and :max correctly' do
+      expect(metadata[:parameters].keys).to contain_exactly(:min, :max)
+      expect(metadata[:parameters][:min][:required]).to eq(false)
+      expect(metadata[:parameters][:max][:required]).to eq(false)
+      expect(metadata[:parameters][:min][:type]).to eq(:integer)
+      expect(metadata[:parameters][:max][:type]).to eq(:integer)
     end
   end
 
   describe '#execute' do
+    subject(:tool) { tool_class.new } # Create instance for execution tests
+
     context 'with default parameters' do
       it 'returns a success hash with an integer between 1 and 100' do
         # Allow rand to work normally but check range

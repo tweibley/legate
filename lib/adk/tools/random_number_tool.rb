@@ -6,26 +6,22 @@ require_relative '../tool'
 module ADK
   module Tools
     class RandomNumberTool < ADK::Tool
-      define_metadata(
-        name: :random_number,
-        description: 'Generates a random integer between a minimum and maximum value (inclusive). Defaults to 1-100.',
-        parameters: {
-          min: {
-            type: :integer,
-            description: 'The minimum value for the random number (inclusive).',
-            required: false
-          },
-          max: {
-            type: :integer,
-            description: 'The maximum value for the random number (inclusive).',
-            required: false
-          }
-        }
-      )
+      # --- New DSL Metadata ---
+      # Name will be inferred as :random_number_tool
+      self.explicit_tool_name = :random_number # Keep original name
 
-      def initialize(**options)
-        super(**options)
-      end
+      tool_description 'Generates a random integer between a minimum and maximum value (inclusive). Defaults to 1-100.'
+
+      parameter :min,
+                type: :integer,
+                description: 'The minimum value for the random number (inclusive).',
+                required: false
+
+      parameter :max,
+                type: :integer,
+                description: 'The maximum value for the random number (inclusive).',
+                required: false
+      # --- End New DSL Metadata ---
 
       private
 

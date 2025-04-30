@@ -9,13 +9,11 @@ module ADK
   module Tools
     # Tool to fetch a random cat fact from an online API.
     class CatFacts < ADK::Tool
-      # Define metadata for the tool, including name, description, and parameters.
-      # This metadata is used by the Planner and potentially the UI.
-      define_metadata(
-        name: :cat_facts,
-        description: 'Fetches a random cat fact from an online API.',
-        parameters: {} # No parameters needed for a random fact
-      )
+      # --- New DSL Metadata ---
+      # Name :cat_facts will be inferred
+      tool_description 'Fetches a random cat fact from an online API.'
+      # No parameters needed, so no `parameter` calls.
+      # --- End New DSL Metadata ---
 
       # The URL for the Cat Fact API.
       CAT_FACT_URL = 'https://catfact.ninja/fact'

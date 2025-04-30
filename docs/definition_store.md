@@ -1,0 +1,25 @@
+# Agent Definition Store Refactoring Checklist
+
+- [X] Create `docs/definition_store.md` (This file)
+- [X] Create `ADK::AgentDefinitionStore` module (`lib/adk/agent_definition_store.rb`):
+  - [X] Add `@@definitions` class variable.
+  - [X] Implement `self.register(name, definition_hash)`.
+  - [X] Implement `self.find(name)`.
+  - [X] Implement `self.reset!` for testing.
+  - [X] Implement `self.all` to return all definitions.
+  - [X] Implement `self.remove(name)`.
+  - [X] Implement `self.save_to_redis(name, definition_hash)`.
+  - [X] Implement `self.load_from_redis(name)`.
+  - [X] Implement `self.load_all_from_redis`.
+  - [X] Implement `self.delete_from_redis(name)`.
+- [X] Create specs for `AgentDefinitionStore` (`spec/adk/agent_definition_store_spec.rb`).
+- [X] Refactor `ADK::Tools::AgentTool#perform_execution` to use `AgentDefinitionStore.find`.
+- [X] Refactor `spec/adk/tools/agent_tool_spec.rb` to use/mock `AgentDefinitionStore`.
+- [X] Refactor `ADK::CLI::AgentCommands`:
+  - [X] Update `create` to use `save_to_redis` and `register` (Consolidated into `save`).
+  - [X] Update `update` to use `find`, `save_to_redis`, `register` (Consolidated into `save`).
+  - [X] Update `delete` to use `delete_from_redis` and `remove`.
+  - [X] Update `list` to use `load_all_from_redis` and `all`.
+- [X] Refactor CLI specs (if necessary). - Skipped as spec file didn't exist.
+- [X] Update `examples/multi_tool_agent.rb` to use `AgentDefinitionStore.register`.
+- [X] Run all RSpec tests and ensure they pass. 

@@ -3,6 +3,7 @@
 
 require 'logger'
 require_relative 'tool' # Need Tool class for instance checks/metadata
+require_relative 'tool/metadata_dsl'
 
 module ADK
   # Manages the central registration and discovery of all defined ADK::Tool subclasses.
@@ -12,7 +13,7 @@ module ADK
     # Store tool classes keyed by their symbolic name
     @@defined_tools = {} # { :tool_symbol => ToolClass }
 
-    # Register a tool class globally. Called automatically.
+    # Register a tool class globally. Called automatically via ADK::Tool.inherited
     # @param tool_class [Class] The tool class to register.
     def self.register_tool(tool_class)
       unless tool_class < ADK::Tool
@@ -23,15 +24,38 @@ module ADK
       metadata = tool_class.tool_metadata
       tool_name = metadata[:name]&.to_sym
 
-      unless tool_name
-        ADK.logger.warn("GlobalToolManager: Tool class #{tool_class} has no name defined via define_metadata. Skipping registration.")
-        return
+      # --- Attempt name inference if not found in metadata ---
+      # This handles cases where the new DSL isn't used (e.g., old define_metadata)
+      # or if the DSL itself couldn't determine a name (e.g., anonymous class)
+      if tool_name.nil? || tool_name == :''
+        begin
+          # Check if the class responds to inferred_name (from MetadataDsl)
+          if tool_class.respond_to?(:inferred_name)
+            inferred = tool_class.inferred_name
+            if inferred
+              ADK.logger.debug("GlobalToolManager: Tool class #{tool_class} had no explicit name, using inferred name: #{inferred.inspect}")
+              tool_name = inferred
+            else
+              ADK.logger.warn("GlobalToolManager: Tool class #{tool_class} has no explicit name and inference failed (maybe anonymous?). Skipping registration.")
+              return
+            end
+          else
+            # Fallback if MetadataDsl isn't included or something is wrong
+            ADK.logger.warn("GlobalToolManager: Tool class #{tool_class} has no name defined via tool_metadata and does not support inferred_name. Skipping registration.")
+            return
+          end
+        rescue StandardError => e
+          ADK.logger.error("GlobalToolManager: Error during name inference for #{tool_class}: #{e.message}")
+          return # Don't register if inference itself fails
+        end
       end
+      # --- End Name Inference Attempt ---
 
       if @@defined_tools.key?(tool_name) && @@defined_tools[tool_name] != tool_class
         ADK.logger.warn("GlobalToolManager: Tool name '#{tool_name}' is already registered with class #{@@defined_tools[tool_name]}. Overwriting with #{tool_class}.")
       elsif !@@defined_tools.key?(tool_name)
-        ADK.logger.debug("GlobalToolManager: Registered tool '#{tool_name}' with class #{tool_class}.")
+        # Only log debug if it wasn't an overwrite or already logged during inference
+        ADK.logger.debug("GlobalToolManager: Registered tool '#{tool_name}' with class #{tool_class}.") unless @@defined_tools.key?(tool_name)
       end
       @@defined_tools[tool_name] = tool_class
     end

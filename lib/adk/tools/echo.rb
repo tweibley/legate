@@ -6,21 +6,15 @@ require_relative '../tool'
 module ADK
   module Tools
     class Echo < Tool
-      define_metadata(
-        name: :echo,
-        description: 'Echoes back the provided message.',
-        parameters: {
-          message: {
-            type: :string,
-            description: 'The message to echo',
-            required: true
-          }
-        }
-      )
+      # --- New DSL Metadata ---
+      # Name :echo will be inferred
+      tool_description 'Echoes back the provided message.'
 
-      def initialize(**options)
-        super(**options)
-      end
+      parameter :message,
+                type: :string,
+                description: 'The message to echo',
+                required: true
+      # --- End New DSL Metadata ---
 
       private
 

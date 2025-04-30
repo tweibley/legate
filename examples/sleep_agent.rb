@@ -2,30 +2,32 @@
 # frozen_string_literal: true
 
 require_relative '../lib/adk'
+# Require the specific tool class if not automatically loaded
+require_relative 'tools/sleepy_tool'
 
 puts "--- Async Job Agent Example (Polling Status) ---"
 
 # 1. --- Agent Setup ---
-# We define an agent that uses a tool to start an async job.
+# Define agent and add the async tool via tool_classes
 agent = ADK::Agent.new(
   name: 'async_job_demo_agent',
-  description: 'An agent that starts a background job and waits for it.'
+  description: 'An agent that starts a background job and waits for it.',
+  tool_classes: [ADK::Tools::SleepyTool]
 )
 
-# 2. --- Add Tools ---
-# Add the tool that starts the async job (SleepyTool in this case)
-sleepy_tool = ADK::ToolRegistry.create_instance(:start_sleepy_job)
-unless sleepy_tool
-  puts "Error: Sleepy tool (:start_sleepy_job) not found in registry."
-  exit 1
-end
-agent.add_tool(sleepy_tool)
+# REMOVED: Manual tool lookup and addition for SleepyTool
+# sleepy_tool = ADK::ToolRegistry.create_instance(:start_sleepy_job)
+# unless sleepy_tool
+#   puts "Error: Sleepy tool (:start_sleepy_job) not found in registry."
+#   exit 1
+# end
+# agent.add_tool(sleepy_tool)
 
-# Also get an instance of the tool needed to check job status.
-# We'll use this directly later, not through the agent.
-status_checker_tool = ADK::ToolRegistry.create_instance(:check_job_status)
+# Get an instance of the status checker tool directly (needed for manual polling)
+# ADK::Tools::CheckJobStatusTool should be automatically registered by the framework
+status_checker_tool = ADK::GlobalToolManager.create_instance(:check_job_status)
 unless status_checker_tool
-  puts "Error: Status checker tool (:check_job_status) not found in registry."
+  puts "Error: Status checker tool (:check_job_status) not found in GlobalToolManager."
   exit 1
 end
 

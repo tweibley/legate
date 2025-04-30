@@ -7,22 +7,22 @@ require_relative '../lib/adk'
 puts "--- Random Calculator Agent Example (Multi-Step Planner w/ Hash Results) ---"
 
 # 1. --- Agent Setup ---
+# Add tools directly during initialization
 agent = ADK::Agent.new(
   name: 'multi_step_hash_agent_001',
-  description: 'An agent that uses multiple tools and returns structured results.'
+  description: 'An agent that uses multiple tools and returns structured results.',
+  tool_classes: [ADK::Tools::RandomNumberTool, ADK::Tools::Calculator]
 )
 
-# 2. --- Add Tools ---
-random_tool = ADK::ToolRegistry.create_instance(:random_number)
-calculator_tool = ADK::ToolRegistry.create_instance(:calculator)
-
-unless random_tool && calculator_tool
-  puts "Error: Could not find :random_number or :calculator tool."
-  exit 1
-end
-
-agent.add_tool(random_tool)
-agent.add_tool(calculator_tool)
+# REMOVED: Manual tool lookup and addition
+# random_tool = ADK::ToolRegistry.create_instance(:random_number)
+# calculator_tool = ADK::ToolRegistry.create_instance(:calculator)
+# unless random_tool && calculator_tool
+#   puts "Error: Could not find :random_number or :calculator tool."
+#   exit 1
+# end
+# agent.add_tool(random_tool)
+# agent.add_tool(calculator_tool)
 
 puts "\nAgent '#{agent.name}' created."
 puts "Agent tools loaded: #{agent.tools.map(&:name).join(', ')}"

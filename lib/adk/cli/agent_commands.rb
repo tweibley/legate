@@ -10,39 +10,23 @@ require_relative '../event'   # Need Event for result formatting understanding
 require_relative '../session' # Need Session for session service context
 require_relative '../session_service/in_memory' # Need Service implementation
 require_relative '../session_service/redis' # Add Redis session service
+require_relative '../agent_definition_store' # Added require
 
 module ADK
   module CLI
     # CLI commands for agent definition management AND temporary execution
     class AgentCommands < Thor
-      # Redis Keys Constants
-      REDIS_AGENT_HASH_PREFIX = "adk:agent:"
-      REDIS_AGENTS_SET_KEY = "adk:agents:all_names"
-
       # --- Session Service Instance ---
       # For the CLI, InMemorySessionService is suitable as state is lost anyway on exit.
       # A shared instance allows reusing session ID across multiple execute calls if needed.
       @@session_service = ADK::SessionService::InMemory.new
 
       no_commands do
-        def agent_redis_key(name)
-          "#{REDIS_AGENT_HASH_PREFIX}#{name}"
-        end
+        # REMOVED: agent_redis_key helper
 
-        def connect_redis
-          redis = Redis.new # Assumes localhost:6379
-          redis.ping # Verify connection
-          redis
-        rescue Redis::CannotConnectError => e
-          say "Error: Could not connect to Redis. Is it running? (#{e.message})", :red
-          exit(1) # Exit if Redis is unavailable
-        end
+        # REMOVED: connect_redis helper (assume AgentDefinitionStore handles connections)
 
-        def parse_tools(tools_json)
-          return [] unless tools_json && !tools_json.empty?
-
-          JSON.parse(tools_json) rescue [] # Return empty array on parse error
-        end
+        # REMOVED: parse_tools helper (AgentDefinitionStore handles tool format)
 
         # --- Updated format_cli_result to handle Event/Error/Pending Hash ---
         def format_cli_result(result_data)
@@ -143,225 +127,107 @@ module ADK
       end # end no_commands
 
       # --- Definition Management Commands ---
-      desc 'list', 'List all defined agents from Redis'
+      desc 'list', 'List all defined agents'
       def list
-        redis = connect_redis
-        agent_names = redis.smembers(REDIS_AGENTS_SET_KEY).sort
+        # Load from Redis into memory first
+        begin
+          ADK::AgentDefinitionStore.load_all_from_redis
+        rescue Redis::BaseError => e
+          say "Error: Could not connect to Redis to load agent definitions. Is it running? (#{e.message})", :red
+          exit(1)
+        end
 
-        if agent_names.empty?
-          say "No agent definitions found in Redis."
+        definitions = ADK::AgentDefinitionStore.all
+
+        if definitions.empty?
+          say "No agent definitions found."
           return
         end
 
         say "Defined Agents:", :bold
-        # Fetch data efficiently using pipelined HMGET
-        agents_data = redis.pipelined do |pipe|
-          agent_names.each do |name|
-            pipe.hmget(agent_redis_key(name), 'description', 'tools', 'model')
-          end
-        end
-
-        agent_names.zip(agents_data).each do |name, data|
-          description = data[0] || "[No description]"
-          tools = parse_tools(data[1])
-          model = data[2] || "#{ADK::Agent::DEFAULT_MODEL} (Default)"
+        definitions.sort_by { |name, _| name.to_s }.each do |name, data|
+          description = data[:description] || "[No description]"
+          tools = data[:tools] # Already an array from store
+          model = data[:model] || "#{ADK::Agent::DEFAULT_MODEL} (Default)"
           tools_str = tools.empty? ? "None" : tools.join(', ')
           say "- #{name}: #{description} (Model: #{model}, Tools: #{tools_str})"
         end
       end
 
-      desc 'create NAME', 'Create a new agent definition in Redis'
+      desc 'save NAME', 'Create or update an agent definition'
       method_option :description, type: :string, required: true, desc: 'Agent description'
       method_option :tools, type: :string, aliases: "-t",
                             desc: 'Comma-separated list of tool names (e.g., "echo,calculator")'
       method_option :model, type: :string, desc: "LLM model name (default: #{ADK::Agent::DEFAULT_MODEL})"
-      def create(name)
-        redis = connect_redis
-        key = agent_redis_key(name)
-
-        if redis.sismember(REDIS_AGENTS_SET_KEY, name)
-          say "Error: Agent definition '#{name}' already exists.", :red
-          exit(1)
-        end
-
+      def save(name)
+        name_sym = name.to_sym
         description = options[:description]
         model_to_save = options[:model] && !options[:model].empty? ? options[:model] : ADK::Agent::DEFAULT_MODEL
 
         selected_tools = []
-        valid_tools = ADK::ToolRegistry.list_tools.map { |t| t[:name].to_s }
+        valid_tools = ADK::GlobalToolManager.registered_tool_names.map(&:to_s)
         if options[:tools]
           requested_tools = options[:tools].split(',').map(&:strip).reject(&:empty?)
           requested_tools.each do |tool_name|
             if valid_tools.include?(tool_name)
               selected_tools << tool_name unless selected_tools.include?(tool_name)
             else
-              say "Warning: Unknown tool '#{tool_name}', ignoring.", :yellow
+              # Check if it's a valid tool name even if not globally registered (could be agent-specific)
+              # For simplicity, we'll only check against globally known tools here.
+              # A more robust check might involve loading agent definitions.
+              say "Warning: Unknown globally registered tool '#{tool_name}', ignoring.", :yellow
             end
           end
         end
-        tools_json = selected_tools.to_json
 
-        begin
-          results = redis.multi do |multi|
-            multi.hset(key, 'description', description)
-            multi.hset(key, 'tools', tools_json)
-            multi.hset(key, 'model', model_to_save)
-            multi.sadd(REDIS_AGENTS_SET_KEY, name)
-          end
+        definition = {
+          description: description,
+          tools: selected_tools,
+          model: model_to_save
+        }
 
-          if results.is_a?(Array) && results.all? { |r| r.is_a?(Integer) || r == true || r.is_a?(String) }
-            tools_msg = selected_tools.empty? ? "None" : selected_tools.join(', ')
-            say "Agent definition '#{name}' created (Model: #{model_to_save}, Tools: #{tools_msg}).", :green
-          else
-            say "Warning: Agent definition command executed, but Redis reported unexpected results: #{results.inspect}. Please verify.",
-                :yellow
-          end
-        rescue Redis::BaseError => e
-          say "Error: Failed to save agent definition to Redis: #{e.message}", :red
+        # Save to Redis first (for persistence)
+        unless ADK::AgentDefinitionStore.save_to_redis(name_sym, definition)
+          say "Error saving definition to Redis. Aborting.", :red
           exit(1)
         end
+
+        # Register in memory for current process
+        ADK::AgentDefinitionStore.register(name_sym, definition)
+
+        tools_msg = selected_tools.empty? ? "None" : selected_tools.join(', ')
+        say "Agent definition '#{name}' saved (Model: #{model_to_save}, Tools: #{tools_msg}).", :green
       end
 
-      desc 'update NAME', 'Update an existing agent definition in Redis'
-      method_option :description, type: :string, desc: "New description for the agent"
-      method_option :tools, type: :string, aliases: "-t", desc: 'REPLACE existing tools with this list'
-      method_option :add_tool, type: :string, repeatable: true, desc: 'Add a specific tool'
-      method_option :remove_tool, type: :string, repeatable: true, desc: 'Remove a specific tool'
-      method_option :model, type: :string, desc: "New LLM model name for the agent"
-      def update(name)
-        redis = connect_redis
-        key = agent_redis_key(name)
-
-        unless redis.exists?(key)
-          say "Error: Agent definition '#{name}' not found.", :red
-          exit(1)
-        end
-
-        # Fetch current data
-        current_data = redis.hmget(key, 'description', 'tools', 'model')
-        current_description = current_data[0]
-        current_tools = parse_tools(current_data[1]) # Array of string names
-        current_model = current_data[2] || ADK::Agent::DEFAULT_MODEL
-
-        # Prepare updates
-        updates = {}
-        final_tools = current_tools.dup # Start with current tools
-
-        # Update description if provided
-        if options[:description]
-          updates['description'] = options[:description]
-        end
-
-        # Update model if provided
-        if options[:model]
-          updates['model'] = options[:model]
-        end
-
-        # Handle tool changes
-        valid_tools = ADK::ToolRegistry.list_tools.map { |t| t[:name].to_s }
-
-        # REPLACE all tools (highest priority)
-        if options[:tools]
-          # Reset tools completely
-          final_tools = []
-          requested_tools = options[:tools].split(',').map(&:strip).reject(&:empty?)
-          requested_tools.each do |tool_name|
-            if valid_tools.include?(tool_name)
-              final_tools << tool_name unless final_tools.include?(tool_name)
-            else
-              say "Warning: Unknown tool '#{tool_name}' in --tools, ignoring.", :yellow
-            end
-          end
-        else
-          # Process individual adds/removes
-
-          # Process add_tool options (can be repeated)
-          if options[:add_tool]
-            Array(options[:add_tool]).each do |tool_name|
-              tool_name = tool_name.strip
-              if valid_tools.include?(tool_name)
-                final_tools << tool_name unless final_tools.include?(tool_name)
-                say "Adding tool: #{tool_name}", :cyan
-              else
-                say "Warning: Unknown tool '#{tool_name}' in --add-tool, ignoring.", :yellow
-              end
-            end
-          end
-
-          # Process remove_tool options (can be repeated)
-          if options[:remove_tool]
-            Array(options[:remove_tool]).each do |tool_name|
-              tool_name = tool_name.strip
-              if final_tools.include?(tool_name)
-                final_tools.delete(tool_name)
-                say "Removing tool: #{tool_name}", :cyan
-              else
-                say "Warning: Tool '#{tool_name}' not found in agent tools, can't remove.", :yellow
-              end
-            end
-          end
-        end
-
-        # Always update tools if we modified them
-        if final_tools != current_tools
-          updates['tools'] = final_tools.to_json
-        end
-
-        if updates.empty?
-          say "No updates specified. Agent definition unchanged.", :yellow
-          return
-        end
-
-        begin
-          redis.multi do |multi|
-            updates.each do |field, value|
-              multi.hset(key, field, value)
-            end
-          end
-
-          # Summary of changes
-          changes = []
-          changes << "description: '#{options[:description]}'" if options[:description]
-          changes << "model: '#{options[:model]}'" if options[:model]
-
-          if final_tools != current_tools
-            curr_tools_str = current_tools.empty? ? "None" : current_tools.join(', ')
-            final_tools_str = final_tools.empty? ? "None" : final_tools.join(', ')
-            changes << "tools: [#{curr_tools_str}] => [#{final_tools_str}]"
-          end
-
-          say "Agent definition '#{name}' updated successfully.", :green
-          say "Changes: #{changes.join(', ')}", :green
-        rescue Redis::BaseError => e
-          say "Error: Failed to update agent definition in Redis: #{e.message}", :red
-          exit(1)
-        end
-      end
-
-      desc 'delete NAME', "Delete an agent's definition from Redis"
+      desc 'delete NAME', "Delete an agent's definition"
       def delete(name)
-        redis = connect_redis
-        key = agent_redis_key(name)
-
-        unless redis.exists?(key)
-          say "Error: Agent definition '#{name}' not found.", :red
-          exit(1)
+        name_sym = name.to_sym
+        # Check if it exists in memory first (might have been loaded)
+        unless ADK::AgentDefinitionStore.find(name_sym)
+          # If not in memory, check Redis before prompting
+          begin
+            definition_from_redis = ADK::AgentDefinitionStore.load_from_redis(name_sym)
+            unless definition_from_redis
+              say "Error: Agent definition '#{name}' not found.", :red
+              exit(1)
+            end
+          rescue Redis::BaseError => e
+            say "Error: Could not connect to Redis to check agent definition. #{e.message}", :red
+            exit(1)
+          end
         end
 
         if yes?("Are you sure you want to permanently delete agent definition '#{name}'? [y/N]", :yellow)
-          begin
-            deleted_count = redis.multi do |multi|
-              multi.del(key)
-              multi.srem(REDIS_AGENTS_SET_KEY, name)
-            end
-            if deleted_count[0] >= 1 && deleted_count[1] >= 1
-              say "Agent definition '#{name}' deleted successfully.", :green
-            else
-              say "Warning: Deletion command ran but Redis reported unexpected results: #{deleted_count.inspect}",
-                  :yellow
-            end
-          rescue Redis::BaseError => e
-            say "Error: Failed to delete agent definition from Redis: #{e.message}", :red
+          # Delete from Redis
+          redis_deleted = ADK::AgentDefinitionStore.delete_from_redis(name_sym)
+          # Remove from memory
+          ADK::AgentDefinitionStore.remove(name_sym)
+
+          if redis_deleted
+            say "Agent definition '#{name}' deleted successfully.", :green
+          else
+            say "Error deleting definition from Redis. It has been removed from memory, but may still exist in Redis.",
+                :red
             exit(1)
           end
         else
@@ -379,49 +245,42 @@ module ADK
         Use 'execute' command to run an actual task with the agent.
       LONGDESC
       def start(name)
+        name_sym = name.to_sym
         say "Loading agent '#{name}'..."
-        redis = connect_redis
-        key = agent_redis_key(name)
-        redis_agent_data = redis.hmget(key, 'description', 'tools', 'model')
-        description = redis_agent_data[0]
-        tools_json_string = redis_agent_data[1]
-        model_name = redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL
 
-        unless description
+        # Load definition using the store
+        definition = ADK::AgentDefinitionStore.find(name_sym)
+        definition ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
+
+        unless definition
           say "Error: Agent definition '#{name}' not found.", :red
           exit(1)
         end
 
+        description = definition[:description]
+        tool_names_to_load = definition[:tools].map(&:to_sym)
+        model_name = definition[:model]
+
         agent = nil
         begin
-          # Instantiate Agent
-          agent = ADK::Agent.new(name: name, description: description, model_name: model_name)
+          # Instantiate Agent (pass tool classes directly)
+          tool_classes = tool_names_to_load.map do |t_name|
+            ADK::GlobalToolManager.find_class(t_name)
+          end.compact
+          missing_tools = tool_names_to_load - tool_classes.map { |tc| tc.tool_metadata[:name] }
+
+          agent = ADK::Agent.new(
+            name: name,
+            description: description,
+            model_name: model_name,
+            tool_classes: tool_classes
+          )
           say "  - Agent uses model: #{agent.model_name}", :cyan
 
-          # Load Tools
-          tool_names_to_load = parse_tools(tools_json_string).map(&:to_sym)
-          added_tools = []
-          if tool_names_to_load.empty?
-            say "  - Warning: No tools configured.", :yellow
-          else
-            say "  - Adding tools: [#{tool_names_to_load.join(', ')}]", :cyan
-            tool_names_to_load.each do |t|
-              # Skip check_job_status if already added automatically
-              next if t == :check_job_status && agent.tools.any? { |at| at.name == :check_job_status }
-
-              i = ADK::ToolRegistry.create_instance(t)
-              if i
-                agent.add_tool(i)
-                added_tools << t
-              else
-                say "  - Warn: Tool '#{t}' not found in registry.", :yellow
-              end
-            end
+          unless missing_tools.empty?
+            say "  - Warning: Tools defined but not found in GlobalToolManager: [#{missing_tools.join(', ')}]", :yellow
           end
-          # Display automatically added tools too
-          agent.tools.reject { |t| added_tools.include?(t.name) }.each do |auto_tool|
-            say "  - Includes tool: #{auto_tool.name}", :faint
-          end
+          say "  - Loaded tools: [#{agent.tools.map(&:name).join(', ')}]", :cyan
 
           # Start Agent Runtime
           say "  - Starting agent runtime...", :cyan, false
@@ -433,7 +292,6 @@ module ADK
           puts e.backtrace.first(5).join("\n") # Print some backtrace for debug
           exit(1)
         ensure
-          # Stop agent runtime if we started it
           if agent&.running?
             say "  - Stopping agent runtime...", :cyan, false
             agent.stop
@@ -461,15 +319,21 @@ module ADK
       method_option :session_id, type: :string, desc: 'Optional ID of an existing session to use.'
       method_option :redis, type: :boolean, default: false, desc: 'Use Redis for session storage instead of in-memory.'
       def execute(name, task)
+        name_sym = name.to_sym
         say("Loading agent '#{name}' to execute task: \"#{task}\"...")
-        redis = connect_redis
-        key = agent_redis_key(name)
-        redis_agent_data = redis.hmget(key, 'description', 'tools', 'model')
-        description = redis_agent_data[0]
-        tools_json_string = redis_agent_data[1]
-        model_name = redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL
 
-        unless description then say "Error: Agent definition '#{name}' not found.", :red; exit(1); end
+        # Load definition using the store
+        definition = ADK::AgentDefinitionStore.find(name_sym)
+        definition ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
+
+        unless definition
+          say "Error: Agent definition '#{name}' not found.", :red
+          exit(1)
+        end
+
+        description = definition[:description]
+        tool_names_to_load = definition[:tools].map(&:to_sym)
+        model_name = definition[:model]
 
         # --- Session Handling ---
         session_service = options[:redis] ? ADK::SessionService::Redis.new : @@session_service
@@ -490,38 +354,28 @@ module ADK
         # --- End Session Handling ---
 
         agent = nil
-        e = nil # Define error variable for ensure block
+        e = nil
         begin
-          # Instantiate Agent
-          agent = ADK::Agent.new(name: name, description: description, model_name: model_name)
+          # Instantiate Agent (pass tool classes directly)
+          tool_classes = tool_names_to_load.map do |t_name|
+            ADK::GlobalToolManager.find_class(t_name)
+          end.compact
+          missing_tools = tool_names_to_load - tool_classes.map { |tc| tc.tool_metadata[:name] }
+
+          agent = ADK::Agent.new(
+            name: name,
+            description: description,
+            model_name: model_name,
+            tool_classes: tool_classes
+          )
           say "  - Agent uses model: #{agent.model_name}", :cyan
 
-          # Load Tools (agent init now auto-adds check_job_status)
-          tool_names_to_load = parse_tools(tools_json_string).map(&:to_sym)
-          added_tools = []
-          if tool_names_to_load.empty?
-            say "  - Warning: No tools configured.", :yellow
-          else
-            say "  - Adding tools: [#{tool_names_to_load.join(', ')}]", :cyan
-            tool_names_to_load.each do |t|
-              # Skip check_job_status if already added automatically
-              next if t == :check_job_status && agent.tools.any? { |at| at.name == :check_job_status }
-
-              i = ADK::ToolRegistry.create_instance(t)
-              if i
-                agent.add_tool(i)
-                added_tools << t
-              else
-                say "  - Warn: Tool '#{t}' not found in registry.", :yellow
-              end
-            end
+          unless missing_tools.empty?
+            say "  - Warning: Tools defined but not found in GlobalToolManager: [#{missing_tools.join(', ')}]", :yellow
           end
-          # Display automatically added tools too
-          agent.tools.reject { |t| added_tools.include?(t.name) }.each do |auto_tool|
-            say "  - Includes tool: #{auto_tool.name}", :faint
-          end
+          say "  - Loaded tools: [#{agent.tools.map(&:name).join(', ')}]", :cyan
 
-          # Start Agent Runtime & Execute Task within Session
+          # Start Agent Runtime & Execute Task
           say "  - Starting agent runtime...", :cyan, false; agent.start; say "started.", :cyan
           say "  - Running task in session #{session_id}: '#{task}'...", :cyan, false;
           final_event_or_error = agent.run_task(
@@ -531,18 +385,16 @@ module ADK
           )
           say "finished.", :cyan
 
-          # Format and Print Result (using updated helper)
+          # Format and Print Result
           say "\nTask Result:", :bold
-          format_cli_result(final_event_or_error) # Use helper method
-        rescue StandardError => e # Catch errors during setup or run_task
+          format_cli_result(final_event_or_error)
+        rescue StandardError => e
           say "\nError during agent execution: #{e.class} - #{e.message}", :red
-          puts e.backtrace.first(5).join("\n") # Print some backtrace for debug
+          puts e.backtrace.first(5).join("\n")
         ensure
-          # Stop the ephemeral agent runtime state
           if agent&.running?
             say "  - Stopping agent runtime...", :cyan, false; agent.stop; say "stopped.", :cyan
           end
-          # Exit with error code if an exception was caught
           exit(1) if e
         end
       end # End 'execute' command

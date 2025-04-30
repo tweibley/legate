@@ -8,7 +8,7 @@
 # Load ADK and necessary components
 require_relative '../lib/adk'
 
-# Load the custom tool and its worker
+# Load the custom tool class
 require_relative 'tools/sleepy_tool'
 # Note: The worker itself (sleepy_worker.rb) needs to be loaded by the Sidekiq process,
 # not necessarily by this script, unless you are using Sidekiq inline testing.
@@ -24,14 +24,12 @@ puts "--- Async Job Example ---"
 puts "\nSetting up agent..."
 agent = ADK::Agent.new(
   name: 'async_job_runner',
-  description: 'An agent that can start and check background jobs.'
+  description: 'An agent that can start and check background jobs.',
+  # Add SleepyTool and CheckJobStatusTool classes
+  tool_classes: [ADK::Tools::SleepyTool, ADK::Tools::CheckJobStatusTool]
 )
 
-# Register the tool that starts the job
-sleepy_tool = ADK::Tools::SleepyTool.new
-agent.add_tool(sleepy_tool)
-
-# The check_job_status tool is added automatically if Sidekiq is defined
+# The check_job_status tool is now added via tool_classes
 puts "Agent Tools: #{agent.tools.map(&:name)}"
 
 # --- Session Setup ---

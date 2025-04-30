@@ -2,26 +2,31 @@
 require 'spec_helper'
 
 RSpec.describe ADK::Tools::Calculator do
-  subject(:tool) { described_class.new }
+  let(:tool_class) { described_class } # Reference the class
+  let(:metadata) { tool_class.tool_metadata } # Get metadata from the class
 
-  describe '#initialize' do
-    it 'sets the name correctly' do
-      expect(tool.name).to eq(:calculator)
+  # Test Class Metadata directly
+  describe 'Class Metadata' do
+    it 'has the correct inferred name' do
+      expect(metadata[:name]).to eq(:calculator)
     end
 
-    it 'sets the description correctly' do
-      expect(tool.description).to include('Calculates the result of an arithmetic operation')
+    it 'has the correct description' do
+      expect(metadata[:description]).to include('Calculates the result of an arithmetic operation')
     end
 
-    it 'defines parameters' do
-      expect(tool.parameters.keys).to contain_exactly(:operand1, :operand2, :operation)
-      expect(tool.parameters[:operand1][:required]).to eq(true)
-      expect(tool.parameters[:operand2][:required]).to eq(true)
-      expect(tool.parameters[:operation][:required]).to eq(true)
+    it 'defines parameters correctly' do
+      expect(metadata[:parameters].keys).to contain_exactly(:operand1, :operand2, :operation)
+      expect(metadata[:parameters][:operand1][:required]).to eq(true)
+      expect(metadata[:parameters][:operand2][:required]).to eq(true)
+      expect(metadata[:parameters][:operation][:required]).to eq(true)
+      expect(metadata[:parameters][:operand1][:type]).to eq(:numeric)
     end
   end
 
   describe '#execute' do
+    subject(:tool) { tool_class.new } # Create instance for execution tests
+
     context 'with valid parameters for addition' do
       let(:params) { { operand1: '5', operand2: '3.5', operation: 'add' } } # Params often come as strings from web/cli
 
@@ -93,8 +98,8 @@ RSpec.describe ADK::Tools::Calculator do
     context 'with missing required parameters' do
       let(:params) { { operand1: 10, operation: 'add' } } # Missing operand2
 
-      it 'raises an ADK::Error' do
-        expect { tool.execute(params) }.to raise_error(ADK::Error, /Missing required parameters: operand2/)
+      it 'raises an ADK::ToolArgumentError' do
+        expect { tool.execute(params) }.to raise_error(ADK::ToolArgumentError, /Missing required parameters: operand2/)
       end
     end
   end

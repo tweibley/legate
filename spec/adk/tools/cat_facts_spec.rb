@@ -3,20 +3,27 @@ require 'spec_helper'
 require 'webmock/rspec' # Ensure webmock is required
 
 RSpec.describe ADK::Tools::CatFacts do
-  subject(:tool) { described_class.new }
+  let(:tool_class) { described_class }
+  let(:metadata) { tool_class.tool_metadata }
   let(:api_url) { ADK::Tools::CatFacts::CAT_FACT_URL }
 
-  describe '#initialize' do
-    it 'sets the name correctly' do
-      expect(tool.name).to eq(:cat_facts)
+  # Test Class Metadata directly
+  describe 'Class Metadata' do
+    it 'has the correct inferred name' do
+      expect(metadata[:name]).to eq(:cat_facts)
     end
-    # ... other basic checks ...
-    it 'has no required parameters' do
-      expect(tool.parameters).to be_empty
+
+    it 'has the correct description' do
+      expect(metadata[:description]).to eq('Fetches a random cat fact from an online API.')
+    end
+
+    it 'has no parameters defined' do
+      expect(metadata[:parameters]).to be_empty
     end
   end
 
   describe '#execute' do
+    subject(:tool) { tool_class.new } # Create instance for execution tests
     let(:params) { {} } # No params needed
 
     context 'when API call is successful' do

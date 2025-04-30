@@ -12,21 +12,17 @@ module ADK
     # A built-in tool to check the status and retrieve results for a Sidekiq job
     # initiated by an ADK tool.
     class CheckJobStatusTool < ADK::Tool
-      define_metadata(
-        name: :check_job_status,
-        description: 'Checks the status and retrieves the result of a previously started background job (Sidekiq) using its ID.',
-        parameters: {
-          job_id: {
-            type: :string,
-            description: 'The ID of the job to check status for',
-            required: true
-          }
-        }
-      )
+      # --- New DSL Metadata ---
+      # Name :check_job_status_tool will be inferred
+      self.explicit_tool_name = :check_job_status # Keep original name
 
-      def initialize(**options)
-        super(**options)
-      end
+      tool_description 'Checks the status and retrieves the result of a previously started background job (Sidekiq) using its ID.'
+
+      parameter :job_id,
+                type: :string,
+                description: 'The ID of the job to check status for',
+                required: true
+      # --- End New DSL Metadata ---
 
       private
 
