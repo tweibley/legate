@@ -31,8 +31,9 @@
 #
 # -------------------------------------------------------------
 
-require 'bundler/setup'
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
 require 'adk'
+ADK.load_environment # Handle Bundler, Dotenv, etc.
 require 'adk/mcp'
 require 'adk/mcp/server/adk_agent_adapter' # Load the Agent adapter
 require 'adk/session_service/in_memory' # Using in-memory for temporary sessions

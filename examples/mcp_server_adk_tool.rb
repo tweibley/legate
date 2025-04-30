@@ -28,8 +28,10 @@
 #
 # -------------------------------------------------------------
 
-require 'bundler/setup' # Ensure gems are loaded
-require 'adk' # Load ADK framework
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
+require 'adk'
+ADK.load_environment # Handle Bundler, Dotenv, etc.
+
 require 'adk/mcp' # Load ADK MCP modules
 require 'adk/mcp/server/adk_tool_adapter' # Load the Tool adapter
 require 'adk/tools/calculator' # Load the specific ADK tool we want to expose

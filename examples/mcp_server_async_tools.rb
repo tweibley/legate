@@ -30,7 +30,10 @@
 #
 # -------------------------------------------------------------
 
-require 'bundler/setup'
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
+require 'adk'
+ADK.load_environment # Handle Bundler, Dotenv, etc.
+
 require 'adk'
 require 'adk/mcp'
 require 'fast_mcp'

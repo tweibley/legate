@@ -25,8 +25,9 @@ ENV['ADK_LOG_LEVEL'] = 'ERROR' # Set high level to minimize ADK output
 ENV['ADK_LOG_TARGET'] = 'STDERR' # Redirect ADK logs to STDERR
 
 # Now load the libraries
-require 'bundler/setup'
-require 'adk'      # Load ADK framework
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
+require 'adk'
+ADK.load_environment # Handle Bundler, Dotenv, etc.
 require 'fast_mcp' # Load the fast-mcp library
 require 'thread'   # For Mutex
 require 'json'     # Needed for JSON generation in #content

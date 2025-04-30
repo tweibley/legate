@@ -3,7 +3,8 @@
 
 require 'redis'
 require 'json'
-require 'adk/version' # Access ADK logger
+require_relative '../../adk/version' # Correct relative path
+require_relative '../errors'
 
 module ADK
   module DefinitionStore

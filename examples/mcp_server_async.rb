@@ -28,8 +28,9 @@ ENV['ADK_LOG_TARGET'] = 'STDERR' # Send logs to STDERR to avoid interfering with
 #      - Call 'check_job_status' with the received job_id.
 #      - Check status repeatedly until it shows success or error.
 
-require 'bundler/setup'
-require 'adk' # Load ADK framework (logger will initialize using ENV vars now)
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
+require 'adk'
+ADK.load_environment # Handle Bundler, Dotenv, etc.
 require 'fast_mcp' # Load fast-mcp gem
 
 # Ensure required ADK components are loaded

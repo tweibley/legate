@@ -23,8 +23,10 @@
 #        { "a": 10, "b": 5, "op": "*" }
 #      - Observe the result.
 
-require 'bundler/setup'
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
 require 'adk'
+ADK.load_environment # Handle Bundler, Dotenv, etc.
+
 require 'fast_mcp'
 require 'adk/mcp/server/adk_tool_adapter'
 require 'adk/tools/calculator' # The ADK tool we want to expose

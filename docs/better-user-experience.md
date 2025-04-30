@@ -45,6 +45,7 @@ Based on an analysis of the `docs/demo-plan.md` for a news aggregator agent, her
 *   **Simplified Environment Loading:**
     *   Requiring `bundler/setup`, `dotenv`, etc., adds lines to basic runner scripts.
     *   *Suggestion:* While difficult to abstract completely, investigate if `ADK.load_environment` or similar helpers could simplify common setup like loading `.env` files.
+    *   **Update:** Implemented `ADK.load_environment`. Call this method early in your application entry point (e.g., `bin/` scripts, example runners). It attempts to `require 'bundler/setup'` and `require 'dotenv/load'`, safely ignoring `LoadError` if the respective gems or files (`.env`) are not present.
 
 ## 3. Result Handling
 

@@ -8,8 +8,9 @@
 ENV['ADK_LOG_LEVEL'] = 'ERROR'
 ENV['ADK_LOG_TARGET'] = 'STDERR'
 
-require 'bundler/setup'
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
 require 'adk'
+ADK.load_environment # Handle Bundler, Dotenv, etc.
 require 'fast_mcp'
 # require 'thread' # No longer needed
 # require 'json' # No longer needed

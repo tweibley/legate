@@ -16,6 +16,30 @@ module ADK
     # Add other Redis options if needed (password, etc.)
   }
 
+  # Simplifies common environment setup like Bundler and Dotenv.
+  # Call this at the beginning of your application entry point.
+  # It attempts to load 'bundler/setup' and 'dotenv/load', ignoring
+  # LoadError if they are not available or needed in the current context.
+  def self.load_environment
+    begin
+      require 'bundler/setup'
+    rescue LoadError
+      # Ignore if Bundler is not used or gem not found
+    end
+
+    begin
+      # dotenv/load requires .env to exist, unlike dotenv which doesn't error
+      # Let's keep the original top-level require for now as it's simpler
+      # and handles the File.exist? check. If we want this method to be the
+      # sole source, we'd need to replicate that logic here or use `Dotenv.load`.
+      # For now, we'll just try to load dotenv/load again in case the top-level
+      # one wasn't run (e.g., if adk is loaded without the top-level file directly)
+      require 'dotenv/load'
+    rescue LoadError
+      # Ignore if dotenv gem is not used or .env doesn't exist
+    end
+  end
+
   def self.logger
     @logger ||= begin
       # Default to DEBUG in development, WARN otherwise

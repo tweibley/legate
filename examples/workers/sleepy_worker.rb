@@ -15,9 +15,11 @@
 #
 # -------------------------------------------------------------
 
-require 'bundler/setup'
-require 'sidekiq'
+$LOAD_PATH.unshift File.expand_path('../../../lib', __FILE__) # Adjust path for nested dir
 require 'adk'
+ADK.load_environment # Handle Bundler, Dotenv, etc.
+
+require 'sidekiq'
 require 'adk/tools/sleepy_tool'
 
 # Configure Sidekiq to use Redis

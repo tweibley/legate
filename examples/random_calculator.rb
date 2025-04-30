@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# If running from project root: ruby examples/random_calculator.rb
+# If running from project root: bundle exec ruby examples/random_calculator.rb
 require_relative '../lib/adk'
 
 puts "--- Random Calculator Agent Example (Multi-Step Planner w/ Hash Results) ---"

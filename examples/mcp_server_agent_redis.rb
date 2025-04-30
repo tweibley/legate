@@ -24,8 +24,10 @@
 #   5. In the inspector, call the `run_agent_my_redis_agent` tool (or similar name)
 #      with a prompt like "echo hello world" or "calculate 5 + 3".
 
-require 'bundler/setup'
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
 require 'adk'
+ADK.load_environment # Handle Bundler, Dotenv, etc.
+
 require 'fast_mcp'
 require 'adk/mcp/server/adk_agent_adapter' # The Redis-based adapter
 require 'adk/session_service/in_memory' # Example session service

@@ -28,8 +28,10 @@
 #      (including the ones explicitly selected via `selected_tool_names`, like `:read_file` in this example).
 #   5. The script will then attempt to run a task using the `read_file` tool from the MCP server.
 
-require 'bundler/setup'
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
 require 'adk'
+ADK.load_environment # Handle Bundler, Dotenv, etc.
+
 require 'adk/mcp' # Ensure MCP modules are loaded
 
 # Configure ADK logger
@@ -79,8 +81,8 @@ ADK.logger.info("Initializing agent...")
 my_agent = ADK::Agent.new(
   name: 'mcp_client_agent',
   description: 'An agent using native and external MCP tools.',
-  tool_classes: [NativeEchoTool],       # Add native tools here
-  mcp_servers: [mcp_server_config],      # Add MCP server configs here
+  tool_classes: [NativeEchoTool], # Add native tools here
+  mcp_servers: [mcp_server_config], # Add MCP server configs here
   selected_tool_names: [:read_file] # <<< CHANGED: Match actual tool name from server logs
   # model_name: 'gemini-pro-1.5' # Optional: Specify model
 )

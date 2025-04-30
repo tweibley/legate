@@ -77,5 +77,5 @@ From the root of the `adk-ruby` project:
 bundle exec ruby examples/adk_mcp_server_resource_example.rb
 
 # Or run with the MCP Inspector for a web UI
-npx @modelcontextprotocol/inspector -- ruby examples/adk_mcp_server_resource_example.rb
+npx @modelcontextprotocol/inspector -- bundle exec ruby examples/adk_mcp_server_resource_example.rb
 ``` 

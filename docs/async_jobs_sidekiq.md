@@ -16,24 +16,24 @@ The pattern involves two key components:
     Use the ADK CLI to manage Sidekiq workers:
     ```bash
     # Start a Sidekiq worker (uses ADK environment by default)
-    adk sidekiq start
+    bundle exec adk sidekiq start
 
     # Start with custom options
-    adk sidekiq start --queue default,critical --concurrency 10 --verbose
+    bundle exec adk sidekiq start --queue default,critical --concurrency 10 --verbose
 
     # Check worker status
-    adk sidekiq status
+    bundle exec adk sidekiq status
 
     # List pending jobs
-    adk sidekiq list_jobs
+    bundle exec adk sidekiq list_jobs
 
     # Stop workers gracefully
-    adk sidekiq stop
+    bundle exec adk sidekiq stop
     ```
 
     For custom worker configurations, you can specify a require path:
     ```bash
-    adk sidekiq start --require path/to/your/worker.rb
+    bundle exec adk sidekiq start --require path/to/your/worker.rb
     ```
 
 ## 1. Implementing the Sidekiq Worker
@@ -267,7 +267,7 @@ ADK includes a complete example of an async job tool in `examples/sleep_agent.rb
 
 Run the example with:
 ```bash
-ADK_LOG_LEVEL=DEBUG ruby examples/sleep_agent.rb
+bundle exec ruby examples/sleep_agent.rb # Optionally set ADK_LOG_LEVEL=DEBUG
 ```
 
 This will show the complete flow of:

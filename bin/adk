@@ -1,8 +1,8 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require 'bundler/setup'
-require 'adk'
-require 'adk/cli'
+require_relative '../lib/adk' # Load ADK library first
+ADK.load_environment # Handle Bundler, Dotenv, etc.
+require_relative '../lib/adk/cli' # Use require_relative for CLI component
 
-ADK::CLI::Main.start(ARGV) 
+ADK::CLI::Main.start(ARGV)

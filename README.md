@@ -88,24 +88,24 @@ For the asynchronous job feature:
 3. Use the ADK CLI to manage Sidekiq workers:
    ```bash
    # Start a Sidekiq worker (uses ADK environment by default)
-   adk sidekiq start
+   bundle exec adk sidekiq start
 
    # Start with custom options
-   adk sidekiq start --queue default,critical --concurrency 10 --verbose
+   bundle exec adk sidekiq start --queue default,critical --concurrency 10 --verbose
 
    # Check worker status
-   adk sidekiq status
+   bundle exec adk sidekiq status
 
    # List pending jobs
-   adk sidekiq list_jobs
+   bundle exec adk sidekiq list_jobs
 
    # Stop workers gracefully
-   adk sidekiq stop
+   bundle exec adk sidekiq stop
    ```
 
    For custom worker configurations, you can specify a require path:
    ```bash
-   adk sidekiq start --require path/to/your/worker.rb
+   bundle exec adk sidekiq start --require path/to/your/worker.rb
    ```
 
 ## Quick Start
@@ -122,7 +122,7 @@ For the asynchronous job feature:
 
 3.  **Start the Web UI:**
    ```bash
-   adk web start
+   bundle exec adk web start
    ```
 
 4.  **Access the Web Interface:**
@@ -313,9 +313,9 @@ After checking out the repo:
 
 4. **Run Examples:**
    ```bash
-   ruby examples/simple_agent.rb
-   ruby examples/random_calculator.rb
-   ruby examples/multi_tool_agent.rb
+   bundle exec ruby examples/simple_agent.rb
+   bundle exec ruby examples/random_calculator.rb
+   bundle exec ruby examples/multi_tool_agent.rb
    ```
 
 ## Contributing

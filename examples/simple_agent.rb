@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# If running from project root: ruby examples/simple_agent.rb
+# If running from project root: bundle exec ruby examples/simple_agent.rb
 require_relative '../lib/adk'
 
 puts "--- Simple Echo Agent Example (Session-Based) ---"

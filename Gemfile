@@ -5,6 +5,8 @@ gemspec
 
 # gem 'temporalio', '0.3.0', require: false
 
+gem 'puma' # Add puma for Sinatra's default server
+
 group :development, :test do
   gem 'rspec', '~> 3.12'
   gem 'rake', '~> 13.0'
