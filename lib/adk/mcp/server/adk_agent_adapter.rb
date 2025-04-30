@@ -10,6 +10,7 @@ require_relative '../../tool_registry'
 require_relative '../../session_service/base' # Need base for type check
 require_relative '../../event' # Needed for result processing
 require_relative '../error'
+require_relative '../../global_tool_manager' # Added require
 
 module ADK
   module Mcp
@@ -131,7 +132,7 @@ module ADK
             # Extract tool classes from the definition
             tool_names_to_load = self.class.parse_tools(tools_json_string).map(&:to_sym)
             tool_classes_for_init = tool_names_to_load.map do |t_name|
-              ADK::ToolRegistry.get_tool_class(t_name) # Use global registry to find classes
+              ADK::GlobalToolManager.find_class(t_name) # Use global registry to find classes
             end.compact
 
             if tool_classes_for_init.size != tool_names_to_load.size
