@@ -31,7 +31,12 @@ module ADK
       @updated_at = @created_at
       @session_service = session_service
       # Use Concurrent::Map for thread-safe state storage within the session object itself
-      @state = Concurrent::Map.new(initial_state.transform_keys(&:to_sym))
+      @state = Concurrent::Map.new
+      # Ensure initial_state keys are symbols and manually populate the map
+      symbolized_initial_state = initial_state.transform_keys { |k| k.to_sym rescue k }
+      symbolized_initial_state.each_pair do |key, value|
+        @state[key] = value
+      end
       # Events array stores the history, ensure it's mutable if passed and validate contents
       @events = events.map do |e|
         e.is_a?(ADK::Event) ? e : (ADK.logger.warn("Session Init: Invalid event data skipped: #{e.inspect}"); nil)
@@ -40,9 +45,10 @@ module ADK
     end
 
     # Provides access to the session's temporary state data.
-    # @return [Concurrent::Map] The thread-safe state map.
+    # @return [Hash] The current session state (immutable view).
     def state
-      @state.freeze # Return immutable view
+      # Ensure external modifications don't affect internal state directly.
+      @state.dup # Return a shallow copy
     end
 
     # Adds an event to the session's history and updates state if needed.

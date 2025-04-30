@@ -13,9 +13,9 @@ SimpleCov.profiles.define 'adk' do
   add_group 'Examples', 'examples'
   add_group 'MCP', 'lib/adk/mcp'
   add_group 'CLI', 'lib/adk/cli'
-  add_group 'Config', 'lib/adk/config'
-  add_group 'Core', 'lib/adk/core'
   add_group 'Errors', 'lib/adk/errors'
+  add_group 'Session Service', 'lib/adk/session_service'
+  add_group 'Web', 'lib/adk/web'
 end
 
 SimpleCov.start 'adk'

@@ -29,10 +29,12 @@ module ADK
       # @param initial_state [Hash] Optional initial data for the session state.
       # @return [ADK::Session] The newly created session object.
       def create_session(app_name:, user_id:, initial_state: {})
+        # Fix: Ensure keys are symbols before passing to Session constructor
+        symbolized_state = initial_state.transform_keys { |k| k.to_sym rescue k }
         session = ADK::Session.new(
           app_name: app_name,
           user_id: user_id,
-          initial_state: initial_state,
+          initial_state: symbolized_state,
           session_service: self
         )
         @sessions[session.id] = session
