@@ -1,6 +1,11 @@
 # File: examples/async_job_example.rb
 # frozen_string_literal: true
 
+puts "To see this work end-to-end:"
+puts "1. Ensure Redis is running."
+puts "2. Start a Sidekiq worker: bundle exec adk sidekiq start"
+puts "3. Run this script: bundle exec ruby examples/async_job_example.rb"
+
 # This example demonstrates how to use an ADK tool that starts
 # an asynchronous Sidekiq background job and how to check its status.
 
@@ -105,7 +110,3 @@ puts JSON.pretty_generate(check_result_hash_2)
 agent.stop
 
 puts "\n--- Example Finished ---"
-puts "To see this work end-to-end:"
-puts "1. Ensure Redis is running."
-puts "2. Start a Sidekiq worker: bundle exec sidekiq -r ./examples/workers/sleepy_worker.rb"
-puts "3. Run this script: bundle exec ruby examples/async_job_example.rb"

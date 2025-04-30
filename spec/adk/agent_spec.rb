@@ -418,7 +418,6 @@ RSpec.describe ADK::Agent do
         expect(final_event).to be_an(ADK::Event)
         expect(final_event.role).to eq(:agent)
         expected_content = pending_hash.merge(
-          result: nil,
           plan_details: [{ tool_name: :async_tool, params: { input: 'go' }, result: sanitized_pending_hash }]
         )
         expect(final_event.content).to eq(expected_content)

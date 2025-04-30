@@ -287,56 +287,35 @@ module ADK
 
         plan = planner.plan(user_input)
 
-        # --- MODIFIED: execute_plan now returns array or error hash ---
-        plan_execution_result = execute_plan(plan, adk_session, session_service)
+        # --- MODIFIED: execute_plan now returns hash { details: [...], last_result: {...} } ---
+        execution_outcome = execute_plan(plan, adk_session, session_service)
+        plan_execution_details = execution_outcome[:details]
+        original_last_step_result = execution_outcome[:last_result]
         # ----------------------------------------------------------
 
         final_content = nil
-        plan_details_for_event = nil # Store plan details separately
 
         # --- Determine Final Agent Response based on execution result ---
-        if plan_execution_result.is_a?(Hash) && plan_execution_result[:status] == :error
-          # Planning failed or _execute_plan encountered immediate error
-          final_content = plan_execution_result
-          ADK.logger.error("Agent '#{name}' task failed. Reason: #{plan_execution_result[:error_message]}")
-        elsif plan_execution_result.is_a?(Array)
-          # Plan execution happened, potentially with multiple steps or errors mid-way
-          plan_details_for_event = plan_execution_result # Keep the full array for the event
-          last_step_detail = plan_execution_result.last # This is {tool_name:, params:, result: {status:, ...}}
-          if last_step_detail
-            # --- SIMPLIFIED: Directly use the nested :result hash ---
-            # --- MODIFIED: Deep copy the result hash to avoid circular reference --- >
-            # Ensure the result is actually a hash before attempting deep copy
-            if last_step_detail[:result].is_a?(Hash)
-              final_content = Marshal.load(Marshal.dump(last_step_detail[:result]))
-            else
-              # If it's not a hash (e.g., error string from earlier stages), assign directly
-              final_content = last_step_detail[:result]
-            end
-            # <------------------------------------------------------------------------
-            ADK.logger.debug("Assigning last step result directly to final_content: #{final_content.inspect}") # Add log
-            # --- REMOVED defensive check/wrap block ---
-          else # Empty results array (Shouldn't happen if plan wasn't empty, but handle defensively)
-            final_content = { status: :error, error_message: "Multi-step execution resulted in empty result array." }
-            ADK.logger.error(final_content[:error_message])
-          end
-        else # Unexpected format from execute_plan (should be Hash or Array)
-          msg = "Task finished with unexpected execution result format from execute_plan: #{plan_execution_result.inspect}"
-          final_content = { status: :error, error_message: msg }
-          ADK.logger.error(msg)
+        if original_last_step_result.nil?
+          # This case handles planning errors or empty plans where execute_plan returned an error hash directly
+          final_content = plan_execution_details # In error cases, details *is* the error hash
+          ADK.logger.error("Agent '#{name}' task failed. Reason: #{final_content[:error_message]}") if final_content.is_a?(Hash)
+        else
+          # Plan execution happened. Use the original last step result for final content.
+          # Deep copy to prevent modification issues if result is mutable
+          final_content = Marshal.load(Marshal.dump(original_last_step_result))
+          ADK.logger.debug("Using original last step result for final_content: #{final_content.inspect}")
         end
 
-        # --- ADDED: Attach plan details to the final content hash ---
-        if final_content.is_a?(Hash) && plan_details_for_event
-          final_content[:plan_details] = plan_details_for_event
-        elsif plan_details_for_event # final_content wasn't a hash, log warning?
+        # --- Attach plan details (sanitized) to the final content hash ---
+        if final_content.is_a?(Hash) && plan_execution_details.is_a?(Array)
+          final_content[:plan_details] = plan_execution_details
+        elsif plan_execution_details.is_a?(Array) # final_content wasn't a hash, log warning?
           ADK.logger.warn("Could not attach plan details because final_content was not a hash: #{final_content.inspect}")
         end
         # --- End Determine Final Agent Response based on execution result ---
 
-        # --- ADD DEBUGGING ---
         ADK.logger.debug("Final content for agent event BEFORE creation: #{final_content.inspect}")
-        # --- END DEBUGGING ---
 
         final_agent_event = ADK::Event.new(role: :agent, content: final_content)
         session_service.append_event(session_id: session_id, event: final_agent_event)
@@ -388,25 +367,24 @@ module ADK
       ADK.logger.debug("Finished tool discovery.")
     end
 
-    # --- REFACTORED: execute_plan uses session context ---
+    # --- REFACTORED: execute_plan now returns hash { details: [...], last_result: original_hash } ---
     # Executes a plan, logging tool request/result events via the session service.
     # @param plan [Array<Hash>] Plan from the planner.
     # @param session [ADK::Session] The current session object.
     # @param session_service [Object] The session service instance.
-    # @return [Hash, Array<Hash>] Result hash or array of hashes from steps. Returns error hash on planning issues.
+    # @return [Hash] { details: Array<Hash>, last_result: Hash } or { details: Hash, last_result: nil } on planning errors.
     def execute_plan(plan, session, session_service)
       session_id = session.id
 
       unless plan.is_a?(Array)
         msg = "Invalid plan received from planner (not an Array)."
         ADK.logger.error("#{msg} Plan: #{plan.inspect}")
-        return { status: :error, error_message: msg }
+        return { details: { status: :error, error_message: msg }, last_result: nil }
       end
 
       # --- Handle Empty Plan based on Fallback Mode ---
       if plan.empty?
         if @fallback_mode == :echo
-          # --- Check if echo tool is actually available to this agent ---
           if @tool_registry.find_class(:echo)
             ADK.logger.warn("Plan is empty. Falling back to echo mode for session '#{session_id}'.")
             # Reconstruct the plan to be a single echo step
@@ -422,20 +400,20 @@ module ADK
             # Echo tool not available, default to error mode
             msg = "Planning failed and Echo fallback tool is not available to this agent."
             ADK.logger.warn(msg)
-            return { status: :error, error_message: msg }
+            return { details: { status: :error, error_message: msg }, last_result: nil }
           end
         else # Default or :error mode
           msg = "I cannot fulfill this request with the available tools (empty plan)."
           ADK.logger.warn(msg)
-          return { status: :error, error_message: msg }
+          return { details: { status: :error, error_message: msg }, last_result: nil }
         end
       end
       # --- End Handle Empty Plan ---
 
       ADK.logger.debug("Executing plan with #{plan.length} step(s) for session '#{session_id}': #{plan.inspect}")
       previous_step_result_hash = nil
-      all_results_hashes = []
-      plan_execution_details = [] # <-- NEW: Store structured details
+      plan_execution_details = []
+      last_successful_or_pending_result = nil # <-- Store the original last hash
 
       plan.each_with_index do |step, index|
         ADK.logger.debug("Executing step #{index + 1}/#{plan.length}: #{step.inspect}")
@@ -480,10 +458,10 @@ module ADK
         ADK.logger.debug("  Params after potential injection: #{current_params.inspect}")
         # --- End Input Injection Logic ---
 
-        # --- Execute Step (Passes session context) ---
-        current_result_hash = execute_step(step_with_injected_params, session, session_service) # <-- Pass session
+        # --- Execute Step --- #
+        current_result_hash = execute_step(step_with_injected_params, session, session_service)
 
-        # --- ADDED: Sanitize result for plan details display ---
+        # --- Sanitize for plan_details --- #
         sanitized_result_for_plan = {}
         if current_result_hash.is_a?(Hash)
           sanitized_result_for_plan[:status] = current_result_hash[:status]
@@ -506,30 +484,31 @@ module ADK
         end
         # --- END Sanitization ---
 
-        # --- MODIFIED: Store structured step detail with SANITIZED result ---
+        # --- Store SANITIZED step detail --- #
         plan_execution_details << {
           tool_name: step[:tool],
-          params: current_params, # Store injected params
-          result: sanitized_result_for_plan # <-- USE SANITIZED HASH
+          params: current_params,
+          result: sanitized_result_for_plan
         }
-        # --- END MODIFICATION ---
 
-        # --- Stop on first error ---
-        if current_result_hash[:status] == :error # Check original hash for stop logic
+        # --- Store ORIGINAL result and check for errors --- #
+        if current_result_hash[:status] == :error
           ADK.logger.warn("Step #{index + 1} failed, stopping plan execution: #{current_result_hash[:error_message]}")
+          last_successful_or_pending_result = current_result_hash # Store the error hash as last result
           break # Exit the loop
+        else
+          # Store successful or pending hash for potential injection AND final result
+          previous_step_result_hash = current_result_hash
+          last_successful_or_pending_result = current_result_hash
         end
-        # --- End Stop on first error ---
-
-        previous_step_result_hash = current_result_hash
+        # --- End Stop on first error / Store last result --- #
       end
 
-      ADK.logger.debug("Plan execution finished. Result hashes collected: #{all_results_hashes.inspect}") # <-- Keep old log? Maybe update
-      ADK.logger.debug("Plan execution finished. Structured details collected: #{plan_execution_details.inspect}") # <-- Add new log
+      ADK.logger.debug("Plan execution finished. Structured details collected: #{plan_execution_details.inspect}")
+      ADK.logger.debug("Plan execution finished. Original last result: #{last_successful_or_pending_result.inspect}")
 
-      # --- MODIFIED: Always return the full array of structured details ---
-      plan_execution_details
-      # --- END MODIFICATION ---
+      # --- Return BOTH sanitized details AND original last result --- #
+      { details: plan_execution_details, last_result: last_successful_or_pending_result }
     end # end execute_plan
 
     # --- REFACTORED: execute_step uses session context and passes it to tools ---
