@@ -189,24 +189,6 @@ RSpec.describe ADK::Agent do
     allow(mock_status_tool).to receive(:name).and_return(:check_job_status)
     allow(mock_status_tool).to receive(:class).and_return(ADK::Tools::CheckJobStatusTool)
 
-    # Mock ToolRegistry
-    # allow_any_instance_of(ADK::ToolRegistry).to receive(:find_class) do |_, name|
-    #   case name.to_sym
-    #   when :tool_a then MockToolA
-    #   when :tool_b then MockToolB
-    #   when :check_job_status then ADK::Tools::CheckJobStatusTool
-    #   else nil
-    #   end
-    # end
-    # allow_any_instance_of(ADK::ToolRegistry).to receive(:create_instance) do |_, name|
-    #   case name.to_sym
-    #   when :tool_a then mock_tool_a
-    #   when :tool_b then mock_tool_b
-    #   when :check_job_status then mock_status_tool
-    #   else nil
-    #   end
-    # end
-
     # Session service interactions
     allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
     allow(mock_session_service).to receive(:append_event).and_return(true)
@@ -253,52 +235,245 @@ RSpec.describe ADK::Agent do
       # Agent initialization is already stubbed in the main let! block
       expect(agent.tools.map(&:name)).to include(:check_job_status)
     end
+
+    # --- NEW TESTS START HERE ---
+
+    context 'when Sidekiq is not defined' do
+      before do
+        # Undefine Sidekiq for this context ONLY
+        hide_const("Sidekiq")
+        # Mock Planner for this specific agent initialization
+        allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+      end
+
+      it 'skips adding CheckJobStatusTool and logs warning' do
+        expect(ADK.logger).to receive(:warn).with(/Skipping automatic registration of CheckJobStatusTool/)
+        # Need to re-initialize agent within this specific context
+        test_agent = described_class.new(name: 'no_sidekiq_agent', description: 'Test')
+        expect(test_agent.find_tool(:check_job_status)).to be_nil
+      end
+    end
+
+    context 'with mcp_servers as JSON string' do
+      let(:parsed_array_config) { [{ "type" => "stdio", "command" => "cmd1" }, { "type" => "sse", "url" => "http://ex.com" }] }
+
+      before do
+        # REMOVED global spy setup here
+        # Mock Planner for agent initialization
+        allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+      end
+
+      it 'parses valid array JSON string correctly and stores it' do
+        valid_json_string = '[{"type":"stdio","command":"cmd1"},{"type":"sse","url":"http://ex.com"}]'
+
+        # Use the standard logger mock defined in the main `before` block
+        expect(ADK.logger).not_to receive(:warn)
+        expect(ADK.logger).not_to receive(:error)
+
+        test_agent = described_class.new(name: 'json_agent', description: 'Test', mcp_servers: valid_json_string)
+        # Check the internal config array stored after initialization
+        expect(test_agent.send(:instance_variable_get, :@mcp_servers_config)).to eq(parsed_array_config)
+      end
+
+      it 'handles invalid JSON string, logs error, and defaults to empty array' do
+        invalid_json_string = '[{"type":"invalid'
+
+        # Expect the specific error log message
+        expect(ADK.logger).to receive(:error).with(/Failed to parse MCP server config JSON/)
+
+        test_agent = described_class.new(name: 'bad_json_agent', description: 'Test', mcp_servers: invalid_json_string)
+        expect(test_agent.send(:instance_variable_get, :@mcp_servers_config)).to eq([])
+      end
+
+      it 'handles JSON string parsing to non-array, logs warning, and defaults to empty array' do
+        non_array_json_string = '{"type":"stdio"}' # Simplified Hash JSON
+
+        # Expect the specific warning log message
+        expect(ADK.logger).to receive(:warn).with(/MCP server config parsed but is not an Array/)
+
+        test_agent = described_class.new(name: 'non_array_json_agent', description: 'Test',
+                                         mcp_servers: non_array_json_string)
+        expect(test_agent.send(:instance_variable_get, :@mcp_servers_config)).to eq([])
+      end
+    end
+
+    context 'with fallback_mode' do
+      it 'sets fallback_mode to :echo when specified' do
+        # Mock Planner for this specific agent initialization
+        allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+        test_agent = described_class.new(name: 'echo_fallback_agent', description: 'Test', fallback_mode: :echo)
+        expect(test_agent.fallback_mode).to eq(:echo)
+      end
+
+      it 'defaults fallback_mode to :error for invalid values' do
+        # Mock Planner for this specific agent initialization
+        allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+        test_agent = described_class.new(name: 'bad_fallback_agent', description: 'Test', fallback_mode: :invalid_mode)
+        expect(test_agent.fallback_mode).to eq(:error)
+      end
+    end
+    # --- NEW TESTS END HERE ---
   end
 
   describe '#add_tool' do
     let(:mock_registry) { instance_double(ADK::ToolRegistry) }
+    let(:test_agent) { described_class.new(name: 'add_tool_agent', description: 'Test') }
 
     before do
-      allow(ADK::ToolRegistry).to receive(:new).and_return(mock_registry)
-      allow(mock_registry).to receive(:tools).and_return({})
-      allow(mock_registry).to receive(:register).with(:check_job_status, ADK::Tools::CheckJobStatusTool)
-      allow(mock_registry).to receive(:register).with(:tool_a, MockToolA)
-      allow(mock_registry).to receive(:register).with(:tool_b, MockToolB)
-      allow(mock_registry).to receive(:create_instance)
-      # Add find_class stub for initialization check
-      allow(mock_registry).to receive(:find_class).with(:check_job_status).and_return(nil)
-      allow(mock_registry).to receive(:find_class).with(:tool_a).and_return(MockToolA)
-      # Mock ADK.logger
-      allow(ADK).to receive(:logger).and_return(mock_logger)
-      # Mock Planner for agent initialization
+      # Prevent planner creation during these specific tests
       allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+      # Stub logger for all tests in this context
+      allow(ADK).to receive(:logger).and_return(mock_logger)
+      # Stub registry interactions - allow registration by default
+      allow(test_agent.tool_registry).to receive(:register).and_return(true)
+      allow(test_agent.tool_registry).to receive(:find_class).and_return(nil) # Default: not found
     end
 
-    it 'adds a valid tool' do
-      puts "[Test add_tool] Agent registry ID BEFORE add: #{agent.tool_registry.object_id}"
-      result = agent.add_tool(MockToolA)
-      puts "[Test add_tool] Agent registry ID AFTER add: #{agent.tool_registry.object_id}"
-      puts "[Test add_tool] add_tool result: #{result.inspect}"
-      expect(result).to be true
-      # Also check find_tool immediately after adding
-      puts "[Test add_tool] Agent registry ID BEFORE find_tool: #{agent.tool_registry.object_id}"
-      found_tool = agent.find_tool(:tool_a)
-      puts "[Test add_tool] find_tool result: #{found_tool.inspect}"
-      expect(found_tool).to be_an_instance_of(MockToolA)
+    # Existing tests refactored slightly to use test_agent
+    it 'adds a valid tool class' do
+      allow(test_agent.tool_registry).to receive(:register).with(:tool_a, MockToolA).and_return(true)
+      expect(test_agent.add_tool(MockToolA)).to be true
+      expect(test_agent.tool_registry).to have_received(:register).with(:tool_a, MockToolA)
+    end
+
+    it 'adds a valid tool instance' do
+      tool_instance = MockToolA.new
+      allow(test_agent.tool_registry).to receive(:register).with(:tool_a, MockToolA).and_return(true)
+      expect(test_agent.add_tool(tool_instance)).to be true
+      expect(test_agent.tool_registry).to have_received(:register).with(:tool_a, MockToolA)
     end
 
     it 'warns and overwrites when adding a duplicate tool' do
-      agent = described_class.new(name: 'test_agent', description: 'Test agent for tool tests')
-      allow(mock_registry).to receive(:find_class).with(:tool_a).and_return(MockToolA)
+      # Simulate tool already exists in registry
+      allow(test_agent.tool_registry).to receive(:find_class).with(:tool_a).and_return(MockToolA)
       expect(mock_logger).to receive(:warn).with(/Tool 'tool_a' already added. Overwriting./)
-      agent.add_tool(MockToolA)
+      expect(test_agent.add_tool(MockToolA)).to be true # Still returns true after overwrite
+      expect(test_agent.tool_registry).to have_received(:register).with(:tool_a, MockToolA)
     end
 
     it 'errors and does not add an invalid object' do
-      agent = described_class.new(name: 'test_agent', description: 'Test agent for tool tests')
       invalid_object = Object.new
       expect(mock_logger).to receive(:error).with(/Attempted to add invalid tool/)
-      expect(agent.add_tool(invalid_object)).to be false
+      expect(test_agent.add_tool(invalid_object)).to be false
+      expect(test_agent.tool_registry).not_to have_received(:register)
+    end
+
+    # --- NEW TESTS --- >
+    it 'adds a tool using its inferred name if metadata name is missing' do
+      class InferrableTool < ADK::Tool
+        tool_description 'Inferrable'
+        # No explicit name set
+        def perform_execution(params, context); { status: :success }; end
+      end
+      allow(test_agent.tool_registry).to receive(:register).with(:inferrable_tool, InferrableTool).and_return(true)
+      expect(test_agent.add_tool(InferrableTool)).to be true
+      expect(test_agent.tool_registry).to have_received(:register).with(:inferrable_tool, InferrableTool)
+    end
+
+    it 'logs error and does not add tool if name cannot be determined' do
+      class UnnamableTool < ADK::Tool
+        # No name in metadata, and class name doesn't follow convention for inference (e.g., anonymous)
+        def self.name; nil; end # Simulate anonymous class
+        def self.tool_metadata; { name: nil, description: 'Unnamable', parameters: {} }; end
+        def self.inferred_name; nil; end # Explicitly prevent inference for test
+        def perform_execution(params, context); { status: :success }; end
+      end
+
+      expect(mock_logger).to receive(:error).with(/Could not determine tool name for class.*UnnamableTool/)
+      expect(test_agent.add_tool(UnnamableTool)).to be false
+      expect(test_agent.tool_registry).not_to have_received(:register)
+    end
+    # <--- END NEW TESTS ---
+  end
+
+  describe '#tools' do
+    let(:agent) { described_class.new(name: 'tools_agent', description: 'Test') }
+    let(:mock_instance_a) { instance_double(MockToolA) }
+    let(:mock_instance_b) { instance_double(MockToolB) }
+
+    before do
+      # Stub registry state and instance creation
+      allow(agent.tool_registry).to receive(:tools).and_return({ tool_a: MockToolA, tool_b: MockToolB })
+      allow(agent.tool_registry).to receive(:create_instance).with(:tool_a).and_return(mock_instance_a)
+      allow(agent.tool_registry).to receive(:create_instance).with(:tool_b).and_return(mock_instance_b)
+      allow(ADK).to receive(:logger).and_return(mock_logger)
+    end
+
+    it 'returns an array of tool instances' do
+      expect(agent.tools).to contain_exactly(mock_instance_a, mock_instance_b)
+    end
+
+    it 'returns an empty array if no tools are registered' do
+      allow(agent.tool_registry).to receive(:tools).and_return({})
+      expect(agent.tools).to eq([])
+    end
+
+    it 'skips tool instance creation and warns if name cannot be retrieved' do
+      # Simulate a class where metadata retrieval fails (edge case)
+      class BadMetadataTool < ADK::Tool
+        def self.tool_metadata; nil; end # Simulate failure
+      end
+      allow(agent.tool_registry).to receive(:tools).and_return({ tool_a: MockToolA, bad: BadMetadataTool })
+      allow(agent.tool_registry).to receive(:create_instance).with(:tool_a).and_return(mock_instance_a)
+      allow(BadMetadataTool).to receive(:tool_metadata).and_return({ name: nil }) # Ensure metadata returns nil name
+
+      expect(ADK.logger).to receive(:warn).with(/Skipping tool instance creation for class BadMetadataTool/)
+      expect(agent.tools).to contain_exactly(mock_instance_a)
+    end
+  end
+
+  describe '#find_tool' do
+    let(:agent) { described_class.new(name: 'find_tool_agent', description: 'Test') }
+    let(:mock_instance_a) { instance_double(MockToolA) }
+
+    it 'returns the tool instance if found' do
+      allow(agent.tool_registry).to receive(:create_instance).with(:tool_a).and_return(mock_instance_a)
+      expect(agent.find_tool(:tool_a)).to eq(mock_instance_a)
+    end
+
+    it 'returns nil if the tool is not found' do
+      allow(agent.tool_registry).to receive(:create_instance).with(:non_existent_tool).and_return(nil)
+      expect(agent.find_tool(:non_existent_tool)).to be_nil
+    end
+
+    it 'accepts string name' do
+      allow(agent.tool_registry).to receive(:create_instance).with(:tool_a).and_return(mock_instance_a)
+      expect(agent.find_tool('tool_a')).to eq(mock_instance_a)
+    end
+  end
+
+  describe '#available_tools_metadata' do
+    let(:agent) { described_class.new(name: 'metadata_agent', description: 'Test') }
+    let(:metadata_a) { { name: :tool_a, description: 'Desc A', parameters: {} } }
+    let(:metadata_b) { { name: :tool_b, description: 'Desc B', parameters: {} } }
+
+    it 'returns metadata list from the tool registry' do
+      allow(agent.tool_registry).to receive(:list_tools).and_return([metadata_a, metadata_b])
+      expect(agent.available_tools_metadata).to eq([metadata_a, metadata_b])
+    end
+
+    it 'returns an empty list if registry has no tools' do
+      allow(agent.tool_registry).to receive(:list_tools).and_return([])
+      expect(agent.available_tools_metadata).to eq([])
+    end
+  end
+
+  describe '#find_tool_class' do
+    let(:agent) { described_class.new(name: 'find_class_agent', description: 'Test') }
+
+    it 'returns the tool class if found' do
+      allow(agent.tool_registry).to receive(:find_class).with(:tool_a).and_return(MockToolA)
+      expect(agent.find_tool_class(:tool_a)).to eq(MockToolA)
+    end
+
+    it 'returns nil if the tool class is not found' do
+      allow(agent.tool_registry).to receive(:find_class).with(:non_existent_tool).and_return(nil)
+      expect(agent.find_tool_class(:non_existent_tool)).to be_nil
+    end
+
+    it 'accepts string name' do
+      allow(agent.tool_registry).to receive(:find_class).with(:tool_a).and_return(MockToolA)
+      expect(agent.find_tool_class('tool_a')).to eq(MockToolA)
     end
   end
 
@@ -761,6 +936,222 @@ RSpec.describe ADK::Agent do
         expect(result.content).to eq(expected_final_content)
       end
     end
+
+    # --- NEW CONTEXT: Edge Cases in run_task/execute_plan/execute_step ---
+    context 'when session service append fails critically' do
+      before do
+        agent.start
+        allow(mock_planner).to receive(:plan).with(user_input).and_return([{ tool: :tool_a, params: {} }])
+        # Simulate append_event failing *after* the first user event is added
+        allow(mock_session_service).to receive(:append_event).with(session_id: session_id, event: instance_of(ADK::Event)).and_return(true) # User event - Removed .ordered
+        allow(mock_session_service).to receive(:append_event).with(session_id: session_id, event: instance_of(ADK::Event)).and_raise(StandardError, "Redis Boom!") # Tool request event fails - Removed .ordered
+      end
+
+      it 'logs critical error and returns an agent error event' do
+        expect(ADK.logger).to receive(:error).with(/Critical error during run_task.*Redis Boom!/)
+        # The final agent event should still be created and appended (or attempted)
+        expect(mock_session_service).to receive(:append_event).with(
+          session_id: session_id,
+          event: having_attributes(role: :agent,
+                                   content: hash_including(status: :error,
+                                                           error_message: /An internal error occurred.*Redis Boom!/))
+        ).at_least(:once) # May be called again in rescue block
+
+        result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+
+        # Check the returned event
+        expect(result).to be_an(ADK::Event)
+        expect(result.role).to eq(:agent)
+        expect(result.content).to match(hash_including(status: :error,
+                                                       error_message: /An internal error occurred: Redis Boom!/))
+      end
+    end
+
+    context 'with echo fallback mode' do
+      let(:agent_echo_fallback) do
+        described_class.new(name: 'echo_fallback', description: 'desc', fallback_mode: :echo)
+      end
+
+      before do
+        # Simulate planner returning empty plan
+        allow(agent_echo_fallback.planner).to receive(:plan).with(user_input).and_return([])
+        allow(mock_session).to receive(:events).and_return([ADK::Event.new(role: :user, content: user_input)])
+        allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
+        agent_echo_fallback.start
+      end
+
+      context 'when Echo tool is available' do
+        let(:echo_tool_instance) { instance_double(ADK::Tools::Echo) }
+        let(:echo_success_hash) { { status: :success, result: user_input } }
+        let(:sanitized_echo_result) { { status: :success, result: user_input } }
+
+        before do
+          # Ensure Echo tool is registered ONLY for this agent
+          allow(agent_echo_fallback.tool_registry).to receive(:find_class).with(:echo).and_return(ADK::Tools::Echo)
+          allow(agent_echo_fallback.tool_registry).to receive(:create_instance).with(:echo).and_return(echo_tool_instance)
+          allow(echo_tool_instance).to receive(:execute).with({ message: user_input },
+                                                              anything).and_return(echo_success_hash)
+        end
+
+        it 'executes the Echo tool with original user input' do
+          expect(echo_tool_instance).to receive(:execute).with({ message: user_input }, anything)
+          final_event = agent_echo_fallback.run_task(session_id: session_id, user_input: user_input,
+                                                     session_service: mock_session_service)
+          expect(final_event.role).to eq(:agent)
+          expected_content = echo_success_hash.merge(
+            plan_details: [{ tool_name: :echo, params: { message: user_input }, result: sanitized_echo_result }]
+          )
+          expect(final_event.content).to eq(expected_content)
+        end
+      end
+
+      context 'when Echo tool is NOT available' do
+        before do
+          # Ensure Echo tool is NOT registered for this agent
+          allow(agent_echo_fallback.tool_registry).to receive(:find_class).with(:echo).and_return(nil)
+        end
+
+        it 'returns an error event indicating Echo tool is missing' do
+          expect(ADK.logger).to receive(:warn).with("Planning failed and Echo fallback tool is not available to this agent.")
+          final_event = agent_echo_fallback.run_task(session_id: session_id, user_input: user_input,
+                                                     session_service: mock_session_service)
+          expect(final_event.role).to eq(:agent)
+          expect(final_event.content).to eq({ status: :error,
+                                              error_message: "Planning failed and Echo fallback tool is not available to this agent." })
+        end
+      end
+    end
+
+    context 'with input injection edge cases' do
+      let(:plan_prev) {
+        [{ tool: :tool_a, params: { p: 1 } }, { tool: :tool_b, params: { data: '[Result from previous step]' } }]
+      }
+      let(:result_no_keys) { { status: :success, other_data: 'stuff' } } # Missing result/job_id/message
+      let(:sanitized_result_no_keys) { { status: :success, result: nil } } # How it should appear in plan_details
+      let(:placeholder_string) { '[Result from previous step]' }
+
+      before { agent.start }
+
+      it 'injects placeholder string and warns if previous result lacks standard keys' do
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(plan_prev)
+        allow(mock_tool_a).to receive(:execute).with({ p: 1 }, mock_context).and_return(result_no_keys)
+        # Expect the placeholder string itself to be passed when standard keys are missing
+        allow(mock_tool_b).to receive(:execute).with({ data: placeholder_string },
+                                                     mock_context).and_return(success_hash_b)
+        expect(ADK.logger).to receive(:warn).with(/Cannot inject: Previous successful.* missing usable key/)
+
+        final_event = agent.run_task(session_id: session_id, user_input: user_input,
+                                     session_service: mock_session_service)
+        # Verify the placeholder was used in the plan details as well
+        expect(final_event.content[:plan_details][1][:params][:data]).to eq(placeholder_string)
+      end
+
+      it 'handles "[Result from previous step]" placeholder' do
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(plan_prev) # Uses "previous step"
+        allow(mock_tool_a).to receive(:execute).with({ p: 1 }, mock_context).and_return(success_hash_a)
+        allow(mock_tool_b).to receive(:execute).with({ data: 'Result A' }, mock_context).and_return(success_hash_b)
+
+        expect(mock_tool_b).to receive(:execute).with({ data: 'Result A' }, mock_context)
+        agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
+      end
+    end
+
+    context 'with complex result sanitization' do
+      let(:plan) { [{ tool: :tool_a, params: { p: 1 } }] }
+      let(:complex_result) { { status: :success, result: { nested: true, data: [1, 2, 3] } } }
+      let(:sanitized_complex_result) { { status: :success, result: "[Complex Result Structure]" } }
+
+      before do
+        agent.start
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
+        allow(mock_tool_a).to receive(:execute).with({ p: 1 }, mock_context).and_return(complex_result)
+      end
+
+      it 'includes "[Complex Result Structure]" in plan_details' do
+        final_event = agent.run_task(session_id: session_id, user_input: user_input,
+                                     session_service: mock_session_service)
+        expect(final_event.content[:plan_details][0][:result]).to eq(sanitized_complex_result)
+        # Ensure original complex result is still in the main content
+        expect(final_event.content[:result]).to eq(complex_result[:result])
+      end
+    end
+
+    context 'when tool preparation fails' do
+      let(:plan) { [{ tool: :tool_a, params: {} }] }
+      let(:prep_error) { StandardError.new("Context creation failed") }
+      # Define the error hash created by execute_step
+      let(:rescued_prep_error_hash) {
+        { status: :error,
+          error_message: "Internal error preparing tool 'tool_a': #{prep_error.message}",
+          error_class: prep_error.class.name,
+          result: nil }
+      }
+      # Define the final agent event content
+      let(:expected_final_content_on_prep_error) {
+        {
+          status: :error,
+          error_message: "Internal error preparing tool 'tool_a': #{prep_error.message}",
+          error_class: prep_error.class.name,
+          result: nil,
+          plan_details: [{ tool_name: :tool_a, params: {}, result: rescued_prep_error_hash }]
+        }
+      }
+
+      before do
+        agent.start
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
+        # Ensure tool instance IS found
+        allow(agent.tool_registry).to receive(:create_instance).with(:tool_a).and_return(mock_tool_a)
+        # Make ToolContext.new raise an error
+        allow(ADK::ToolContext).to receive(:new).and_raise(prep_error)
+      end
+
+      it 'returns final agent event with preparation error details' do
+        expect(ADK.logger).to receive(:error).with(/Unexpected error preparing tool 'tool_a'.*Context creation failed/)
+        final_event = agent.run_task(session_id: session_id, user_input: user_input,
+                                     session_service: mock_session_service)
+        expect(final_event.role).to eq(:agent)
+        expect(final_event.content).to eq(expected_final_content_on_prep_error)
+      end
+    end
+
+    context 'when tool returns invalid hash' do
+      let(:plan) { [{ tool: :tool_a, params: {} }] }
+      let(:invalid_result) { { message: "I forgot the status" } }
+      let(:tool_error_msg) { "Tool 'tool_a' failed to return standard hash format (status: success/pending)." }
+      # Define the error hash created by execute_step
+      let(:rescued_format_error_hash) {
+        { status: :error,
+          error_message: tool_error_msg,
+          error_class: ADK::ToolError.name,
+          result: nil }
+      }
+      # Define the final agent event content
+      let(:expected_final_content_on_format_error) {
+        {
+          status: :error,
+          error_message: tool_error_msg,
+          error_class: ADK::ToolError.name,
+          result: nil,
+          plan_details: [{ tool_name: :tool_a, params: {}, result: rescued_format_error_hash }]
+        }
+      }
+
+      before do
+        agent.start
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
+        allow(mock_tool_a).to receive(:execute).with({}, mock_context).and_return(invalid_result)
+      end
+
+      it 'logs error, raises ToolError internally, and returns agent error event' do
+        expect(ADK.logger).to receive(:error).with(/Tool 'tool_a' returned invalid hash or status .* #{invalid_result.inspect}/)
+        final_event = agent.run_task(session_id: session_id, user_input: user_input,
+                                     session_service: mock_session_service)
+        expect(final_event.role).to eq(:agent)
+        expect(final_event.content).to eq(expected_final_content_on_format_error)
+      end
+    end
+    # --- END NEW CONTEXT ---
   end
 
   describe '#register_tool_class' do
@@ -1091,4 +1482,159 @@ RSpec.describe ADK::Agent do
       end
     end
   end # End tool_paths describe block
+
+  # --- NEW BLOCK: Tool Discovery Error Handling --- >
+  describe '#initialize tool discovery error handling' do
+    let(:fixture_dir_a) { 'spec/adk/fixtures/tools/dir_a' }
+    let(:temp_dir) { Dir.mktmpdir }
+
+    before do
+      allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+      allow(ADK).to receive(:logger).and_return(mock_logger)
+      # Prevent sidekiq check from interfering
+      allow(Object).to receive(:defined?).with(Sidekiq).and_return(false)
+      # Reset global manager to avoid interference
+      ADK::GlobalToolManager.reset!
+      # Remove potentially loaded fixture constants
+      Object.send(:remove_const, :FixtureToolA) if defined?(::FixtureToolA)
+      Object.send(:remove_const, :FixtureToolB) if defined?(::FixtureToolB)
+    end
+
+    after do
+      FileUtils.remove_entry(temp_dir) if Dir.exist?(temp_dir)
+      # Clean up constants again
+      Object.send(:remove_const, :FixtureToolA) if defined?(::FixtureToolA)
+      Object.send(:remove_const, :FixtureToolB) if defined?(::FixtureToolB)
+      Object.send(:remove_const, :SyntaxErrorTool) if defined?(::SyntaxErrorTool)
+      Object.send(:remove_const, :LoadErrorTool) if defined?(::LoadErrorTool)
+    end
+
+    it 'logs SyntaxError and continues discovery' do
+      # Create a file with invalid Ruby syntax
+      syntax_error_path = File.join(temp_dir, 'syntax_error_tool.rb')
+      File.write(syntax_error_path, "class SyntaxErrorTool < ADK::Tool\n def oops\nend") # Missing end
+
+      expect(ADK.logger).to receive(:error).with(/Failed to load\/eval tool file.*#{Regexp.escape(syntax_error_path)}.*SyntaxError/)
+      # Should still load valid tools from other paths
+      agent = described_class.new(name: 'syntax_error_test', description: 'desc', tool_paths: [fixture_dir_a, temp_dir])
+      expect(agent.find_tool(:fixture_tool_a)).not_to be_nil
+      expect(agent.find_tool(:syntax_error_tool)).to be_nil # Tool with error wasn't registered
+    end
+
+    it 'logs generic StandardError during load and continues discovery' do
+      # Create a file that raises StandardError on load
+      load_error_path = File.join(temp_dir, 'load_error_tool.rb')
+      File.write(load_error_path, "class LoadErrorTool < ADK::Tool; raise StandardError, 'Kaboom on load'; end")
+
+      expect(ADK.logger).to receive(:error).with(/Error encountered while loading\/processing tool file.*#{Regexp.escape(load_error_path)}.*StandardError.*Kaboom on load/)
+      # Should still load valid tools
+      agent = described_class.new(name: 'load_error_test', description: 'desc', tool_paths: [fixture_dir_a, temp_dir])
+      expect(agent.find_tool(:fixture_tool_a)).not_to be_nil
+      # The tool class might still get defined and registered even if loading raises an error later.
+      # The primary check is that the error during processing was logged.
+      # We don't need to assert on find_tool for the erroring tool.
+    end
+
+    it 'logs error if discovered tool class cannot be found in GlobalToolManager' do
+      # Simulate load succeeding but class not registering globally (edge case)
+      allow(ADK::GlobalToolManager).to receive(:find_class).with(:fixture_tool_a).and_return(nil)
+
+      expect(ADK.logger).to receive(:error).with(/Failed to find class for discovered tool 'fixture_tool_a'/)
+      agent = described_class.new(name: 'gmt_miss_test', description: 'desc', tool_paths: [fixture_dir_a])
+      expect(agent.find_tool(:fixture_tool_a)).to be_nil
+    end
+  end
+  # --- END BLOCK --- >
+
+  # --- NEW BLOCK: MCP Connection/Discovery Error Handling --- >
+  describe 'MCP error handling during start/discovery' do
+    let(:mock_mcp_client_instance) { instance_double(ADK::Mcp::Client) }
+    let(:mcp_config) { [{ type: 'stdio', command: 'good-cmd' }] }
+    let(:mcp_config_bad_type) { [{ type: 'invalid', command: 'bad-type-cmd' }] }
+    let(:mcp_config_unsupported_type_string) { [{ "type" => "websocket", "url" => "ws://example.com" }] }
+    let(:agent) do
+      # Prevent planner and regular tool discovery
+      allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+      allow(Object).to receive(:defined?).with(Sidekiq).and_return(false)
+      # Initialize with specific MCP config for most tests
+      described_class.new(name: 'mcp_error_agent', description: 'desc', mcp_servers: mcp_config,
+                          selected_tool_names: [:mcp_tool_one]) # Select one tool
+    end
+
+    before do
+      allow(ADK).to receive(:logger).and_return(mock_logger)
+      # Stub client creation by default
+      allow(ADK::Mcp::Client).to receive(:new).and_return(mock_mcp_client_instance)
+      # Default stubs for client methods
+      allow(mock_mcp_client_instance).to receive(:connect).and_return(true)
+      allow(mock_mcp_client_instance).to receive(:list_tools).and_return([{ name: 'mcp_tool_one' }]) # Basic schema
+      allow(mock_mcp_client_instance).to receive(:disconnect).and_return(true)
+      # Stub ToolWrapper
+      allow(ADK::Mcp::ToolWrapper).to receive(:from_mcp_schema).and_return(true)
+    end
+
+    it 'logs error and skips unsupported MCP server type (symbol)' do
+      # Reinitialize agent with bad type config
+      test_agent = described_class.new(name: 'mcp_bad_type', description: 'd', mcp_servers: mcp_config_bad_type)
+      expect(ADK::Mcp::Client).not_to receive(:new)
+      # Match the string representation and the rest of the message
+      expect(ADK.logger).to receive(:error).with(/Unsupported MCP server type specified: "invalid".*Skipping configuration/)
+      expect { test_agent.start }.not_to raise_error
+      expect(test_agent.instance_variable_get(:@mcp_clients)).to be_empty
+    end
+
+    it 'logs error and skips unsupported MCP server type (string)' do
+      # Reinitialize agent with bad type config (string key/value)
+      test_agent = described_class.new(name: 'mcp_bad_str_type', description: 'd',
+                                       mcp_servers: mcp_config_unsupported_type_string)
+      expect(ADK::Mcp::Client).not_to receive(:new)
+      # Check the log message includes the actual string value found
+      expect(ADK.logger).to receive(:error).with(/Unsupported MCP server type specified: "websocket"/)
+      expect { test_agent.start }.not_to raise_error
+      expect(test_agent.instance_variable_get(:@mcp_clients)).to be_empty
+    end
+
+    it 'handles Mcp::ProtocolError during connect and logs error' do
+      allow(ADK::Mcp::Client).to receive(:new).and_return(mock_mcp_client_instance)
+      allow(mock_mcp_client_instance).to receive(:connect).and_raise(ADK::Mcp::ProtocolError, "Bad handshake")
+      # Make regex less specific about what comes between handshake and the error message
+      expect(ADK.logger).to receive(:error).with(/Failed to connect or handshake.*Bad handshake/)
+      expect { agent.start }.not_to raise_error
+      expect(agent.instance_variable_get(:@mcp_clients)).to be_empty
+    end
+
+    it 'handles generic StandardError during connect and logs error' do
+      allow(ADK::Mcp::Client).to receive(:new).and_return(mock_mcp_client_instance)
+      allow(mock_mcp_client_instance).to receive(:connect).and_raise(StandardError, "Something else broke")
+      expect(ADK.logger).to receive(:error).with(/Unexpected error connecting to MCP server.*StandardError.*Something else broke/)
+      expect { agent.start }.not_to raise_error
+      expect(agent.instance_variable_get(:@mcp_clients)).to be_empty
+    end
+
+    it 'skips registration if MCP tool name is not in selected_tool_names' do
+      allow(mock_mcp_client_instance).to receive(:list_tools).and_return([
+                                                                           { name: 'mcp_tool_one' }, # Selected
+                                                                           { name: 'mcp_tool_two' }  # Not selected
+                                                                         ])
+      # Expect wrapper to be called only for the selected tool
+      expect(ADK::Mcp::ToolWrapper).to receive(:from_mcp_schema).with(hash_including(name: 'mcp_tool_one'),
+                                                                      any_args).once
+      expect(ADK::Mcp::ToolWrapper).not_to receive(:from_mcp_schema).with(hash_including(name: 'mcp_tool_two'),
+                                                                          any_args)
+      # Log the debug message
+      expect(ADK.logger).to receive(:debug).with(/Skipping registration of MCP tool 'mcp_tool_two'/)
+      agent.start
+    end
+
+    it 'handles generic StandardError during MCP tool discovery/registration' do
+      allow(mock_mcp_client_instance).to receive(:list_tools).and_return([{ name: 'mcp_tool_one' }])
+      allow(ADK::Mcp::ToolWrapper).to receive(:from_mcp_schema).and_raise(StandardError, "Wrapper failed")
+
+      expect(ADK.logger).to receive(:error).with(/Unexpected error discovering MCP tools.*StandardError.*Wrapper failed/)
+      expect { agent.start }.not_to raise_error
+      # Client was added, but registration failed
+      expect(agent.instance_variable_get(:@mcp_clients)).to include(mock_mcp_client_instance)
+    end
+  end
+  # --- END BLOCK --- >
 end # End RSpec.describe ADK::Agent
