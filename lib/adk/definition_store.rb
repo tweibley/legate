@@ -7,14 +7,16 @@ module ADK
   # Module responsible for persisting and retrieving agent definitions.
   # Implementations should provide methods for CRUD operations on definitions.
   module DefinitionStore
-    # Base error class for definition store issues
-    class StoreError < StandardError; end
+    # Note: Base error classes (Error, ConfigurationError, StoreError)
+    # are defined in lib/adk/errors.rb and inherit from ADK::Error.
 
     # Error raised when a definition is not found
-    class NotFoundError < StoreError; end
+    # Inherits from ADK::DefinitionStore::Error defined in errors.rb
+    class NotFoundError < Error; end # Use the base Error defined in errors.rb (ADK::DefinitionStore::Error)
 
-    # Error raised for configuration or connection issues
-    class ConfigurationError < StoreError; end
+    # Removing redundant/conflicting definitions:
+    # class StoreError < StandardError; end
+    # class ConfigurationError < StoreError; end
 
     # Potential future: Define abstract methods or rely on duck typing for implementations.
 

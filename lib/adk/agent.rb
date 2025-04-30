@@ -477,6 +477,8 @@ module ADK
           sanitized_result_for_plan[:status] = current_result_hash[:status]
           sanitized_result_for_plan[:error_message] =
             current_result_hash[:error_message] if current_result_hash.key?(:error_message)
+          sanitized_result_for_plan[:error_class] =
+            current_result_hash[:error_class] if current_result_hash.key?(:error_class)
           sanitized_result_for_plan[:job_id] = current_result_hash[:job_id] if current_result_hash.key?(:job_id)
           sanitized_result_for_plan[:message] = current_result_hash[:message] if current_result_hash.key?(:message)
           # Only include :result value if it's simple
@@ -533,7 +535,7 @@ module ADK
         ADK.logger.error(msg)
         # Log as tool_result event (even though it failed before tool call)
         error_event = ADK::Event.new(role: :tool_result, tool_name: step[:tool] || :unknown,
-                                     content: { status: :error, error_message: msg })
+                                     content: { status: :error, error_message: msg, error_class: 'InvalidStepFormat' })
         session_service.append_event(session_id: session_id, event: error_event)
         return error_event.content
       end
@@ -544,13 +546,14 @@ module ADK
       request_event = ADK::Event.new(role: :tool_request, tool_name: tool_name, content: params)
       session_service.append_event(session_id: session_id, event: request_event)
 
-      # 2. Execute Tool <-- MODIFIED Block Start >>
+      # 2. Execute Tool
       result_hash = nil
       begin
         # --- Get an *instance* of the tool from the registry ---
         tool_instance = @tool_registry.create_instance(tool_name)
         unless tool_instance
-          raise ADK::Error, "Tool '#{tool_name}' not found for this agent."
+          # Raise ToolError directly if tool is not found
+          raise ADK::ToolError, "Tool '#{tool_name}' not found for this agent."
         end
 
         # --- Create ToolContext ---
@@ -561,24 +564,42 @@ module ADK
           tool_registry: @tool_registry
         )
         ADK.logger.info("Executing tool '#{tool_name}' with params: #{params.inspect} and context: #{tool_context.to_h.inspect}")
-        # --- Pass context to execute ---
-        result_hash = tool_instance.execute(params, tool_context) # <-- MODIFIED: Use instance, Pass context
 
-        # Validate tool's return format (including :pending status)
-        unless result_hash.is_a?(Hash) && result_hash.key?(:status) && [:success, :error,
-                                                                        :pending].include?(result_hash[:status])
-          ADK.logger.error("Tool '#{tool_name}' returned invalid hash or status: #{result_hash.inspect}")
-          result_hash = { status: :error, error_message: "Tool '#{tool_name}' failed to return standard hash format." }
+        # --- Execute the tool, rescuing specific ToolErrors ---
+        begin
+          result_hash = tool_instance.execute(params, tool_context)
+
+          # Validate tool's success/pending return format.
+          # Tools should now RAISE ADK::ToolError on failure, not return {status: :error}.
+          unless result_hash.is_a?(Hash) && result_hash.key?(:status) && [:success,
+                                                                          :pending].include?(result_hash[:status])
+            ADK.logger.error("Tool '#{tool_name}' returned invalid hash or status (expected success/pending): #{result_hash.inspect}")
+            # Raise a ToolError if the format is wrong, even on expected success/pending path.
+            raise ADK::ToolError, "Tool '#{tool_name}' failed to return standard hash format (status: success/pending)."
+          end
+        rescue ADK::ToolError => e # Catch specific ToolErrors raised by the tool
+          ADK.logger.error("ToolError executing tool '#{tool_name}': #{e.message} (#{e.class.name})")
+          # --- FIXED: Ensure error_class and result: nil are included --- #
+          result_hash = { status: :error, error_message: e.message, error_class: e.class.name, result: nil }
+        rescue StandardError => e # Catch unexpected errors *within* the tool's execute method
+          ADK.logger.error("Unexpected error *within* tool '#{tool_name}' execution: #{e.class} - #{e.message}")
+          ADK.logger.error(e.backtrace.join("\n"))
+          # --- FIXED: Ensure error_class and result: nil are included --- #
+          result_hash = { status: :error, error_message: "Internal error executing tool '#{tool_name}': #{e.message}",
+                          error_class: e.class.name, result: nil }
         end
-      rescue ADK::Error => e # Tool not found or validation error from tool.execute
-        ADK.logger.error("ADK::Error executing tool '#{tool_name}': #{e.message}")
-        result_hash = { status: :error, error_message: e.message }
-      rescue StandardError => e # Unexpected error within tool.execute
-        ADK.logger.error("Unexpected error executing tool '#{tool_name}': #{e.class} - #{e.message}")
+        # --- End tool execution block ---
+      rescue ADK::ToolError => e # Catch ToolError from setup (e.g., tool not found)
+        ADK.logger.error("ToolError preparing tool '#{tool_name}': #{e.message} (#{e.class.name})")
+        # --- FIXED: Ensure error_class and result: nil are included --- #
+        result_hash = { status: :error, error_message: e.message, error_class: e.class.name, result: nil }
+      rescue StandardError => e # Catch unexpected errors during tool preparation (e.g., context creation)
+        ADK.logger.error("Unexpected error preparing tool '#{tool_name}': #{e.class} - #{e.message}")
         ADK.logger.error(e.backtrace.join("\n"))
-        result_hash = { status: :error, error_message: "Internal error executing tool '#{tool_name}': #{e.message}" }
+        # --- FIXED: Ensure error_class and result: nil are included --- #
+        result_hash = { status: :error, error_message: "Internal error preparing tool '#{tool_name}': #{e.message}",
+                        error_class: e.class.name, result: nil }
       end
-      # --- << MODIFIED Block End >> ---
 
       # 3. Log Tool Result Event
       result_event = ADK::Event.new(

@@ -62,30 +62,30 @@ RSpec.describe ADK::Tools::Calculator do
     context 'with division by zero' do
       let(:params) { { operand1: 10, operand2: 0, operation: 'divide' } }
 
-      it 'returns an error hash' do
-        result = tool.execute(params)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to match(/Division by zero/i)
+      it 'raises ToolArgumentError' do
+        expect {
+          tool.execute(params)
+        }.to raise_error(ADK::ToolArgumentError, /Division by zero/i)
       end
     end
 
     context 'with an unsupported operation' do
       let(:params) { { operand1: 10, operand2: 5, operation: 'modulo' } }
 
-      it 'returns an error hash' do
-        result = tool.execute(params)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to match(/Unsupported operation: 'modulo'/i)
+      it 'raises ToolArgumentError' do
+        expect {
+          tool.execute(params)
+        }.to raise_error(ADK::ToolArgumentError, /Unsupported operation: 'modulo'/i)
       end
     end
 
     context 'with non-numeric input for operands' do
       let(:params) { { operand1: 'ten', operand2: 5, operation: 'add' } }
 
-      it 'returns an error hash' do
-        result = tool.execute(params)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to match(/Invalid numeric input/i)
+      it 'raises ToolArgumentError' do
+        expect {
+          tool.execute(params)
+        }.to raise_error(ADK::ToolArgumentError, /Invalid numeric input/i)
       end
     end
 

@@ -59,7 +59,7 @@ module ADK
         unless @conn
           err_msg = "CatFacts Tool HTTP client not initialized"
           ADK.logger.error(err_msg)
-          return { status: :error, error_message: err_msg }
+          raise ADK::ToolError, err_msg
         end
 
         # Perform the HTTP GET request and handle potential errors
@@ -74,39 +74,38 @@ module ADK
           # Check if a valid fact was received
           if fact && !fact.empty?
             ADK.logger.info("Cat fact fetched successfully.")
-            # Return success hash
             { status: :success, result: fact }
           else
             err_msg = "Cat fact API response did not contain a valid 'fact' field."
             ADK.logger.warn(err_msg)
-            # Return error hash for invalid data
-            { status: :error, error_message: err_msg }
+            raise ADK::ToolError, err_msg
           end
 
         # --- Specific Faraday/Network Error Handling (Ordered Most Specific to Least) ---
         rescue Faraday::TimeoutError => e
           err_msg = "Timeout connecting to cat fact API."
           ADK.logger.error("#{err_msg}: #{e.message}")
-          { status: :error, error_message: err_msg }
+          raise ADK::ToolError, err_msg
         rescue Faraday::ConnectionFailed => e
           err_msg = "Connection failed for cat fact API."
           ADK.logger.error("#{err_msg}: #{e.message}")
-          { status: :error, error_message: err_msg }
+          raise ADK::ToolError, err_msg
         rescue Faraday::Error => e # Catch other Faraday/HTTP errors (like 4xx/5xx)
           status_code = e.response[:status] if e.response
           err_msg = "Error fetching cat fact (HTTP Status: #{status_code || 'N/A'})."
           ADK.logger.error("#{err_msg} #{e.class}: #{e.message}")
-          { status: :error, error_message: err_msg }
+          raise ADK::ToolError, err_msg
         # --- Other Potential Errors ---
         rescue JSON::ParserError => e
           err_msg = "Error reading cat fact response (JSON parse failed)."
           ADK.logger.error("#{err_msg}: #{e.message}")
-          { status: :error, error_message: err_msg }
+          raise ADK::ToolError, err_msg
         rescue StandardError => e # Catch any other unexpected errors
           err_msg = "Unexpected error retrieving cat fact."
           ADK.logger.error("#{err_msg}: #{e.class} - #{e.message}")
           ADK.logger.error(e.backtrace.first(5).join("\n")) # Log stack trace for debugging
-          { status: :error, error_message: err_msg }
+          # Wrap unexpected errors
+          raise ADK::ToolError, "#{err_msg}: #{e.message}"
         end
       end # end fetch_cat_fact
     end # End CatFacts class

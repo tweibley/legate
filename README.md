@@ -256,6 +256,13 @@ agent = ADK::Agent.new(
 # agent.add_tool(MyOtherCustomTool)
 ```
 
+**Tool Implementation Notes:**
+- Define metadata using `define_metadata` class method.
+- Implement the core logic in the `perform_execution(params, context)` method.
+- Return `{ status: :success, result: ... }` on success.
+- Return `{ status: :pending, job_id: ... }` for asynchronous jobs started via `BaseAsyncJobTool`.
+- **For errors, `raise ADK::ToolArgumentError, "message"` for invalid parameters or `raise ADK::ToolError, "message"` for other execution failures.** The agent will catch these and record an appropriate error event.
+
 ### Sessions
 
 Sessions track agent interactions and maintain state:

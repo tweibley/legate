@@ -49,48 +49,53 @@ module ADK
         operation = params.fetch('operation') { params.fetch(:operation, nil) }&.downcase
 
         begin
-          op1 = Float(op1_str)
-          op2 = Float(op2_str)
-        rescue ArgumentError, TypeError
-          err_msg = "Invalid numeric input provided for operands. Op1: '#{op1_str}', Op2: '#{op2_str}'"
-          ADK.logger.error("Calculator Tool Error: #{err_msg}")
-          # --- Return Error Hash ---
-          return { status: :error, error_message: err_msg }
-        end
+          # Validate inputs first
+          begin
+            op1 = Float(op1_str)
+            op2 = Float(op2_str)
+          rescue ArgumentError, TypeError
+            err_msg = "Invalid numeric input provided for operands. Op1: '#{op1_str}', Op2: '#{op2_str}'"
+            ADK.logger.error("Calculator Tool Argument Error: #{err_msg}")
+            raise ADK::ToolArgumentError, err_msg
+          end
 
-        result_val = case operation
-                     when 'add', '+' then op1 + op2
-                     when 'subtract', '-' then op1 - op2
-                     when 'multiply', '*' then op1 * op2
-                     when 'divide', '/'
-                       if op2.zero?
-                         err_msg = "Division by zero is not allowed."
-                         ADK.logger.error("Calculator Tool Error: #{err_msg}")
-                         # --- Return Error Hash ---
-                         return { status: :error, error_message: err_msg }
-                       else
-                         op1 / op2
+          valid_ops = %w[add subtract multiply divide + - * /]
+          unless valid_ops.include?(operation)
+            err_msg = "Unsupported operation: '#{operation}'. Use add, subtract, multiply, or divide (or +, -, *, /)."
+            ADK.logger.warn("Calculator Tool Argument Warning: #{err_msg}")
+            raise ADK::ToolArgumentError, err_msg
+          end
+
+          if (%w[divide /].include?(operation)) && op2.zero?
+            err_msg = "Division by zero is not allowed."
+            ADK.logger.error("Calculator Tool Argument Error: #{err_msg}")
+            raise ADK::ToolArgumentError, err_msg
+          end
+
+          # Perform calculation
+          result_val = case operation
+                       when 'add', '+' then op1 + op2
+                       when 'subtract', '-' then op1 - op2
+                       when 'multiply', '*' then op1 * op2
+                       when 'divide', '/' then op1 / op2 # Zero already checked
+                         # No else needed due to validation above
                        end
-                     else
-                       err_msg = "Unsupported operation: '#{operation}'. Use add, subtract, multiply, or divide (or +, -, *, /)."
-                       ADK.logger.warn("Calculator Tool Warning: #{err_msg}")
-                       # --- Return Error Hash ---
-                       return { status: :error, error_message: err_msg }
-                     end
 
-        ADK.logger.info("Calculator Tool: #{op1} #{operation} #{op2} = #{result_val}")
-        # --- Return Success Hash ---
-        { status: :success, result: result_val }
+          ADK.logger.info("Calculator Tool: #{op1} #{operation} #{op2} = #{result_val}")
+          { status: :success, result: result_val }
 
-      # Catch potential unexpected errors during execution logic itself
-      rescue ADK::Error => e # Catch specific ADK errors if needed
-        ADK.logger.error("Calculator Tool ADK::Error: #{e.message}")
-        return { status: :error, error_message: e.message }
-      rescue StandardError => e
-        ADK.logger.error("Calculator Tool: Unexpected error during calculation: #{e.class} - #{e.message}")
-        # Consider logging backtrace here for unexpected errors
-        return { status: :error, error_message: "Calculation failed due to an unexpected internal error: #{e.message}" }
-      end
+        # Catch potential unexpected errors during execution logic itself
+        rescue ADK::ToolArgumentError => e # Re-raise argument errors
+          raise e
+        rescue ADK::ToolError => e # Catch specific ADK tool errors if they occur somehow
+          ADK.logger.error("Calculator Tool ADK::ToolError: #{e.message}")
+          raise e # Re-raise to be handled by the agent
+        rescue StandardError => e
+          # Wrap unexpected errors in a ToolError
+          ADK.logger.error("Calculator Tool: Unexpected internal error during calculation: #{e.class} - #{e.message}")
+          raise ADK::ToolError, "Calculation failed due to an unexpected internal error: #{e.message}"
+        end
+      end # End perform_execution
     end # End Calculator class
   end # End Tools module
 end # End ADK module

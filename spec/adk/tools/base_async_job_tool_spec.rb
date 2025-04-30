@@ -103,36 +103,34 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
 
     context 'when sidekiq_worker_class is invalid' do
       before { allow(tool).to receive(:sidekiq_worker_class).and_return(nil) }
-      it 'returns an error hash' do
-        result = tool.send(:perform_execution, params, context)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include('sidekiq_worker_class not defined or invalid')
+      it 'raises ToolError' do
+        expect {
+          tool.send(:perform_execution, params, context)
+        }.to raise_error(ADK::ToolError, /sidekiq_worker_class not defined or invalid/)
       end
     end
 
     context 'when perform_async returns nil' do
       before do
-        # Mock the chain .set(...).perform_async(...) to return nil
         allow(DummySidekiqWorker).to receive(:set).and_return(DummySidekiqWorker)
         allow(DummySidekiqWorker).to receive(:perform_async).and_return(nil)
       end
-      it 'returns an error hash' do
-        result = tool.send(:perform_execution, params, context)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include('Failed to enqueue Sidekiq job')
+      it 'raises ToolError' do
+        expect {
+          tool.send(:perform_execution, params, context)
+        }.to raise_error(ADK::ToolError, /Failed to enqueue Sidekiq job.*perform_async returned nil/)
       end
     end
 
     context 'when Redis connection fails' do
       before do
-        # Mock the chained call to raise the error
         allow(DummySidekiqWorker).to receive(:set).and_return(DummySidekiqWorker)
         allow(DummySidekiqWorker).to receive(:perform_async).and_raise(Redis::CannotConnectError, "Connection refused")
       end
-      it 'returns an error hash' do
-        result = tool.send(:perform_execution, params, context)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include('Could not connect to Redis', 'Connection refused')
+      it 'raises ToolError' do
+        expect {
+          tool.send(:perform_execution, params, context)
+        }.to raise_error(ADK::ToolError, /Could not connect to Redis.*Connection refused/)
       end
     end
   end

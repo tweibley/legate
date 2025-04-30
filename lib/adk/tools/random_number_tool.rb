@@ -42,27 +42,27 @@ module ADK
             max_val = Integer(max_val_str)
           rescue ArgumentError, TypeError
             err_msg = "Invalid integer input provided for min or max. Min: '#{min_val_str}', Max: '#{max_val_str}'"
-            ADK.logger.error("RandomNumberTool Error: #{err_msg}")
-            # --- Return Error Hash ---
-            return { status: :error, error_message: err_msg }
+            ADK.logger.error("RandomNumberTool Argument Error: #{err_msg}")
+            raise ADK::ToolArgumentError, err_msg
           end
 
           # Check logical constraint
           if min_val > max_val
             err_msg = "Min value (#{min_val}) cannot be greater than Max value (#{max_val})."
-            ADK.logger.error("RandomNumberTool Error: #{err_msg}")
-            # --- Return Error Hash ---
-            return { status: :error, error_message: err_msg }
+            ADK.logger.error("RandomNumberTool Argument Error: #{err_msg}")
+            raise ADK::ToolArgumentError, err_msg
           end
 
           # Perform the core logic
           random_num = rand(min_val..max_val)
           ADK.logger.info("RandomNumberTool generated: #{random_num} (Range: #{min_val}-#{max_val})")
-          # --- Return Success Hash ---
           { status: :success, result: random_num }
+        rescue ADK::ToolArgumentError => e # Re-raise specific argument errors
+          raise e
         rescue StandardError => e # Catch unexpected errors during the process
           ADK.logger.error("RandomNumberTool: Unexpected error: #{e.class} - #{e.message}")
-          { status: :error, error_message: "Unexpected error in RandomNumber tool: #{e.message}" }
+          # Wrap unexpected errors in a ToolError
+          raise ADK::ToolError, "Unexpected error in RandomNumber tool: #{e.message}"
         end
       end
     end # End RandomNumberTool class

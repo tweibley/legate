@@ -132,10 +132,10 @@ RSpec.describe ADK::Tools::AgentTool do
         allow(mock_redis).to receive(:hmget).with(target_key, 'description', 'tools', 'model').and_return([nil, nil, nil]) # Simulate not found
       end
 
-      it 'returns an error hash' do
-        result = tool.execute(params, mock_context)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include("Target agent definition '#{target_agent_name}' not found")
+      it 'raises ToolArgumentError' do
+        expect {
+          tool.execute(params, mock_context)
+        }.to raise_error(ADK::ToolArgumentError, /Target agent definition '#{target_agent_name}' not found/)
       end
     end
 
@@ -144,10 +144,10 @@ RSpec.describe ADK::Tools::AgentTool do
         allow(Redis).to receive(:new).and_raise(Redis::CannotConnectError.new("Cannot connect"))
       end
 
-      it 'returns an error hash' do
-        result = tool.execute(params, mock_context)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include("Could not connect to Redis")
+      it 'raises ToolError' do
+        expect {
+          tool.execute(params, mock_context)
+        }.to raise_error(ADK::ToolError, /Could not connect to Redis/)
       end
     end
 
@@ -158,10 +158,10 @@ RSpec.describe ADK::Tools::AgentTool do
                                                   'model').and_return(invalid_target_definition.values)
       end
 
-      it 'returns an error hash' do
-        result = tool.execute(params, mock_context)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include("Failed to parse tools JSON")
+      it 'raises ToolArgumentError' do
+        expect {
+          tool.execute(params, mock_context)
+        }.to raise_error(ADK::ToolArgumentError, /Failed to parse tools JSON/)
       end
     end
 
@@ -173,11 +173,10 @@ RSpec.describe ADK::Tools::AgentTool do
           .and_raise(target_error)
       end
 
-      it 'returns an error hash capturing the exception' do
-        result = tool.execute(params, mock_context)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include("Unexpected error during delegation",
-                                                  "StandardError - Target agent failed!")
+      it 'raises ToolError capturing the exception' do
+        expect {
+          tool.execute(params, mock_context)
+        }.to raise_error(ADK::ToolError, /Unexpected error during delegation.*StandardError - Target agent failed!/)
       end
     end
 

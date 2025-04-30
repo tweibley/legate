@@ -35,14 +35,15 @@ module ADK
           unless message
             err_msg = "Internal Error: Message parameter missing in perform_execution for Echo tool after validation."
             ADK.logger.error(err_msg)
-            return { status: :error, error_message: err_msg }
+            raise ADK::ToolError, err_msg
           end
 
           # Simple success case
           { status: :success, result: message }
         rescue StandardError => e # Catch any truly unexpected errors during fetch/processing
           ADK.logger.error("Echo Tool: Unexpected error: #{e.class} - #{e.message}")
-          { status: :error, error_message: "Unexpected error in Echo tool: #{e.message}" }
+          # Wrap unexpected errors in a ToolError
+          raise ADK::ToolError, "Unexpected error in Echo tool: #{e.message}"
         end
       end
     end # End Echo class

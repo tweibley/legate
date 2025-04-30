@@ -49,9 +49,10 @@ RSpec.describe ADK::Tools::CheckJobStatusTool do
 
   describe '#perform_execution' do
     context 'when job_id is missing' do
-      it 'returns an error hash' do
-        result = tool.send(:perform_execution, { wrong_param: 'x' }, context)
-        expect(result).to eq({ status: :error, error_message: 'Missing required parameter: job_id' })
+      it 'raises ToolArgumentError' do
+        expect {
+          tool.send(:perform_execution, { wrong_param: 'x' }, context)
+        }.to raise_error(ADK::ToolArgumentError, /Missing required parameter: job_id/)
       end
     end
 
@@ -78,11 +79,11 @@ RSpec.describe ADK::Tools::CheckJobStatusTool do
 
     context 'when stored result in Redis is invalid JSON' do
       before { allow(mock_redis).to receive(:get).with(result_key).and_return('{invalid json}') }
-      it 'logs a parse error and returns status based on Sidekiq API check' do
-        expect(ADK.logger).to receive(:error).with(/Failed to parse stored JSON result/)
-        result = tool.send(:perform_execution, params, context)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include('result is unavailable')
+      it 'raises ToolError after logging parse error' do
+        expect(ADK.logger).to receive(:error).with(/Failed to process stored result.*Error: JSON::ParserError/)
+        expect {
+          tool.send(:perform_execution, params, context)
+        }.to raise_error(ADK::ToolError, /Failed to process stored result.*expected object key/)
       end
     end
 
@@ -104,19 +105,19 @@ RSpec.describe ADK::Tools::CheckJobStatusTool do
 
     context 'when no result in Redis and job is in Sidekiq dead set' do
       before { allow(mock_dead_set).to receive(:find_job).with(job_id).and_return(mock_job) }
-      it 'returns an error hash indicating failure' do
-        result = tool.send(:perform_execution, params, context)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include('failed (found in Dead Set)')
+      it 'raises ToolError indicating failure' do
+        expect {
+          tool.send(:perform_execution, params, context)
+        }.to raise_error(ADK::ToolError, /Job has failed \(found in Sidekiq Dead Set\)/)
       end
     end
 
     context 'when no result in Redis and job not found in Sidekiq' do
       # This is the default mock setup (job not found anywhere)
-      it 'returns an error hash indicating completion/disappearance' do
-        result = tool.send(:perform_execution, params, context)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include('result is unavailable')
+      it 'raises ToolError indicating completion/disappearance' do
+        expect {
+          tool.send(:perform_execution, params, context)
+        }.to raise_error(ADK::ToolError, /Job result is unavailable/)
       end
     end
 
@@ -124,19 +125,19 @@ RSpec.describe ADK::Tools::CheckJobStatusTool do
       before {
         allow(Redis).to receive(:new).with(redis_options).and_raise(Redis::CannotConnectError, "Connection refused")
       }
-      it 'returns an error hash' do
-        result = tool.send(:perform_execution, params, context)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include('Could not connect to Redis')
+      it 'raises ToolError' do
+        expect {
+          tool.send(:perform_execution, params, context)
+        }.to raise_error(ADK::ToolError, /Could not connect to Redis/)
       end
     end
 
     context 'when Sidekiq API query fails' do
       before { allow(mock_queue).to receive(:find_job).and_raise(StandardError, "Sidekiq API error") }
-      it 'returns an error hash indicating unknown status' do
-        result = tool.send(:perform_execution, params, context)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to include("Could not determine the status")
+      it 'raises ToolError indicating unknown status' do
+        expect {
+          tool.send(:perform_execution, params, context)
+        }.to raise_error(ADK::ToolError, /Could not determine the status.*Sidekiq API error/)
       end
     end
   end

@@ -63,20 +63,26 @@ module ADK
       # @return [Hash] A hash with :status (:success or :error) and :result or :error_message.
       def perform_execution(params, context)
         # Fetch required parameters using symbols (matching planner output)
-        target_agent_name = params.fetch(:target_agent_name)
-        task_to_delegate = params.fetch(:task)
+        begin
+          target_agent_name = params.fetch(:target_agent_name)
+          task_to_delegate = params.fetch(:task)
+        rescue KeyError => e
+          msg = "Missing required parameter in plan step: #{e.key}"
+          ADK.logger.error("AgentTool Argument Error: #{msg}")
+          raise ADK::ToolArgumentError, msg
+        end
 
         redis = nil # Initialize outside begin block for potential error messages
         ADK.logger.info("AgentTool: Attempting to delegate task '#{task_to_delegate}' to agent '#{target_agent_name}'")
 
         # 1. Connect to Redis
         begin
-          redis = Redis.new # Assumes default connection: localhost:6379
+          redis = Redis.new(ADK.redis_options) # Use configured options
           redis.ping # Verify connection
-        rescue Redis::CannotConnectError => e
+        rescue Redis::BaseError => e # Catch specific Redis errors
           msg = "AgentTool: Could not connect to Redis to load target agent. #{e.message}"
           ADK.logger.error(msg)
-          return { status: :error, error_message: msg }
+          raise ADK::ToolError, msg
         end
 
         # 2. Load Target Agent Definition from Redis
@@ -88,18 +94,16 @@ module ADK
 
         # Check if the definition was found
         unless target_description
-          msg = "AgentTool: Target agent definition '#{target_agent_name}' not found in Redis."
-          ADK.logger.error(msg)
-          return { status: :error, error_message: msg }
+          msg = "Target agent definition '#{target_agent_name}' not found in Redis."
+          ADK.logger.error("AgentTool Argument Error: #{msg}")
+          raise ADK::ToolArgumentError, msg
         end
 
         # 3. Parse Target Agent's Tools JSON Safely
-        # This block now handles parsing and raises a specific error if needed
         parsed_tool_list = nil
         begin
           if target_tools_json && !target_tools_json.empty? && target_tools_json != '[]'
             parsed_tool_list = JSON.parse(target_tools_json)
-            # Ensure it's an array after parsing
             unless parsed_tool_list.is_a?(Array)
               raise JSON::ParserError, "Tools JSON did not parse into an Array"
             end
@@ -107,46 +111,37 @@ module ADK
             parsed_tool_list = [] # Treat nil, empty, or '[]' as empty list
           end
         rescue JSON::ParserError => e
-          # Raise specific error if parsing failed on potentially valid JSON string
-          raise JSON::ParserError,
-                "Failed to parse tools JSON for target agent '#{target_agent_name}'. Invalid JSON: #{target_tools_json.inspect}. Error: #{e.message}"
+          msg = "Failed to parse tools JSON for target agent '#{target_agent_name}'. Invalid JSON: #{target_tools_json.inspect}. Error: #{e.message}"
+          ADK.logger.error("AgentTool Argument Error: #{msg}")
+          raise ADK::ToolArgumentError, msg
         end
         target_tool_names = parsed_tool_list.map(&:to_sym) # Convert names to symbols
 
         # 4. Instantiate Target Agent (Ephemeral Instance)
         ADK.logger.debug("AgentTool: Instantiating target agent '#{target_agent_name}' with model '#{target_model}'")
-        # Create with a temporary, unique runtime name
         target_agent = ADK::Agent.new(
           name: "#{target_agent_name}_delegated_#{SecureRandom.hex(4)}",
           description: target_description,
           model_name: target_model
-          # Note: Does not inherit the calling agent's logger, memory, or session state
         )
 
         # 5. Add Tools to Target Agent Instance
-        # --- Get the registry from the context --- #
         executing_agent_registry = context&.tool_registry
-        unless executing_agent_registry.is_a?(ADK::ToolRegistry)
-          msg = "AgentTool: Tool registry not found or invalid in context. Cannot load tools for target agent '#{target_agent_name}'."
+        unless executing_agent_registry && executing_agent_registry.respond_to?(:find_class)
+          msg = "AgentTool: Tool registry not found or does not respond to :find_class in context. Cannot load tools for target agent '#{target_agent_name}'."
           ADK.logger.error(msg)
-          # Decide: Error out or proceed without tools?
-          # Let's proceed but log error, as the agent might function without all tools.
-          # return { status: :error, error_message: msg }
+          raise ADK::ToolError, msg
         end
-        # --- End Get Registry --- #
 
         if target_tool_names.empty?
           ADK.logger.warn("AgentTool: Target agent '#{target_agent_name}' has no tools configured (or tools JSON was invalid).")
         else
           ADK.logger.debug("AgentTool: Adding tools #{target_tool_names} to target agent")
           target_tool_names.each do |tool_name|
-            # --- Find class using the executing agent's registry --- #
-            tool_class = executing_agent_registry&.find_class(tool_name)
+            tool_class = executing_agent_registry.find_class(tool_name)
             if tool_class
-              # --- Register the CLASS with the temporary agent --- #
               target_agent.register_tool_class(tool_class)
             else
-              # Log warning but continue, agent might function with subset of tools
               ADK.logger.warn("AgentTool: Tool '#{tool_name}' configured for target agent '#{target_agent_name}' not found in executing agent's ToolRegistry. Skipping.")
             end
           end
@@ -165,14 +160,12 @@ module ADK
         target_agent.start # Start the ephemeral instance
         ADK.logger.info("AgentTool: Running task '#{task_to_delegate}' on target agent '#{target_agent_name}'")
 
-        # Use the new session-based interface
         agent_event = target_agent.run_task(
           session_id: session_id,
           user_input: task_to_delegate,
           session_service: session_service
         )
 
-        # Extract content from the agent event
         target_result = agent_event.is_a?(ADK::Event) ? agent_event.content : agent_event
 
         ADK.logger.info("AgentTool: Target agent '#{target_agent_name}' finished task. Result: #{target_result.inspect}")
@@ -181,22 +174,15 @@ module ADK
         { status: :success, result: target_result }
 
       # --- Error Handling for perform_execution ---
-      rescue KeyError => e # Specific rescue for params.fetch failure
-        msg = "AgentTool: Missing required parameter in plan step: #{e.key}"
+      rescue ADK::ToolArgumentError => e # Catch specific argument errors (raised above)
+        raise e # Re-raise to be handled by agent
+      rescue ADK::ToolError => e # Catch specific tool errors (raised above)
+        raise e # Re-raise to be handled by agent
+      rescue StandardError => e # Catch other unexpected errors during the process
+        msg = "AgentTool: Unexpected error during delegation to '#{target_agent_name}': #{e.class} - #{e.message}"
         ADK.logger.error(msg)
-        { status: :error, error_message: msg }
-      rescue JSON::ParserError => e # Catch the re-raised parser error from Step 3
-        # The message was already constructed informatively
-        msg = e.message
-        ADK.logger.error(msg)
-        { status: :error, error_message: msg }
-      rescue StandardError => e # Catch other unexpected errors
-        # Use target_agent_name if it was assigned, otherwise indicate unknown
-        effective_target_name = defined?(target_agent_name) && target_agent_name ? "'#{target_agent_name}'" : '(unknown target)'
-        msg = "AgentTool: Unexpected error during delegation to #{effective_target_name}: #{e.class} - #{e.message}"
-        ADK.logger.error(msg)
-        ADK.logger.error(e.backtrace.first(5).join("\n")) # Log part of backtrace for context
-        { status: :error, error_message: msg }
+        ADK.logger.error(e.backtrace.first(5).join("\n"))
+        raise ADK::ToolError, msg # Wrap unexpected errors
       end # end perform_execution
     end # End AgentTool class
   end # End Tools module

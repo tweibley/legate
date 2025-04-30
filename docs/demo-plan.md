@@ -87,7 +87,6 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
       )
 
       # The main execution logic for the tool.
-      # Note: The agent passes both params and context to this method.
       def execute(params, context = nil)
         topic = params[:topic].downcase
         feed_url = params[:feed_url]
@@ -98,44 +97,37 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
         found_items = []
         begin
           # Open and parse the RSS feed.
-          # Using open-uri for simplicity, consider more robust HTTP clients for production.
           URI.open(feed_url) do |rss|
             feed = RSS::Parser.parse(rss)
             ADK.logger.debug("#{self.class.name}") { "Feed '#{feed.channel.title}' fetched successfully. Items: #{feed.items.size}" }
 
-            # Iterate through feed items, filter by topic, and collect results.
             feed.items.each do |item|
               title = item.title || ''
               description = item.description || ''
 
-              # Simple case-insensitive search in title or description.
               if title.downcase.include?(topic) || description.downcase.include?(topic)
                 ADK.logger.debug("#{self.class.name}") { "Found matching item: #{title}" }
                 found_items << {
                   title: title,
                   link: item.link || 'N/A',
-                  description: description, # Keep original description for summary
+                  description: description,
                   published_date: item.pubDate || 'N/A'
                 }
               end
-
-              # Stop if we've found enough items.
               break if found_items.size >= max_items
             end
           end
         rescue RSS::NotWellFormedError => e
-          ADK.logger.error("#{self.class.name}") { "Error parsing RSS feed at #{feed_url}: #{e.message}" }
-          # Return standard error format
-          return { status: :error, error_message: "Failed to parse RSS feed: #{e.message}" }
+          msg = "Failed to parse RSS feed: #{e.message}"
+          ADK.logger.error("#{self.class.name}: #{msg} at #{feed_url}")
+          raise ADK::ToolError, msg
         rescue StandardError => e # Catch other potential errors (network, etc.)
-          ADK.logger.error("#{self.class.name}") { "Error fetching or processing feed #{feed_url}: #{e.message}" }
-          # Return standard error format
-          return { status: :error, error_message: "Failed to fetch or process feed: #{e.message}" }
+          msg = "Failed to fetch or process feed: #{e.message}"
+          ADK.logger.error("#{self.class.name}: #{msg} at #{feed_url}")
+          raise ADK::ToolError, msg
         end
 
         ADK.logger.info("#{self.class.name}") { "Found #{found_items.size} items matching topic '#{topic}'" }
-
-        # Return the array of found items wrapped in the standard success format
         { status: :success, result: found_items }
       end
     end
@@ -162,18 +154,17 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
         api_key = ENV['GOOGLE_API_KEY']
 
         unless api_key
-          msg = "#{self.class.name}: GOOGLE_API_KEY environment variable not set."
-          ADK.logger.error(msg)
-          return { status: :error, error_message: msg }
+          msg = "GOOGLE_API_KEY environment variable not set."
+          ADK.logger.error("#{self.class.name}: #{msg}")
+          raise ADK::ToolError, msg
         end
 
         unless articles.is_a?(Array) && !articles.empty?
-          msg = "#{self.class.name}: Invalid or empty 'articles' parameter provided."
-          ADK.logger.error(msg)
-          return { status: :error, error_message: msg }
+          msg = "Invalid or empty 'articles' parameter provided."
+          ADK.logger.error("#{self.class.name}: #{msg}")
+          raise ADK::ToolArgumentError, msg
         end
 
-        # Format articles for the prompt, numbered
         formatted_text = articles.each_with_index.map do |article, index|
           title = article[:title] || article['title'] || 'No Title'
           desc = article[:description] || article['description'] || 'No Description'
@@ -181,7 +172,6 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
           "#{index + 1}. Title: #{title}\n   Description: #{plain_desc[0, 400]}...\n"
         end.join("\n")
 
-        # Adjust the prompt to ask for a numbered list output
         prompt = "Based *only* on the following article titles and descriptions snippets, provide a very concise (1-sentence) summary for each, matching the numbering:\n\n#{formatted_text}"
 
         ADK.logger.info("#{self.class.name}") { "Sending request to Gemini for #{articles.size} articles." }
@@ -190,7 +180,7 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
         begin
           client = Gemini.new(
             credentials: { service: 'generative-language-api', api_key: api_key },
-            options: { model: 'gemini-1.5-flash', server_sent_events: false } # Use flash model
+            options: { model: 'gemini-1.5-flash', server_sent_events: false }
           )
 
           response_chunks = client.stream_generate_content(
@@ -198,59 +188,57 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
           )
 
           if response_chunks.is_a?(Array) && !response_chunks.empty?
-            # Check the first chunk for immediate errors if the API returns them that way
-            # (The gem might raise exceptions on HTTP errors already)
             first_candidate = response_chunks.first&.dig('candidates', 0)
             if first_candidate&.dig('finishReason') == 'SAFETY'
               safety_ratings = first_candidate['safetyRatings']
-              msg = "#{self.class.name}: Gemini API request blocked due to safety settings. Ratings: #{safety_ratings.inspect}"
-              ADK.logger.error(msg)
-              return { status: :error, error_message: msg }
+              msg = "Gemini API request blocked due to safety settings. Ratings: #{safety_ratings.inspect}"
+              ADK.logger.error("#{self.class.name}: #{msg}")
+              raise ADK::ToolError, msg
             end
 
-            # Join text parts from all chunks and candidates
             llm_summary_text = response_chunks.map do |chunk|
               chunk&.dig('candidates', 0, 'content', 'parts')&.map { |part| part['text'] }&.join
             end.compact.join.strip
 
             if llm_summary_text.empty?
-              ADK.logger.error("#{self.class.name}: Gemini API response structure unexpected or content empty. Chunks: #{response_chunks.inspect}")
-              return { status: :error, error_message: "Gemini API returned empty or unparsable summary." }
+              msg = "Gemini API returned empty or unparsable summary."
+              ADK.logger.error("#{self.class.name}: #{msg} Chunks: #{response_chunks.inspect}")
+              raise ADK::ToolError, msg
             end
+
             ADK.logger.info("#{self.class.name}") { "Received summary text from Gemini." }
             ADK.logger.debug("#{self.class.name}") { "Raw summary text: #{llm_summary_text}" }
 
-            # --- Parse the numbered list and combine with original articles ---
             summaries = llm_summary_text.split(/\n\s*(?:\d+\.\s*|\*\s*|-\s*)/).reject(&:empty?).map(&:strip)
-            
             results_array = articles.each_with_index.map do |article, index|
               summary = summaries[index] || "(Summary not generated)"
               {
                 title: article[:title] || article['title'],
-                link: article[:link] || article['link'] || '#', # Provide a fallback link
+                link: article[:link] || article['link'] || '#',
                 summary: summary
               }
             end
-            # Ensure we didn't get more summaries than articles somehow
             results_array = results_array.first(articles.size)
-
-            { status: :success, result: results_array } # Return the structured array
+            { status: :success, result: results_array }
           else
-            ADK.logger.error("#{self.class.name}") { "Unexpected response format from stream_generate_content: #{response_chunks.inspect}" }
-            return { status: :error, error_message: "Gemini API returned unexpected response format." }
+            msg = "Gemini API returned unexpected response format."
+            ADK.logger.error("#{self.class.name}: #{msg} Response: #{response_chunks.inspect}")
+            raise ADK::ToolError, msg
           end
 
         rescue Gemini::Errors::RequestError => e
-          # Catch specific gem errors if possible (check gem source for error classes)
-          ADK.logger.error("#{self.class.name}") { "Gemini API Request Error: #{e.class} - #{e.message} Payload: #{e.try(:payload).inspect}" }
-          { status: :error, error_message: "Gemini API request error: #{e.message}" }
+          msg = "Gemini API request error: #{e.message}"
+          ADK.logger.error("#{self.class.name}: #{msg} Payload: #{e.try(:payload).inspect}")
+          raise ADK::ToolError, msg
         rescue Faraday::Error => e # Catch Faraday connection errors
-          ADK.logger.error("#{self.class.name}") { "Faraday Connection Error: #{e.class} - #{e.message}" }
-          { status: :error, error_message: "Network error communicating with Gemini API: #{e.message}" }
+          msg = "Network error communicating with Gemini API: #{e.message}"
+          ADK.logger.error("#{self.class.name}: #{msg}")
+          raise ADK::ToolError, msg
         rescue StandardError => e
-          ADK.logger.error("#{self.class.name}") { "Error calling Gemini API: #{e.class} - #{e.message}" }
-          ADK.logger.error(e.backtrace.first(5).join("\n")) # Log part of backtrace
-          { status: :error, error_message: "Failed to summarize articles: #{e.message}" }
+          msg = "Failed to summarize articles: #{e.message}"
+          ADK.logger.error("#{self.class.name}: Error calling Gemini API: #{e.class} - #{msg}")
+          ADK.logger.error(e.backtrace.first(5).join("\n"))
+          raise ADK::ToolError, msg
         end
       end
     end

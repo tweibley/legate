@@ -15,4 +15,41 @@ module ADK
 
   # Raised when attempting to modify state directly
   class StateAccessError < Error; end
+
+  # --- Tool Errors ---
+
+  # Base class for errors raised during tool execution.
+  # Tools should raise this or a more specific subclass (like ToolArgumentError)
+  # instead of returning { status: :error, ... }.
+  # The agent runtime catches these errors and formats a standard error event.
+  # @see ADK::ToolArgumentError
+  class ToolError < Error
+    # Add attributes here if needed later (e.g., tool name, params)
+  end
+
+  # Raised specifically when tool arguments are invalid (e.g., missing, wrong type).
+  # Inherits from {ADK::ToolError}.
+  # Raise this when input parameters fail validation within the tool's logic.
+  class ToolArgumentError < ToolError; end
+
+  # --- Agent and Session Errors ---
+  # Placeholder for potential future errors related to agent lifecycle or session management
+
+  # --- MCP Errors ---
+  module Mcp
+    class Error < ADK::Error; end
+    class ConnectionError < Error; end
+    class HandshakeError < Error; end
+    class ToolRegistrationError < Error; end
+    class AgentWrapError < Error; end
+    # Error related to MCP protocol rules or JSON-RPC formatting.
+    class ProtocolError < Error; end
+  end
+
+  # --- Definition Store Errors ---
+  module DefinitionStore
+    class Error < ADK::Error; end
+    class ConfigurationError < Error; end
+    class StoreError < Error; end
+  end
 end

@@ -42,10 +42,10 @@ RSpec.describe ADK::Tools::CatFacts do
           .to_return(status: 200, body: api_response_body, headers: { 'Content-Type' => 'application/json' })
       end
 
-      it 'returns an error hash' do
-        result = tool.execute(params)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to match(/did not contain a valid 'fact' field/i)
+      it 'raises ToolError' do
+        expect {
+          tool.execute(params)
+        }.to raise_error(ADK::ToolError, /did not contain a valid 'fact' field/i)
       end
     end
 
@@ -55,25 +55,22 @@ RSpec.describe ADK::Tools::CatFacts do
           .to_return(status: 500, body: 'Internal Server Error')
       end
 
-      it 'returns an error hash' do
-        result = tool.execute(params)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to match(/Error fetching cat fact \(HTTP Status: 500\)/i)
+      it 'raises ToolError' do
+        expect {
+          tool.execute(params)
+        }.to raise_error(ADK::ToolError, /Error fetching cat fact \(HTTP Status: 500\)/i)
       end
     end
 
     context 'when API call times out' do
       before do
-        # --- CHANGE: Explicitly raise the expected exception ---
-        # stub_request(:get, api_url).to_timeout
         stub_request(:get, api_url).to_raise(Faraday::TimeoutError.new("execution expired"))
-        # --- END CHANGE ---
       end
 
-      it 'returns an error hash' do
-        result = tool.execute(params)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to match(/Timeout connecting/i)
+      it 'raises ToolError' do
+        expect {
+          tool.execute(params)
+        }.to raise_error(ADK::ToolError, /Timeout connecting/i)
       end
     end
 
@@ -82,10 +79,10 @@ RSpec.describe ADK::Tools::CatFacts do
         stub_request(:get, api_url).to_raise(Faraday::ConnectionFailed.new("Connection refused"))
       end
 
-      it 'returns an error hash' do
-        result = tool.execute(params)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to match(/Connection failed/i)
+      it 'raises ToolError' do
+        expect {
+          tool.execute(params)
+        }.to raise_error(ADK::ToolError, /Connection failed/i)
       end
     end
 
@@ -95,10 +92,10 @@ RSpec.describe ADK::Tools::CatFacts do
           .to_return(status: 200, body: 'This is not JSON', headers: { 'Content-Type' => 'text/plain' })
       end
 
-      it 'returns an error hash' do
-        result = tool.execute(params)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to match(/JSON parse failed/i)
+      it 'raises ToolError' do
+        expect {
+          tool.execute(params)
+        }.to raise_error(ADK::ToolError, /JSON parse failed/i)
       end
     end
   end

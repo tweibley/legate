@@ -4,19 +4,19 @@
 module ADK
   module Mcp
     # Base class for MCP-specific errors within ADK.
-    class McpError < StandardError; end
+    # NOTE: The main ADK::Mcp::Error hierarchy is defined in lib/adk/errors.rb
+    # This file primarily defines errors unique to MCP interactions not covered there,
+    # like RemoteToolError, or keeps the base McpError definition if needed.
+    class McpError < StandardError; end # Keep base error if needed, or inherit from ADK::Error?
 
-    # Error during MCP connection establishment or communication.
-    class ConnectionError < McpError; end
-
-    # Error related to MCP protocol rules or JSON-RPC formatting.
-    class ProtocolError < McpError; end
-
-    # Error during schema conversion.
-    class SchemaConversionError < McpError; end
+    # Removing redundant definitions below - they should inherit from ADK::Mcp::Error
+    # defined in lib/adk/errors.rb
+    # class ConnectionError < McpError; end
+    # class ProtocolError < McpError; end
+    # class SchemaConversionError < McpError; end
 
     # Error received from the remote MCP server during a tool call.
-    class RemoteToolError < McpError
+    class RemoteToolError < McpError # Keep this as it's specialized
       attr_reader :code, :data
 
       def initialize(message, code = nil, data = nil)

@@ -208,12 +208,11 @@ RSpec.describe ADK::Agent do # Testing Agent behavior here
       allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
       allow(mock_session_service).to receive(:append_event).and_return(true)
 
-      # Stub ToolContext.new call
+      # Stub ToolContext.new call - Use hash_including to be less sensitive to object ID
       allow(ADK::ToolContext).to receive(:new)
-        .with(session_id: session_id,
-              user_id: 'test_user',
-              app_name: name,
-              tool_registry: agent_with_tool.tool_registry)
+        .with(hash_including(session_id: session_id,
+                             user_id: 'test_user',
+                             app_name: name))
         .and_return(mock_context)
     end
 
@@ -320,28 +319,46 @@ RSpec.describe ADK::Agent do # Testing Agent behavior here
       end
     end
 
+    # This context actually tests Agent behavior, not registry behavior.
+    # It should ideally be in agent_spec.rb but is kept here for historical reasons or specific focus.
     context 'when execute_step fails' do
       let(:exec_error) { ADK::Error.new("Exec boom") }
+      # Use a specific agent instance for this test
+      let(:agent_for_exec_test) {
+        ADK::Agent.new(name: 'exec_test_agent', description: 'desc', tool_classes: [MockToolForAgent],
+                       planner: mock_planner)
+      }
+      let(:mock_tool_instance_for_exec_test) { instance_double(MockToolForAgent) }
+      # This is the hash execute_step creates when rescuing the error
+      let(:rescued_exec_error_hash) {
+        { status: :error,
+          error_message: "Internal error executing tool 'mock_tool': #{exec_error.message}",
+          error_class: exec_error.class.name,
+          result: nil }
+      }
+      # This is the final content hash expected in the agent event
       let(:expected_final_content_on_exec_error) {
-        { status: :error, error_message: "Exec boom" }.merge(
+        {
+          status: :error,
+          error_message: "Internal error executing tool 'mock_tool': #{exec_error.message}",
+          error_class: exec_error.class.name,
           result: nil,
-          plan_details: [{
-            tool_name: :mock_tool,
-            params: { arg: 'value' },
-            result: { status: :error, error_message: "Exec boom", result: nil }
-          }]
-        )
+          plan_details: [{ tool_name: :mock_tool, params: { arg: "value" }, result: rescued_exec_error_hash }]
+        }
       }
 
       before {
-        agent_with_tool.start
-        allow(agent_with_tool.tool_registry).to receive(:create_instance).with(:mock_tool).and_return(mock_tool_instance)
-        allow(mock_tool_instance).to receive(:execute).with({ arg: 'value' }, mock_context).and_raise(exec_error)
+        agent_for_exec_test.start
+        allow(mock_planner).to receive(:plan).and_return([{ tool: :mock_tool, params: { arg: 'value' } }])
+        # Stub registry lookup for *this agent's* registry
+        allow(agent_for_exec_test.tool_registry).to receive(:create_instance).with(:mock_tool).and_return(mock_tool_instance_for_exec_test)
+        # Stub the execution on the correct instance
+        allow(mock_tool_instance_for_exec_test).to receive(:execute).and_raise(exec_error)
       }
 
       it 'returns an error event' do
-        result = agent_with_tool.run_task(session_id: session_id, user_input: task,
-                                          session_service: mock_session_service)
+        result = agent_for_exec_test.run_task(session_id: session_id, user_input: task,
+                                              session_service: mock_session_service)
         expect(result).to be_an(ADK::Event)
         expect(result.role).to eq(:agent)
         expect(result.content).to eq(expected_final_content_on_exec_error)

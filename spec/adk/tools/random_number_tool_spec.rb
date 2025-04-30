@@ -64,30 +64,30 @@ RSpec.describe ADK::Tools::RandomNumberTool do
     context 'with min greater than max' do
       let(:params) { { min: 100, max: 90 } }
 
-      it 'returns an error hash' do
-        result = tool.execute(params)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to match(/Min value \(100\) cannot be greater than Max value \(90\)/)
+      it 'raises ToolArgumentError' do
+        expect {
+          tool.execute(params)
+        }.to raise_error(ADK::ToolArgumentError, /Min value \(100\) cannot be greater than Max value \(90\)/)
       end
     end
 
     context 'with non-integer input for min' do
       let(:params) { { min: 'abc', max: 100 } }
 
-      it 'returns an error hash' do
-        result = tool.execute(params)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to match(/Invalid integer input.*Min: 'abc'/)
+      it 'raises ToolArgumentError' do
+        expect {
+          tool.execute(params)
+        }.to raise_error(ADK::ToolArgumentError, /Invalid integer input.*Min: 'abc'/)
       end
     end
 
     context 'with non-integer input for max' do
       let(:params) { { min: 1, max: 'xyz' } }
 
-      it 'returns an error hash' do
-        result = tool.execute(params)
-        expect(result[:status]).to eq(:error)
-        expect(result[:error_message]).to match(/Invalid integer input.*Max: 'xyz'/)
+      it 'raises ToolArgumentError' do
+        expect {
+          tool.execute(params)
+        }.to raise_error(ADK::ToolArgumentError, /Invalid integer input.*Max: 'xyz'/)
       end
     end
 

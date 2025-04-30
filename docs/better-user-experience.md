@@ -15,6 +15,7 @@ Based on an analysis of the `docs/demo-plan.md` for a news aggregator agent, her
 *   **Standardized Error Handling:**
     *   Returning `{ status: :error, error_message: ... }` requires repetitive boilerplate in tool error paths.
     *   *Suggestion:* Introduce custom exception classes (e.g., `ADK::ToolError`, `ADK::ToolArgumentError`) that tools can raise. The ADK runtime could catch these and automatically format the error event, simplifying tool code.
+    *   **Update:** Implemented. Tools should now `raise ADK::ToolArgumentError.new("...")` for invalid parameters or `raise ADK::ToolError.new("...")` for other execution errors instead of returning an error hash. The agent runtime will catch these and generate the standard error event.
 
 *   **Base Classes/Modules for Common Patterns:**
     *   Tools often include boilerplate for common tasks like API calls (e.g., `SummarizerTool` and Gemini).

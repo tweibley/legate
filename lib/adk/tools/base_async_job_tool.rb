@@ -62,7 +62,7 @@ module ADK
         unless worker_class && worker_class.respond_to?(:perform_async)
           msg = "sidekiq_worker_class not defined or invalid for tool '#{name}'."
           ADK.logger.error(msg)
-          return { status: :error, error_message: msg }
+          raise ADK::ToolError, msg
         end
 
         ADK.logger.info("Enqueuing Sidekiq job for worker '#{worker_class.name}' for tool '#{name}'.")
@@ -76,28 +76,26 @@ module ADK
           end
 
           # Use perform_async to enqueue the job
-          # It returns the Job ID (JID)
           jid = worker_class.set(job_options).perform_async(*job_args)
 
           unless jid
             msg = "Failed to enqueue Sidekiq job for '#{name}'. perform_async returned nil."
             ADK.logger.error(msg)
-            return { status: :error, error_message: msg }
+            raise ADK::ToolError, msg
           end
 
           ADK.logger.info("Successfully enqueued Sidekiq job '#{jid}' for tool '#{name}'. Task is pending.")
-          # Immediately return pending status and the job ID
           { status: :pending, job_id: jid }
-        rescue Redis::CannotConnectError => e
+        rescue Redis::BaseError => e # Catch specific Redis errors
           msg = "Failed to enqueue job for tool '#{name}': Could not connect to Redis. #{e.message}"
           ADK.logger.error(msg)
-          { status: :error, error_message: msg }
+          raise ADK::ToolError, msg
         rescue StandardError => e
           # Catch other unexpected errors during enqueueing
           msg = "Unexpected error enqueuing Sidekiq job for tool '#{name}': #{e.class} - #{e.message}"
           ADK.logger.error(msg)
           ADK.logger.error(e.backtrace.first(5).join("\n"))
-          { status: :error, error_message: msg }
+          raise ADK::ToolError, msg # Wrap unexpected errors
         end
       end
 

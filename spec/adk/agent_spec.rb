@@ -471,31 +471,29 @@ RSpec.describe ADK::Agent do
 
     context 'multi-step execution with error and plan halting' do
       let(:plan) { [{ tool: :tool_a, params: { p: 1 } }, { tool: :tool_b, params: { data: '[Result from step 1]' } }] }
-      # Error hash already includes :status and :error_message, which is what the sanitized version contains
-      let(:sanitized_error_hash) { { status: :error, error_message: error_hash[:error_message], result: nil } }
-      # The final content should be the error hash from the *first* step,
-      # and plan details should ONLY include the first (failed) step.
-      let(:expected_final_content_on_error) {
-        error_hash.merge(
-          result: nil,
-          plan_details: [{ tool_name: :tool_a, params: { p: 1 }, result: sanitized_error_hash }]
-        )
+      # Define the error that the mock tool will raise
+      let(:tool_a_error) { ADK::ToolError.new("Something failed in Tool A") }
+      # This is the hash that execute_step will create when it rescues the error
+      let(:rescued_error_hash) {
+        { status: :error, error_message: tool_a_error.message, error_class: tool_a_error.class.name, result: nil }
       }
-      # We need an Event object for the final agent event check
-      let(:final_error_event) { ADK::Event.new(role: :agent, content: expected_final_content_on_error) }
+      # This is the final content hash expected in the agent event
+      let(:expected_final_content_on_error) {
+        {
+          status: :error,
+          error_message: tool_a_error.message,
+          error_class: tool_a_error.class.name,
+          result: nil,
+          plan_details: [{ tool_name: :tool_a, params: { p: 1 }, result: rescued_error_hash }]
+        }
+      }
 
       before do
         agent.start
         allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
-        allow(mock_tool_a).to receive(:execute).with({ p: 1 }, mock_context).and_return(error_hash)
-        # Mock the *final* agent event creation specifically
-        allow(ADK::Event).to receive(:new).with(role: :user, content: user_input).and_call_original
-        allow(ADK::Event).to receive(:new).with(role: :tool_request, tool_name: :tool_a,
-                                                content: { p: 1 }).and_call_original
-        allow(ADK::Event).to receive(:new).with(role: :tool_result, tool_name: :tool_a,
-                                                content: error_hash).and_call_original
-        allow(ADK::Event).to receive(:new).with(role: :agent,
-                                                content: expected_final_content_on_error).and_return(final_error_event)
+        # Make the mock tool raise the specific error
+        allow(mock_tool_a).to receive(:execute).with({ p: 1 }, mock_context).and_raise(tool_a_error)
+        # Do not mock the final event creation - let the agent create it based on the rescued error
       end
 
       it 'stops execution after the failed step' do
@@ -519,6 +517,7 @@ RSpec.describe ADK::Agent do
         final_event = agent.run_task(session_id: session_id, user_input: user_input,
                                      session_service: mock_session_service)
         expect(final_event.role).to eq(:agent)
+        # Now compare against the expected content hash derived from the raised exception
         expect(final_event.content).to eq(expected_final_content_on_error)
       end
     end
@@ -567,39 +566,172 @@ RSpec.describe ADK::Agent do
 
     context 'when finding a tool raises an error' do
       let(:bad_tool_plan) { [{ tool: :missing_tool, params: {} }] }
-      let(:expected_error_hash) { { status: :error, error_message: "Tool 'missing_tool' not found for this agent." } }
-      # When the tool isn't found in execute_step, the plan_details will contain that single failed step.
+      # Define the error hash created by execute_step when tool not found
+      let(:tool_not_found_error_hash) {
+        { status: :error,
+          error_message: "Tool 'missing_tool' not found for this agent.",
+          error_class: ADK::ToolError.name, # Add error class
+          result: nil }
+      }
+      # Define the final agent event content, including plan details with the error hash
       let(:expected_final_content_tool_not_found) {
-        expected_error_hash.merge(
+        {
+          status: :error,
+          error_message: "Tool 'missing_tool' not found for this agent.",
+          error_class: ADK::ToolError.name, # Add error class
           result: nil,
           plan_details: [{
             tool_name: :missing_tool,
             params: {},
-            result: { status: :error, error_message: "Tool 'missing_tool' not found for this agent.", result: nil }
+            result: tool_not_found_error_hash # Use the defined error hash
           }]
-        )
+        }
       }
       let(:error_event) { ADK::Event.new(role: :agent, content: expected_final_content_tool_not_found) }
 
       before do
         agent.start
         allow(mock_planner).to receive(:plan).with(user_input).and_return(bad_tool_plan)
-        # Mock the final agent event creation
-        allow(ADK::Event).to receive(:new).with(role: :user, content: user_input).and_call_original
-        allow(ADK::Event).to receive(:new).with(role: :tool_request, tool_name: :missing_tool,
-                                                content: {}).and_call_original
-        # The :tool_result event will contain the "tool not found" error hash
-        allow(ADK::Event).to receive(:new).with(role: :tool_result, tool_name: :missing_tool,
-                                                content: expected_error_hash).and_call_original
-        # The final :agent event will contain the error hash *plus* the plan details
-        allow(ADK::Event).to receive(:new).with(role: :agent,
-                                                content: expected_final_content_tool_not_found).and_return(error_event)
+        # No need to mock event creation if we check the final returned event content
       end
 
       it 'returns the final agent event with error content' do
         result = agent.run_task(session_id: session_id, user_input: user_input, session_service: mock_session_service)
-        expect(result.role).to eq(error_event.role)
+        expect(result.role).to eq(:agent)
         expect(result.content).to eq(expected_final_content_tool_not_found)
+      end
+    end
+
+    context 'when execute_step fails' do
+      let(:bad_tool_plan) { [{ tool: :mock_tool, params: { arg: "value" } }] }
+      let(:exec_error) { StandardError.new("Exec boom") } # Simulate an *unexpected* error
+
+      # --- Create a dedicated agent instance WITH the mock tool --- #
+      let(:agent_with_mock_tool) {
+        # Ensure the mock tool class is defined
+        unless defined?(MockToolForAgent)
+          Kernel.const_set("MockToolForAgent", Class.new(ADK::Tool) do
+            define_metadata(name: :mock_tool, description: 'Mock Tool')
+            # Define execute, though we'll stub it
+            def execute(params, context); raise NotImplementedError; end
+          end)
+        end
+        described_class.new(name: name, description: description, model_name: model_name,
+                            tool_classes: [MockToolForAgent], planner: mock_planner)
+      }
+      # --- Mock the instance retrieved from the registry --- #
+      let(:mock_tool_instance_for_error) { instance_double(MockToolForAgent) }
+
+      # This is the hash execute_step creates when rescuing StandardError
+      let(:rescued_exec_error_hash) {
+        { status: :error,
+          error_message: "Internal error executing tool 'mock_tool': #{exec_error.message}",
+          error_class: exec_error.class.name,
+          result: nil }
+      }
+      # This is the final content hash expected in the agent event
+      let(:expected_final_content_on_exec_error) {
+        {
+          status: :error,
+          error_message: "Internal error executing tool 'mock_tool': #{exec_error.message}",
+          error_class: exec_error.class.name,
+          result: nil,
+          plan_details: [{ tool_name: :mock_tool, params: { arg: "value" }, result: rescued_exec_error_hash }]
+        }
+      }
+
+      before do
+        agent_with_mock_tool.start # Start the correct agent
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(bad_tool_plan)
+
+        # Stub the registry call for *this specific agent instance*
+        allow(agent_with_mock_tool.tool_registry).to receive(:create_instance).with(:mock_tool).and_return(mock_tool_instance_for_error)
+
+        # Simulate the tool's execute method raising an unexpected error ON THE CORRECT INSTANCE DOUBLE
+        allow(mock_tool_instance_for_error).to receive(:execute).with({ arg: "value" }, anything).and_raise(exec_error)
+      end
+
+      it 'returns an error event' do
+        # Use the agent instance that has the tool registered
+        result = agent_with_mock_tool.run_task(session_id: session_id, user_input: user_input,
+                                               session_service: mock_session_service)
+        expect(result).to be_an(ADK::Event)
+        expect(result.role).to eq(:agent)
+        expect(result.content).to eq(expected_final_content_on_exec_error)
+      end
+    end
+
+    # --- NEW CONTEXT for ToolError --- #
+    context 'when tool raises ADK::ToolError' do
+      let(:plan) { [{ tool: :mock_tool, params: { arg: "value" } }] }
+      let(:tool_error) { ADK::ToolError.new("Specific tool failure") }
+      let(:mock_tool_instance) { instance_double(MockToolForAgent) }
+      let(:agent_with_mock_tool) {
+        described_class.new(name: name, description: description, tool_classes: [MockToolForAgent],
+                            planner: mock_planner)
+      }
+
+      before do
+        agent_with_mock_tool.start
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
+        allow(agent_with_mock_tool.tool_registry).to receive(:create_instance).with(:mock_tool).and_return(mock_tool_instance)
+        allow(mock_tool_instance).to receive(:execute).with({ arg: "value" }, anything).and_raise(tool_error)
+      end
+
+      it 'returns final agent event with ToolError details' do
+        result = agent_with_mock_tool.run_task(session_id: session_id, user_input: user_input,
+                                               session_service: mock_session_service)
+
+        expect(result).to be_an(ADK::Event)
+        expect(result.role).to eq(:agent)
+
+        expected_error_content = {
+          status: :error,
+          error_message: tool_error.message,
+          error_class: tool_error.class.name,
+          result: nil
+        }
+        expected_final_content = expected_error_content.merge(
+          plan_details: [{ tool_name: :mock_tool, params: { arg: "value" }, result: expected_error_content }]
+        )
+        expect(result.content).to eq(expected_final_content)
+      end
+    end
+
+    # --- NEW CONTEXT for ToolArgumentError --- #
+    context 'when tool raises ADK::ToolArgumentError' do
+      let(:plan) { [{ tool: :mock_tool, params: { arg: "bad_value" } }] }
+      let(:arg_error) { ADK::ToolArgumentError.new("Invalid argument value") }
+      let(:mock_tool_instance) { instance_double(MockToolForAgent) }
+      let(:agent_with_mock_tool) {
+        described_class.new(name: name, description: description, tool_classes: [MockToolForAgent],
+                            planner: mock_planner)
+      }
+
+      before do
+        agent_with_mock_tool.start
+        allow(mock_planner).to receive(:plan).with(user_input).and_return(plan)
+        allow(agent_with_mock_tool.tool_registry).to receive(:create_instance).with(:mock_tool).and_return(mock_tool_instance)
+        allow(mock_tool_instance).to receive(:execute).with({ arg: "bad_value" }, anything).and_raise(arg_error)
+      end
+
+      it 'returns final agent event with ToolArgumentError details' do
+        result = agent_with_mock_tool.run_task(session_id: session_id, user_input: user_input,
+                                               session_service: mock_session_service)
+
+        expect(result).to be_an(ADK::Event)
+        expect(result.role).to eq(:agent)
+
+        expected_error_content = {
+          status: :error,
+          error_message: arg_error.message,
+          error_class: arg_error.class.name,
+          result: nil
+        }
+        expected_final_content = expected_error_content.merge(
+          plan_details: [{ tool_name: :mock_tool, params: { arg: "bad_value" }, result: expected_error_content }]
+        )
+        expect(result.content).to eq(expected_final_content)
       end
     end
   end

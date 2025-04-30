@@ -35,8 +35,12 @@ module ADK
       # @return [Hash] { status: :pending/:success/:error, ... }
       def perform_execution(params, _context)
         job_id = params[:job_id]
-        return { status: :error, error_message: 'Missing required parameter: job_id' } unless job_id
 
+        unless job_id && !job_id.strip.empty?
+          raise ADK::ToolArgumentError, 'Missing required parameter: job_id'
+        end
+
+        redis = nil # Define outside begin block for ensure
         begin
           redis = Redis.new(ADK.redis_options)
           result_key = "#{ADK::Tools::BaseAsyncJobTool::JOB_RESULT_REDIS_PREFIX}#{job_id}"
@@ -47,17 +51,34 @@ module ADK
             begin
               parsed_result = JSON.parse(stored_result, symbolize_names: true)
               if parsed_result.is_a?(Hash) && parsed_result[:status]
-                # Ensure status is a symbol
                 parsed_result[:status] = parsed_result[:status].to_sym
-                return parsed_result
+                ADK.logger.info("CheckJobStatusTool: Found stored result for job #{job_id}")
+                return parsed_result # Return the full stored hash (success or error)
+              else
+                err_msg = "Invalid data format found in Redis for job #{job_id}: #{stored_result}"
+                ADK.logger.error(err_msg)
+                raise ADK::ToolError, err_msg # Raise ToolError for invalid format
               end
-            rescue JSON::ParserError
-              ADK.logger.error("Failed to parse stored JSON result for job #{job_id}: #{stored_result}")
+            rescue StandardError => e
+              err_msg = "Failed to process stored result for job #{job_id} (Error: #{e.class}): #{e.message}. Data: #{stored_result}"
+              ADK.logger.error(err_msg)
+              raise ADK::ToolError, err_msg # Raise ToolError for any processing failure
             end
           end
 
+          # --- Execution ONLY continues here if stored_result was nil --- #
+
           # If no valid result in Redis, check Sidekiq status
-          status = check_sidekiq_status(job_id)
+          begin
+            status = check_sidekiq_status(job_id)
+            ADK.logger.info("CheckJobStatusTool: Sidekiq status for job #{job_id}: #{status}")
+          rescue StandardError => e
+            # Catch errors from check_sidekiq_status (e.g., mocked API errors)
+            err_msg = "Could not determine the status of job #{job_id} via Sidekiq API: #{e.message}"
+            ADK.logger.error("#{err_msg} (#{e.class})")
+            raise ADK::ToolError, err_msg # Wrap in ToolError
+          end
+
           case status
           when :pending
             {
@@ -66,26 +87,17 @@ module ADK
               message: "Job is queued or currently running."
             }
           when :failed
-            {
-              status: :error,
-              error_message: "Job has failed (found in Dead Set)."
-            }
+            # Job failed and ended up in Dead Set
+            raise ADK::ToolError, "Job has failed (found in Sidekiq Dead Set)."
           when :completed_or_disappeared
-            {
-              status: :error,
-              error_message: "Job result is unavailable. The job may have completed without storing a result, or the job ID may be invalid."
-            }
+            # Job not found in Sidekiq or Redis
+            raise ADK::ToolError,
+                  "Job result is unavailable. The job may have completed without storing a result, or the job ID may be invalid."
           end
         rescue Redis::BaseError => e
-          {
-            status: :error,
-            error_message: "Could not connect to Redis: #{e.message}"
-          }
-        rescue StandardError => e
-          {
-            status: :error,
-            error_message: "Could not determine the status of job #{job_id}: #{e.message}"
-          }
+          err_msg = "Could not connect to Redis to check job status: #{e.message}"
+          ADK.logger.error(err_msg)
+          raise ADK::ToolError, err_msg
         ensure
           redis&.close
         end
