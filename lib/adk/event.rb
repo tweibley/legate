@@ -102,7 +102,7 @@ module ADK
       # Decide on fallback: return nil, raise, or return partial object?
       # Returning nil might be safest to signal deserialization failure.
       nil
-    rescue TypeError => e
+    rescue TypeError, NoMethodError => e # Also rescue NoMethodError
       ADK.logger.error("Event.from_h: Type error during deserialization (check state_delta?): #{e.message}. Hash: #{hash.inspect}")
       nil
     end
