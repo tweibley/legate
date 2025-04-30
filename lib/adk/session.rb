@@ -33,6 +33,7 @@ module ADK
       # Use Concurrent::Map for thread-safe state storage within the session object itself
       @state = Concurrent::Map.new
       # Ensure initial_state keys are symbols and manually populate the map
+      initial_state = {} unless initial_state.is_a?(Hash) # Ensure it's a hash
       symbolized_initial_state = initial_state.transform_keys { |k| k.to_sym rescue k }
       symbolized_initial_state.each_pair do |key, value|
         @state[key] = value
@@ -213,13 +214,27 @@ module ADK
       raise ADK::InvalidPrefixError, "Invalid state key prefix: #{prefix}. Valid prefixes: #{VALID_PREFIXES.join(', ')}"
     end
 
-    def validate_serializable!(value)
-      return if value.nil?
-      return if [String, Integer, Float, TrueClass, FalseClass].include?(value.class)
-      return if value.is_a?(Hash) && value.values.all? { |v| validate_serializable!(v) }
-      return if value.is_a?(Array) && value.all? { |v| validate_serializable!(v) }
+    # Recursively checks if a value is JSON-serializable (basic types, nil, nested Hashes/Arrays thereof)
+    def is_json_serializable?(value)
+      case value
+      when String, Integer, Float, TrueClass, FalseClass, NilClass
+        true
+      when Hash
+        # Ensure all keys are strings/symbols and all values are serializable
+        value.all? { |k, v| (k.is_a?(String) || k.is_a?(Symbol)) && is_json_serializable?(v) }
+      when Array
+        value.all? { |v| is_json_serializable?(v) }
+      else
+        false # Other types (Time, Set, Object, etc.) are not serializable
+      end
+    end
 
-      raise ADK::SerializationError, "Value must be JSON-serializable: #{value.inspect}"
+    # Raises error if value is not serializable
+    def validate_serializable!(value)
+      unless is_json_serializable?(value)
+        raise ADK::SerializationError,
+              "Value must be JSON-serializable (basic types, nil, Hash, Array): #{value.inspect}"
+      end
     end
   end # End Session class
 end # End ADK module
