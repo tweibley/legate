@@ -188,7 +188,13 @@ module ADK
           # Handle specific serializations
           case field_str
           when 'tools'
-            redis_updates[field_str] = value.is_a?(Array) ? value.to_json : '[]'
+            # Wrap the specific call that can raise JSON::GeneratorError
+            begin
+              redis_updates[field_str] = value.is_a?(Array) ? value.to_json : '[]'
+            rescue JSON::GeneratorError => e
+              @logger.error("Failed to serialize tools array to JSON for updating agent '#{agent_name}': #{e.message}")
+              raise StoreError, "Internal error serializing tool data for agent update."
+            end
           when 'mcp_servers_json'
             mcp_json_to_save = (value.nil? || value.strip.empty?) ? '[]' : value.strip
             # Validate MCP JSON before adding to updates
@@ -229,14 +235,9 @@ module ADK
           # but for an update, success means the command executed without error.
           @logger.info("Agent definition '#{agent_name}' updated successfully with fields: #{redis_updates.keys.join(', ')}.")
           true # Indicate command succeeded
-        rescue JSON::GeneratorError => e # Should only happen for tools serialization
-          @logger.error("Failed to serialize tools array to JSON for updating agent '#{agent_name}': #{e.message}")
-          raise StoreError, "Internal error serializing tool data for agent update."
         rescue Redis::BaseError => e
           @logger.error("Redis error updating agent '#{agent_name}': #{e.class} - #{e.message}")
           raise StoreError, "Redis error updating agent definition: #{e.message}"
-        rescue ArgumentError => e # Re-raise specific argument errors from validation
-          raise e
         rescue => e # Catch other unexpected errors
           @logger.error("Unexpected error updating agent '#{agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
           raise StoreError, "Unexpected error updating agent definition: #{e.message}"
