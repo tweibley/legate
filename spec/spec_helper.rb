@@ -4,6 +4,7 @@ require 'bundler/setup'
 require 'simplecov'
 
 SimpleCov.profiles.define 'adk' do
+  add_filter 'lib/adk/web/app.rb'
   add_group 'Tools', 'lib/adk/tools'
   add_group 'Workers', 'lib/adk/workers'
   add_group 'Agents', 'lib/adk/agents'

@@ -61,7 +61,6 @@ module ADK
             any_step_errors = false
             any_step_pending = false
             content_to_display.each_with_index do |step_hash, index|
-              html_parts << "<li>"
               if step_hash.is_a?(Hash) # Ensure it's a hash before checking status
                 case step_hash[:status]
                 when :success
@@ -89,7 +88,6 @@ module ADK
                 say "  Step #{index + 1} (Unknown Step Format): #{step_hash.inspect}", :yellow
                 any_step_errors = true
               end
-              html_parts << "</li>"
             end
             # --- UPDATED Overall Status ---
             overall_msg = if any_step_errors then 'Completed with errors'
