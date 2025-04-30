@@ -29,6 +29,7 @@ Based on an analysis of the `docs/demo-plan.md` for a news aggregator agent, her
 *   **Automatic Tool Discovery:**
     *   Explicitly `require`-ing tool files and manually instantiating them via `GlobalToolManager` adds setup steps.
     *   *Suggestion:* Implement automatic tool discovery. Allow users to specify a tool directory (e.g., `tools/`) in configuration or agent setup. ADK could automatically load `.rb` files, register the tools found, and handle instantiation, adding them to the agent implicitly or explicitly.
+    *   **Update:** This is now implemented via the `tool_paths` keyword argument in `ADK::Agent#initialize`. Provide a single path string or an array of path strings pointing to directories containing tool definitions (`*.rb` files). The agent will load these files, and any tools defined within them using `define_metadata` will be automatically instantiated and added to the agent.
 
 *   **Streamlined Agent Configuration:**
     *   Instantiating the agent, adding tools, setting up the session service, creating a session, and starting the agent involves multiple separate steps.

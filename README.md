@@ -135,12 +135,15 @@ ADK comes with several examples demonstrating different capabilities:
 ### 1. Simple Echo Agent (`examples/simple_agent.rb`)
 A basic example showing session-based agent interaction:
 ```ruby
-# Create and configure agent
+# Assuming ADK::Tools::Echo is available via the gem or in a ./tools directory
 agent = ADK::Agent.new(
   name: 'simple_echo_agent',
-  description: 'A simple agent that can echo messages'
+  description: 'A simple agent that can echo messages',
+  tool_paths: './tools' # Automatically loads tools like Echo if defined in ./tools
+  # Or, if Echo is built-in/required elsewhere, you might not need tool_paths for it.
 )
-agent.add_tool(ADK::ToolRegistry.create_instance(:echo))
+# Manual tool addition is no longer needed if tools are discovered:
+# agent.add_tool(ADK::ToolRegistry.create_instance(:echo))
 
 # Create session
 session_service = ADK::SessionService::InMemory.new
@@ -157,13 +160,15 @@ result = agent.run_task(
 ### 2. Random Calculator (`examples/random_calculator.rb`)
 Demonstrates multi-step planning with multiple tools:
 ```ruby
-# Create agent with multiple tools
+# Assuming calculator and random_number tools are in ./tools
 agent = ADK::Agent.new(
   name: 'multi_step_hash_agent_001',
-  description: 'An agent that uses multiple tools and returns structured results.'
+  description: 'An agent that uses multiple tools and returns structured results.',
+  tool_paths: './tools' # Load tools from the ./tools directory
 )
-agent.add_tool(ADK::ToolRegistry.create_instance(:random_number))
-agent.add_tool(ADK::ToolRegistry.create_instance(:calculator))
+# Manual addition no longer needed:
+# agent.add_tool(ADK::ToolRegistry.create_instance(:random_number))
+# agent.add_tool(ADK::ToolRegistry.create_instance(:calculator))
 
 # Run complex task
 result = agent.run_task(
@@ -176,17 +181,18 @@ result = agent.run_task(
 ### 3. Multi-Tool Agent (`examples/multi_tool_agent.rb`)
 Showcases all available tools and task delegation:
 ```ruby
-# Create agent with all tools
+# Assuming all standard tools are defined in ./tools or loaded by default
 agent = ADK::Agent.new(
   name: 'multi_tool_agent',
-  description: 'An agent that can use multiple tools including echo, calculator, cat facts, random numbers, and task delegation'
+  description: 'An agent that can use multiple tools including echo, calculator, cat facts, random numbers, and task delegation',
+  tool_paths: './tools' # Discover tools here
 )
 
-# Add all available tools
-tools = [
-  :echo, :calculator, :cat_facts, :random_number, :delegate_task
-].map { |tool| ADK::ToolRegistry.create_instance(tool) }
-tools.each { |tool| agent.add_tool(tool) }
+# Manual addition no longer needed if tools are discoverable:
+# tools = [
+#   :echo, :calculator, :cat_facts, :random_number, :delegate_task
+# ].map { |tool| ADK::ToolRegistry.create_instance(tool) }
+# tools.each { |tool| agent.add_tool(tool) }
 
 # Run various tasks
 tasks = [
@@ -218,7 +224,9 @@ Agents are the core components that can:
 ```ruby
 agent = ADK::Agent.new(
   name: 'my_agent',
-  description: 'Description of what the agent does'
+  description: 'Description of what the agent does',
+  # Optionally load all .rb files from a directory:
+  tool_paths: 'path/to/my/tools'
 )
 ```
 
@@ -234,9 +242,18 @@ Tools are modular components that agents can use:
 - **CheckJobStatusTool**: Built-in tool to check the status/result of a Sidekiq job started by an `BaseAsyncJobTool`.
 
 ```ruby
-# Register a tool
-tool = ADK::ToolRegistry.create_instance(:calculator)
-agent.add_tool(tool)
+# Add tools automatically during agent initialization:
+agent = ADK::Agent.new(
+  name: 'my_agent',
+  description: 'Agent with discovered tools',
+  tool_paths: './tools' # Loads *.rb files from ./tools
+)
+
+# Alternatively, add tools manually (e.g., for tools not in discovered paths):
+# tool_instance = MyCustomTool.new
+# agent.add_tool(tool_instance)
+# Or add by class:
+# agent.add_tool(MyOtherCustomTool)
 ```
 
 ### Sessions

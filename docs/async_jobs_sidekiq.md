@@ -156,11 +156,20 @@ require 'adk'
 # Assuming tool and worker classes are loaded
 
 # Agent Setup
-agent = ADK::Agent.new(name: 'job_runner_agent', description: 'Runs and checks background jobs')
-agent.add_tool(ADK::Tools::MyLongTaskTool.new)
-# check_job_status is often added automatically if Sidekiq is configured,
-# but adding it explicitly doesn't hurt.
-agent.add_tool(ADK::ToolRegistry.create_instance(:check_job_status))
+# Assuming MyLongTaskTool is defined in ./tools/my_long_task_tool.rb
+agent = ADK::Agent.new(
+  name: 'job_runner_agent',
+  description: 'Runs and checks background jobs',
+  # Automatically load MyLongTaskTool from ./tools
+  # The built-in check_job_status tool is usually available automatically
+  tool_paths: './tools'
+)
+
+# Manual addition no longer needed if tools are discovered:
+# agent.add_tool(ADK::Tools::MyLongTaskTool.new)
+# # check_job_status is often added automatically if Sidekiq is configured,
+# # but adding it explicitly doesn't hurt.
+# agent.add_tool(ADK::ToolRegistry.create_instance(:check_job_status))
 
 # Session Setup
 session_service = ADK::SessionService::Redis.new # Use Redis for session and job results

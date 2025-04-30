@@ -169,22 +169,22 @@ RSpec.describe ADK::Agent do
     allow(mock_status_tool).to receive(:class).and_return(ADK::Tools::CheckJobStatusTool)
 
     # Mock ToolRegistry
-    allow_any_instance_of(ADK::ToolRegistry).to receive(:find_class) do |_, name|
-      case name.to_sym
-      when :tool_a then MockToolA
-      when :tool_b then MockToolB
-      when :check_job_status then ADK::Tools::CheckJobStatusTool
-      else nil
-      end
-    end
-    allow_any_instance_of(ADK::ToolRegistry).to receive(:create_instance) do |_, name|
-      case name.to_sym
-      when :tool_a then mock_tool_a
-      when :tool_b then mock_tool_b
-      when :check_job_status then mock_status_tool
-      else nil
-      end
-    end
+    # allow_any_instance_of(ADK::ToolRegistry).to receive(:find_class) do |_, name|
+    #   case name.to_sym
+    #   when :tool_a then MockToolA
+    #   when :tool_b then MockToolB
+    #   when :check_job_status then ADK::Tools::CheckJobStatusTool
+    #   else nil
+    #   end
+    # end
+    # allow_any_instance_of(ADK::ToolRegistry).to receive(:create_instance) do |_, name|
+    #   case name.to_sym
+    #   when :tool_a then mock_tool_a
+    #   when :tool_b then mock_tool_b
+    #   when :check_job_status then mock_status_tool
+    #   else nil
+    #   end
+    # end
 
     # Session service interactions
     allow(mock_session_service).to receive(:get_session).with(session_id: session_id).and_return(mock_session)
@@ -224,7 +224,7 @@ RSpec.describe ADK::Agent do
 
     it 'initializes with check_job_status tool if Sidekiq defined' do
       # Check that the check_job_status tool (mocked) is present
-      expect(agent.tools).to include(mock_status_tool)
+      expect(agent.tools.map(&:class)).to include(ADK::Tools::CheckJobStatusTool)
       expect(agent.tools.map(&:name)).to include(:check_job_status)
     end
 
@@ -795,4 +795,131 @@ RSpec.describe ADK::Agent do
   # --- NEW BLOCK --- >
   describe 'MCP End-to-End Integration', :e2e do
   end # End MCP End-to-End Integration describe block
+
+  # --- Tests for Tool Discovery --- >
+  describe '#initialize with tool_paths' do
+    let(:temp_dir_1) { Dir.mktmpdir } # Create temp dir
+    let(:temp_dir_2) { Dir.mktmpdir } # Create second temp dir
+    let(:tool_c_path) { File.join(temp_dir_1, 'mock_tool_c.rb') }
+    let(:tool_d_path) { File.join(temp_dir_2, 'mock_tool_d.rb') }
+    let(:invalid_tool_path) { File.join(temp_dir_1, 'invalid_tool.rb') }
+    let(:non_existent_path) { './non_existent_tools' }
+
+    # Simple Tool C definition
+    let(:tool_c_content) do
+      <<~RUBY
+        require 'adk/tool'
+        class MockToolC < ADK::Tool
+          define_metadata(name: :tool_c, description: 'Tool C')
+          def execute(params, context); { status: :success, result: 'C' }; end
+        end
+      RUBY
+    end
+
+    # Simple Tool D definition
+    let(:tool_d_content) do
+      <<~RUBY
+        require 'adk/tool'
+        class MockToolD < ADK::Tool
+          define_metadata(name: :tool_d, description: 'Tool D')
+          def execute(params, context); { status: :success, result: 'D' }; end
+        end
+      RUBY
+    end
+
+    # Invalid Ruby code file
+    let(:invalid_tool_content) do
+      "class Invalid Tool This Will Cause LoadError"
+    end
+
+    around(:each) do |example|
+      # Reset global manager before each test in this context
+      ADK::GlobalToolManager.reset!
+
+      # Ensure temp directories are created
+      FileUtils.mkdir_p(temp_dir_1)
+      FileUtils.mkdir_p(temp_dir_2)
+
+      # Write mock tool files
+      File.write(tool_c_path, tool_c_content)
+      File.write(tool_d_path, tool_d_content)
+      File.write(invalid_tool_path, invalid_tool_content)
+
+      example.run # Run the actual test
+
+      # Clean up temp directories
+      FileUtils.remove_entry(temp_dir_1, true)
+      FileUtils.remove_entry(temp_dir_2, true)
+      # Reset global manager again after test
+      ADK::GlobalToolManager.reset!
+    end
+
+    # Moved Sidekiq mock setup here
+    before(:each) do
+      allow(Object).to receive(:defined?).with(Sidekiq).and_return(true)
+      allow(ADK::Planner).to receive(:new).and_return(mock_planner) # Ensure planner is mocked globally for tests in this block
+    end
+
+    context 'when tool_paths is provided' do
+      it 'loads tools from a single valid directory path' do
+        agent = described_class.new(name: 'discovery_agent', description: 'desc', tool_paths: temp_dir_1)
+        expect(agent.find_tool(:tool_c)).to be_an_instance_of(MockToolC)
+        expect(agent.find_tool(:invalid_tool)).to be_nil # Should not be loaded due to error
+        expect(agent.find_tool(:tool_d)).to be_nil # Not in this path
+        expect(ADK.logger).to have_received(:error).with(/Failed to load tool file.*invalid_tool.rb.*SyntaxError/) # Check for SyntaxError log
+      end
+
+      it 'loads tools from an array of valid directory paths' do
+        agent = described_class.new(name: 'discovery_agent', description: 'desc', tool_paths: [temp_dir_1, temp_dir_2])
+        expect(agent.find_tool(:tool_c)).to be_an_instance_of(MockToolC)
+        expect(agent.find_tool(:tool_d)).to be_an_instance_of(MockToolD)
+        expect(agent.find_tool(:invalid_tool)).to be_nil # Should not be loaded
+        expect(ADK.logger).to have_received(:error).with(/Failed to load tool file.*invalid_tool.rb.*SyntaxError/)
+      end
+
+      it 'loads tools passed via tool_classes alongside discovered tools' do
+        # Register Tool A globally *before* initializing the agent with discovery
+        # This simulates a tool defined elsewhere in the user's codebase
+        ADK::GlobalToolManager.register_tool(MockToolA)
+
+        agent = described_class.new(name: 'discovery_agent', description: 'desc', tool_paths: temp_dir_1,
+                                    tool_classes: [MockToolB])
+        # expect(agent.find_tool(:tool_a)).to be_an_instance_of(MockToolA) # REMOVED: Agent should NOT automatically add globally registered tools unless discovered or passed in tool_classes
+        expect(agent.find_tool(:tool_b)).to be_an_instance_of(MockToolB) # Added via tool_classes
+        expect(agent.find_tool(:tool_c)).to be_an_instance_of(MockToolC) # Added via tool_paths discovery
+        expect(agent.find_tool(:tool_d)).to be_nil
+      end
+
+      it 'handles non-existent paths gracefully' do
+        expect(ADK.logger).to receive(:warn).with(/Tool discovery path does not exist.*non_existent_tools/).at_least(:once)
+        agent = described_class.new(name: 'discovery_agent', description: 'desc',
+                                    tool_paths: [temp_dir_1, non_existent_path])
+        expect(agent.find_tool(:tool_c)).to be_an_instance_of(MockToolC)
+        expect(agent.find_tool(:tool_d)).to be_nil
+      end
+
+      it 'handles load errors in specific tool files gracefully' do
+        # The setup already includes an invalid file in temp_dir_1
+        expect(ADK.logger).to receive(:error).with(/Failed to load tool file.*invalid_tool.rb.*SyntaxError/).at_least(:once)
+        agent = described_class.new(name: 'discovery_agent', description: 'desc', tool_paths: temp_dir_1)
+        # Should still load the valid tool from the same directory
+        expect(agent.find_tool(:tool_c)).to be_an_instance_of(MockToolC)
+        expect(agent.find_tool(:invalid_tool)).to be_nil
+      end
+    end
+
+    context 'when tool_paths is not provided or empty' do
+      it 'does not attempt discovery if tool_paths is empty array' do
+        expect(Dir).not_to receive(:glob) # Ensure glob isn't called
+        agent = described_class.new(name: 'no_discovery_agent', description: 'desc', tool_paths: [])
+        expect(agent.tools.map(&:name)).not_to include(:tool_c, :tool_d)
+      end
+
+      it 'does not attempt discovery if tool_paths is not provided' do
+        expect(Dir).not_to receive(:glob)
+        agent = described_class.new(name: 'no_discovery_agent', description: 'desc') # Default is []
+        expect(agent.tools.map(&:name)).not_to include(:tool_c, :tool_d)
+      end
+    end
+  end # End tool_paths describe block
 end # End RSpec.describe ADK::Agent

@@ -3,6 +3,7 @@
 
 require 'logger'
 require 'concurrent'
+require 'pathname' # Added for path manipulation
 require_relative 'tool_context'
 require 'sidekiq' # Ensure sidekiq is required if needed here
 # Note: Requires are handled by lib/adk.rb
@@ -17,7 +18,7 @@ module ADK
   # Agent class represents an AI agent that can perform tasks using tools and a planner.
   # It operates within the context of a session managed by a SessionService.
   class Agent
-    DEFAULT_MODEL = 'gemini-2.0-flash'
+    DEFAULT_MODEL = 'gemini-2.0-flash' # Updated default model
 
     attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode
 
@@ -28,12 +29,12 @@ module ADK
     # @param description [String] A description of the agent's purpose.
     # @param model_name [String, nil] The specific LLM model name (optional).
     # @param tool_classes [Array<Class>] An initial list of native tool *classes* (must inherit from ADK::Tool).
+    # @param tool_paths [String, Array<String>] Optional: Path(s) to directories containing tool definitions (.rb files) to automatically discover and load.
     # @param planner [ADK::Planner] A specific planner instance (default: created automatically).
-    # @param mcp_servers [Array<Hash>] Optional configurations for external MCP servers.
-    #        Example: [{ type: :stdio, command: 'cmd', args: [] }]
+    # @param mcp_servers [Array<Hash>, String] Optional configurations for external MCP servers (JSON string or Array).
     # @param fallback_mode [Symbol] Behavior when planning fails (:error or :echo). Default: :error
-    # @param selected_tool_names [Array<Symbol>] List of tool names explicitly selected in the agent definition.
-    def initialize(name:, description:, model_name: nil, tool_classes: [], planner: nil, mcp_servers: [],
+    # @param selected_tool_names [Array<Symbol>] List of tool names explicitly selected in the agent definition (used for MCP).
+    def initialize(name:, description:, model_name: nil, tool_classes: [], tool_paths: [], planner: nil, mcp_servers: [],
                    fallback_mode: :error, selected_tool_names: [])
       ADK.logger.info("Initializing agent '#{name}'...")
       @name = name
@@ -42,7 +43,57 @@ module ADK
       @fallback_mode = fallback_mode == :echo ? :echo : :error # Ensure only valid modes
       @state = :idle # Initial state
 
-      # --- Parse MCP Server Config ---
+      # Each agent instance gets its own registry
+      @tool_registry = ADK::ToolRegistry.new
+      ADK.logger.debug("Agent '#{name}' created its ToolRegistry instance: #{@tool_registry.object_id}")
+
+      # Store initial tool names from global registry before automatic discovery
+      initial_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
+
+      # Normalize tool_paths to an array
+      @tool_paths = Array(tool_paths).compact.uniq
+
+      # --- Automatic Tool Discovery ---
+      _discover_and_load_tools(@tool_paths)
+      # -------------------------------
+
+      # --- Determine newly registered tools ---
+      # Get tool names registered globally *after* discovery
+      current_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
+      newly_discovered_tool_names = (current_global_tools - initial_global_tools).to_a
+      ADK.logger.debug("Newly discovered tools from paths [#{@tool_paths.join(', ')}]: #{newly_discovered_tool_names.inspect}")
+      # ------------------------------------
+
+      # Register initial native tool *classes* passed directly
+      tool_classes.each { |tool_class| register_tool_class(tool_class) }
+
+      # Instantiate and add *newly discovered* tools from paths
+      newly_discovered_tool_names.each do |tool_name|
+        tool_instance = ADK::GlobalToolManager.create_instance(tool_name)
+        if tool_instance
+          add_tool(tool_instance) # Add to agent's specific registry
+        else
+          ADK.logger.error("Failed to create instance for discovered tool '#{tool_name}' from GlobalToolManager.")
+        end
+      end
+
+      # Automatically register the CheckJobStatusTool class if Sidekiq is defined
+      # and if it wasn't already discovered/added
+      if defined?(Sidekiq)
+        unless @tool_registry.find_class(:check_job_status)
+          begin
+            require_relative 'tools/check_job_status_tool' # Ensure loaded
+            register_tool_class(ADK::Tools::CheckJobStatusTool)
+            ADK.logger.info("Automatically registered CheckJobStatusTool for agent '#{name}'.")
+          rescue LoadError => e
+            ADK.logger.error("Failed to load CheckJobStatusTool: #{e.message}")
+          end
+        end
+      else
+        ADK.logger.warn("Sidekiq not defined. Skipping automatic registration of CheckJobStatusTool for agent '#{name}'.")
+      end
+
+      # --- Parse MCP Server Config (moved down to avoid log clutter during tool loading) ---
       if mcp_servers.is_a?(String) && !mcp_servers.strip.empty?
         begin
           @mcp_servers_config = JSON.parse(mcp_servers)
@@ -60,39 +111,17 @@ module ADK
         ADK.logger.debug("Agent '#{name}': No valid MCP server config provided. Defaulting to empty array.")
         @mcp_servers_config = []
       end
-      # -------------------------------
-
-      @selected_tool_names = selected_tool_names # Store selected tool names
+      # -------------------------------\n
+      @selected_tool_names = selected_tool_names # Store selected tool names (used for MCP)
       @mcp_clients = [] # Store active MCP client instances
-
-      # Each agent instance gets its own registry
-      @tool_registry = ADK::ToolRegistry.new
-      ADK.logger.debug("Agent '#{name}' created its ToolRegistry instance: #{@tool_registry.object_id}")
-
-      # Register initial native tool classes
-      tool_classes.each { |tool_class| register_tool_class(tool_class) }
-
-      # Automatically register the CheckJobStatusTool class if Sidekiq is defined
-      if defined?(Sidekiq)
-        unless @tool_registry.find_class(:check_job_status)
-          begin
-            require_relative 'tools/check_job_status_tool' # Ensure loaded
-            register_tool_class(ADK::Tools::CheckJobStatusTool)
-          rescue LoadError => e
-            ADK.logger.error("Failed to load CheckJobStatusTool: #{e.message}")
-          end
-        end
-      else
-        ADK.logger.warn("Sidekiq not defined. Skipping automatic registration of CheckJobStatusTool for agent '#{name}'.")
-      end
 
       @planner = planner || ADK::Planner.new(agent: self, model_name: @model_name)
 
       ADK.logger.info("Agent '#{name}' initialized successfully with tools: #{@tool_registry.tools.keys.join(', ')}")
     end
 
-    # Adds a tool instance to the agent's registry
-    # @param tool [ADK::Tool] The tool instance to add
+    # Adds a tool instance OR class to the agent's registry
+    # @param tool [ADK::Tool, Class<ADK::Tool>] The tool instance or class to add
     # @return [Boolean] True if the tool was added, false otherwise
     def add_tool(tool)
       # Check if it's a valid tool instance or class
@@ -105,7 +134,17 @@ module ADK
       end
 
       # Get the tool name, handling both instances and classes
-      tool_name = is_tool_class ? tool.tool_name : tool.name
+      tool_name = is_tool_class ? tool.tool_name : tool.name # Assumes tool class responds to tool_name
+      unless tool_name
+        # Try getting name from instance's class if instance was passed without name attribute (shouldn't happen often)
+        tool_name = tool.class.tool_name if is_tool_instance && tool.class.respond_to?(:tool_name)
+      end
+
+      unless tool_name
+        ADK.logger.error("Agent '#{name}': Could not determine tool name for #{tool.inspect}. Ensure class uses define_metadata or instance has a name.")
+        return false
+      end
+
       tool_name = tool_name.to_sym
 
       if @tool_registry.find_class(tool_name)
@@ -301,6 +340,41 @@ module ADK
     end
 
     private
+
+    # Discovers and loads tool definition files from specified paths.
+    # @param paths [Array<String>] An array of directory paths to search.
+    # @return [void]
+    def _discover_and_load_tools(paths)
+      return if paths.empty?
+
+      ADK.logger.debug("Starting tool discovery in paths: #{paths.inspect}")
+
+      paths.each do |path|
+        # Ensure path is absolute for Dir.glob and require
+        absolute_path = File.expand_path(path)
+
+        unless Dir.exist?(absolute_path)
+          ADK.logger.warn("Tool discovery path does not exist or is not a directory: '#{path}' (resolved to '#{absolute_path}'). Skipping.")
+          next
+        end
+
+        # Find all .rb files directly within the directory (non-recursive)
+        Dir.glob(File.join(absolute_path, '*.rb')).each do |file_path|
+          begin
+            ADK.logger.debug("Attempting to load tool file: #{file_path}")
+            require file_path # Let Ruby handle require logic (idempotency, etc.)
+            ADK.logger.debug("Successfully loaded: #{file_path}")
+          rescue LoadError, SyntaxError => e
+            ADK.logger.error("Failed to load tool file '#{file_path}': #{e.class} - #{e.message}")
+            # Optionally log backtrace e.backtrace.first(5).join("\n")
+          rescue StandardError => e
+            ADK.logger.error("Error encountered while loading tool file '#{file_path}': #{e.class} - #{e.message}")
+            # Optionally log backtrace e.backtrace.first(5).join("\n")
+          end
+        end
+      end
+      ADK.logger.debug("Finished tool discovery.")
+    end
 
     # --- REFACTORED: execute_plan uses session context ---
     # Executes a plan, logging tool request/result events via the session service.

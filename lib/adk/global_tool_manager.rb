@@ -56,6 +56,12 @@ module ADK
       @@defined_tools[name_symbol.to_sym]
     end
 
+    # Get the names (symbols) of all registered tools.
+    # @return [Array<Symbol>] An array of tool name symbols.
+    def self.registered_tool_names
+      @@defined_tools.keys
+    end
+
     # Create an instance of a tool by its name symbol using the globally registered class.
     # @param name_symbol [Symbol] The symbolic name of the tool.
     # @return [ADK::Tool, nil] An instance of the tool or nil if instantiation fails or class not found.

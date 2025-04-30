@@ -260,8 +260,7 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
     require 'bundler/setup'
     require 'adk' # Load the ADK gem
     require 'dotenv'
-    require_relative 'tools/rss_fetcher_tool'
-    require_relative 'tools/summarizer_tool'
+    # Tool requires are now handled automatically by ADK::Agent via tool_paths
 
     # Load .env file from demo project
     Dotenv.load
@@ -271,28 +270,16 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
     #   config.log_level = :INFO
     # end
 
-    # --- Tool classes are registered implicitly when their files are required ---
-
     # --- 1. Define the Agent ---
+    # Agent initialization now automatically discovers tools in the specified path
     agent = ADK::Agent.new(
       name: 'news_agent',
-      description: 'Fetches and summarizes news from RSS feeds.'
+      description: 'Fetches and summarizes news from RSS feeds.',
+      tool_paths: './tools' # Specify the directory containing tool definitions
       # model_name: 'gemini-pro' # Optional: If different from default
     )
 
-    # --- 2. Add Tool Instances to the Agent ---
-    # Tools are registered globally via define_metadata, create instances here.
-    rss_tool = ADK::GlobalToolManager.create_instance(:rss_fetcher)
-    unless rss_tool
-      raise "Error: Could not create instance of :rss_fetcher tool."
-    end
-    agent.add_tool(rss_tool)
-
-    summarizer_tool = ADK::GlobalToolManager.create_instance(:summarizer)
-    unless summarizer_tool
-      raise "Error: Could not create instance of :summarizer tool."
-    end
-    agent.add_tool(summarizer_tool)
+    # --- Tool instances are now automatically added during agent initialization ---
 
     # --- Start the agent runtime ---
     agent.start
@@ -328,14 +315,16 @@ To showcase how a user can easily build a functional AI agent using the `adk-rub
       retrieved_session = session_service.get_session(session_id: session.id) # Use the original session_id with keyword arg
       unless retrieved_session
         puts "\n⚠️ Error: Could not retrieve session #{session.id} after task execution."
-        return # Or handle error appropriately
+        # Handle error appropriately, maybe exit
+        exit(1)
       end
 
       all_events = retrieved_session.events # Assuming the attribute is named :events
       unless all_events.is_a?(Array)
         puts "\n⚠️ Error: Session object does not have an accessible :events array."
         puts "   Session Object: #{retrieved_session.inspect}"
-        return
+        # Handle error appropriately, maybe exit
+        exit(1)
       end
 
       last_tool_name_str = (agent_content.dig(:plan_details, -1, :tool_name) || :summarizer).to_s
