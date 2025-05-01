@@ -313,22 +313,65 @@ RSpec.describe ADK::Planner do
   end
 
   describe '#build_multi_step_gemini_prompt' do
-    # Planner instance for these tests (can use default agent_without_tools)
-    let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
+    let(:task) { 'test task' }
+    let(:tools_description) { 'tool descriptions' }
+
+    context 'when agent has an instruction' do
+      let(:instruction) { 'Be concise.' }
+      let(:agent_with_instruction) { instance_double(ADK::Agent, instruction: instruction) }
+      let(:planner) { described_class.new(agent: agent_with_instruction, logger: mock_logger) }
+
+      it 'prepends the instruction to the prompt' do
+        prompt = planner.send(:build_multi_step_gemini_prompt, task, tools_description)
+        expect(prompt).to start_with("AGENT_INSTRUCTION: #{instruction}\n---\n")
+        expect(prompt).to include("You are an AI planner") # Check original prompt part is still there
+        expect(prompt).to include("User Request: \"#{task}\"")
+        expect(prompt).to include(tools_description)
+      end
+    end
+
+    context 'when agent instruction is nil' do
+      let(:agent_without_instruction) { instance_double(ADK::Agent, instruction: nil) }
+      let(:planner) { described_class.new(agent: agent_without_instruction, logger: mock_logger) }
+
+      it 'does not include the instruction block' do
+        prompt = planner.send(:build_multi_step_gemini_prompt, task, tools_description)
+        expect(prompt).not_to include('AGENT_INSTRUCTION:')
+        expect(prompt).to start_with("You are an AI planner")
+        expect(prompt).to include("User Request: \"#{task}\"")
+        expect(prompt).to include(tools_description)
+      end
+    end
+
+    context 'when agent instruction is an empty string' do
+      let(:agent_with_empty_instruction) { instance_double(ADK::Agent, instruction: '   ') }
+      let(:planner) { described_class.new(agent: agent_with_empty_instruction, logger: mock_logger) }
+
+      it 'does not include the instruction block' do
+        prompt = planner.send(:build_multi_step_gemini_prompt, task, tools_description)
+        expect(prompt).not_to include('AGENT_INSTRUCTION:')
+        expect(prompt).to start_with("You are an AI planner")
+        expect(prompt).to include("User Request: \"#{task}\"")
+        expect(prompt).to include(tools_description)
+      end
+    end
+
+    # Keep original basic tests as well
+    let(:planner_basic) { described_class.new(agent: agent_without_tools, logger: mock_logger) } # Use agent without instruction for these
 
     it 'includes the task in the prompt' do
-      result = planner.send(:build_multi_step_gemini_prompt, 'test task', 'tool descriptions')
-      expect(result).to include('User Request: "test task"')
-      expect(result).to include('Now, plan the User Request: "test task"')
+      result = planner_basic.send(:build_multi_step_gemini_prompt, task, tools_description)
+      expect(result).to include("User Request: \"#{task}\"")
+      expect(result).to include("Now, plan the User Request: \"#{task}\"")
     end
 
     it 'includes the tool descriptions in the prompt' do
-      result = planner.send(:build_multi_step_gemini_prompt, 'test task', 'tool descriptions')
-      expect(result).to include('tool descriptions')
+      result = planner_basic.send(:build_multi_step_gemini_prompt, task, tools_description)
+      expect(result).to include(tools_description)
     end
 
     it 'includes instructions for JSON format' do
-      result = planner.send(:build_multi_step_gemini_prompt, 'test task', 'tool descriptions')
+      result = planner_basic.send(:build_multi_step_gemini_prompt, task, tools_description)
       expect(result).to include('Respond ONLY with a single JSON array')
     end
   end

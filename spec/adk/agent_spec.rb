@@ -106,6 +106,7 @@ RSpec.describe ADK::Agent do
   let(:name) { 'test_agent' }
   let(:description) { 'A test agent' }
   let(:model_name) { 'gemini-test-model' }
+  let(:instruction) { "You are a helpful assistant." } # Added instruction
   let(:default_model) { ADK::Agent::DEFAULT_MODEL }
 
   # --- Mocks / Doubles ---
@@ -161,6 +162,7 @@ RSpec.describe ADK::Agent do
     described_class.new(
       name: name,
       description: description,
+      instruction: instruction, # Add instruction
       model_name: model_name,
       tool_classes: [MockToolA, MockToolB, MockAsyncTool] # Pass classes
     )
@@ -205,10 +207,11 @@ RSpec.describe ADK::Agent do
   # --- Tests ---
 
   describe '#initialize' do
-    it 'sets name, description, and model' do
+    it 'sets name, description, model, and instruction' do # Updated description
       expect(agent.name).to eq(name)
       expect(agent.description).to eq(description)
       expect(agent.model_name).to eq(model_name)
+      expect(agent.instruction).to eq(instruction)
     end
 
     it 'uses default model if none provided' do
@@ -219,6 +222,12 @@ RSpec.describe ADK::Agent do
       expect(agent_default.model_name).to eq(default_model)
       # Verify planner was initialized with default model
       expect(ADK::Planner).to have_received(:new).with(hash_including(model_name: default_model))
+    end
+
+    it 'sets instruction to nil if not provided' do
+      allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+      agent_no_instruction = described_class.new(name: name, description: description)
+      expect(agent_no_instruction.instruction).to be_nil
     end
 
     it 'initializes with a planner' do
@@ -1604,4 +1613,57 @@ RSpec.describe ADK::Agent do
     end
   end
   # --- END BLOCK --- >
+
+  describe '.define' do
+    let(:defined_agent) do
+      described_class.define do |a|
+        a.name = name
+        a.description = description
+        a.model_name = model_name
+        a.instruction = instruction
+        a.add_tool_classes MockToolA
+      end
+    end
+
+    before do
+      # Allow Planner initialization for defined agent
+      allow(ADK::Planner).to receive(:new).and_return(mock_planner)
+    end
+
+    it 'builds an agent with the specified attributes' do
+      expect(defined_agent).to be_a(described_class)
+      expect(defined_agent.name).to eq(name)
+      expect(defined_agent.description).to eq(description)
+      expect(defined_agent.model_name).to eq(model_name)
+      expect(defined_agent.instruction).to eq(instruction)
+    end
+
+    it 'builds an agent with nil instruction if not specified' do
+      agent_no_instruction = described_class.define do |a|
+        a.name = name
+        a.description = description
+      end
+      expect(agent_no_instruction.instruction).to be_nil
+    end
+
+    it 'raises an error if name is missing' do
+      expect do
+        described_class.define do |a|
+          a.description = description
+        end
+      end.to raise_error(ArgumentError, /Agent name must be set/)
+    end
+
+    it 'raises an error if description is missing' do
+      expect do
+        described_class.define do |a|
+          a.name = name
+        end
+      end.to raise_error(ArgumentError, /Agent description must be set/)
+    end
+
+    it 'raises an error if block is not given' do
+      expect { described_class.define }.to raise_error(ArgumentError, /requires a block/)
+    end
+  end
 end # End RSpec.describe ADK::Agent
