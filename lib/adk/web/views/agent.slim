@@ -72,7 +72,7 @@ section.section
                           i.fas.fa-wand-magic-sparkles
                         span Example
                     .control
-                      button.button.is-light.is-small type='button' _='on click put "<p class=\'has-text-grey\'>Task results will appear here.</p>" into #task-result'
+                      button.button.is-light.is-small(type="button" _=%q{on click put "<p class='has-text-grey'>Task results will appear here.</p>" into #task-result})
                         span.icon.is-small
                           i.fas.fa-eraser
                         span Clear Result
