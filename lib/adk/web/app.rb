@@ -448,29 +448,27 @@ module ADK
       # Lists all agents defined in Redis, showing their status (Running/Stopped)
       # and providing controls to create, manage, and start/stop agents.
       get '/agents' do
-        # --- MODIFIED: Use Definition Store ---
         @view_agents = []
         if @definition_store
           begin
-            # list_definitions returns array of hashes like [{name:, description:, model:}, ...]
             agent_summaries = @definition_store.list_definitions
+            # @logger.debug("[GET /agents] Summaries from store: #{agent_summaries.inspect}") # <<< REMOVE LOGGING
 
             @view_agents = agent_summaries.map do |summary|
               agent_name = summary[:name]
               is_running = @agents.key?(agent_name)
-              # Note: list_definitions doesn't return tools, we don't need them for this view anymore
-              # If we needed full definitions, we'd call get_definition inside the loop (less efficient)
+              # @logger.debug("[GET /agents] Processing summary for '#{agent_name}' BEFORE rename: #{summary.inspect}") # <<< REMOVE LOGGING
+              summary[:configured_tools] = summary.delete(:tools)
+              # @logger.debug("[GET /agents] Processing summary for '#{agent_name}' AFTER rename: #{summary.inspect}") # <<< REMOVE LOGGING
               summary.merge(running: is_running)
             end
           rescue ADK::DefinitionStore::StoreError => e
             logger.error("Store error fetching agent list: #{e.message}")
-            # @view_agents remains empty
           end
         else
           logger.error("Definition Store unavailable during GET /agents")
         end
-        # --- END MODIFICATION ---
-
+        # @logger.debug("[GET /agents] Final @view_agents: #{@view_agents.inspect}") # <<< REMOVE LOGGING
         @available_tools = ADK::GlobalToolManager.list_all_tools
         @available_models = AVAILABLE_MODELS
         slim :agents

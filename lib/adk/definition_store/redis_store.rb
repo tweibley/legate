@@ -294,7 +294,7 @@ module ADK
 
       # Lists summary information for all defined agents.
       # @return [Array<Hash>] An array of hashes, each containing summary data
-      #   (e.g., :name, :description, :model). Returns empty array if none found.
+      #   (e.g., :name, :description, :model, :tools). Returns empty array if none found.
       # @raise [ConfigurationError] if Redis client is not available.
       # @raise [StoreError] for Redis errors.
       def list_definitions
@@ -305,8 +305,8 @@ module ADK
           agent_names = @redis.smembers(AGENTS_SET_KEY)
           return [] if agent_names.empty?
 
-          # Fields to fetch for the summary list
-          summary_fields = %w[name description model]
+          # Fields to fetch for the summary list - Use fully qualified constant and dup
+          summary_fields = ADK::DefinitionStore::RedisStore::AGENT_DEFINITION_FIELDS.dup
 
           # Use pipelined HMGET for efficiency
           pipeline_results = @redis.pipelined do |pipe|
@@ -317,26 +317,27 @@ module ADK
 
           agent_names.zip(pipeline_results).each do |name, values|
             if values.is_a?(Array) && !values.all?(&:nil?)
-              summary_hash = Hash[summary_fields.zip(values)]
-              # Ensure name is present (should be from the list)
+              summary_hash = Hash[ADK::DefinitionStore::RedisStore::AGENT_DEFINITION_FIELDS.zip(values)]
               summary_hash['name'] ||= name
-              # Provide default model if missing
               summary_hash['model'] ||= ADK::Agent::DEFAULT_MODEL
-              # Convert to symbol keys
+              tools_json = summary_hash['tools']
+              summary_hash['tools'] = (tools_json && !tools_json.empty?) ? JSON.parse(tools_json) : []
               definitions << summary_hash.transform_keys(&:to_sym)
             else
-              # This might happen if a name is in the set but the hash is missing (inconsistent state)
               @logger.warn("Inconsistency: Agent name '#{name}' found in set but hash key missing or empty.")
             end
           end
 
           @logger.debug("Listed #{definitions.count} agent definitions.")
           definitions.sort_by { |d| d[:name] } # Sort by name for predictable order
+        rescue JSON::ParserError => e
+          @logger.error("Failed to parse tools JSON while listing agents: #{e.message}")
+          raise StoreError, "Error parsing stored tool data during agent listing."
         rescue Redis::BaseError => e
           @logger.error("Redis error listing agents: #{e.class} - #{e.message}")
           raise StoreError, "Redis error listing agent definitions: #{e.message}"
-        rescue => e # Catch other unexpected errors
-          @logger.error("Unexpected error listing agents: #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+        rescue => e
+          @logger.error("Unexpected error listing agents: #{e.class} - #{e.message}\\n#{e.backtrace.first(5).join("\\n")}")
           raise StoreError, "Unexpected error listing agent definitions: #{e.message}"
         end
       end
