@@ -573,14 +573,32 @@ module ADK
         loaded_model = agent_definition[:model]
         fallback_mode = agent_definition[:fallback_mode] # Symbol
         mcp_servers_json = agent_definition[:mcp_servers_json] # String
-        instruction = agent_definition[:instruction] # <<< Get instruction
-        # --- END MODIFICATION ---
+        instruction = agent_definition[:instruction]
+
+        # --- NEW: Pre-process MCP JSON for display ---
+        mcp_display_string = begin
+          parsed = JSON.parse(mcp_servers_json)
+          if parsed.is_a?(Array) && parsed.empty?
+             "No MCP Server(s) Configured."
+          else
+            pretty_json(parsed) # Assumes pretty_json helper is available
+          end
+        rescue JSON::ParserError
+          mcp_servers_json # Fallback to raw string on error
+        end
+        # --- END Pre-processing ---
 
         is_running = @agents.key?(name)
-        @view_agent_data = { name: name, description: description, running: is_running,
-                             model: loaded_model, fallback_mode: fallback_mode,
-                             mcp_servers_json: mcp_servers_json,
-                             instruction: instruction } # <<< Add instruction to view data
+        @view_agent_data = {
+          name: name,
+          description: description,
+          running: is_running,
+          model: loaded_model,
+          fallback_mode: fallback_mode,
+          mcp_servers_json: mcp_servers_json, # Keep raw JSON for edits
+          mcp_display_string: mcp_display_string, # <<< Pass processed string
+          instruction: instruction
+        }
 
         # Convert tool names to symbols for internal processing
         configured_tool_syms = configured_tool_names.map(&:to_sym)
@@ -1164,6 +1182,24 @@ module ADK
       end
       # --- END Tools Page Route ---
 
+      # --- NEW: Tool Detail Page Route ---
+      get '/tools/:name' do |name|
+        logger.info("GET /tools/#{name} route handler entered")
+        tool_name_sym = name.to_sym
+        # Fetch all tools and find the one we need
+        all_tools = ADK::GlobalToolManager.list_all_tools
+        @tool = all_tools.find { |t| t[:name] == tool_name_sym }
+
+        if @tool
+          logger.debug("Found tool metadata for '#{name}': #{@tool.inspect}")
+          slim :tool
+        else
+          logger.warn("Tool '#{name}' not found.")
+          halt 404, slim(:error_404, locals: { title: "Tool Not Found", message: "Tool definition for '#{name}' not found." })
+        end
+      end
+      # --- END Tool Detail Page Route ---
+
       # --- Private Helper Methods ---
       private
 
@@ -1512,6 +1548,27 @@ module ADK
             all_tools.find { |t| t[:name].to_s == tn }
           }
         end
+
+        # --- Add specific handling for MCP display ---
+        if field == 'mcp'
+          mcp_json = agent_definition[:mcp_servers_json]
+          mcp_display_string = begin
+            parsed = JSON.parse(mcp_json)
+            if parsed.is_a?(Array) && parsed.empty?
+               "No MCP Server(s) Configured."
+            else
+              pretty_json(parsed)
+            end
+          rescue JSON::ParserError
+            mcp_json # Fallback
+          end
+          # <<< Pass the processed string and raw JSON >>>
+          response_locals[:agent_data][:mcp_display_string] = mcp_display_string
+          response_locals[:agent_data][:mcp_servers_json] = mcp_json # Ensure raw is still there if needed
+        elsif field == 'tools'
+           # ... tool logic ...
+        end
+        # --- END MCP Handling ---
 
         # Render the correct partial
         slim :"_display_agent_#{field}", layout: false, locals: response_locals

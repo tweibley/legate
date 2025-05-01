@@ -21,7 +21,8 @@ section.section
             - @native_tools.each do |tool|
               tr
                 td
-                  strong = tool[:name]
+                  a href="/tools/#{tool[:name]}"
+                    strong = tool[:name]
                 td = tool[:description]
                 td
                   - if tool[:parameters].empty?

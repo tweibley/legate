@@ -1,21 +1,23 @@
-/ File: lib/adk/web/views/_display_agent_mcp.slim
+/! File: lib/adk/web/views/_display_agent_mcp.slim
 / Renders the display block for MCP server configurations.
-/ Expects: agent_data (Hash containing :name and :mcp_servers_json)
+/ Expects: agent_data (Hash containing :name, :mcp_servers_json, and :mcp_display_string)
 
-section.mt-4 id="agent-mcp-section"
-  .level
-    .level-left
-      label.label MCP Server Configurations (JSON)
-    .level-right
-      button.button.is-link.is-light.level-item( hx-get="/agents/#{agent_data[:name]}/edit/mcp"
-                                                hx-target="closest section"
-                                                hx-swap="outerHTML" )
-        span.icon.is-small
-          i.fas.fa-pencil-alt
-        span Edit
-  
-  .field
-    .control
-      / --- MODIFIED: Use textarea for CodeMirror ---
-      textarea.textarea(id="mcp-json-display" readonly=true rows="6") == agent_data[:mcp_servers_json]
-      / --- REMOVED pre/code block 
+hr
+.level
+  .level-left
+    h3.subtitle.is-5.mb-0 MCP Server Configurations (JSON)
+  .level-right
+    a.button.is-small title="Edit MCP Config" hx-get="/agents/#{agent_data[:name]}/edit/mcp"
+      span.icon.is-small
+        i.fas.fa-edit
+      span Edit
+
+/ Display the pre-processed string passed from the route
+- display_string = agent_data[:mcp_display_string]
+
+- if display_string == "No MCP Server(s) Configured."
+  p.has-text-grey
+    em = display_string
+- else
+  / Output the pre-formatted JSON (or raw string if parse failed)
+  pre.content = display_string 

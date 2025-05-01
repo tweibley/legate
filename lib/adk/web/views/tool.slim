@@ -1,10 +1,10 @@
 .content
-  h1.title = @tool.name
-  p.subtitle = @tool.description
+  h1.title = @tool[:name]
+  p.subtitle = @tool[:description]
 
 .box
   h2.title.is-4 Parameters
-  table.table
+  table.table.is-fullwidth.is-hoverable
     thead
       tr
         th Name
@@ -12,23 +12,23 @@
         th Required
         th Description
     tbody
-      - @tool.parameters.each do |name, info|
+      - if @tool[:parameters].is_a?(Hash)
+        - if @tool[:parameters].empty?
+          tr
+            td colspan="4" No parameters defined.
+        - else
+          - @tool[:parameters].each do |name, info|
+            tr
+              td = name
+              td = info[:type]
+              td
+                - if info[:required]
+                  em.has-text-danger Yes
+                - else
+                  | No
+              td = info[:description]
+      - else
         tr
-          td = name
-          td = info[:type]
-          td = info[:required] ? 'Yes' : 'No'
-          td = info[:description]
+          td colspan="4" Parameter format error.
 
-.box
-  h2.title.is-4 Try it out
-  form hx-post="/tools/#{@tool.name}/execute" hx-target="#tool-result"
-    - @tool.parameters.each do |name, info|
-      .field
-        label.label = name
-        .control
-          input.input(type="text" name=name.to_s placeholder=info[:description] required=info[:required])
-    .field
-      .control
-        button.button.is-primary type="submit" Execute
-
-  #tool-result.mt-4 
+a.button href="/tools" ← Back to Tools List 
