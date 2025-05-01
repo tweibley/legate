@@ -6,9 +6,13 @@ RSpec.describe ADK::Planner do
   let(:echo_tool_metadata) { { name: :echo, description: 'Echoes input', parameters: { message: { required: true } } } }
   let(:mock_agent_metadata) { [echo_tool_metadata] } # Default metadata for most agent mocks
   let(:agent_with_echo) {
-    instance_double(ADK::Agent, available_tools_metadata: mock_agent_metadata, name: 'test_agent')
+    # Allow instruction call for this mock as well
+    instance_double(ADK::Agent, available_tools_metadata: mock_agent_metadata, name: 'test_agent', instruction: nil)
   }
-  let(:agent_without_tools) { instance_double(ADK::Agent, available_tools_metadata: [], name: 'test_agent') }
+  let(:agent_without_tools) {
+    # Allow the call to instruction and return nil
+    instance_double(ADK::Agent, available_tools_metadata: [], name: 'test_agent', instruction: nil)
+  }
 
   # Use agent_without_tools as the default agent for most tests
   let(:agent) { agent_without_tools }
