@@ -239,6 +239,7 @@ Agents can be initialized directly using `ADK::Agent.new`:
 agent = ADK::Agent.new(
   name: 'my_agent',
   description: 'Description of what the agent does',
+  instruction: "You are a helpful assistant.", # Optional: Agent instructions
   tool_classes: [MyToolClass], # Explicitly list tool classes
   tool_paths: 'path/to/my/tools', # Or discover tools in a directory
   model_name: 'gemini-2.0-pro' # Optional: specify the LLM model
@@ -254,6 +255,7 @@ require 'adk'
 agent = ADK::Agent.define do |a|
   a.name = 'defined_agent'
   a.description = 'An agent configured using the define block.'
+  a.instruction = "You are a helpful assistant that only uses the tools provided. Respond concisely." # Optional instructions
   a.model_name = 'gemini-1.5-flash'
 
   # Discover tools in directories
