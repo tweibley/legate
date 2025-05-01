@@ -25,18 +25,15 @@ We need to define Ruby classes/modules analogous to the Python ADK's core authen
 
 ### 3.1. Interactive Flow (OAuth/OIDC - Client-Side Handling)
 
-This flow is triggered when a tool requires user interaction for authentication (e.g., login and consent).
+This flow is triggered when a tool requires user interaction for authentication (e.g., login and consent), leveraging Ruby's `Fiber` for async control flow.
 
 1.  **Tool Configuration:** The tool (e.g., an `OpenAPIToolset` instance) is configured with an `Adk::Auth::Scheme` (e.g., `OAuth2`) and an initial `Adk::Auth::Credential` (e.g., containing `client_id`, `client_secret`).
-2.  **Authentication Request:** When the tool is invoked and needs credentials:
-    *   The ADK core (likely within the `Runner` or a dedicated auth manager) detects the missing/invalid credentials.
-    *   It prepares an `Adk::Auth::Config` object containing the necessary details (like the constructed `auth_uri` for the provider).
-    *   The `Runner#run` (or equivalent async method) needs a mechanism to signal this requirement back to the calling application. This could be:
-        *   **Yielding a specific Event:** Similar to Python, yield an event object with a specific type (`:auth_required` or similar) containing the `Adk::Auth::Config` and a unique request ID (`auth_request_id`). This seems flexible.
-        *   **Raising a specific Exception:** Raise an exception like `Adk::Auth::UserInteractionRequiredError` containing the `Adk::Auth::Config` and `auth_request_id`.
-        *   **Returning a specific Status Object:** Return a status indicating pending auth, along with the `Adk::Auth::Config` and `auth_request_id`.
+2.  **Authentication Request & Fiber Yield:** When the tool is invoked and needs credentials:
+    *   The ADK core (likely within the `Runner` running inside a `Fiber`) detects the missing/invalid credentials.
+    *   It prepares an `Adk::Auth::Config` object containing necessary details (like the constructed `auth_uri` for the provider) and a unique `auth_request_id`.
+    *   The `Runner` calls **`Fiber.yield(auth_config_with_request_id)`**. This pauses the agent's execution Fiber and returns the `auth_config_with_request_id` object to the code that started the Fiber (the client application).
 3.  **Client Application Handling:**
-    *   The client application detects the auth request signal (event, exception, or status).
+    *   The client application receives the `auth_config_with_request_id` object yielded from the Fiber.
     *   It extracts the `auth_uri` from the `Adk::Auth::Config`.
     *   It **appends its own `redirect_uri`** (which must be registered with the provider) to the `auth_uri`.
     *   It directs the end-user to this complete URL (e.g., via browser redirect).
@@ -44,17 +41,17 @@ This flow is triggered when a tool requires user interaction for authentication 
     *   The application has an endpoint (at the `redirect_uri`) that receives the user back from the provider.
     *   The provider appends the `authorization_code` (and potentially `state`) to this callback URL.
     *   The client application captures the *full* callback URL (`auth_response_uri`).
-5.  **Sending Auth Response to ADK:**
-    *   The client application needs to resume the ADK flow, providing the captured information. This likely involves calling `Runner#run` again for the same session.
-    *   The `new_message` (or equivalent input) should contain:
+5.  **Sending Auth Response & Fiber Resume:**
+    *   The client application prepares an authentication response payload. This payload must contain:
         *   The original `auth_request_id`.
-        *   An updated `Adk::Auth::Config` (or a dedicated `Adk::Auth::Response` object) containing the `auth_response_uri` and the `redirect_uri` used.
-    *   This could be structured similarly to the Python `FunctionResponse` concept, perhaps as a specific input type or a structured hash.
+        *   An updated `Adk::Auth::Config` (or a dedicated `Adk::Auth::Response` object) containing the captured `auth_response_uri` and the `redirect_uri` used.
+    *   The client application resumes the paused Fiber using **`fiber.resume(auth_response_payload)`**, passing the prepared payload back into the agent's execution context.
 6.  **ADK Token Exchange & Retry:**
-    *   The ADK core receives the auth response.
-    *   It extracts the `authorization_code` from the `auth_response_uri`.
+    *   Execution resumes within the `Runner`'s Fiber at the point after the `Fiber.yield`.
+    *   The `Runner` receives the `auth_response_payload`.
+    *   It extracts the `authorization_code` from the `auth_response_uri` within the payload.
     *   Using the `token_url` (from the original `Scheme`), `client_id`, `client_secret`, `redirect_uri`, and `code`, it performs the OAuth token exchange (using a library like `oauth2`).
-    *   It securely stores the obtained `access_token` and `refresh_token` in the session state (see Section 5).
+    *   It securely stores the obtained `access_token` and `refresh_token` in the session state (encrypted, see Section 5).
     *   It automatically retries the original tool call.
 7.  **Tool Execution:** The tool now finds the valid token in the session state (via `ToolContext`) and executes the API call successfully.
 
@@ -62,18 +59,61 @@ This flow is triggered when a tool requires user interaction for authentication 
 
 For custom tools (`FunctionTool` equivalent) that manage their own authentication logic.
 
-1.  **Tool Context:** The tool's execution method must receive a `ToolContext` object (similar to Python). This context provides access to:
-    *   `context.session`: Access to session state for caching credentials.
-    *   `context.get_auth_response`: To check if an interactive flow just completed and provided credentials.
-    *   `context.request_credential`: To initiate the interactive flow if needed.
+1.  **Tool Context:** The tool's execution method must receive a `ToolContext` object. This context must provide access to:
+    *   `context.session`: The current `ADK::Session` object, allowing access to mutable `session.state` for caching credentials.
+    *   `context.get_auth_response(scheme, credential)`: A method to check if an interactive flow just completed and provided credentials via `Fiber.resume`. Returns an `Adk::Auth::ExchangedCredential` with tokens if available.
+    *   `context.request_credential(Adk::Auth::Config)`: A method to initiate the interactive `Fiber.yield` flow if credentials are required.
 2.  **Logic within the Tool:**
-    *   **Check Cache:** Look for valid, cached credentials (e.g., access/refresh tokens) in `context.session.state[:my_tool_token_cache_key]`. If found and valid (or refreshable), use them and skip to the API call step. Refresh tokens if necessary and update the cache.
-    *   **Check Auth Response:** If no valid cached credentials, call `context.get_auth_response(scheme, credential)`. This checks if the ADK core just received credentials from the client via the interactive flow (Steps 5 & 6 above). If credentials (`Adk::Auth::ExchangedCredential` with tokens) are returned, cache them (Step 5 below) and proceed to the API call.
-    *   **Initiate Auth Request:** If still no credentials, call `context.request_credential(Adk::Auth::Config.new(scheme:, credential:))`. This signals the ADK core to trigger the interactive flow (Steps 2-6 in Section 3.1). The tool should return a status indicating authentication is pending.
-    *   **(ADK Handles Interaction & Exchange)**: The core handles the interaction as described in Section 3.1.
-    *   **Cache Credentials:** Once valid credentials (access/refresh tokens) are obtained (either from cache refresh, `get_auth_response`, or implicitly after `request_credential` leads to a successful exchange on a subsequent retry), **cache them** securely in `context.session.state`. Store enough information to reconstruct the credential object (e.g., tokens, expiry, token URI, client info, scopes).
-    *   **Make API Call:** Use the obtained credentials with the appropriate HTTP client or API library (e.g., passing the access token in the `Authorization: Bearer` header). Handle API errors (like 401/403) by potentially clearing the cache and re-initiating the auth request on the next attempt.
+    *   **Check Cache:** Look for valid, cached credentials (e.g., encrypted access/refresh tokens) in `context.session.state[:my_tool_token_cache_key]`. Decrypt and validate them (e.g., check expiry). If valid (or refreshable using a cached refresh token), use them and skip to the API call step. Refresh tokens if necessary and update the encrypted cache in `context.session.state`.
+    *   **Check Auth Response:** If no valid cached credentials, call `context.get_auth_response(scheme, credential)`. This checks if the ADK core just received credentials from the client via `Fiber.resume`. If credentials (`Adk::Auth::ExchangedCredential` with tokens) are returned, cache them (Step 5 below) and proceed to the API call.
+    *   **Initiate Auth Request:** If still no credentials, call `context.request_credential(Adk::Auth::Config.new(scheme:, credential:))`. This signals the ADK core to trigger the interactive flow via `Fiber.yield`. The tool should then likely return a status indicating authentication is pending, as execution will pause here if `request_credential` yields.
+    *   **(ADK Handles Interaction & Exchange via Fiber.yield/resume)**: The core handles the interaction as described in Section 3.1.
+    *   **Cache Credentials:** Once valid credentials (access/refresh tokens) are obtained (either from cache refresh, `get_auth_response`, or implicitly after `request_credential` leads to a successful exchange on a subsequent retry/resume), **encrypt them** using `rbnacl` and store them securely in `context.session.state`. Store enough information (encrypted) to reconstruct the credential object.
+    *   **Make API Call:** Use the obtained (decrypted) credentials with the appropriate HTTP client or API library. Handle API errors (like 401/403) by potentially clearing the cache and re-initiating the auth request on the next attempt.
     *   **Return Result:** Return the processed result from the API call.
+
+### 3.3. Non-Interactive Flows (API Key, HTTP Bearer)
+
+These flows apply when the credential (like an API key or a pre-obtained Bearer token) is provided directly during configuration and does not require user interaction or token exchange via the ADK.
+
+1.  **Configuration:**
+    *   The tool is configured with an appropriate `Adk::Auth::Scheme` (e.g., `Adk::Auth::Schemes::APIKey`, `Adk::Auth::Schemes::HTTPBearer`).
+    *   The `Adk::Auth::Credential` is provided with the corresponding `auth_type` (e.g., `:api_key`, `:http_bearer`) and the credential value (or an environment variable name pointing to it).
+2.  **Execution:**
+    *   The interactive `Fiber.yield`/`resume` mechanism is **not** used for these types.
+    *   **Toolset Tools (e.g., `OpenAPIToolset`):** The toolset framework is responsible for retrieving the configured credential (e.g., the API key or Bearer token) and injecting it into the API requests according to the scheme (e.g., adding `Authorization: Bearer <token>` header, adding `X-API-Key: <key>` header, or adding query parameters).
+    *   **Custom Tools (`FunctionTool`):** The tool can access its initial configuration via the `ToolContext`. A method like `context.get_configured_credential` should be added to `ToolContext` to return the initial `Adk::Auth::Credential` object. The tool logic can then extract the key/token (resolving environment variables as needed) and use it in its API calls.
+3.  **No Exchange/Refresh via ADK:** The ADK core does not perform token exchanges or automatic refreshes for these types. If credentials expire or need rotation, it must be handled externally by updating the configuration.
+
+### 3.4 Service Account Flow (Non-Interactive Exchange)
+
+This flow applies to credentials like Google Cloud Service Account keys (e.g., JSON key files) that can be exchanged for access tokens without direct user interaction.
+
+1.  **Configuration:**
+    *   The tool is configured with an appropriate `Adk::Auth::Scheme` (likely implicitly defined by the tool type, e.g., a specific Google API tool, or potentially an `OAuth2` scheme used with a specific grant type if using `OpenAPIToolset`).
+    *   The `Adk::Auth::Credential` is provided with `auth_type: :service_account` and the credential details (e.g., the JSON key data itself, or an environment variable name pointing to the key data or file path).
+2.  **Execution & Token Exchange:**
+    *   The interactive `Fiber.yield`/`resume` mechanism is **not** used for this type.
+    *   When the tool first needs to make an authenticated call:
+        *   The ADK core (or a helper library integrated with it, like `googleauth`) detects the service account credential.
+        *   It **automatically and non-interactively** performs the necessary steps to exchange the service account credential for an access token (e.g., signing a JWT and sending it to the provider's token endpoint).
+        *   This exchange happens transparently to the tool's main logic.
+3.  **Token Caching & Refresh:**
+    *   The obtained access token (along with its expiry time) **must** be securely cached (encrypted via `rbnacl`) in the `Adk::SessionService` state.
+    *   On subsequent requests, the ADK retrieves the cached token.
+    *   The ADK core **must** automatically handle refreshing the access token before it expires or obtaining a new one when needed, using the original service account credential.
+4.  **Tool Usage:**
+    *   The tool obtains the valid access token via the `ToolContext` (e.g., `context.get_cached_credential` or similar mechanism that handles the retrieval and potential refresh).
+    *   The tool (or the underlying toolset/`excon` middleware) uses this token, typically as an HTTP Bearer token, in the `Authorization` header.
+
+### 3.5 Error Handling Considerations
+
+While Section 3.1 details error handling specifically around the `Fiber.resume` step for interactive flows, other error scenarios exist:
+
+*   **Invalid Initial Configuration:** Errors detected during tool setup (e.g., `Adk::Auth::Credential` pointing to a non-existent environment variable, malformed service account key) should ideally raise an error immediately upon configuration or connection initialization to fail fast.
+*   **OAuth Provider Interaction Errors:** If the user denies consent or the provider returns an error during the interactive phase (redirect flow), this will manifest as an error parameter (e.g., `?error=access_denied`) in the `auth_response_uri` captured by the client. When the client resumes the Fiber, the ADK's token exchange attempt (Step 3.1.6) will fail, resulting in the planned `Adk::Auth::TokenExchangeError` (or similar specific error) being raised from `Fiber.resume`.
+*   **Automatic Token Exchange/Refresh Failures:** If an automatic exchange (like for Service Accounts in 3.4) or an automatic token refresh (Section 7) fails (e.g., due to network issues, revoked credentials, provider downtime), the original tool action that triggered the need for the token should fail. This should likely raise a specific error (e.g., `Adk::Auth::TokenRefreshError`, `Adk::Auth::ServiceAccountExchangeError`) to indicate the authentication layer was the source of the problem.
+*   **API Call Auth Errors (401/403):** If a tool makes an API call with a token that the *API provider* deems invalid (even if the ADK thought it was valid, perhaps due to recent revocation), the API call will likely return a 401 or 403 status. The tool logic or underlying HTTP client (`excon`) should detect this. For OAuth/OIDC tokens, this could trigger the automatic refresh mechanism if a refresh token is available. If refresh fails or isn't possible, the error should propagate, possibly clearing the cached invalid credential from the session state.
 
 ## 4. Configuration
 
@@ -83,12 +123,15 @@ For custom tools (`FunctionTool` equivalent) that manage their own authenticatio
 
 ## 5. Session State & Security
 
-*   The `Adk::SessionService` needs to store obtained credentials (access tokens, refresh tokens).
+*   The existing `ADK::SessionService::Redis` implementation will be used and enhanced to store obtained credentials (access tokens, refresh tokens, etc.) alongside other session state.
 *   **Security is paramount:**
-    *   Avoid storing sensitive tokens directly in insecure session backends (like plain database columns or simple file storage).
-    *   **Recommendation:** Integrate with secure secret management solutions (e.g., HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager) or use strong, key-managed encryption (e.g., Ruby's `OpenSSL` or libraries like `attr_encrypted` with proper key management) if storing directly in a database.
-    *   The default `InMemorySessionService` is acceptable for testing but not production.
-    *   Consider storing only short-lived access tokens in the session state if possible, using refresh tokens stored more securely to get new access tokens when needed.
+    *   The current `Redis` service stores the `state` hash as plain JSON. This **must be modified**. Sensitive credentials stored within the session `state` hash (or potentially via `save_scoped_state`) **must** be encrypted before being stored in Redis.
+    *   **Encryption Strategy:** Use the `rbnacl` gem ([https://www.rubydoc.info/gems/rbnacl](https://www.rubydoc.info/gems/rbnacl)) for authenticated encryption (e.g., `RbNaCl::SimpleBox` or `RbNaCl::SecretBox`). Encryption must occur *before* JSON serialization (if encrypting the whole state) or applied to specific sensitive values within the state hash *before* the final serialization.
+    *   **Decryption Strategy:** Correspondingly, decryption using `rbnacl` must occur *after* retrieving data from Redis and *after* JSON parsing (if decrypting specific fields) or *before* JSON parsing (if the whole state blob was encrypted).
+    *   **Key Management:** The `ADK::SessionService::Redis#initialize` method must be updated to securely load and manage the `rbnacl` encryption key. This key **must not** be hardcoded. Options include environment variables (preferred initially) or integration with dedicated secret management systems.
+    *   **Selective Encryption (Optional):** Consider encrypting only specific sensitive fields within the state hash (like `:access_token`, `:refresh_token`) rather than the entire state blob for potential performance benefits, though this adds complexity to the serialization/deserialization logic.
+    *   The default `ADK::SessionService::InMemory` remains acceptable only for testing/development due to its lack of persistence and inherent security limitations if storing sensitive data.
+*   Consider storing only short-lived access tokens in the session state if possible, using encrypted refresh tokens stored securely to get new access tokens when needed (reduces exposure of access tokens).
 
 ## 6. Key Classes/Modules to Implement
 
@@ -98,13 +141,21 @@ For custom tools (`FunctionTool` equivalent) that manage their own authenticatio
 *   `Adk::Auth::Credential`
 *   `Adk::Auth::Config`
 *   `Adk::Auth::ExchangedCredential`
-*   `Adk::Auth::Error` (Base error class, potentially subclasses like `UserInteractionRequiredError`)
-*   `Adk::ToolContext` (Enhance or create, needs methods like `get_auth_response`, `request_credential`, access to `session`)
-*   Enhancements to `Adk::Runner` (or equivalent) to handle the auth request/response cycle and event/signal generation.
-*   Enhancements to `Adk::SessionService` for secure credential storage (potentially abstracting the secure storage mechanism).
+*   `Adk::Auth::Error` (Base error class, potentially specific subclasses)
+*   `Adk::ToolContext` (Enhance or create): Needs to provide access to the mutable `ADK::Session` object and methods like `get_auth_response`, `request_credential`, and `get_configured_credential`.
+*   Enhancements to `Adk::Runner` (or equivalent): Needs to manage execution within a `Fiber`, handle `Fiber.yield` for auth requests, `Fiber.resume` with auth responses, and orchestrate token exchange.
+*   Enhancements to `Adk::SessionService::Redis`: Modify state loading/saving methods (`create_session`, `get_session`, `append_event`, potentially `save/load_scoped_state` if used) to incorporate `rbnacl` encryption/decryption using a securely managed key.
 *   Integration points in `Adk::Tools::OpenAPIToolset` and potentially `Adk::Tools::BaseTool`.
+*   **Underlying HTTP Client:** Use the `excon` gem for handling the actual HTTP/S requests. Its middleware system should be leveraged where possible to integrate authentication header injection and potentially parts of the token refresh logic.
 
 ## 7. Open Questions/Future Considerations
+
+*   **Fiber Error Handling:** If an error occurs during token exchange initiated by `Fiber.resume`, the Runner **will raise an exception** (e.g., `Adk::Auth::TokenExchangeError`) immediately, propagating it to the client application's `fiber.resume` call site.
+*   **Token Refresh:** The ADK core **will automatically handle** refreshing expired access tokens using securely stored refresh tokens whenever possible.
+*   **State Parameter (OAuth):** The implementation **will include** support for the OAuth `state` parameter to prevent CSRF attacks.
+*   **Granularity:** Authentication configuration **will initially be at the Toolset level**.
+*   **Credential Source:** Initial sensitive credentials (client secrets, API keys) **will be configurable via environment variable names**, resolved at runtime by the ADK. Planning for integration with dedicated secret managers can be a future enhancement.
+*   **Gem Dependencies:** Confirm necessary gems: `excon`, `oauth2`, `jwt` (likely needed for OIDC/Service Accounts), `rbnacl`, `redis` (or other preferred Redis client).
 
 *   **Async Handling:** How will the interactive flow integrate with Ruby's async capabilities (e.g., `async` gem, Fibers)? The event-yielding approach might fit well.
 *   **Error Handling:** Define specific error types for different authentication failures (invalid credentials, token exchange failed, user denied consent, etc.).
