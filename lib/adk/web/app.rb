@@ -589,130 +589,90 @@ module ADK
         # --- END Pre-processing ---
 
         is_running = @agents.key?(name)
+
+        # --- Fetch Tool Metadata (Native + MCP) ---
+        # (Existing tool metadata fetching logic...)
+        native_tools = ADK::GlobalToolManager.list_all_tools.select { |t|
+          configured_tool_names.include?(t[:name].to_s)
+        }
+        mcp_tool_results = fetch_mcp_tools(mcp_servers_json) # This returns an ARRAY of result hashes
+
+        # --- FIXED: Iterate through results and extract tools from successful ones ---
+        successful_mcp_tools = []
+        mcp_tool_results.each do |result|
+          if result[:status] == :success && result[:tools]
+            successful_mcp_tools.concat(result[:tools])
+          end
+        end
+        # --- END FIX ---
+
+        # Select tools from the successful list
+        mcp_tools = successful_mcp_tools.select { |t| configured_tool_names.include?(t[:name].to_s) }
+        # Mark MCP tools source (use the server from the *original* result hash if needed - requires more complex tracking)
+        # For now, we lose the specific server source here, might need adjustment if displaying source is crucial
+        mcp_tools.each { |t| t[:source] = :mcp; t[:source_detail] = "MCP" } # Simplified source detail
+
+        # --- Merge Tools & Add Implicit Tools ---
+        view_configured_tools = (native_tools + mcp_tools).sort_by { |t| t[:name].to_s }
+        # Check if any configured tool is async
+        is_any_tool_async = view_configured_tools.any? { |t| t[:async] == true }
+        if is_any_tool_async && !configured_tool_names.include?('check_job_status')
+          check_job_status_tool = ADK::GlobalToolManager.get_tool_metadata(:check_job_status)
+          if check_job_status_tool
+            # Add note that it was implicitly added
+            check_job_status_tool[:description] = "(Implicitly added) #{check_job_status_tool[:description]}"
+            view_configured_tools << check_job_status_tool.merge(source: :native, source_detail: "Native (Implicit)")
+          end
+        end
+
+        # --- NEW: Load Chat Session ID & History (copied from GET /chat) ---
+        @session_id = nil
+        @chat_history_events = []
+        session[:adk_sessions] ||= {}
+        @session_id = session[:adk_sessions][name]
+        unless @session_id && @session_service.get_session(session_id: @session_id)
+          begin
+            new_session = @session_service.create_session(app_name: name, user_id: "web_user_#{SecureRandom.hex(4)}")
+            @session_id = new_session.id
+            session[:adk_sessions][name] = @session_id
+            logger.info("Created new ADK session for agent '#{name}' detail page: #{@session_id}")
+          rescue => e
+            logger.error("Failed to create ADK session for agent '#{name}': #{e.message}")
+            # Don't halt, just proceed without session/history
+          end
+        end
+        if @session_id # Only load history if session ID is valid
+          logger.debug("Using ADK session ID: #{@session_id} for agent '#{name}' detail page")
+          begin
+            adk_session_obj = @session_service.get_session(session_id: @session_id)
+            @chat_history_events = adk_session_obj&.events || []
+          rescue => e
+            logger.error("Failed to load chat history for session '#{@session_id}': #{e.message}")
+            # Proceed with empty history
+          end
+        else
+          logger.warn("No valid ADK session ID available for agent '#{name}' detail page chat.")
+        end
+        # --- END Chat Session/History Loading ---
+
+        # --- Assemble data for the view ---
         @view_agent_data = {
           name: name,
           description: description,
           running: is_running,
           model: loaded_model,
           fallback_mode: fallback_mode,
-          mcp_servers_json: mcp_servers_json, # Keep raw JSON for edits
-          mcp_display_string: mcp_display_string, # <<< Pass processed string
-          instruction: instruction
+          instruction: instruction,
+          mcp_servers_json: mcp_servers_json,
+          mcp_display_string: mcp_display_string,
+          configured_tool_names: configured_tool_names # Needed for edit forms
         }
 
-        # Convert tool names to symbols for internal processing
-        configured_tool_syms = configured_tool_names.map(&:to_sym)
-        logger.debug("Agent '#{name}' configured tool names from Store: #{configured_tool_syms.inspect}")
-
-        # --- Get All Available Native Tool Metadata ---
-        all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map do |tool_meta|
-          # <<< START CHANGE: Convert native params hash to array >>>
-          parameters_array = []
-          if tool_meta[:parameters].is_a?(Hash) && !tool_meta[:parameters].empty?
-            tool_meta[:parameters].each do |param_name, details|
-              parameters_array << {
-                name: param_name,
-                type: details[:type],
-                description: details[:description],
-                required: details[:required]
-              }
-            end
-          end
-          # <<< END CHANGE >>>
-          tool_meta.merge(parameters: parameters_array, source: :native, source_detail: "Native") # Use the converted array
-        end
-
-        # --- Fetch MCP Tools and Convert Parameters ---
-        mcp_configs = []
-        begin
-          mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
-        rescue JSON::ParserError => e
-          logger.error("Invalid JSON in mcp_servers_json for agent '#{name}': #{e.message}")
-          mcp_configs = []
-        end
-        @mcp_tool_results = fetch_mcp_tools(mcp_configs) # Keep this for displaying errors
-
-        all_mcp_tools_metadata = []
-        @mcp_tool_results.each do |result|
-          next unless result[:status] == :success && result[:tools]
-
-          result[:tools].each do |mcp_tool_hash|
-            parameters = []
-            begin
-              input_schema = mcp_tool_hash[:inputSchema]
-              if input_schema && input_schema.is_a?(Hash)
-                properties = input_schema['properties'] || {}
-                required = input_schema['required'] || []
-                parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required)
-              end
-            rescue => e
-              logger.error("Error converting MCP schema for tool '#{mcp_tool_hash[:name]}' in agent '#{name}' detail: #{e.message}")
-            end
-            # Ensure name is a symbol for consistency
-            tool_name_sym = mcp_tool_hash[:name].to_sym
-            all_mcp_tools_metadata << {
-              name: tool_name_sym,
-              description: mcp_tool_hash[:description] || '',
-              parameters: parameters,
-              source: :mcp,
-              source_detail: "MCP (#{result[:server]})" # Include server source
-            }
-          end
-        end
-
-        # --- Combine All Available Tools (Prefer Native on Name Clash) ---
-        all_available_tools_metadata_map = {}
-        (all_native_tools_metadata + all_mcp_tools_metadata).each do |tool_meta|
-          # Native tools take precedence if name exists
-          all_available_tools_metadata_map[tool_meta[:name]] ||= tool_meta
-        end
-        logger.debug("Combined available tools map (native+mcp): #{all_available_tools_metadata_map.keys.inspect}")
-
-        # --- Filter Combined List by Configured Symbols ---
-        @view_configured_tools = configured_tool_syms.map do |tool_sym|
-          all_available_tools_metadata_map[tool_sym]
-        end.compact # Remove nil entries if a configured tool wasn't found
-
-        # Add check_job_status tool if any configured tool is async (has check_workflow_status)
-        # Check *actual* tool objects if agent running, or rely on GlobalToolManager otherwise
-        should_add_status_tool = false
-        if is_running
-          agent_instance = @agents[name]
-          should_add_status_tool = agent_instance && agent_instance.tools.any? { |t|
-            t.respond_to?(:check_workflow_status)
-          }
-        else
-          # Check if any of the configured *native* tools are async based on GlobalToolManager
-          should_add_status_tool = @view_configured_tools.any? do |tool_meta|
-            tool_meta[:source] == :native && ADK::GlobalToolManager.find_class(tool_meta[:name])&.ancestors&.include?(ADK::Tools::BaseAsyncJobTool)
-          end
-          # Note: We currently cannot reliably detect if a *configured* MCP tool is async without starting the agent
-        end
-
-        if should_add_status_tool && !configured_tool_syms.include?(:check_job_status)
-          status_tool_meta = all_available_tools_metadata_map[:check_job_status]
-          if status_tool_meta && !@view_configured_tools.any? { |t| t[:name] == :check_job_status }
-            @view_configured_tools << status_tool_meta
-            logger.debug("Implicitly added check_job_status tool to view for agent '#{name}'")
-          end
-        end
-
-        logger.debug("Final list of tools to display for agent '#{name}': #{@view_configured_tools.map { |t|
-          t[:name]
-        }.inspect}")
-
-        # <<< ADD DEBUGGING HERE >>>
-        logger.debug("VIEW_CONFIGURED_TOOLS for agent '#{name}': #{@view_configured_tools.inspect}")
-
-        # Note: We removed the logic that created a temporary agent instance here,
-        # as we now derive the tool list directly from metadata and config.
-        # The @agent variable is only set if is_running is true.
-        @agent = @agents[name] if is_running
-
-        # Pass the filtered/processed list and the raw MCP results (for errors)
+        # --- Render the main agent view ---
         slim :agent, locals: {
-          view_configured_tools: @view_configured_tools,
-          mcp_tool_results: @mcp_tool_results # Still needed for error display
+          view_configured_tools: view_configured_tools,
+          mcp_tool_results: mcp_tool_results # Pass MCP results hash for potential errors
+          # @session_id and @chat_history_events are now available as instance vars
         }
       end
 
@@ -1016,9 +976,21 @@ module ADK
           </button>
         )
 
+        # --- NEW: Add OOB swaps for chat elements ---
+        chat_input_oob_html = %(
+          <input class="input" id="chat-input" type="text" name="message" placeholder="Enter your message..." required="true" autofocus #{disabled_attr_string} hx-swap-oob="true">
+        )
+        chat_button_oob_html = %(
+          <button class="button is-info" id="send-button" type="submit" #{disabled_attr_string} hx-swap-oob="true">
+            <span>Send</span>
+            <span class="icon is-small htmx-indicator ml-2" id="send-button-indicator"><i class="fas fa-spinner fa-pulse"></i></span>
+          </button>
+        )
+        # --- END NEW OOB swaps ---
+
         # --- Return combined HTML ---
         status 200 # Explicitly set 200 OK
-        status_controls_html + execute_button_oob_html
+        status_controls_html + execute_button_oob_html + chat_input_oob_html + chat_button_oob_html
       end
 
       # --- ADDED START: Missing stop/detail route ---
@@ -1069,9 +1041,21 @@ module ADK
           </button>
         )
 
+        # --- NEW: Add OOB swaps for chat elements (always disabled) ---
+        chat_input_oob_html = %(
+          <input class="input" id="chat-input" type="text" name="message" placeholder="Enter your message..." required="true" autofocus disabled hx-swap-oob="true">
+        )
+        chat_button_oob_html = %(
+          <button class="button is-info" id="send-button" type="submit" disabled hx-swap-oob="true">
+            <span>Send</span>
+            <span class="icon is-small htmx-indicator ml-2" id="send-button-indicator"><i class="fas fa-spinner fa-pulse"></i></span>
+          </button>
+        )
+        # --- END NEW OOB swaps ---
+
         # Return combined HTML
         status 200
-        status_controls_html + execute_button_oob_html
+        status_controls_html + execute_button_oob_html + chat_input_oob_html + chat_button_oob_html
       end
       # --- ADDED END ---
 

@@ -120,12 +120,60 @@ section.section
 
       div.content-tab.is-hidden#chat-tab
         .box
-           h3.title.is-5 Agent Chat
-           p.mb-4 Direct chat interaction with the agent. The agent must be running.
-           a.button.is-info(href="/agents/#{agent_name}/chat" disabled=(!is_running))
-              span.icon.is-small
-                i.fas.fa-external-link-alt
-              span Open Full Chat Page #{is_running ? '' : '(Requires Start)'}
+          /! --- Chat History Display Area (Copied from chat.slim) ---
+          #chat-history.box( style="height: 400px; overflow-y: scroll; margin-bottom: 1rem; background-color: #ffffff;"
+                           hx-on::after-swap="this.scrollTop = this.scrollHeight"
+                           _="init set my scrollTop to my scrollHeight end" )
+
+             - if @chat_history_events && !@chat_history_events.empty?
+               - @chat_history_events.each do |event|
+                 - if event.role == :user
+                   .message.is-info.is-small.mb-2(id="event-#{event.event_id}")
+                     .message-header
+                       p You
+                     .message-body= event.content
+
+                 - elsif event.role == :agent
+                   - agent_response_content = event.content
+                   - is_complex_content = (agent_response_content.is_a?(Hash) && agent_response_content.key?(:status)) || (agent_response_content.is_a?(Array) && agent_response_content.first.is_a?(Hash) && agent_response_content.first.key?(:status))
+                   - msg_class = 'is-light'
+                   - if is_complex_content
+                     - status = agent_response_content.is_a?(Array) ? agent_response_content.first[:status] : agent_response_content[:status]
+                     - case status
+                     - when :error; msg_class = 'is-danger'
+                     - when :pending; msg_class = 'is-warning'
+                     - else; msg_class = 'is-success'
+                   - else; msg_class = 'is-success'
+
+                   .message class="#{msg_class} is-small mb-4" id="event-#{event.event_id}"
+                     .message-header
+                       p Agent (#{agent_data[:name]}) /! Use agent_data local var
+                     .message-body
+                       div style="white-space: pre-wrap; word-break: break-all;" = format_historical_agent_content(agent_response_content)
+                 - else
+                   /! Optional: Tool Request/Result Rendering
+             - else
+               p.has-text-grey-light Start chatting...
+             /! End History Loop
+
+          /! --- Chat Input Form (Copied from chat.slim) ---
+          form#chat-form( hx-post="/agents/#{agent_name}/chat"
+                       hx-target="#chat-history"
+                       hx-swap="beforeend"
+                       hx-indicator="#send-button-indicator"
+                       _="on htmx:afterRequest reset()" )
+             .field.has-addons
+               .control.is-expanded style="position: relative;"
+                 /! Use agent_data local var for disabled check
+                 input.input#chat-input(type="text" name="message" placeholder="Enter your message..." required=true autofocus disabled=(!agent_data[:running]))
+                 span.icon.is-small.is-right.htmx-indicator style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;"
+                   i.fas.fa-spinner.fa-spin
+               .control
+                 /! Use agent_data local var for disabled check
+                 button.button.is-info#send-button(type="submit" disabled=(!agent_data[:running]))
+                   span Send
+                   span.icon.is-small#send-button-indicator.htmx-indicator.ml-2
+                     i.fas.fa-spinner.fa-pulse
 
 
     .mt-6.has-text-centered
@@ -171,6 +219,9 @@ section.section
             } else {
               console.error("Could not find tab content for:", targetTab);
             }
+            
+            // --- NEW: Update URL hash --- 
+            window.location.hash = targetTab;
         }
 
         // Add click listeners to tabs
@@ -182,13 +233,27 @@ section.section
           });
         });
 
-         // Optional: Activate tab based on URL hash on initial load
+         // --- MODIFIED: Activate tab based on URL hash on initial load --- 
+         let activatedFromHash = false;
          if (window.location.hash) {
              const hash = window.location.hash.substring(1); // Remove #
              const targetTabElement = document.querySelector(`.tabs li[data-tab="${hash}"]`);
              if (targetTabElement) {
                  activateTab(targetTabElement);
+                 activatedFromHash = true;
+             } else {
+                console.warn(`Tab for hash #${hash} not found.`);
              }
          }
+         // Activate default ('execute') tab only if nothing was activated from hash
+         if (!activatedFromHash) {
+            const defaultTab = document.querySelector('.tabs li[data-tab="execute"]');
+            if (defaultTab) {
+              activateTab(defaultTab);
+            } else {
+               console.error("Default execute tab not found!");
+            }
+         }
+         // --- END MODIFICATION ---
 
       }); // End DOMContentLoaded
