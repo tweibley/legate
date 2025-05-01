@@ -29,8 +29,8 @@
     == slim(:_display_agent_description, locals: { agent_data: @view_agent_data })
 
   / Agent Instructions (Editable) - NEW SECTION
-  div id="agent-instruction-editor" hx-target="this" hx-swap="outerHTML"
-    / Initially display the instruction (we'll create this partial next)
+  div id="agent-instruction-editor" hx-target="this" hx-swap="innerHTML"
+    / Initially display the instruction
     == slim(:_display_agent_instruction, locals: { agent_data: @view_agent_data })
 
   hr

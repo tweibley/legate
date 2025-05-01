@@ -1,11 +1,14 @@
 /! File: lib/adk/web/views/_display_agent_instruction.slim
 
 hr
-h3.subtitle.is-5 Instructions (System Prompt)
-  a.button.is-small.is-pulled-right title="Edit Instructions" hx-get="/agents/#{agent_data[:name]}/edit/instruction"
-    span.icon.is-small
-      i.fas.fa-edit
-    span Edit
+.level
+  .level-left
+    h3.subtitle.is-5.mb-0 Instructions (System Prompt)
+  .level-right
+    a.button.is-small title="Edit Instructions" hx-get="/agents/#{agent_data[:name]}/edit/instruction"
+      span.icon.is-small
+        i.fas.fa-edit
+      span Edit
 
 - instruction = agent_data[:instruction]
 - if instruction.nil? || instruction.strip.empty?
@@ -13,4 +16,4 @@ h3.subtitle.is-5 Instructions (System Prompt)
     em No instructions provided.
 - else
   .content
-    pre = instruction 
+    pre style="white-space: pre-wrap; word-wrap: break-word;" = instruction 

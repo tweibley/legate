@@ -20,7 +20,8 @@ module ADK
   class Agent
     DEFAULT_MODEL = 'gemini-2.0-flash' # Updated default model
 
-    attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode, :instruction
+    attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode,
+                :instruction
 
     # --- Builder Class for `define` method ---
     class AgentBuilder
