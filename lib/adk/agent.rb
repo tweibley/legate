@@ -20,11 +20,11 @@ module ADK
   class Agent
     DEFAULT_MODEL = 'gemini-2.0-flash' # Updated default model
 
-    attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode
+    attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode, :instruction
 
     # --- Builder Class for `define` method ---
     class AgentBuilder
-      attr_accessor :name, :description, :model_name, :fallback_mode, :mcp_servers, :selected_tool_names
+      attr_accessor :name, :description, :model_name, :fallback_mode, :mcp_servers, :selected_tool_names, :instruction
       attr_reader :tool_paths, :tool_classes # Keep track of both
 
       def initialize
@@ -36,6 +36,7 @@ module ADK
         @tool_classes = []
         @mcp_servers = []
         @selected_tool_names = []
+        @instruction = nil # Initialize instruction
         # Planner is not directly configured here, it's created by Agent#initialize
       end
 
@@ -63,6 +64,7 @@ module ADK
         ADK::Agent.new(
           name: @name,
           description: @description,
+          instruction: @instruction, # Pass instruction
           model_name: @model_name, # Defaults handled in initialize
           tool_classes: @tool_classes,
           tool_paths: @tool_paths,
@@ -112,11 +114,13 @@ module ADK
     # @param mcp_servers [Array<Hash>, String] Optional configurations for external MCP servers (JSON string or Array).
     # @param fallback_mode [Symbol] Behavior when planning fails (:error or :echo). Default: :error
     # @param selected_tool_names [Array<Symbol>] List of tool names explicitly selected in the agent definition (used for MCP).
+    # @param instruction [String, nil] Optional: Instructions for the agent's behavior (system prompt).
     def initialize(name:, description:, model_name: nil, tool_classes: [], tool_paths: [], planner: nil, mcp_servers: [],
-                   fallback_mode: :error, selected_tool_names: [])
+                   fallback_mode: :error, selected_tool_names: [], instruction: nil)
       ADK.logger.info("Initializing agent '#{name}'...")
       @name = name
       @description = description
+      @instruction = instruction # Store instruction
       @model_name = model_name || DEFAULT_MODEL
       @fallback_mode = fallback_mode == :echo ? :echo : :error # Ensure only valid modes
       @state = :idle # Initial state
