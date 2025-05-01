@@ -1,110 +1,76 @@
 # File: lib/adk/tools/cat_facts.rb
 # frozen_string_literal: true
 
-require 'faraday'
-require 'json'
+# Removed Faraday and JSON requires, handled by HttpClient
 require_relative '../tool'
+require_relative 'base/http_client' # Include the base module
 
 module ADK
   module Tools
     # Tool to fetch a random cat fact from an online API.
     class CatFacts < ADK::Tool
+      include ADK::Tools::Base::HttpClient # Include the mixin
+
       # --- New DSL Metadata ---
       # Name :cat_facts will be inferred
       tool_description 'Fetches a random cat fact from an online API.'
       # No parameters needed, so no `parameter` calls.
       # --- End New DSL Metadata ---
 
-      # The URL for the Cat Fact API.
-      CAT_FACT_URL = 'https://catfact.ninja/fact'
+      # The base URL for the Cat Fact API.
+      CAT_FACT_BASE_URL = 'https://catfact.ninja'
 
       # Initializes the tool instance.
-      # Sets up the Faraday HTTP connection.
+      # Sets up the HTTP client using the base module.
       def initialize(**options)
         super(**options)
-        # Initialize Faraday connection once with timeouts and error handling middleware
-        @conn = Faraday.new(url: CAT_FACT_URL) do |faraday|
-          faraday.adapter Faraday.default_adapter # Use the default HTTP adapter
-          faraday.response :raise_error # Raise exceptions for HTTP 4xx/5xx responses
-          faraday.request :url_encoded # Encode request params
-          faraday.options.timeout = 5 # Set connection read timeout
-          faraday.options.open_timeout = 2 # Set connection open timeout
-        end
-      rescue Faraday::Error => e # Catch potential errors during Faraday setup
-        ADK.logger.error("CatFacts Tool: Failed to initialize Faraday connection: #{e.message}")
-        @conn = nil # Ensure conn is nil if setup fails, preventing calls
+        # Use the base module to set up the client
+        # It handles initialization errors and logging internally.
+        setup_http_client(base_url: CAT_FACT_BASE_URL)
       end
 
       private
 
       # The main execution method required by the ADK::Tool base class.
       # It delegates the actual work to the fetch_cat_fact helper method.
-      # Accepts params hash but ignores it as this tool takes no parameters.
-      #
-      # @param _params [Hash] Ignored parameters.
-      # @param _context [ADK::ToolContext, nil] The execution context (unused here).
-      # @return [Hash] A standardized hash with :status and :result or :error_message.
       def perform_execution(_params, _context)
         fetch_cat_fact
       end
 
-      # Helper method to perform the HTTP request and handle responses/errors.
+      # Helper method to perform the HTTP request using the HttpClient module
+      # and handle responses/errors.
       # Returns the standardized result hash.
       #
       # @return [Hash] A hash with :status (:success or :error) and :result/:error_message.
+      # @raise [ADK::ToolError] Propagates errors from http_get, parse_json_response, or validation.
       def fetch_cat_fact
-        # Check if the connection was successfully initialized
-        unless @conn
-          err_msg = "CatFacts Tool HTTP client not initialized"
-          ADK.logger.error(err_msg)
+        ADK.logger.info("Fetching cat fact using HttpClient...")
+
+        # Perform the GET request using the base module helper
+        # Network/HTTP/Timeout errors are automatically handled and raised as ADK::ToolError
+        response = http_get('/fact')
+
+        # Parse the JSON response body using the base module helper
+        # JSON parsing errors are automatically handled and raised as ADK::ToolError
+        data = parse_json_response(response)
+        fact = data['fact'] # Extract the 'fact' field
+
+        # Check if a valid fact was received
+        if fact && !fact.empty?
+          ADK.logger.info("Cat fact fetched successfully.")
+          { status: :success, result: fact }
+        else
+          # Raise an error if the expected field is missing or empty
+          err_msg = "Cat fact API response did not contain a valid 'fact' field."
+          ADK.logger.warn(err_msg)
           raise ADK::ToolError, err_msg
         end
 
-        # Perform the HTTP GET request and handle potential errors
-        begin
-          ADK.logger.info("Fetching cat fact from #{CAT_FACT_URL}")
-          response = @conn.get # Perform the GET request
-
-          # Parse the JSON response body
-          data = JSON.parse(response.body)
-          fact = data['fact'] # Extract the 'fact' field
-
-          # Check if a valid fact was received
-          if fact && !fact.empty?
-            ADK.logger.info("Cat fact fetched successfully.")
-            { status: :success, result: fact }
-          else
-            err_msg = "Cat fact API response did not contain a valid 'fact' field."
-            ADK.logger.warn(err_msg)
-            raise ADK::ToolError, err_msg
-          end
-
-        # --- Specific Faraday/Network Error Handling (Ordered Most Specific to Least) ---
-        rescue Faraday::TimeoutError => e
-          err_msg = "Timeout connecting to cat fact API."
-          ADK.logger.error("#{err_msg}: #{e.message}")
-          raise ADK::ToolError, err_msg
-        rescue Faraday::ConnectionFailed => e
-          err_msg = "Connection failed for cat fact API."
-          ADK.logger.error("#{err_msg}: #{e.message}")
-          raise ADK::ToolError, err_msg
-        rescue Faraday::Error => e # Catch other Faraday/HTTP errors (like 4xx/5xx)
-          status_code = e.response[:status] if e.response
-          err_msg = "Error fetching cat fact (HTTP Status: #{status_code || 'N/A'})."
-          ADK.logger.error("#{err_msg} #{e.class}: #{e.message}")
-          raise ADK::ToolError, err_msg
-        # --- Other Potential Errors ---
-        rescue JSON::ParserError => e
-          err_msg = "Error reading cat fact response (JSON parse failed)."
-          ADK.logger.error("#{err_msg}: #{e.message}")
-          raise ADK::ToolError, err_msg
-        rescue StandardError => e # Catch any other unexpected errors
-          err_msg = "Unexpected error retrieving cat fact."
-          ADK.logger.error("#{err_msg}: #{e.class} - #{e.message}")
-          ADK.logger.error(e.backtrace.first(5).join("\n")) # Log stack trace for debugging
-          # Wrap unexpected errors
-          raise ADK::ToolError, "#{err_msg}: #{e.message}"
-        end
+        # No need for extensive rescue blocks here anymore.
+        # ADK::ToolError from http_get, parse_json_response, or the validation
+        # will propagate up and be handled by the ADK runtime.
+        # StandardError might still occur in unexpected places, but the base
+        # HttpClient tries to catch most common issues.
       end # end fetch_cat_fact
     end # End CatFacts class
   end # End Tools module
