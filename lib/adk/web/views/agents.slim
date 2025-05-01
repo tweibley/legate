@@ -3,86 +3,119 @@
   h1.title Agents
   p.subtitle Manage agent definitions and runtime instances.
 
-.box
-  h2.title.is-4 Create Agent Definition
-  form(hx-post="/agents" hx-target="#agent-list-tbody" hx-swap="beforeend" _="on htmx:afterRequest reset()")
-    / --- Agent Name ---
-    .field
-      label.label Name
-      .control
-        input.input(type="text" name="name" placeholder="Unique agent name" required=true)
-    / --- Agent Description ---
-    .field
-      label.label for="description" Description
-      .control
-        textarea.textarea#description name="description" placeholder="What does this agent do?" required="required"
-    / --- Agent Instruction ---
-    .field
-      label.label for="instruction" Instructions (System Prompt)
-      .control
-        textarea.textarea#instruction name="instruction" rows="3" placeholder="(Optional) Guide the agent's behavior, persona, and tool usage (e.g., You are a helpful assistant that only uses provided tools. Be concise.)"
+/ --- Collapsible Create Agent Section ---
+details.box.mb-5
+  summary.is-clickable style="font-weight: bold; font-size: 1.2em;"
+    span.icon.mr-2
+      i.fas.fa-plus-circle
+    | Create New Agent Definition
 
-    / --- Agent Model ---
-    .field
-      label.label for="model" Language Model
-      .control
-        .select
-          select(name="model")
-            - default_model = ADK::Agent::DEFAULT_MODEL
-            - @available_models.each do |model_name|
-              option(value=model_name selected=(model_name == default_model)) = model_name
-            / Optionally add an option for custom input if needed
-            / option(value="") Other (Specify if not listed)
+  / --- Form inside the details tag ---
+  /! Add some spacing after summary
+  .mt-4
+    form(hx-post="/agents" hx-target="#agent-list-tbody" hx-swap="beforeend" _="on htmx:afterRequest this.closest('details').removeAttribute('open'); this.reset(); destroyCodeMirrorInstance('mcp_servers_json'); destroyCodeMirrorInstance('instruction');")
+      / --- Agent Name ---
+      .field
+        label.label Name
+        .control.has-icons-left
+          input.input(type="text" name="name" placeholder="Unique agent name (e.g., customer-support-agent)" required=true)
+          span.icon.is-small.is-left
+            i.fas.fa-robot
+      / --- Agent Description ---
+      .field
+        label.label for="description" Description
+        .control
+          textarea.textarea#description name="description" placeholder="What does this agent do? (e.g., Handles initial customer support queries)" required="required" rows="2"
+      / --- Agent Instruction (Using CodeMirror) ---
+      .field
+        label.label for="instruction" Instructions (System Prompt)
+        .control
+          /! Textarea for CodeMirror initialization
+          textarea.textarea#instruction name="instruction" rows="4" placeholder="(Optional) Guide the agent's behavior, persona, and tool usage (e.g., You are a helpful assistant that only uses provided tools. Be concise.)"
+        p.help Guide the agent's behavior, persona, and tool usage. Markdown is supported by some models.
+      / --- Agent Model ---
+      .field
+        label.label for="model" Language Model
+        .control.has-icons-left
+          .select.is-fullwidth
+            select(name="model")
+              - default_model = ADK::Agent::DEFAULT_MODEL
+              - @available_models.each do |model_name|
+                option(value=model_name selected=(model_name == default_model)) = model_name
+          span.icon.is-small.is-left
+            i.fas.fa-brain
+      / --- MCP Server Config (Using CodeMirror) ---
+      .field
+        label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
+        .control
+          /! Textarea for CodeMirror initialization
+          textarea.textarea#mcp_servers_json name="mcp_servers_json" rows="5" placeholder='[{"type": "stdio", "command": "...", "args": ["..."]}]'
+        p.help
+          | Enter a valid JSON array of MCP server objects. Example:
+          code style="font-size: 0.8em;" [{"type": "stdio", "command": "npx", "args": ["@mcp/server", "/path/to/tools"]}]
+          | . Leave empty if no MCP servers are needed.
 
-    / --- Add this section for MCP Server Config ---
-    .field
-      label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
-      .control
-        / Textarea for entering JSON array
-        textarea.textarea#mcp_servers_json name="mcp_servers_json" rows="4" placeholder='[{"type": "stdio", "command": "...", "args": ["..."]}]'
-        p.help 
-          | Enter a JSON array of MCP server config objects (e.g., <code>[{"type": "stdio", "command": "npx", "args": ["@mcp/server", "/path/to/dir"]}]</code>). Leave empty if none.
+      / --- Tool Selection ---
+      .field
+        label.label Tools
+        .control
+          - if @available_tools && !@available_tools.empty?
+           / Use a panel for better visual grouping
+            .panel
+              p.panel-heading Available Tools
+              - @available_tools.each do |tool_info|
+                label.panel-block.is-clickable / Make the whole block clickable
+                  input.mr-3(type="checkbox" name="tools[]" value=tool_info[:name])
+                  span
+                    strong #{tool_info[:name].to_s.capitalize}
+                    br
+                    small.has-text-grey #{tool_info[:description]}
+          - else
+            .notification.is-warning.is-light No tools available for selection.
 
-    / --- Tool Selection ---
-    .field
-      label.label Tools
-      .control
-        - if @available_tools && !@available_tools.empty?
-          - @available_tools.each do |tool_info|
-            .field
-              label.checkbox
-                input(type="checkbox" name="tools[]" value=tool_info[:name])
-                strong #{tool_info[:name].to_s.capitalize}:
-                span  #{tool_info[:description]}
-        - else
-          p No tools available for selection.
+      / --- Fallback Mode Selection ---
+      .field
+        label.label Planning Fallback
+        p.help Select behavior when the agent cannot determine which tool to use.
+        .control.has-icons-left
+          .select.is-fullwidth
+            select(name="fallback_mode")
+              option(value="error" selected=true) Return Error Message
+              option(value="echo") Attempt Echo Tool (if available)
+          span.icon.is-small.is-left
+            i.fas.fa-random
 
-    / --- NEW: Fallback Mode Selection ---
-    .field
-      label.label Planning Fallback
-      p.help Select behavior when the agent cannot determine which tool to use.
-      .control
-        .select
-          select(name="fallback_mode")
-            option(value="error" selected=true) Return Error Message
-            option(value="echo") Attempt Echo Tool (if available)
-
-    / --- Submit Button ---
-    .field
-      .control
-        button.button.is-primary(type="submit") Create Agent Definition
+      / --- Submit Button ---
+      .field.mt-5
+        .control
+          button.button.is-primary(type="submit")
+            span.icon
+              i.fas.fa-save
+            span Create Agent Definition
 
 / --- Agent List Table ---
 .box
-  h2.title.is-4 Defined Agents
+  .level
+    .level-left
+      h2.title.is-4 Defined Agents
+    .level-right
+      /! Add refresh button?
+      button.button.is-light(hx-get="/agents/list" hx-target="#agent-list-tbody" hx-swap="innerHTML" hx-indicator="#agent-list-spinner")
+        span.icon#agent-list-spinner.htmx-indicator
+            i.fas.fa-spinner.fa-spin
+        span.icon
+            i.fas.fa-sync
+        span Refresh List
+
+
   table.table.is-fullwidth.is-striped.is-hoverable#agent-list-table(data-testid="agent-list-table")
     thead
       tr
+        th Status
         th Name
         th Description
         th Model
         th Configured Tools
-        th Status
         th Actions
     tbody#agent-list-tbody
       - if @view_agents && !@view_agents.empty?
@@ -92,4 +125,5 @@
       - else
         tr#no-agents-row
           / --- Adjust colspan ---
-          td(colspan="6") No agent definitions found in Redis.
+          td(colspan="6").has-text-centered.has-text-grey
+            | No agent definitions found. Use the 'Create New Agent Definition' section above.

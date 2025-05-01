@@ -1,8 +1,7 @@
 / File: lib/adk/web/views/_display_agent_name.slim
 / Expects locals: agent_data (Hash)
 
-div.mb-3
-  - if agent_data && agent_data[:name]
-    h1.title.mb-0= agent_data[:name]
-  - else
-    h1.title.mb-0.has-text-danger [Error: Agent Name Unavailable]
+- if agent_data && agent_data[:name]
+  h1.title.mb-0= agent_data[:name]
+- else
+  h1.title.mb-0.has-text-danger [Error: Agent Name Unavailable]

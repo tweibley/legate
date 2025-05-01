@@ -1,19 +1,27 @@
 /! File: lib/adk/web/views/_display_agent_instruction.slim
+/ Expects: agent_data (Hash: {name, instruction})
+/ Optional local: show_edit_button (Boolean, default: true)
 
-hr
+/ --- Set default if not provided ---
+- show_edit_button = defined?(show_edit_button) ? show_edit_button : true
+
+/ --- Removed hr ---
 .level
   .level-left
     h3.subtitle.is-5.mb-0 Instructions (System Prompt)
   .level-right
-    a.button.is-small title="Edit Instructions" hx-get="/agents/#{agent_data[:name]}/edit/instruction"
-      span.icon.is-small
-        i.fas.fa-edit
-      span Edit
+    / --- Conditionally show edit button ---
+    - if show_edit_button
+      a.button.is-small title="Edit Instructions" hx-get="/agents/#{agent_data[:name]}/edit/instruction"
+        span.icon.is-small
+          i.fas.fa-edit
+        span Edit
 
 - instruction = agent_data[:instruction]
 - if instruction.nil? || instruction.strip.empty?
-  p.has-text-grey
+  p.has-text-grey.mt-2
     em No instructions provided.
 - else
-  .content
-    pre style="white-space: pre-wrap; word-wrap: break-word;" = instruction 
+  .content.mt-2
+    /! Consider using read-only CodeMirror here too for consistency
+    pre style="white-space: pre-wrap; word-wrap: break-word; background-color: #fafafa; padding: 0.75em; border-radius: 4px;" = instruction

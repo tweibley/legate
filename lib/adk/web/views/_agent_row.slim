@@ -1,81 +1,93 @@
 / File: lib/adk/web/views/_agent_row.slim
-/ Expects 'agent_info' hash containing keys:
-/   :name (String)
-/   :description (String)
-/   :model (String or nil) - The configured model name from Redis
-/   :running (Boolean) - Current runtime status
-/   :configured_tools (Array<String>) - List of tool names from Redis
-/ Expects 'available_tools' (Array<Hash>) list passed via locals for descriptions
+/ Expects 'agent_info' hash and 'available_tools' list
 
 - agent_name = agent_info[:name]
 - is_running = agent_info[:running]
-- model_display = agent_info[:model] && !agent_info[:model].empty? ? agent_info[:model] : "#{ADK::Agent::DEFAULT_MODEL} (Default)" # Apply default for display if nil or empty
-- status_cell_id = "agent-status-cell-#{agent_name}" # Optional ID for the TD
-- status_content_id = "agent-status-content-#{agent_name}" # ID for the inner status span (HTMX target)
-- start_button_id = "agent-start-button-#{agent_name}"
-- stop_button_id = "agent-stop-button-#{agent_name}"
+- model_display = agent_info[:model] && !agent_info[:model].empty? ? agent_info[:model] : "#{ADK::Agent::DEFAULT_MODEL} (Default)"
+- status_cell_id = "agent-status-cell-#{agent_name}"
+- status_content_id = "agent-status-content-#{agent_name}"
+- row_id = "agent-row-#{agent_name}"
 
 / Helper to find tool description
 - find_tool_desc = lambda { |name| available_tools&.find { |t| t[:name].to_s == name.to_s }&.[](:description) || "Description not found" }
 
-tr(data-agent-name=agent_name)
+tr(data-agent-name=agent_name id=row_id)
+  / Status Column (Moved to first column)
+  td(id=status_cell_id style="width: 80px; text-align: center;")
+   / Target for status updates
+    span(id=status_content_id hx-swap="innerHTML")
+      /! Use a tag with icon for status
+      span(class="tag is-medium #{is_running ? 'is-success' : 'is-danger'}")
+        span.icon.is-small
+          i(class="fas #{is_running ? 'fa-check-circle' : 'fa-stop-circle'}")
+        span.ml-1 = is_running ? 'Running' : 'Stopped'
+
   / Name Column
   td
-    a(href="/agents/#{agent_name}")= agent_name
+    a(href="/agents/#{agent_name}")
+      strong= agent_name
 
-  / Description Column
-  td= agent_info[:description]
+  / Description Column (Truncate long descriptions potentially)
+  td
+    span.is-size-7= agent_info[:description]
 
   / Model Column
   td
-    span.is-size-7= model_display
+    span.tag.is-info.is-light= model_display
 
   / Configured Tools Column
   td
     - configured_tools = agent_info[:configured_tools]
     - if configured_tools && !configured_tools.empty?
-      span.is-size-7
-        - configured_tools.each_with_index do |tool_name, index|
+      .tags
+        - configured_tools.each do |tool_name|
           - description = find_tool_desc.call(tool_name)
-          a href="/tools/#{tool_name}" title=description = tool_name
-          = ", " if index < configured_tools.length - 1
+          a.tag.is-link.is-light(href="/tools/#{tool_name}" title=description) = tool_name
     - else
-      span.is-size-7.has-text-grey -
+      span.tag -
 
-  / Status Column (with HTMX target span)
-  td(id=status_cell_id)
-    span(id=status_content_id)
-      span(class="tag #{is_running ? 'is-success' : 'is-light'}")
-        = is_running ? 'Running' : 'Stopped'
-
-  / Actions Column
-  td
-    .buttons.are-small.is-justify-content-right
-      / Start Button
-      button.button.is-success.is-light(
-        id=start_button_id
-        hx-post="/agents/#{agent_name}/start"
-        hx-target="##{status_content_id}"
-        hx-swap="innerHTML"
-        disabled=is_running
-      ) Start
-
-      / Stop Button
-      button.button.is-warning.is-light(
-        id=stop_button_id
-        hx-post="/agents/#{agent_name}/stop"
-        hx-target="##{status_content_id}"
-        hx-swap="innerHTML"
-        disabled=!is_running
-      ) Stop
-
-      / Details Button
-      a.button.is-info.is-light(href="/agents/#{agent_name}") Details
-
-      / Delete Button
-      button.button.is-danger.is-light(
-        hx-delete="/agents/#{agent_name}"
-        hx-target="closest tr"
-        hx-swap="outerHTML"
-        hx-confirm="Are you sure you want to delete agent definition '#{agent_name}'?"
-      ) Delete
+  / Actions Column (Using dropdown for cleaner look)
+  td(style="width: 100px; text-align: right;")
+    .dropdown.is-hoverable.is-right
+      .dropdown-trigger
+        button.button.is-small.is-ghost aria-haspopup="true" aria-controls="dropdown-menu-#{agent_name}"
+          span.icon.is-small
+            i.fas.fa-ellipsis-h
+      .dropdown-menu id="dropdown-menu-#{agent_name}" role="menu"
+        .dropdown-content
+          / Start Button
+          a.dropdown-item( href="#"
+                           hx-post="/agents/#{agent_name}/start"
+                           hx-target="##{status_content_id}"
+                           hx-swap="innerHTML"
+                           class=(is_running ? 'is-disabled' : '')
+                           onclick="if(this.classList.contains('is-disabled')) event.preventDefault();" )
+            span.icon.has-text-success
+              i.fas.fa-play
+            span Start
+          / Stop Button
+          a.dropdown-item( href="#"
+                           hx-post="/agents/#{agent_name}/stop"
+                           hx-target="##{status_content_id}"
+                           hx-swap="innerHTML"
+                           class=(!is_running ? 'is-disabled' : '')
+                           onclick="if(this.classList.contains('is-disabled')) event.preventDefault();" )
+            span.icon.has-text-danger
+              i.fas.fa-stop
+            span Stop
+          hr.dropdown-divider
+          / Details Link
+          a.dropdown-item(href="/agents/#{agent_name}")
+            span.icon.has-text-info
+              i.fas.fa-info-circle
+            span Details
+          hr.dropdown-divider
+          / Delete Button
+          a.dropdown-item.has-text-danger( href="#"
+                                           hx-delete="/agents/#{agent_name}"
+                                           hx-target="closest tr"
+                                           hx-swap="outerHTML"
+                                           hx-confirm="Are you sure you want to delete agent definition '#{agent_name}'?" )
+            span.icon
+              i.fas.fa-trash-alt
+            span Delete

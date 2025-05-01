@@ -1,70 +1,59 @@
 / File: lib/adk/web/views/_agent_tool_table.slim
-/ Renders the complete Configured Tools section including the table.
+/ Renders the table of configured tools and MCP errors.
 / Expects locals:
-/   agent_data (Hash: {name, ...})
+/   agent_data (Hash: {name, ...}) - Used only for potential future actions
 /   view_configured_tools (Array<Hash>: Filtered list of configured tool metadata)
 /   mcp_tool_results (Array<Hash>: Raw results from fetch_mcp_tools for error display)
 
-.box#agent-tools-display
-  / --- Level for Title and Edit Button ---
-  .level
-    .level-left
-      h2.title.is-4.level-item Configured Tools
-    .level-right
-      button.button.is-link.is-light.level-item( hx-get="/agents/#{agent_data[:name]}/edit/tools"
-                                                hx-target="#agent-tools-display"
-                                                hx-swap="outerHTML" )
-        span.icon.is-small
-          i.fas.fa-pencil-alt
-        span Edit Tools
-  
-  / --- Table Structure ---
-  table.table.is-fullwidth.is-striped.is-hoverable
-    thead
-      tr
-        th Name
-        th Source
-        th Description
-        th Parameters
-        / th Actions
-    tbody
-      / --- Iterate over the filtered list of configured tools --- 
-      - if view_configured_tools && !view_configured_tools.empty?
-        - view_configured_tools.each do |tool_info|
-          tr
-            td
-              / Link to native tool detail page if applicable
-              - if tool_info[:source] == :native
-                a href="/tools/#{tool_info[:name]}" = tool_info[:name]
-              - else
-                = tool_info[:name] 
-            td
-              - source_tag_class = (tool_info[:source] == :native) ? 'is-info' : 'is-link'
-              span.tag class="#{source_tag_class} is-light" = tool_info[:source_detail]
-            td= tool_info[:description]
-            td
-              - if tool_info[:parameters].is_a?(Array) && !tool_info[:parameters].empty? && tool_info[:parameters].all? { |p| p.is_a?(Hash) }
-                ul.is-small style="margin-left: 1em; list-style-type: disc;"
-                  - tool_info[:parameters].each do |param|
-                    li
-                      strong= param[:name]
-                      |  (#{param[:type]}) 
-                      - if param[:required]
-                        em.has-text-danger required
-              - else
-                em None
-            / td Actions (TBD)
-      - else
-        tr
-          td colspan="4" 
-            em This agent has no tools configured.
+/ --- Removed Outer Box and Header Level ---
 
-  / --- Display MCP Server Errors (if any) ---
-  - if defined?(mcp_tool_results) && mcp_tool_results.any? { |r| r[:status] == :error }
-    .content.mt-4
-      h4.subtitle.is-6 MCP Server Status:
-      - mcp_tool_results.each do |result|
-        - if result[:status] == :error
-          .notification.is-danger.is-light.is-size-7.p-2
-            strong Error fetching from #{result[:server]}:
-            = " " + result[:message] 
+/ --- Table Structure ---
+table.table.is-fullwidth.is-striped.is-hoverable
+  thead
+    tr
+      th Name
+      th Source
+      th Description
+      th Parameters
+      / th Actions
+  tbody
+    / --- Iterate over the filtered list of configured tools ---
+    - if view_configured_tools && !view_configured_tools.empty?
+      - view_configured_tools.each do |tool_info|
+        tr
+          td
+            / Link to native tool detail page if applicable
+            - if tool_info[:source] == :native
+              a href="/tools/#{tool_info[:name]}" = tool_info[:name]
+            - else
+              = tool_info[:name]
+          td
+            - source_tag_class = (tool_info[:source] == :native) ? 'is-info' : 'is-link'
+            span.tag class="#{source_tag_class} is-light" = tool_info[:source_detail]
+          td= tool_info[:description]
+          td
+            - if tool_info[:parameters].is_a?(Array) && !tool_info[:parameters].empty? && tool_info[:parameters].all? { |p| p.is_a?(Hash) }
+              ul.is-small style="margin-left: 1em; list-style-type: disc;"
+                - tool_info[:parameters].each do |param|
+                  li
+                    strong= param[:name]
+                    |  (#{param[:type]})
+                    - if param[:required]
+                      em.has-text-danger required
+            - else
+              em None
+          / td Actions (TBD)
+    - else
+      tr
+        td colspan="4"
+          em This agent has no tools configured.
+
+/ --- Display MCP Server Errors (if any) ---
+- if defined?(mcp_tool_results) && mcp_tool_results.any? { |r| r[:status] == :error }
+  .content.mt-4
+    h4.subtitle.is-6 MCP Server Status:
+    - mcp_tool_results.each do |result|
+      - if result[:status] == :error
+        .notification.is-danger.is-light.is-size-7.p-2
+          strong Error fetching from #{result[:server]}:
+          = " " + result[:message]

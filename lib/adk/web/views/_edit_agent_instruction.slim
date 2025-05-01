@@ -1,17 +1,21 @@
 /! File: lib/adk/web/views/_edit_agent_instruction.slim
+/! This partial might become redundant if its content is fully merged
+/! into _edit_agent_configuration.slim. If kept separate for any reason,
+/! ensure the textarea ID is unique, e.g., #edit-instruction-textarea
 
-hr
-form hx-put="/agents/#{agent_data[:name]}/update/instruction" hx-target="#agent-instruction-editor"
-  h3.subtitle.is-5 Instructions (System Prompt)
-  .field
-    label.label for="instruction" Instructions
-    .control
-      textarea.textarea#instruction name="value" rows="5" placeholder="Guide the agent's behavior, persona, and tool usage..." = agent_data[:instruction]
-    - if defined?(error_message) && error_message
-      p.help.is-danger = error_message
+/! Example content if kept separate (adjust target/swap if needed):
+/ hr
+/ form hx-put="/agents/#{agent_data[:name]}/update/instruction" hx-target="closest .content" / Or specific container
+/   h3.subtitle.is-5 Instructions (System Prompt)
+/   .field
+/     label.label for="edit-instruction-textarea" Instructions
+/     .control
+/       textarea.textarea#edit-instruction-textarea name="value" rows="5" placeholder="Guide the agent's behavior, persona, and tool usage..." = agent_data[:instruction]
+/     - if defined?(error_message) && error_message
+/       p.help.is-danger = error_message
 
-  .field.is-grouped
-    .control
-      button.button.is-link type="submit" Save
-    .control
-      a.button.is-light hx-get="/agents/#{agent_data[:name]}/display/instruction" Cancel 
+/   .field.is-grouped
+/     .control
+/       button.button.is-link type="submit" Save
+/     .control
+/       a.button.is-light hx-get="/agents/#{agent_data[:name]}/display/instruction" Cancel

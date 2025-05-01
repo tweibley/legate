@@ -1,23 +1,36 @@
-/! File: lib/adk/web/views/_display_agent_mcp.slim
-/ Renders the display block for MCP server configurations.
-/ Expects: agent_data (Hash containing :name, :mcp_servers_json, and :mcp_display_string)
+/ File: lib/adk/web/views/_display_agent_mcp.slim
+/ Renders the display block for MCP server configurations (Using read-only CodeMirror)
+/ Expects: agent_data (Hash: {name, mcp_servers_json})
+/ Optional local: show_edit_button (Boolean, default: true)
 
-hr
+/ --- Set default if not provided ---
+- show_edit_button = defined?(show_edit_button) ? show_edit_button : true
+
+/ --- Removed hr ---
 .level
   .level-left
     h3.subtitle.is-5.mb-0 MCP Server Configurations (JSON)
   .level-right
-    a.button.is-small title="Edit MCP Config" hx-get="/agents/#{agent_data[:name]}/edit/mcp"
-      span.icon.is-small
-        i.fas.fa-edit
-      span Edit
+    / --- Conditionally show edit button ---
+    - if show_edit_button
+      button.button.is-small.is-light( title="Edit MCP Config"
+                                      hx-get="/agents/#{agent_data[:name]}/edit/mcp"
+                                      hx-target="closest div.level + *"
+                                      hx-swap="outerHTML" )
+        span.icon.is-small
+          i.fas.fa-edit
+        span Edit
 
-/ Display the pre-processed string passed from the route
-- display_string = agent_data[:mcp_display_string]
+/ Display the configurations using CodeMirror (read-only)
+- display_value = agent_data[:mcp_servers_json]
 
-- if display_string == "No MCP Server(s) Configured."
-  p.has-text-grey
-    em = display_string
+- if display_value.nil? || display_value.strip.empty? || display_value.strip == '[]'
+  p.has-text-grey.mt-2
+    em No MCP Server(s) Configured.
 - else
-  / Output the pre-formatted JSON (or raw string if parse failed)
-  pre.content = display_string 
+  .field.mt-2
+    .control
+      /! Textarea for read-only CodeMirror initialization via layout.slim JS
+      /! Use a unique ID if needed, or rely on the parent ID target
+      textarea.textarea#mcp-json-display(readonly=true rows="6") == display_value
+  p.help Displaying stored MCP configuration. Edit to make changes.

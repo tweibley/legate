@@ -1,21 +1,38 @@
 / File: lib/adk/web/views/_edit_agent_mcp.slim
-/ Form for editing MCP Server JSON
-form(id="mcp-json-editor-form" hx-put="/agents/#{agent_data[:name]}/update/mcp" hx-target="this" hx-swap="outerHTML")
-  / --- Display Error Message if Present ---
-  - if defined?(error_message) && error_message
-    .notification.is-danger.is-light.mb-3
-      = error_message
+/ Form for editing MCP Server JSON using CodeMirror
 
-  .field
-    label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
-    .control
-      / Use 'value' as the name for inline edits, matching the PUT route logic
-      textarea.textarea(id="mcp-json-editor" name="value" rows="6" placeholder='[{"type": "stdio", "command": "...", "args": ["..."]}]') == agent_data[:mcp_servers_json]
-  p.help 
-    | Enter a JSON array of MCP server config objects (e.g., <code>[{"type": "stdio", "command": "npx", "args": ["@mcp/server", "/path/to/dir"]}]</code>). Leave empty if none.
-  .field.is-grouped
-    .control
-      button.button.is-link type="submit" Save
-    .control
-      / Button to cancel editing and revert to display view
-      button.button.is-light type="button" hx-get="/agents/#{agent_data[:name]}/display/mcp" hx-target="#agent-mcp-display" hx-swap="innerHTML" Cancel
+/! Use outer div as target for swap to include potential error messages
+div#agent-mcp-display
+  form( hx-put="/agents/#{agent_data[:name]}/update/mcp"
+        hx-target="#agent-mcp-display" / Target the outer div
+        hx-swap="innerHTML" ) / Replace the whole form section on save/cancel
+
+    / --- Display Error Message if Present ---
+    - if defined?(error_message) && error_message
+      .notification.is-danger.is-light.mb-3
+        button.delete type="button" onclick="this.parentElement.remove()"
+        = error_message
+
+    .field
+      label.label for="mcp-json-editor" MCP Server Configurations (JSON Array)
+      .control
+        /! Textarea will be replaced by CodeMirror via JS in layout.slim
+        textarea.textarea#mcp-json-editor name="value" rows="6" placeholder='[{"type": "stdio", "command": "...", "args": ["..."]}]' == agent_data[:mcp_servers_json]
+    p.help
+      | Enter a valid JSON array of MCP server config objects. Leave empty if none.
+      br
+      | Example: `[{"type": "stdio", "command": "npx", "args": ["@mcp/server", "/path/to/tools"]}]`
+
+    .field.is-grouped.is-grouped-right.mt-4
+      .control
+        / Button to cancel editing and revert to display view
+        button.button.is-light( type="button"
+                                hx-get="/agents/#{agent_data[:name]}/display/mcp"
+                                hx-target="#agent-mcp-display" / Target the outer div
+                                hx-swap="innerHTML" )
+          span Cancel
+      .control
+        button.button.is-success(type="submit")
+          span.icon.is-small
+            i.fas.fa-check
+          span Save MCP Config

@@ -1,5 +1,9 @@
 / File: lib/adk/web/views/_display_agent_fallback.slim
 / Expects: agent_data (Hash: {name, fallback_mode})
+/ Optional local: show_edit_button (Boolean, default: true)
+
+/ --- Set default if not provided ---
+- show_edit_button = defined?(show_edit_button) ? show_edit_button : true
 
 - fallback_mode = agent_data[:fallback_mode] || 'error'
 - display_text = fallback_mode == 'echo' ? 'Attempt Echo Tool' : 'Return Error Message'
@@ -7,9 +11,11 @@
   label.label Planning Fallback
   .control.is-flex.is-align-items-center
     span.mr-3= display_text
-    button.button.is-small.is-light( hx-get="/agents/#{agent_data[:name]}/edit/fallback"
-                                      hx-target="closest .field"
-                                      hx-swap="outerHTML" )
-      span.icon.is-small
-        i.fas.fa-pencil-alt
-      span Edit 
+    / --- Conditionally show edit button ---
+    - if show_edit_button
+      button.button.is-small.is-light( hx-get="/agents/#{agent_data[:name]}/edit/fallback"
+                                        hx-target="closest .field"
+                                        hx-swap="outerHTML" )
+        span.icon.is-small
+          i.fas.fa-pencil-alt
+        span Edit

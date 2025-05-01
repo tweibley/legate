@@ -579,7 +579,7 @@ module ADK
         mcp_display_string = begin
           parsed = JSON.parse(mcp_servers_json)
           if parsed.is_a?(Array) && parsed.empty?
-             "No MCP Server(s) Configured."
+            "No MCP Server(s) Configured."
           else
             pretty_json(parsed) # Assumes pretty_json helper is available
           end
@@ -1195,7 +1195,9 @@ module ADK
           slim :tool
         else
           logger.warn("Tool '#{name}' not found.")
-          halt 404, slim(:error_404, locals: { title: "Tool Not Found", message: "Tool definition for '#{name}' not found." })
+          halt 404,
+               slim(:error_404,
+                    locals: { title: "Tool Not Found", message: "Tool definition for '#{name}' not found." })
         end
       end
       # --- END Tool Detail Page Route ---
@@ -1555,7 +1557,7 @@ module ADK
           mcp_display_string = begin
             parsed = JSON.parse(mcp_json)
             if parsed.is_a?(Array) && parsed.empty?
-               "No MCP Server(s) Configured."
+              "No MCP Server(s) Configured."
             else
               pretty_json(parsed)
             end
@@ -1566,7 +1568,7 @@ module ADK
           response_locals[:agent_data][:mcp_display_string] = mcp_display_string
           response_locals[:agent_data][:mcp_servers_json] = mcp_json # Ensure raw is still there if needed
         elsif field == 'tools'
-           # ... tool logic ...
+          # ... tool logic ...
         end
         # --- END MCP Handling ---
 

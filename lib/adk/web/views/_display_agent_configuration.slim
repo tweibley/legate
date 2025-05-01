@@ -1,0 +1,33 @@
+/ File: lib/adk/web/views/_display_agent_configuration.slim
+/ Displays the read-only configuration fields for an agent.
+/ Expects locals: agent_data
+
+.box
+  / --- Edit Button for the whole section ---
+  .level.mb-5
+    .level-left
+      h3.title.is-5 Configuration Details
+    .level-right
+      button.button.is-link( hx-get="/agents/#{agent_data[:name]}/edit/configuration"
+                            hx-target="#agent-configuration-content"
+                            hx-swap="innerHTML" )
+        span.icon.is-small
+          i.fas.fa-edit
+        span Edit Configuration
+
+  / --- Model ---
+  div#agent-model-display-container.mb-4
+    == slim :_display_agent_model, locals: { agent_data: agent_data, show_edit_button: false }
+
+  / --- Fallback ---
+  div#agent-fallback-display-container.mb-4
+    == slim :_display_agent_fallback, locals: { agent_data: agent_data, show_edit_button: false }
+
+  / --- MCP ---
+  div#agent-mcp-display-container.mb-4
+    == slim :_display_agent_mcp, locals: { agent_data: agent_data, show_edit_button: false }
+
+  / --- Instructions ---
+  div#agent-instruction-display-container
+    /! Pass show_edit_button: false to the instruction partial
+    == slim :_display_agent_instruction, locals: { agent_data: agent_data, show_edit_button: false }
