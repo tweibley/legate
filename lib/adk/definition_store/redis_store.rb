@@ -15,7 +15,7 @@ module ADK
       AGENTS_SET_KEY = "adk:agents:all_names"
 
       # Expected field names in the Redis hash
-      AGENT_DEFINITION_FIELDS = %w[name description tools model fallback_mode mcp_servers_json].freeze
+      AGENT_DEFINITION_FIELDS = %w[name description tools model fallback_mode mcp_servers_json instruction].freeze
 
       def initialize(redis_client)
         @redis = redis_client
@@ -36,11 +36,12 @@ module ADK
       # @param model [String] The language model name.
       # @param fallback_mode [Symbol] The fallback behavior (:error or :echo).
       # @param mcp_servers_json [String] A JSON string representing the MCP server configurations array.
+      # @param instruction [String, nil] Optional instructions for the agent.
       # @return [Boolean] true if successful, false otherwise.
       # @raise [ArgumentError] if required fields (name) are missing or invalid.
       # @raise [ConfigurationError] if Redis client is not available.
       # @raise [StoreError] for Redis errors during save.
-      def save_definition(name:, description:, tools:, model:, fallback_mode:, mcp_servers_json:)
+      def save_definition(name:, description:, tools:, model:, fallback_mode:, mcp_servers_json:, instruction: nil)
         raise ConfigurationError, "Redis client not available." unless @redis
         raise ArgumentError, "Agent name cannot be empty." if name.nil? || name.strip.empty?
 
@@ -67,6 +68,7 @@ module ADK
             multi.hset(agent_key, 'model', model || ADK::Agent::DEFAULT_MODEL) # Use default if nil
             multi.hset(agent_key, 'fallback_mode', fallback_str)
             multi.hset(agent_key, 'mcp_servers_json', mcp_json_to_save)
+            multi.hset(agent_key, 'instruction', instruction || "") # Save instruction (empty string if nil)
             multi.sadd(AGENTS_SET_KEY, name)
           end
 
@@ -105,7 +107,7 @@ module ADK
       # Retrieves a single agent definition from Redis.
       # @param agent_name [String] The name of the agent to retrieve.
       # @return [Hash, nil] A hash representing the agent definition, or nil if not found.
-      #   The hash includes keys: :name, :description, :tools (Array), :model, :fallback_mode (Symbol), :mcp_servers_json (String)
+      #   The hash includes keys: :name, :description, :tools (Array), :model, :fallback_mode (Symbol), :mcp_servers_json (String), :instruction (String)
       # @raise [ConfigurationError] if Redis client is not available.
       # @raise [StoreError] for Redis errors during retrieval or JSON parsing errors.
       def get_definition(agent_name)
@@ -141,6 +143,8 @@ module ADK
           definition_hash['fallback_mode'] = (fallback_str == 'echo') ? :echo : :error
           # Ensure MCP JSON is present (defaults to '[]' if nil)
           definition_hash['mcp_servers_json'] ||= '[]'
+          # Ensure instruction is present (defaults to '' if nil)
+          definition_hash['instruction'] ||= "" # Ensure instruction defaults to empty string if missing in Redis
           # --- Return symbol-keyed hash for consistency? ---
           # Let's convert keys to symbols for internal consistency, matching save_definition inputs.
           symbolized_hash = definition_hash.transform_keys(&:to_sym)
@@ -213,6 +217,8 @@ module ADK
           when 'name' # Disallow changing the name via update, it's the primary key
             @logger.warn("Attempted to update agent name for '#{agent_name}', which is not allowed.")
             next # Skip this update
+          when 'instruction' # Added instruction case
+            redis_updates[field_str] = value || "" # Store empty string if value is nil
           else
             # Assume other fields can be stored directly (description, model)
             # Ensure we only try to update valid fields?

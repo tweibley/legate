@@ -486,8 +486,10 @@ module ADK
         halt 503, "Redis unavailable." unless @definition_store
         agent_name = params['name']&.strip; agent_description = params['description']&.strip
         selected_tools = params['tools'] || []; selected_model = params['model']&.strip
-        selected_fallback = params['fallback_mode'] || 'error' # <-- Get fallback mode, default to error
+        selected_fallback = params['fallback_mode'] || 'error'
         mcp_servers_json = params['mcp_servers_json']&.strip
+        instruction = params['instruction']&.strip # <<< Get instruction
+
         mcp_servers_json_to_save = (mcp_servers_json.nil? || mcp_servers_json.empty?) ? '[]' : mcp_servers_json
         model_to_save = selected_model && !selected_model.empty? ? selected_model : ADK::Agent::DEFAULT_MODEL
 
@@ -501,16 +503,18 @@ module ADK
             tools: selected_tools,
             model: model_to_save,
             fallback_mode: selected_fallback,
-            mcp_servers_json: mcp_servers_json_to_save
+            mcp_servers_json: mcp_servers_json_to_save,
+            instruction: instruction # <<< Pass instruction
           )
-          logger.info("Agent '#{agent_name}' definition saved (Model: #{model_to_save}, Tools: #{selected_tools}, Fallback: #{selected_fallback}, MCP: #{!mcp_servers_json_to_save.empty? && mcp_servers_json_to_save != '[]'})") # Log MCP status
+          logger.info("Agent '#{agent_name}' definition saved (Model: #{model_to_save}, Tools: #{selected_tools}, Fallback: #{selected_fallback}, MCP: #{!mcp_servers_json_to_save.empty? && mcp_servers_json_to_save != '[]'}, Instruction: #{!instruction.nil? && !instruction.empty?})") # Log instruction status
         rescue ADK::DefinitionStore::StoreError => e
           logger.error("Store error saving agent definition: #{e.message}")
           halt 500, "Error saving agent definition."
         end
         content_type :html
+        # <<< Add instruction to data passed to partial if needed by _agent_row >>>
         agent_data = { name: agent_name, description: agent_description, running: false,
-                       configured_tools: selected_tools, model: model_to_save, fallback_mode: selected_fallback }
+                       configured_tools: selected_tools, model: model_to_save, fallback_mode: selected_fallback, instruction: instruction }
         available_tools = ADK::GlobalToolManager.list_all_tools
         agent_row_html = slim(:_agent_row, layout: false,
                                            locals: { agent_info: agent_data, available_tools: available_tools })
@@ -571,12 +575,14 @@ module ADK
         loaded_model = agent_definition[:model]
         fallback_mode = agent_definition[:fallback_mode] # Symbol
         mcp_servers_json = agent_definition[:mcp_servers_json] # String
+        instruction = agent_definition[:instruction] # <<< Get instruction
         # --- END MODIFICATION ---
 
         is_running = @agents.key?(name)
         @view_agent_data = { name: name, description: description, running: is_running,
                              model: loaded_model, fallback_mode: fallback_mode,
-                             mcp_servers_json: mcp_servers_json }
+                             mcp_servers_json: mcp_servers_json,
+                             instruction: instruction } # <<< Add instruction to view data
 
         # Convert tool names to symbols for internal processing
         configured_tool_syms = configured_tool_names.map(&:to_sym)
@@ -1263,7 +1269,7 @@ module ADK
 
       # For 'tools', it fetches all available native and MCP tools to populate the selector.
       get '/agents/:name/edit/:field' do |name, field|
-        supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp']
+        supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp', 'instruction'] # <<< Added instruction
         halt 404, "Editing field '#{field}' not supported." unless supported_fields.include?(field)
 
         # --- MODIFIED: Use Definition Store ---
@@ -1287,7 +1293,8 @@ module ADK
           description: agent_definition[:description],
           model: agent_definition[:model],
           fallback_mode: agent_definition[:fallback_mode], # Symbol
-          mcp_servers_json: agent_definition[:mcp_servers_json] # String
+          mcp_servers_json: agent_definition[:mcp_servers_json], # String
+          instruction: agent_definition[:instruction] # <<< Add instruction here
         }
         # --- END MODIFICATION ---
 
@@ -1470,7 +1477,7 @@ module ADK
 
       # to swap the edit form back to the static display view (`_display_agent_*.slim`).
       get '/agents/:name/display/:field' do |name, field|
-        supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp']
+        supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp', 'instruction'] # <<< Added instruction
         halt 404, "Displaying field '#{field}' not supported." unless supported_fields.include?(field)
 
         # --- MODIFIED: Use Definition Store ---
@@ -1495,7 +1502,8 @@ module ADK
             description: agent_definition[:description],
             model: agent_definition[:model],
             fallback_mode: agent_definition[:fallback_mode], # Symbol
-            mcp_servers_json: agent_definition[:mcp_servers_json] # String
+            mcp_servers_json: agent_definition[:mcp_servers_json], # String
+            instruction: agent_definition[:instruction] # <<< Add instruction
           }
         # <-------------------------------------------->
         if field == 'tools'
@@ -1514,7 +1522,7 @@ module ADK
       # May include an `HX-Trigger-After-Swap` header to show a toast notification
       # on the frontend about the automatic restart (`showRestartToast` or `showRestartErrorToast`).
       put '/agents/:name/update/:field' do |name, field|
-        supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp']
+        supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp', 'instruction'] # <<< Added instruction
         halt 404, "Updating field '#{field}' not supported." unless supported_fields.include?(field)
 
         # --- MODIFIED: Use Definition Store ---
@@ -1524,7 +1532,7 @@ module ADK
         field_to_update = case field
                           when 'fallback' then 'fallback_mode'
                           when 'mcp' then 'mcp_servers_json'
-                          else field
+                          else field # Handles description, model, tools, instruction
                           end
 
         new_value = nil # Holds the validated value to be saved
@@ -1660,6 +1668,10 @@ module ADK
           new_value = submitted_value.to_sym # Store as symbol for update
           agent_data_hash[:fallback_mode] = new_value # For display partial
 
+        elsif field == 'instruction' # <<< Added instruction handling
+          # Instructions can be empty, so no specific validation needed here besides stripping
+          new_value = params['value']&.strip || "" # Default to empty string if nil
+          agent_data_hash[:instruction] = new_value
         else # description or model
           submitted_value = params['value']&.strip
           if submitted_value.nil? || submitted_value.empty?

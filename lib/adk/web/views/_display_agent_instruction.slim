@@ -1,0 +1,16 @@
+/! File: lib/adk/web/views/_display_agent_instruction.slim
+
+hr
+h3.subtitle.is-5 Instructions (System Prompt)
+  a.button.is-small.is-pulled-right title="Edit Instructions" hx-get="/agents/#{agent_data[:name]}/edit/instruction"
+    span.icon.is-small
+      i.fas.fa-edit
+    span Edit
+
+- instruction = agent_data[:instruction]
+- if instruction.nil? || instruction.strip.empty?
+  p.has-text-grey
+    em No instructions provided.
+- else
+  .content
+    pre = instruction 

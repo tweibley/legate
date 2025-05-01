@@ -13,13 +13,18 @@
         input.input(type="text" name="name" placeholder="Unique agent name" required=true)
     / --- Agent Description ---
     .field
-      label.label Description
+      label.label for="description" Description
       .control
-        input.input(type="text" name="description" placeholder="Agent purpose" required=true)
+        textarea.textarea#description name="description" placeholder="What does this agent do?" required="required"
+    / --- Agent Instruction ---
+    .field
+      label.label for="instruction" Instructions (System Prompt)
+      .control
+        textarea.textarea#instruction name="instruction" rows="3" placeholder="(Optional) Guide the agent's behavior, persona, and tool usage (e.g., You are a helpful assistant that only uses provided tools. Be concise.)"
 
     / --- Agent Model ---
     .field
-      label.label Model
+      label.label for="model" Language Model
       .control
         .select
           select(name="model")

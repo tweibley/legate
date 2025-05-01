@@ -24,6 +24,19 @@
   div(id="agent-mcp-display" hx-swap="innerHTML")
     == slim :_display_agent_mcp, locals: { agent_data: @view_agent_data }
 
+  / Agent Description (Editable)
+  div id="agent-description-editor" hx-target="this" hx-swap="outerHTML"
+    == slim(:_display_agent_description, locals: { agent_data: @view_agent_data })
+
+  / Agent Instructions (Editable) - NEW SECTION
+  div id="agent-instruction-editor" hx-target="this" hx-swap="outerHTML"
+    / Initially display the instruction (we'll create this partial next)
+    == slim(:_display_agent_instruction, locals: { agent_data: @view_agent_data })
+
+  hr
+
+  / Model (Editable)
+
 / Status Box
 .box.mb-5
   h2.title.is-4 Status & Control
