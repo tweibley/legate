@@ -1,20 +1,31 @@
-.content
-  h1.title Welcome to Ruby ADK
-  p.subtitle Ruby Agent Development Kit - A Ruby framework for building and managing AI agents
+/ File: lib/adk/web/views/index.slim
+.content.has-text-centered.mb-6
+  h1.title.is-2 Welcome to Ruby ADK
+  p.subtitle.is-4 Ruby Agent Development Kit - A Ruby framework for building and managing AI agents
 
-.columns
-  .column
-    .card
+.columns.is-centered
+  .column.is-4
+    .card.has-text-centered
       .card-content
+        span.icon.is-large.has-text-link.mb-3
+          i.fas.fa-users-cog.fa-3x
         h2.title.is-4 Agents
-        p Manage your AI agents
-        .buttons
-          a.button.is-primary href="/agents" View Agents
+        p Manage your AI agents definitions and runtime instances.
+        .buttons.is-centered.mt-4
+          a.button.is-link(href="/agents")
+            span.icon
+              i.fas.fa-eye
+            span View Agents
 
-  .column
-    .card
+  .column.is-4
+    .card.has-text-centered
       .card-content
+        span.icon.is-large.has-text-info.mb-3
+          i.fas.fa-tools.fa-3x
         h2.title.is-4 Tools
-        p Browse available tools
-        .buttons
-          a.button.is-primary href="/tools" View Tools 
+        p Browse available tools that can be used by agents.
+        .buttons.is-centered.mt-4
+          a.button.is-link(href="/tools")
+            span.icon
+              i.fas.fa-eye
+            span View Tools

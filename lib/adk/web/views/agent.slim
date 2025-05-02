@@ -1,12 +1,11 @@
 / File: lib/adk/web/views/agent.slim
-
 - agent_data = @view_agent_data
 - is_running = agent_data[:running]
 - agent_name = agent_data[:name]
 
 section.section
   .container
-    .box.mb-5(style="background-color: #f5f5f5;")
+    .box.mb-5(style="background-color: #ffffff;")
       .level
         .level-left
           div
@@ -21,37 +20,36 @@ section.section
 
     .tabs.is-boxed.is-medium
       ul
-        li.is-active data-tab="execute"
-          a
+        li data-tab="execute"
+          a href="#execute"
             span.icon.is-small
               i.fas.fa-play-circle aria-hidden="true"
             span Execute Task
+        li data-tab="chat"
+          a href="#chat"
+            span.icon.is-small
+              i.fas.fa-comments aria-hidden="true"
+            span Chat
         li data-tab="config"
-          a
+          a href="#config"
             span.icon.is-small
               i.fas.fa-cogs aria-hidden="true"
             span Configuration
         li data-tab="tools"
-          a
+          a href="#tools"
             span.icon.is-small
               i.fas.fa-tools aria-hidden="true"
             span Tools
-        li data-tab="chat"
-          a
-            span.icon.is-small
-              i.fas.fa-comments aria-hidden="true"
-            span Chat
+
 
     div#tab-content
 
       div.content-tab#execute-tab
         .columns
           .column.is-two-thirds
-            .card
-              header.card-header
-                p.card-header-title Execute Task
-              .card-content
-                form#execute-task-form( hx-post="/agents/#{agent_name}/execute"
+            .box
+              h3.title.is-5 Execute Task
+              form#execute-task-form( hx-post="/agents/#{agent_name}/execute"
                                       hx-target="#task-result"
                                       hx-swap="innerHTML"
                                       hx-indicator="#execute-task-button .htmx-indicator" )
@@ -60,9 +58,9 @@ section.section
                     p.help.is-size-7 Format: `{"task": "..."}` or `{"tool_name": "...", ...}`
                     .control
                       textarea.textarea#task-json-editor name="task_json" placeholder='e.g., {"task": "Summarize article..."}' required=true rows="10"
-                  .field.is-grouped.is-grouped-right.mt-3
+                  .field.is-grouped.is-grouped-right.mt-4
                     .control
-                      button.button.is-info.is-light.is-small( type="button" id="generate-example-task-btn"
+                      button.button.is-link.is-light.is-small( type="button" id="generate-example-task-btn"
                                                               hx-get="/agents/#{agent_name}/generate_example_task"
                                                               hx-indicator="#generate-example-task-btn .htmx-indicator"
                                                               hx-swap="none" )
@@ -72,22 +70,24 @@ section.section
                           i.fas.fa-wand-magic-sparkles
                         span Example
                     .control
-                      button.button.is-light.is-small(type="button" _=%q{on click put "<p class='has-text-grey'>Task results will appear here.</p>" into #task-result})
+                      button.button.is-light.is-small(type="button" _=%q{on click put "<p class='has-text-grey is-italic'>Task results will appear here.</p>" into #task-result})
                         span.icon.is-small
                           i.fas.fa-eraser
                         span Clear Result
                     .control
-                      button.button.is-primary#execute-task-button(type="submit" disabled=!is_running)
+                      button.button.is-link#execute-task-button(type="submit" disabled=!is_running)
                         span.icon.is-small.htmx-indicator.mr-1
                             i.fas.fa-spinner.fa-pulse
                         span.icon.is-small
                           i.fas.fa-play-circle
                         span = is_running ? 'Execute' : 'Execute (Requires Start)'
 
-                #task-result.content.is-small.mt-4( style="min-height: 100px; background-color: #fafafa; padding: 0.75em; border-radius: 4px; border: 1px solid #dbdbdb; white-space: pre-wrap; word-break: break-word;" )
-                  p.has-text-grey Task results will appear here.
+              label.label.mt-4 Result
+              #task-result.content.box.is-small( style="min-height: 100px; background-color: #fafafa; white-space: pre-wrap; word-break: break-word;" )
+                  p.has-text-grey.is-italic Task results will appear here.
+
           .column.is-one-third
-             .message.is-info
+             .message.is-link
                 .message-header
                     p Info
                 .message-body
@@ -97,41 +97,21 @@ section.section
                         li Use `{"tool_name": "specific_tool", "param1": "value1", ...}` to directly invoke a tool (if known and allowed).
                     p The agent must be running to execute tasks. Task results will appear below the input area.
 
-      div.content-tab.is-hidden#config-tab
-        div#agent-configuration-content
-          == slim :_display_agent_configuration, locals: { agent_data: agent_data }
-
-      div.content-tab.is-hidden#tools-tab
-        .box
-          .level.mb-4
-            .level-left
-              h3.title.is-5 Configured Tools
-            .level-right
-              button.button.is-link.is-light( hx-get="/agents/#{agent_data[:name]}/edit/tools"
-                                              hx-target="#agent-tools-table-container"
-                                              hx-swap="outerHTML" )
-                span.icon.is-small
-                  i.fas.fa-pencil-alt
-                span Edit Tools
-
-          div#agent-tools-table-container
-            == slim :_agent_tool_table, locals: { agent_data: agent_data, view_configured_tools: view_configured_tools, mcp_tool_results: mcp_tool_results }
-
-
       div.content-tab.is-hidden#chat-tab
         .box
-          /! --- Chat History Display Area (Copied from chat.slim) ---
-          #chat-history.box( style="height: 400px; overflow-y: scroll; margin-bottom: 1rem; background-color: #ffffff;"
+          h3.title.is-5 Agent Chat
+
+          #chat-history.box( style="height: 450px; overflow-y: scroll; margin-bottom: 1rem; background-color: #ffffff; border: 1px solid #dbdbdb;"
                            hx-on::after-swap="this.scrollTop = this.scrollHeight"
                            _="init set my scrollTop to my scrollHeight end" )
 
-             - if @chat_history_events && !@chat_history_events.empty?
+             - if defined?(@chat_history_events) && @chat_history_events && !@chat_history_events.empty?
                - @chat_history_events.each do |event|
                  - if event.role == :user
-                   .message.is-info.is-small.mb-2(id="event-#{event.event_id}")
-                     .message-header
+                   .message.is-link.is-small.mb-2(id="event-#{event.event_id}")
+                     .message-header style="background-color: #eef6fc; color: #1d72aa;"
                        p You
-                     .message-body= event.content
+                     .message-body(style="border-color: #eef6fc;")= event.content
 
                  - elsif event.role == :agent
                    - agent_response_content = event.content
@@ -147,37 +127,56 @@ section.section
 
                    .message class="#{msg_class} is-small mb-4" id="event-#{event.event_id}"
                      .message-header
-                       p Agent (#{agent_data[:name]}) /! Use agent_data local var
+                       p Agent (#{agent_name})
                      .message-body
                        div style="white-space: pre-wrap; word-break: break-all;" = format_historical_agent_content(agent_response_content)
                  - else
-                   /! Optional: Tool Request/Result Rendering
+                   
              - else
-               p.has-text-grey-light Start chatting...
-             /! End History Loop
+               p.has-text-grey-light.is-italic Start chatting... Messages will appear here.
+             
 
-          /! --- Chat Input Form (Copied from chat.slim) ---
           form#chat-form( hx-post="/agents/#{agent_name}/chat"
                        hx-target="#chat-history"
                        hx-swap="beforeend"
                        hx-indicator="#send-button-indicator"
-                       _="on htmx:afterRequest reset()" )
+                       _="on htmx:afterRequest this.reset()" )
              .field.has-addons
                .control.is-expanded style="position: relative;"
-                 /! Use agent_data local var for disabled check
                  input.input#chat-input(type="text" name="message" placeholder="Enter your message..." required=true autofocus disabled=(!agent_data[:running]))
                  span.icon.is-small.is-right.htmx-indicator style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;"
                    i.fas.fa-spinner.fa-spin
                .control
-                 /! Use agent_data local var for disabled check
-                 button.button.is-info#send-button(type="submit" disabled=(!agent_data[:running]))
+                 button.button.is-link#send-button(type="submit" disabled=(!agent_data[:running]))
                    span Send
                    span.icon.is-small#send-button-indicator.htmx-indicator.ml-2
                      i.fas.fa-spinner.fa-pulse
+          - unless agent_data[:running]
+             p.help.is-danger Agent must be running to chat.
+
+      div.content-tab.is-hidden#config-tab
+        div#agent-configuration-content
+          == slim :_display_agent_configuration, locals: { agent_data: agent_data }
+
+      div.content-tab.is-hidden#tools-tab
+        .box
+          .level.mb-4
+            .level-left
+              h3.title.is-5 Configured Tools
+            .level-right
+              button.button.is-link.is-light( hx-get="/agents/#{agent_name}/edit/tools"
+                                              hx-target="#agent-tools-table-container"
+                                              hx-swap="outerHTML" )
+                span.icon.is-small
+                  i.fas.fa-pencil-alt
+                span Edit Tools
+
+          div#agent-tools-table-container
+            == slim :_agent_tool_table, locals: { agent_data: agent_data, view_configured_tools: view_configured_tools, mcp_tool_results: mcp_tool_results }
 
 
     .mt-6.has-text-centered
-      a.button(href="/agents")
+      a.button.is-link.is-light(href="/agents")
         span.icon
             i.fas.fa-arrow-left
         span Back to Agents List
@@ -187,56 +186,53 @@ section.section
         const tabs = document.querySelectorAll('.tabs li');
         const tabContentBoxes = document.querySelectorAll('#tab-content > .content-tab');
 
-        // Function to handle tab activation and content display
         function activateTab(tabElement) {
-            // Deactivate all tabs
+            if (!tabElement) return;
+
             tabs.forEach(item => item.classList.remove('is-active'));
-            // Hide all content boxes
             tabContentBoxes.forEach(box => box.classList.add('is-hidden'));
 
-            // Activate the clicked tab
             tabElement.classList.add('is-active');
-            // Show the corresponding content box
             const targetTab = tabElement.getAttribute('data-tab');
             const targetContent = document.getElementById(targetTab + '-tab');
 
             if (targetContent) {
               targetContent.classList.remove('is-hidden');
-              // --- Refresh CodeMirror instances within the newly visible tab ---
               const editorsInTab = targetContent.querySelectorAll('textarea');
               editorsInTab.forEach(textarea => {
                 if (textarea.id && window.codeMirrorInstances && window.codeMirrorInstances[textarea.id]) {
                   console.log(`Refreshing CodeMirror in active tab: ${textarea.id}`);
-                  // Delay slightly to ensure layout is complete after class change
                   setTimeout(() => {
-                      if(window.codeMirrorInstances[textarea.id]) { // Check if still exists
+                      if(window.codeMirrorInstances[textarea.id]) {
                           window.codeMirrorInstances[textarea.id].refresh();
                       }
                   }, 50);
                  }
               });
-              // --- End CodeMirror Refresh ---
             } else {
               console.error("Could not find tab content for:", targetTab);
             }
-            
-            // --- NEW: Update URL hash --- 
-            window.location.hash = targetTab;
+
+            if (history.pushState) {
+                history.pushState(null, null, '#' + targetTab);
+            } else {
+                window.location.hash = targetTab;
+            }
         }
 
-        // Add click listeners to tabs
         tabs.forEach(tab => {
-          tab.addEventListener('click', function(event) {
-             // Prevent default anchor behavior if needed, though not strictly necessary here
-             // event.preventDefault();
-             activateTab(tab);
-          });
+          const anchor = tab.querySelector('a');
+          if (anchor) {
+             anchor.addEventListener('click', function(event) {
+                event.preventDefault();
+                activateTab(tab);
+             });
+          }
         });
 
-         // --- MODIFIED: Activate tab based on URL hash on initial load --- 
          let activatedFromHash = false;
          if (window.location.hash) {
-             const hash = window.location.hash.substring(1); // Remove #
+             const hash = window.location.hash.substring(1);
              const targetTabElement = document.querySelector(`.tabs li[data-tab="${hash}"]`);
              if (targetTabElement) {
                  activateTab(targetTabElement);
@@ -245,15 +241,18 @@ section.section
                 console.warn(`Tab for hash #${hash} not found.`);
              }
          }
-         // Activate default ('execute') tab only if nothing was activated from hash
          if (!activatedFromHash) {
             const defaultTab = document.querySelector('.tabs li[data-tab="execute"]');
             if (defaultTab) {
-              activateTab(defaultTab);
+                activateTab(defaultTab);
             } else {
-               console.error("Default execute tab not found!");
+               console.warn("Default execute tab not found! Activating first available tab.");
+               if (tabs.length > 0) {
+                   activateTab(tabs[0]);
+               } else {
+                   console.error("No tabs found to activate.");
+               }
             }
          }
-         // --- END MODIFICATION ---
 
-      }); // End DOMContentLoaded
+      });

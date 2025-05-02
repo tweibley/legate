@@ -1,63 +1,46 @@
+/ File: lib/adk/web/views/layout.slim
 doctype html
-/ Added class for fixed navbar spacing
 html(class="has-navbar-fixed-top")
   head
     title ADK - Agent Development Kit
     meta charset="utf-8"
     meta name="viewport" content="width=device-width, initial-scale=1"
-    / --- CSS Dependencies ---
     link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"
     link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer"
     link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"
-    / Added for linting display
     link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/lint/lint.css"
-    / Your custom styles
     link rel="stylesheet" href="/css/main.css"
 
-    / --- JS Dependencies (Load Early) ---
     script src="https://unpkg.com/htmx.org@1.9.10"
     script src="https://unpkg.com/hyperscript.org@0.9.12"
     script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"
     script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"
-    / Added Markdown mode
     script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"
-    / Added Linter base
     script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/lint/lint.min.js"
-    / Added JSON Linter
     script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/lint/json-lint.min.js"
-    / Dependency for json-lint addon
     script src="https://unpkg.com/jsonlint@1.6.3/web/jsonlint.js"
 
   body
-    / --- Fixed Navbar ---
-    nav.navbar.is-primary.is-fixed-top(role="navigation" aria-label="main navigation")
-      .navbar-brand
-        a.navbar-item href="/"
-          / Replace with logo if available
-          strong ADK
-        a.navbar-burger(role="button" aria-label="menu" aria-expanded="false" data-target="navbarBasicMenu")
-          span(aria-hidden="true")
-          span(aria-hidden="true")
-          span(aria-hidden="true")
-      #navbarBasicMenu.navbar-menu
-        .navbar-start
-          a.navbar-item(href="/agents") Agents
-          a.navbar-item(href="/tools") Tools
-        / Add navbar-end for user info, settings etc. if needed
+    nav.navbar.is-white.is-fixed-top.has-shadow(role="navigation" aria-label="main navigation")
+      .container
+        .navbar-brand
+          a.navbar-item href="/"
+            strong.has-text-link ADK
+          a.navbar-burger(role="button" aria-label="menu" aria-expanded="false" data-target="navbarBasicMenu")
+            span(aria-hidden="true")
+            span(aria-hidden="true")
+            span(aria-hidden="true")
+        #navbarBasicMenu.navbar-menu
+          .navbar-start
+            a.navbar-item(href="/agents") Agents
+            a.navbar-item(href="/tools") Tools
 
-    / --- Main Content Area ---
     section.section
       .container
-        / --- Container for Toasts ---
-        #toast-container style="position: fixed; top: 5em; right: 1em; z-index: 9999; width: 300px;"
-
-        / --- Container for Flash Messages (e.g., from redirects) ---
+        #toast-container style="position: fixed; top: calc(3.25rem + 1em); right: 1em; z-index: 9999; width: 300px;"
         #flash-messages
-
-        / --- Yield for Page Content ---
         == yield
 
-    /! --- Bulma Modal for Health Check ---
     #health-check-modal.modal
       .modal-background
       .modal-content
@@ -68,15 +51,12 @@ html(class="has-navbar-fixed-top")
           p.has-text-grey Attempting to reconnect...
           progress.progress.is-small.is-warning.mt-4 max="100"
 
-    /! --- Footer ---
-    footer.footer.mt-auto
+    footer.footer.mt-6
       .content.has-text-centered
-        p
+        p.is-size-7.has-text-grey
           strong Ruby ADK Web UI
 
-    / --- Global JavaScript ---
     javascript:
-      // --- Navbar Burger Toggle ---
       document.addEventListener('DOMContentLoaded', () => {
         const $navbarBurgers = Array.prototype.slice.call(document.querySelectorAll('.navbar-burger'), 0);
         if ($navbarBurgers.length > 0) {
@@ -91,7 +71,6 @@ html(class="has-navbar-fixed-top")
         }
       });
 
-      // --- CodeMirror Management ---
       window.codeMirrorInstances = window.codeMirrorInstances || {};
 
       function initCodeMirrorEditor(elementId, options = {}) {
@@ -101,66 +80,60 @@ html(class="has-navbar-fixed-top")
           try {
             const defaultOptions = {
               lineNumbers: true,
-              mode: { name: "javascript", json: true }, // Default to JSON mode
+              mode: { name: "javascript", json: true },
               theme: "default",
               lineWrapping: true,
               gutters: ["CodeMirror-lint-markers"],
-              lint: false, // Enable linting based on mode later
-              extraKeys: {"Ctrl-Q": function(cm){ cm.foldCode(cm.getCursor()); }, "Ctrl-Space": "autocomplete"}, // Basic fold
+              lint: false,
+              extraKeys: {"Ctrl-Q": function(cm){ cm.foldCode(cm.getCursor()); }, "Ctrl-Space": "autocomplete"},
               foldGutter: true,
               gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter", "CodeMirror-lint-markers"]
             };
 
-            // Specific mode/linting options based on ID or passed options
             if (options.mode === 'text/plain' || elementId.includes('instruction')) {
               options.mode = 'text/plain';
-              options.lint = false; // Disable linting for plain text
-            } else if (options.mode === 'markdown' || elementId.includes('some-markdown-field')) { // Adjust ID check if needed
+              options.lint = false;
+            } else if (options.mode === 'markdown' || elementId.includes('some-markdown-field')) {
               options.mode = 'markdown';
               options.lint = false;
-            } else { // Assume JSON if not specified otherwise
+            } else {
               options.mode = { name: "javascript", json: true };
-              options.lint = true; // Enable JSON linting
+              options.lint = true;
             }
 
             const cmOptions = Object.assign({}, defaultOptions, options);
             const instance = CodeMirror.fromTextArea(editorElement, cmOptions);
 
             instance.on('change', function(cm) {
-              cm.save(); // Update underlying textarea for forms/HTMX
-              // Optional: Trigger linting on change after a delay
-              // clearTimeout(window.lintDelay);
-              // window.lintDelay = setTimeout(() => { cm.performLint(); }, 500);
+              cm.save();
             });
 
             window.codeMirrorInstances[elementId] = instance;
             console.log(`CodeMirror initialized successfully for #${elementId}`);
 
-            // Refresh instance shortly after init, helps with layout issues sometimes
             setTimeout(() => instance.refresh(), 50);
 
-            // Observer for visibility changes (modals, details, tabs)
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
-                    // Refresh only when becoming visible
                     if (entry.isIntersecting) {
                        console.log(`CodeMirror instance #${elementId} became visible. Refreshing.`);
-                       setTimeout(() => instance.refresh(), 50); // Delay helps ensure layout is stable
+                       setTimeout(() => instance.refresh(), 50);
                     }
                 });
-            }, { threshold: 0.1 }); // Trigger when 10% visible
+            }, { threshold: 0.1 });
 
-            observer.observe(instance.getWrapperElement()); // Observe the CodeMirror wrapper
+            observer.observe(instance.getWrapperElement());
 
           } catch (e) {
             console.error(`Error initializing CodeMirror for #${elementId}:`, e);
-            // Fallback: Ensure textarea is usable even if CM fails
             editorElement.style.display = 'block';
           }
         } else if (window.codeMirrorInstances[elementId]) {
-          // console.log(`CodeMirror already initialized for #${elementId}. Ensuring refresh.`);
-          // Refresh might be needed if content swapped but instance persisted
-          setTimeout(() => window.codeMirrorInstances[elementId].refresh(), 50);
+          setTimeout(() => {
+             if (window.codeMirrorInstances[elementId]) {
+                window.codeMirrorInstances[elementId].refresh()
+             }
+            }, 50);
         }
       }
 
@@ -179,56 +152,50 @@ html(class="has-navbar-fixed-top")
       function initializeRelevantEditors(targetElement = document.body) {
         console.log("Scanning for editors to initialize within:", targetElement);
         const editorsToInit = [
-          // Agent Create Form
           { id: 'mcp_servers_json', options: {} },
           { id: 'instruction', options: { mode: 'text/plain'} },
-          // Agent Edit Partials (Loaded via HTMX)
           { id: 'mcp-json-editor', options: {} },
-          { id: 'edit-instruction-textarea', options: { mode: 'text/plain' } }, // Ensure edit instruction has unique ID if needed
-          // Agent Display Partials (Read-only CodeMirror)
+          { id: 'edit-instruction-textarea', options: { mode: 'text/plain' } },
           { id: 'mcp-json-display', options: { readOnly: true } },
-          // Agent Execute Task Form
           { id: 'task-json-editor', options: {} },
         ];
 
         editorsToInit.forEach(editor => {
-          const element = targetElement.querySelector(`#${editor.id}`);
-          if (element) {
-            initCodeMirrorEditor(editor.id, editor.options);
+          if (targetElement && typeof targetElement.querySelector === 'function') {
+             const element = targetElement.querySelector(`#${editor.id}`);
+             if (element) {
+               initCodeMirrorEditor(editor.id, editor.options);
+             }
+          } else if (!targetElement || targetElement === document.body) {
+             const element = document.getElementById(editor.id);
+              if (element) {
+                initCodeMirrorEditor(editor.id, editor.options);
+              }
           }
         });
       }
 
-      // --- HTMX Event Handling ---
-
-      // Initialize editors on initial page load
       document.addEventListener('DOMContentLoaded', () => {
          console.log("DOMContentLoaded: Initializing editors.");
          initializeRelevantEditors(document.body);
-         checkServerHealth(); // Initial health check
-         setInterval(checkServerHealth, 5000); // Start polling
+         checkServerHealth();
+         setInterval(checkServerHealth, 5000);
       });
 
-      // Initialize editors after HTMX swaps content into the DOM
       document.body.addEventListener('htmx:afterSwap', function(event) {
         console.log("htmx:afterSwap: Initializing editors in swapped content target:", event.detail.target);
         initializeRelevantEditors(event.detail.target);
 
-        // Handle Toasts based on response headers
         const triggerHeader = event.detail.xhr.getResponseHeader('HX-Trigger-After-Swap');
         if (triggerHeader) {
           console.log("Processing HX-Trigger-After-Swap header:", triggerHeader);
           try {
-            // Allow multiple triggers separated by commas or handle JSON
             if (triggerHeader.startsWith('{') && triggerHeader.endsWith('}')) {
                const triggers = JSON.parse(triggerHeader);
-               // Example: { "showToast": { "message": "Saved!", "type": "is-success" } }
                if (triggers.showToast) {
                    showToast(triggers.showToast.message, triggers.showToast.type);
                }
-               // Add other handlers for different JSON structures if needed
             } else {
-              // Simple string triggers (backward compatibility)
               triggerHeader.split(',').forEach(triggerName => {
                 triggerName = triggerName.trim();
                 if (triggerName === 'showRestartToast') {
@@ -238,22 +205,18 @@ html(class="has-navbar-fixed-top")
                 } else if (triggerName === 'showSaveSuccessToast') {
                   showToast("Configuration saved successfully.", "is-success");
                 }
-                 // Add more simple string triggers here
               });
             }
           } catch (e) {
              console.error("Error processing HX-Trigger-After-Swap header:", e);
-             // Fallback for simple strings if JSON parsing fails
              if (triggerHeader === 'showRestartToast') showToast("Agent automatically restarted.", "is-info");
-             // etc.
           }
         }
       });
 
-      // Destroy editors before HTMX swaps them out
       document.body.addEventListener('htmx:beforeSwap', function(event) {
           const swapTarget = event.detail.target;
-          if (swapTarget) {
+          if (swapTarget && typeof swapTarget.querySelectorAll === 'function') {
              console.log("htmx:beforeSwap: Checking for editors to destroy in target:", swapTarget);
               const textareas = swapTarget.querySelectorAll('textarea');
               textareas.forEach(textarea => {
@@ -262,37 +225,43 @@ html(class="has-navbar-fixed-top")
                   }
               });
           }
-           // Handle cases where swap might replace a parent containing the editor
-          const elt = event.detail.elt; // Element triggering the request
-          const targetSelector = elt.getAttribute('hx-target');
-          if (targetSelector) {
-              try {
-                  const targetElement = document.querySelector(targetSelector);
-                  if (targetElement) {
-                     const textareasInTarget = targetElement.querySelectorAll('textarea');
-                      textareasInTarget.forEach(textarea => {
-                          if (textarea.id && window.codeMirrorInstances[textarea.id]) {
-                              destroyCodeMirrorInstance(textarea.id);
-                          }
-                      });
+          const elt = event.detail.elt;
+          if (elt) {
+              const targetSelector = elt.getAttribute('hx-target');
+              if (targetSelector) {
+                  try {
+                      let targetElement = null;
+                      if (targetSelector === 'this') {
+                          targetElement = elt;
+                      } else if (targetSelector.startsWith('closest ')) {
+                          targetElement = elt.closest(targetSelector.substring(8));
+                      } else {
+                           targetElement = document.querySelector(targetSelector);
+                      }
+
+                      if (targetElement && typeof targetElement.querySelectorAll === 'function') {
+                         const textareasInTarget = targetElement.querySelectorAll('textarea');
+                          textareasInTarget.forEach(textarea => {
+                              if (textarea.id && window.codeMirrorInstances[textarea.id]) {
+                                  destroyCodeMirrorInstance(textarea.id);
+                              }
+                          });
+                      }
+                  } catch (e) {
+                      console.warn("Error finding target element in beforeSwap:", e)
                   }
-              } catch (e) {
-                  console.warn("Error finding target element in beforeSwap:", e)
               }
-          }
+           }
       });
 
-
-      // Handle specific responses like task generation or execution errors
       document.body.addEventListener('htmx:afterRequest', function(event) {
         const config = event.detail.requestConfig;
         const xhr = event.detail.xhr;
-        const elt = config.elt; // Element that triggered the request
+        const elt = config.elt;
 
-        // --- Generate Example Task Button Handler ---
-        if (elt && elt.id === 'generate-example-task-btn') { // Check if elt exists
+        if (elt && elt.id === 'generate-example-task-btn') {
            console.log("htmx:afterRequest from generate button.");
-           const editorId = 'task-json-editor'; // Target editor ID
+           const editorId = 'task-json-editor';
            const editorInstance = window.codeMirrorInstances[editorId];
 
            if (!editorInstance) {
@@ -304,10 +273,9 @@ html(class="has-navbar-fixed-top")
            if (event.detail.successful) {
              try {
                const responseJson = xhr.responseText;
-               // Assuming server returns pretty-printed JSON
                editorInstance.setValue(responseJson);
                console.log("Task editor updated with generated example.");
-               showToast("Example task generated.", "is-info", 2000); // Short confirmation
+               showToast("Example task generated.", "is-info", 2000);
              } catch (e) {
                console.error("Error setting value from generate example response:", e);
                showToast("Failed to update task editor with example.", "is-danger");
@@ -318,12 +286,10 @@ html(class="has-navbar-fixed-top")
            }
          }
 
-         // --- Execute Task Error Handling (using custom header/event) ---
-         const triggerHeader = xhr.getResponseHeader('HX-Trigger-After-Swap'); // Re-check header here
-         if (config.path?.includes('/execute') && triggerHeader && triggerHeader.startsWith('showTaskError')) {
+         const triggerHeader = xhr.getResponseHeader('HX-Trigger-After-Swap');
+         if (config.path && config.path.includes('/execute') && triggerHeader && triggerHeader.startsWith('showTaskError')) {
              console.log("htmx:afterRequest from execute task with error trigger:", triggerHeader);
              try {
-                 // Response body should contain the error details
                  const responseJson = xhr.responseText;
                  const parsedResponse = JSON.parse(responseJson);
                  const errorMessage = parsedResponse?.error || parsedResponse?.message || "An unknown execution error occurred.";
@@ -335,7 +301,7 @@ html(class="has-navbar-fixed-top")
                     </div>`;
                  const targetElement = document.getElementById('task-result');
                  if (targetElement) {
-                     targetElement.innerHTML = errorHtml; // Replace content with error
+                     targetElement.innerHTML = errorHtml;
                  } else {
                      console.error("Could not find #task-result element to display error.");
                  }
@@ -349,7 +315,6 @@ html(class="has-navbar-fixed-top")
          }
       });
 
-      // --- Toast Notification Function ---
       function showToast(message, type = 'is-info', duration = 4000) {
           const toastContainer = document.getElementById('toast-container');
           if (!toastContainer) {
@@ -358,66 +323,54 @@ html(class="has-navbar-fixed-top")
           }
 
           const toast = document.createElement('div');
-          // is-light makes delete button visible
           toast.className = `notification ${type} is-light`;
           toast.style.marginBottom = '0.5em';
-          // Start invisible for fade-in
           toast.style.opacity = '0';
           toast.style.transition = 'opacity 0.3s ease-in-out';
+          toast.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)';
+
 
           const deleteButton = document.createElement('button');
           deleteButton.className = 'delete';
-          // Important for forms
           deleteButton.type = 'button';
           deleteButton.onclick = () => {
              toast.style.opacity = '0';
-             // Remove after fade out
              setTimeout(() => toast.remove(), 300);
           };
 
           toast.appendChild(deleteButton);
-          // Safer than innerHTML
           toast.appendChild(document.createTextNode(message));
 
           toastContainer.appendChild(toast);
 
-          // Fade in
           setTimeout(() => toast.style.opacity = '1', 10);
 
-          // Automatically remove the toast after duration
           const timeoutId = setTimeout(() => {
               toast.style.opacity = '0';
               setTimeout(() => toast.remove(), 300);
           }, duration);
 
-          // Optional: Clear timeout if user closes manually
           deleteButton.addEventListener('click', () => clearTimeout(timeoutId));
       }
 
-      // --- Notification Close Button Handler (for non-toast notifications) ---
       document.body.addEventListener('click', function(event) {
         if (event.target.matches('.notification > .delete')) {
-           // Prevent closing toasts this way if they handle their own close
           if (!event.target.closest('#toast-container')) {
              event.target.parentElement.remove();
           }
         }
       });
 
-      // -------- Health Check Polling --------
       const healthCheckModal = document.getElementById('health-check-modal');
       let isServerUnavailable = false;
       let healthCheckIntervalId = null;
 
       function checkServerHealth() {
-        // console.log("Checking server health..."); // Debug
-        // Prevent caching
         fetch('/healthz', { method: 'GET', cache: 'no-cache' })
           .then(response => {
             if (!response.ok) {
               throw new Error(`Server status: ${response.status}`);
             }
-            // Server is OK
             if (isServerUnavailable) {
               console.log("Server connection restored.");
               healthCheckModal.classList.remove('is-active');
@@ -426,40 +379,27 @@ html(class="has-navbar-fixed-top")
             }
           })
           .catch(error => {
-            // Server is down or fetch failed
             console.warn("Health check failed:", error.message);
             if (!isServerUnavailable) {
               console.log("Server connection lost. Displaying modal.");
               healthCheckModal.classList.add('is-active');
               isServerUnavailable = true;
-              // Optional: Show a persistent warning toast?
-              // showToast("Server connection lost. Trying to reconnect...", "is-warning", 10000);
             }
           });
       }
 
-      // Function to start polling
       function startHealthCheckPolling() {
           if (healthCheckIntervalId === null) {
               console.log("Starting health check polling.");
-              // Check immediately
               checkServerHealth();
-              // Then poll every 5s
               healthCheckIntervalId = setInterval(checkServerHealth, 5000);
           }
       }
 
-       // Function to stop polling (e.g., on page unload?)
-      function stopHealthCheckPolling() {
+       function stopHealthCheckPolling() {
           if (healthCheckIntervalId !== null) {
               console.log("Stopping health check polling.");
               clearInterval(healthCheckIntervalId);
               healthCheckIntervalId = null;
           }
       }
-
-      // Start polling when the script runs (usually after DOMContentLoaded)
-      // Moved startHealthCheckPolling() call to the DOMContentLoaded listener above
-
-    / --- Custom Page-Specific Scripts Placeholder ---
-    / script src="/js/app.js"

@@ -1,37 +1,40 @@
 / File: lib/adk/web/views/chat.slim
-
 .container
   section.section
-    h1.title Chat with Agent: #{@agent_data[:name]}
-    p.subtitle #{@agent_data[:description]}
+    .level
+      .level-left
+        div
+          h1.title.is-3 Chat with Agent: #{@agent_data[:name]}
+          p.subtitle.is-5 #{@agent_data[:description]}
+      .level-right
+        a.button.is-link.is-light(href="/agents/#{@agent_data[:name]}")
+          span.icon
+            i.fas.fa-arrow-left
+          span Back to Agent Details
 
-    / Agent Status Box
-    .box
+
+    .box style="background-color: #f5f5f5;"
       p
         strong Status:
         span.tag.ml-2 class=(@agent_data[:running] ? 'is-success' : 'is-danger')
           = @agent_data[:running] ? 'Running' : 'Stopped (Go to agent page to start)'
 
-    / Chat History Display Area
-    #chat-history.box( style="height: 400px; overflow-y: scroll; margin-bottom: 1rem;"
+    #chat-history.box( style="height: 500px; overflow-y: scroll; margin-bottom: 1rem; border: 1px solid #dbdbdb;"
                       hx-on::after-swap="this.scrollTop = this.scrollHeight"
                       _="init set my scrollTop to my scrollHeight end" )
 
-      / --- Loop to render existing history ---
       - if @chat_history_events && !@chat_history_events.empty?
         - @chat_history_events.each do |event|
           - if event.role == :user
-            / --- User Message ---
-            .message.is-info.is-small.mb-2(id="event-#{event.event_id}")
-              .message-header
+            .message.is-link.is-small.mb-2(id="event-#{event.event_id}")
+              .message-header style="background-color: #eef6fc; color: #1d72aa;"
                 p You
-              .message-body= event.content
+              .message-body(style="border-color: #eef6fc;")= event.content
 
           - elsif event.role == :agent
-            / --- Agent Message (Corrected Structure) ---
             - agent_response_content = event.content
             - is_complex_content = (agent_response_content.is_a?(Hash) && agent_response_content.key?(:status)) || (agent_response_content.is_a?(Array) && agent_response_content.first.is_a?(Hash) && agent_response_content.first.key?(:status))
-            - msg_class = 'is-light' # Default
+            - msg_class = 'is-light'
             - if is_complex_content
               - status = agent_response_content.is_a?(Array) ? agent_response_content.first[:status] : agent_response_content[:status]
               - case status
@@ -40,25 +43,23 @@
               - when :pending
                 - msg_class = 'is-warning'
               - else
-                - msg_class = 'is-success' # success or other
-            - else # Simple string content assumed success
+                - msg_class = 'is-success'
+            - else
               - msg_class = 'is-success'
 
             .message class="#{msg_class} is-small mb-4" id="event-#{event.event_id}"
               .message-header
                 p Agent (#{@agent_data[:name]})
               .message-body
-                / --- Call helper to format historical content ---
                 div style="white-space: pre-wrap; word-break: break-all;" = format_historical_agent_content(agent_response_content)
           - else
-            / --- Optional: Tool Request/Result Rendering ---
+            
       - else
-        p.has-text-grey-light Start chatting...
-      / --- End History Loop ---
+        p.has-text-grey-light.is-italic Start chatting... Messages will appear here.
+      
 
-      / New messages will be appended here by HTMX
+      
 
-    / Chat Input Form
     form#chat-form( hx-post="/agents/#{@agent_data[:name]}/chat"
                  hx-target="#chat-history"
                  hx-swap="beforeend"
@@ -70,11 +71,9 @@
           span.icon.is-small.is-right.htmx-indicator style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;"
             i.fas.fa-spinner.fa-spin
         .control
-          button.button.is-info#send-button(type="submit" disabled=(!@agent_data[:running]))
+          button.button.is-link#send-button(type="submit" disabled=(!@agent_data[:running]))
             span Send
             span.icon.is-small#send-button-indicator.htmx-indicator.ml-2
               i.fas.fa-spinner.fa-pulse
-
-    / Link back to agent details
-    .mt-4
-      a.button(href="/agents/#{@agent_data[:name]}") ← Back to Agent Details
+     - unless @agent_data[:running]
+        p.help.is-danger Agent must be running to chat.

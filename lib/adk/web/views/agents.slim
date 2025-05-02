@@ -3,37 +3,29 @@
   h1.title Agents
   p.subtitle Manage agent definitions and runtime instances.
 
-/ --- Collapsible Create Agent Section ---
 details.box.mb-5
   summary.is-clickable style="font-weight: bold; font-size: 1.2em;"
     span.icon.mr-2
-      i.fas.fa-plus-circle
+      i.fas.fa-plus-circle.has-text-link
     | Create New Agent Definition
 
-  / --- Form inside the details tag ---
-  /! Add some spacing after summary
   .mt-4
     form(hx-post="/agents" hx-target="#agent-list-tbody" hx-swap="beforeend" _="on htmx:afterRequest this.closest('details').removeAttribute('open'); this.reset(); destroyCodeMirrorInstance('mcp_servers_json'); destroyCodeMirrorInstance('instruction');")
-      / --- Agent Name ---
       .field
         label.label Name
         .control.has-icons-left
           input.input(type="text" name="name" placeholder="Unique agent name (e.g., customer-support-agent)" required=true)
           span.icon.is-small.is-left
             i.fas.fa-robot
-      / --- Agent Description ---
       .field
         label.label for="description" Description
         .control
           textarea.textarea#description name="description" placeholder="What does this agent do? (e.g., Handles initial customer support queries)" required="required" rows="2"
-      / --- Agent Instruction (Using CodeMirror) ---
       .field
         label.label for="instruction" Instructions (System Prompt)
         .control
-          /! Textarea for CodeMirror initialization
           textarea.textarea#instruction name="instruction" rows="4" placeholder="(Optional) Guide the agent's behavior, persona, and tool usage (e.g., You are a helpful assistant that only uses provided tools. Be concise.)"
         p.help Guide the agent's behavior, persona, and tool usage. Markdown is supported by some models.
-      / --- Agent Model ---
       .field
         label.label for="model" Language Model
         .control.has-icons-left
@@ -44,27 +36,23 @@ details.box.mb-5
                 option(value=model_name selected=(model_name == default_model)) = model_name
           span.icon.is-small.is-left
             i.fas.fa-brain
-      / --- MCP Server Config (Using CodeMirror) ---
       .field
         label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
         .control
-          /! Textarea for CodeMirror initialization
           textarea.textarea#mcp_servers_json name="mcp_servers_json" rows="5" placeholder='[{"type": "stdio", "command": "...", "args": ["..."]}]'
         p.help
           | Enter a valid JSON array of MCP server objects. Example:
           code style="font-size: 0.8em;" [{"type": "stdio", "command": "npx", "args": ["@mcp/server", "/path/to/tools"]}]
           | . Leave empty if no MCP servers are needed.
 
-      / --- Tool Selection ---
       .field
         label.label Tools
         .control
           - if @available_tools && !@available_tools.empty?
-           / Use a panel for better visual grouping
             .panel
               p.panel-heading Available Tools
               - @available_tools.each do |tool_info|
-                label.panel-block.is-clickable / Make the whole block clickable
+                label.panel-block.is-clickable
                   input.mr-3(type="checkbox" name="tools[]" value=tool_info[:name])
                   span
                     strong #{tool_info[:name].to_s.capitalize}
@@ -73,7 +61,6 @@ details.box.mb-5
           - else
             .notification.is-warning.is-light No tools available for selection.
 
-      / --- Fallback Mode Selection ---
       .field
         label.label Planning Fallback
         p.help Select behavior when the agent cannot determine which tool to use.
@@ -85,21 +72,18 @@ details.box.mb-5
           span.icon.is-small.is-left
             i.fas.fa-random
 
-      / --- Submit Button ---
       .field.mt-5
         .control
-          button.button.is-primary(type="submit")
+          button.button.is-link(type="submit")
             span.icon
               i.fas.fa-save
             span Create Agent Definition
 
-/ --- Agent List Table ---
 .box
   .level
     .level-left
       h2.title.is-4 Defined Agents
     .level-right
-      /! Add refresh button?
       button.button.is-light(hx-get="/agents/list" hx-target="#agent-list-tbody" hx-swap="innerHTML" hx-indicator="#agent-list-spinner")
         span.icon#agent-list-spinner.htmx-indicator
             i.fas.fa-spinner.fa-spin
@@ -120,10 +104,8 @@ details.box.mb-5
     tbody#agent-list-tbody
       - if @view_agents && !@view_agents.empty?
         - @view_agents.each do |agent_info|
-          / Pass the agent_info hash which now includes :model AND the available_tools list
           == slim :_agent_row, locals: { agent_info: agent_info, available_tools: @available_tools }
       - else
         tr#no-agents-row
-          / --- Adjust colspan ---
           td(colspan="6").has-text-centered.has-text-grey
             | No agent definitions found. Use the 'Create New Agent Definition' section above.
