@@ -1,27 +1,24 @@
 /! File: lib/adk/web/views/_display_agent_instruction.slim
-/ Expects: agent_data (Hash: {name, instruction})
-/ Optional local: show_edit_button (Boolean, default: true)
+/ Displays the agent instructions and optionally an edit button.
+/ Expects locals: agent_data, show_edit_button (boolean, optional, defaults to true)
 
-/ --- Set default if not provided ---
 - show_edit_button = defined?(show_edit_button) ? show_edit_button : true
 
-/ --- Removed hr ---
-.level
-  .level-left
-    h3.subtitle.is-5.mb-0 Instructions (System Prompt)
-  .level-right
-    / --- Conditionally show edit button ---
-    - if show_edit_button
-      a.button.is-small title="Edit Instructions" hx-get="/agents/#{agent_data[:name]}/edit/instruction"
-        span.icon.is-small
-          i.fas.fa-edit
-        span Edit
+label.label.is-small Instructions (System Prompt)
 
-- instruction = agent_data[:instruction]
-- if instruction.nil? || instruction.strip.empty?
-  p.has-text-grey.mt-2
-    em No instructions provided.
-- else
-  .content.mt-2
-    /! Consider using read-only CodeMirror here too for consistency
-    pre style="white-space: pre-wrap; word-wrap: break-word; background-color: #fafafa; padding: 0.75em; border-radius: 4px;" = instruction
+/ Container for content and button
+.is-flex.is-align-items-flex-start
+  / Use flex-grow-1 so the pre takes up space, pushing the button right
+  div.is-flex-grow-1
+    - instruction_text = agent_data[:instruction]
+    - if instruction_text.nil? || instruction_text.strip.empty?
+      p.has-text-grey.is-italic No specific instructions provided.
+    - else
+      / Use a pre tag for better formatting of multi-line instructions
+      pre.instruction-display.is-size-7= instruction_text
+
+  / Edit button with left margin, shown conditionally
+  - if show_edit_button
+    button.button.is-small.is-text.has-text-grey.ml-2 hx-get="/agents/#{agent_data[:name]}/edit/instruction" hx-target="#agent-instruction-display-container" hx-swap="outerHTML"
+      span.icon.is-small
+        i.fas.fa-pencil-alt

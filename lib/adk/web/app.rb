@@ -1564,6 +1564,9 @@ module ADK
         end
         # --- END MCP Handling ---
 
+        # Explicitly tell the display partial to show the edit button when restoring
+        response_locals[:show_edit_button] = true
+
         # Render the correct partial
         slim :"_display_agent_#{field}", layout: false, locals: response_locals
       end

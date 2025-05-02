@@ -1,22 +1,17 @@
 / File: lib/adk/web/views/_display_agent_model.slim
-/ Expects locals: agent_data (Hash: {name, model, ...})
-/ Optional local: show_edit_button (Boolean, default: true)
+/ Displays the agent model and optionally an edit button.
+/ Expects locals: agent_data, show_edit_button (boolean, optional, defaults to true)
 
-/ --- Set default if not provided ---
 - show_edit_button = defined?(show_edit_button) ? show_edit_button : true
 
-/ --- Use local variable ---
-- model_display = agent_data[:model] && !agent_data[:model].empty? ? agent_data[:model] : "#{ADK::Agent::DEFAULT_MODEL} (Default)"
-
+/ Use a flex container to keep text and button together
 .is-flex.is-align-items-center
-  p
-    strong Model:
-    span.tag.is-info.is-light.ml-2= model_display
-  / --- Conditionally show edit button ---
+  div
+    label.label.is-small Model
+    span.tag.is-info.is-light= agent_data[:model]
+
+  / Edit button with left margin for spacing, shown conditionally
   - if show_edit_button
-    / --- Use local variable for name in URL ---
-    button.button.is-small.is-ghost.ml-2( hx-get="/agents/#{agent_data[:name]}/edit/model"
-                                          hx-target="closest div.is-flex"
-                                          hx-swap="outerHTML" )
+    button.button.is-small.is-text.has-text-grey.ml-2 hx-get="/agents/#{agent_data[:name]}/edit/model" hx-target="#agent-model-display-container" hx-swap="outerHTML"
       span.icon.is-small
         i.fas.fa-pencil-alt

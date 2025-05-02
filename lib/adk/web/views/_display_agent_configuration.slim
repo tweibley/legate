@@ -3,31 +3,22 @@
 / Expects locals: agent_data
 
 .box
-  / --- Edit Button for the whole section ---
-  .level.mb-5
-    .level-left
-      h3.title.is-5 Configuration Details
-    .level-right
-      button.button.is-link( hx-get="/agents/#{agent_data[:name]}/edit/configuration"
-                            hx-target="#agent-configuration-content"
-                            hx-swap="innerHTML" )
-        span.icon.is-small
-          i.fas.fa-edit
-        span Edit Configuration
+  / Display title, removed the level and the broken bulk edit button
+  h3.title.is-5.mb-5 Configuration Details
 
   / --- Model ---
   div#agent-model-display-container.mb-4
-    == slim :_display_agent_model, locals: { agent_data: agent_data, show_edit_button: false }
+    == slim :_display_agent_model, locals: { agent_data: agent_data, show_edit_button: true }
 
   / --- Fallback ---
   div#agent-fallback-display-container.mb-4
-    == slim :_display_agent_fallback, locals: { agent_data: agent_data, show_edit_button: false }
+    == slim :_display_agent_fallback, locals: { agent_data: agent_data, show_edit_button: true }
 
   / --- MCP ---
   div#agent-mcp-display-container.mb-4
-    == slim :_display_agent_mcp, locals: { agent_data: agent_data, show_edit_button: false }
+    == slim :_display_agent_mcp, locals: { agent_data: agent_data, show_edit_button: true }
 
   / --- Instructions ---
   div#agent-instruction-display-container
-    /! Pass show_edit_button: false to the instruction partial
-    == slim :_display_agent_instruction, locals: { agent_data: agent_data, show_edit_button: false }
+    /! Pass show_edit_button: true to the instruction partial
+    == slim :_display_agent_instruction, locals: { agent_data: agent_data, show_edit_button: true }

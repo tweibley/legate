@@ -1,21 +1,18 @@
 / File: lib/adk/web/views/_display_agent_fallback.slim
-/ Expects: agent_data (Hash: {name, fallback_mode})
-/ Optional local: show_edit_button (Boolean, default: true)
+/ Displays the agent fallback mode and optionally an edit button.
+/ Expects locals: agent_data, show_edit_button (boolean, optional, defaults to true)
 
-/ --- Set default if not provided ---
 - show_edit_button = defined?(show_edit_button) ? show_edit_button : true
 
-- fallback_mode = agent_data[:fallback_mode] || 'error'
-- display_text = fallback_mode == 'echo' ? 'Attempt Echo Tool' : 'Return Error Message'
-.field
-  label.label Planning Fallback
-  .control.is-flex.is-align-items-center
-    span.mr-3= display_text
-    / --- Conditionally show edit button ---
-    - if show_edit_button
-      button.button.is-small.is-light( hx-get="/agents/#{agent_data[:name]}/edit/fallback"
-                                        hx-target="closest .field"
-                                        hx-swap="outerHTML" )
-        span.icon.is-small
-          i.fas.fa-pencil-alt
-        span Edit
+/ Use a flex container to keep text and button together
+.is-flex.is-align-items-center
+  div
+    label.label.is-small Planning Fallback
+    - fallback_text = agent_data[:fallback_mode] == :echo ? "Echo User Input" : "Return Error Message"
+    p= fallback_text
+
+  / Edit button with left margin for spacing, shown conditionally
+  - if show_edit_button
+    button.button.is-small.is-text.has-text-grey.ml-2 hx-get="/agents/#{agent_data[:name]}/edit/fallback" hx-target="#agent-fallback-display-container" hx-swap="outerHTML"
+      span.icon.is-small
+        i.fas.fa-pencil-alt

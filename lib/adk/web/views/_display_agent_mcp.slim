@@ -1,36 +1,19 @@
 / File: lib/adk/web/views/_display_agent_mcp.slim
-/ Renders the display block for MCP server configurations (Using read-only CodeMirror)
-/ Expects: agent_data (Hash: {name, mcp_servers_json})
-/ Optional local: show_edit_button (Boolean, default: true)
+/ Displays the agent MCP server configuration and optionally an edit button.
+/ Expects locals: agent_data, show_edit_button (boolean, optional, defaults to true)
 
-/ --- Set default if not provided ---
 - show_edit_button = defined?(show_edit_button) ? show_edit_button : true
 
-/ --- Removed hr ---
-.level
-  .level-left
-    h3.subtitle.is-5.mb-0 MCP Server Configurations (JSON)
-  .level-right
-    / --- Conditionally show edit button ---
-    - if show_edit_button
-      button.button.is-small.is-light( title="Edit MCP Config"
-                                      hx-get="/agents/#{agent_data[:name]}/edit/mcp"
-                                      hx-target="closest div.level + *"
-                                      hx-swap="outerHTML" )
-        span.icon.is-small
-          i.fas.fa-edit
-        span Edit
+label.label.is-small MCP Server Configurations (JSON)
 
-/ Display the configurations using CodeMirror (read-only)
-- display_value = agent_data[:mcp_servers_json]
+/ Container for content and button
+.is-flex.is-align-items-flex-start
+  / Use flex-grow-1 so the pre takes up space, pushing the button right
+  div.is-flex-grow-1
+    pre.mcp-json-display.is-size-7 = agent_data[:mcp_display_string]
 
-- if display_value.nil? || display_value.strip.empty? || display_value.strip == '[]'
-  p.has-text-grey.mt-2
-    em No MCP Server(s) Configured.
-- else
-  .field.mt-2
-    .control
-      /! Textarea for read-only CodeMirror initialization via layout.slim JS
-      /! Use a unique ID if needed, or rely on the parent ID target
-      textarea.textarea#mcp-json-display(readonly=true rows="6") == display_value
-  p.help Displaying stored MCP configuration. Edit to make changes.
+  / Edit button with left margin, shown conditionally
+  - if show_edit_button
+    button.button.is-small.is-text.has-text-grey.ml-2 hx-get="/agents/#{agent_data[:name]}/edit/mcp" hx-target="#agent-mcp-display-container" hx-swap="outerHTML"
+      span.icon.is-small
+        i.fas.fa-pencil-alt

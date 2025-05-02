@@ -3,7 +3,7 @@
 
 - current_model = agent_data[:model] || ADK::Agent::DEFAULT_MODEL
 
-form( hx-put="/agents/#{agent_data[:name]}/update/model" hx-target="#agent-model-display" hx-swap="innerHTML" )
+form#agent-model-display-container( hx-put="/agents/#{agent_data[:name]}/update/model" hx-target="#agent-model-display-container" hx-swap="outerHTML" )
   .field.has-addons
     .control.is-expanded
       .select.is-fullwidth
@@ -15,7 +15,9 @@ form( hx-put="/agents/#{agent_data[:name]}/update/model" hx-target="#agent-model
         span.icon.is-small
           i.fas.fa-check
         span Save
-    .control
-      / --- Standard Slim Attributes on one line ---
-      button.button type="button" hx-get="/agents/#{agent_data[:name]}/display/model" hx-target="#agent-model-display" hx-swap="innerHTML"
-        span Cancel
+    .field.is-grouped.is-grouped-right
+      .control
+        button.button.is-light type="button" hx-get="/agents/#{agent_data[:name]}/display/model" hx-target="#agent-model-display-container" hx-swap="outerHTML"
+          span.icon.is-small
+            i.fas.fa-times
+          span Cancel
