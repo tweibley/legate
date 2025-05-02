@@ -156,28 +156,28 @@ RSpec.describe ADK::Mcp::Connection::Stdio do
       end
 
       it 'returns nil if timeout occurs before message arrives' do
-         # Mock Time.now to simulate time passing
-         start_time = Time.now
-         allow(Time).to receive(:now).and_return(start_time, start_time + 0.01, start_time + 0.5, start_time + 1.1)
+        # Mock Time.now to simulate time passing
+        start_time = Time.now
+        allow(Time).to receive(:now).and_return(start_time, start_time + 0.01, start_time + 0.5, start_time + 1.1)
 
-         expect(connection.read_message(1)).to be_nil
-         # Verify sleep was called multiple times during the loop
-         expect(connection).to have_received(:sleep).at_least(:twice)
+        expect(connection.read_message(1)).to be_nil
+        # Verify sleep was called multiple times during the loop
+        expect(connection).to have_received(:sleep).at_least(:twice)
       end
 
       it 'raises ConnectionError if connection drops during wait' do
-         # Use counter within the mock block to control return value
-         allow(connection).to receive(:sleep) # Prevent sleep
+        # Use counter within the mock block to control return value
+        allow(connection).to receive(:sleep) # Prevent sleep
 
-         call_count = 0
-         allow(connection).to receive(:connected?) do
-           call_count += 1
-           call_count == 1 # Return true on first check, false on second check within loop
-         end
+        call_count = 0
+        allow(connection).to receive(:connected?) do
+          call_count += 1
+          call_count == 1 # Return true on first check, false on second check within loop
+        end
 
-         expect {
-           connection.read_message(1)
-         }.to raise_error(ADK::Mcp::ConnectionError, "Connection lost while waiting for message")
+        expect {
+          connection.read_message(1)
+        }.to raise_error(ADK::Mcp::ConnectionError, "Connection lost while waiting for message")
       end
     end
 
