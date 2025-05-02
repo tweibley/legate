@@ -138,10 +138,12 @@ module ADK
 
           # --- Process and Type Convert ---
           # Ensure name consistency (though fetched from hash)
-          definition_hash['name'] = agent_name
+          # Convert name to symbol
+          definition_hash['name'] = agent_name.to_sym
           # Deserialize tools JSON
           tools_json = definition_hash['tools']
-          definition_hash['tools'] = (tools_json && !tools_json.empty?) ? JSON.parse(tools_json) : []
+          # Convert tool names to symbols
+          definition_hash['tools'] = (tools_json && !tools_json.empty?) ? JSON.parse(tools_json).map(&:to_sym) : []
           # Set default model if missing
           definition_hash['model'] ||= ADK::Agent::DEFAULT_MODEL
           # Convert fallback_mode to symbol
@@ -344,11 +346,15 @@ module ADK
                   @logger.warn("Failed to parse tools JSON for agent '#{name}' during listing. Defaulting to empty. Data: #{tools_json.inspect}")
                 end
               end
-              summary_hash['tools'] = parsed_tools
+              summary_hash['tools'] = parsed_tools.map(&:to_sym) # Convert tool strings to symbols
               # Ensure defaults for other potentially nil fields returned from hmget
-              summary_hash['fallback_mode'] ||= nil # Explicitly nil if not present
-              summary_hash['mcp_servers_json'] ||= nil # Explicitly nil if not present
-              summary_hash['instruction'] ||= nil # Explicitly nil if not present
+              # Convert fallback_mode string to symbol
+              fb_mode_str = summary_hash['fallback_mode']
+              summary_hash['fallback_mode'] = (fb_mode_str == 'echo') ? :echo : :error
+              summary_hash['mcp_servers_json'] ||= '[]' # Use '[]' if nil/missing
+              summary_hash['instruction'] ||= "" # Use empty string if nil/missing
+              # Convert agent name to symbol before transforming keys
+              summary_hash['name'] = summary_hash['name'].to_sym if summary_hash['name']
               definitions << summary_hash.transform_keys(&:to_sym)
             elsif values.is_a?(Array) # Log warning only if it was an array but all nil
               @logger.warn("Inconsistency: Agent name '#{name}' found in set but hash key missing or empty.")
