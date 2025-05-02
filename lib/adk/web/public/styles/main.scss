@@ -177,7 +177,7 @@ strong.has-text-link { /* Navbar Brand */
 .table-container {
     border: 1px solid #e9ecef;
     border-radius: 6px;
-    overflow-x: auto;
+    overflow: visible; /* Ensure both axes allow overflow for dropdown */
 }
 .table {
   background-color: #ffffff;

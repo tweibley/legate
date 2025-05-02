@@ -14,10 +14,8 @@
 
 tr(data-agent-name=agent_name id=row_id class=(is_new_row ? 'is-newly-added' : ''))
   / Status Column (Moved to first column)
-  td(id=status_cell_id style="width: 80px; text-align: center;")
-   / Target for status updates
+  td(id=status_cell_id style="text-align: center;")
     span(id=status_content_id hx-swap="innerHTML")
-      /! Use a tag with icon for status
       span(class="tag is-medium #{is_running ? 'is-success' : 'is-danger'}")
         span.icon.is-small
           i(class="fas #{is_running ? 'fa-check-circle' : 'fa-stop-circle'}")
@@ -48,7 +46,7 @@ tr(data-agent-name=agent_name id=row_id class=(is_new_row ? 'is-newly-added' : '
       span.tag -
 
   / Actions Column (Using dropdown for cleaner look)
-  td(style="width: 100px; text-align: right;")
+  td(style="text-align: right; position: relative;")
     - dropdown_id = "agent-actions-dropdown-#{agent_name}" # Define unique ID
     .dropdown.is-hoverable.is-right( id=dropdown_id
                                       )
