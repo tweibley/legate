@@ -11,12 +11,13 @@ section.section
           div
             div#agent-name-display.mb-1
               == slim :_display_agent_name, locals: { agent_data: agent_data }
-            div#agent-description-display hx-swap="outerHTML"
-              == slim :_display_agent_description, locals: { agent_data: agent_data }
-
         .level-right
            div#agent-status-controls-container
               == slim :_agent_status_controls, locals: { agent_data: agent_data }
+
+      / Moved description display outside the level to allow full width
+      div#agent-description-display.mt-2 hx-swap="outerHTML"
+        == slim :_display_agent_description, locals: { agent_data: agent_data }
 
     .custom-rounded-tabs-container
       .tabs
