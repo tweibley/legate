@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |spec|
   spec.name          = 'adk-ruby'
-  spec.version       = '0.5.5'
+  spec.version       = '0.5.6'
   spec.authors       = ['Taylor Weibley']
   spec.email         = ['spam@taylorw.com']
 
@@ -29,8 +29,15 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'logger', '~> 1.5'
   spec.add_dependency 'prometheus-client', '~> 2.1'
   spec.add_dependency 'sidekiq'
-  
-  
+  spec.add_dependency 'activesupport', '>= 5.0'
+  spec.add_dependency 'dry-configurable', '~> 1.0'
+  #spec.add_dependency 'dry-container', '~> 0.8.0'
+  spec.add_dependency 'dry-struct', '~> 1.6'
+  spec.add_dependency 'dry-types', '~> 1.7'
+  spec.add_dependency 'excon', '~> 0.104'
+  spec.add_dependency 'fast-mcp'
+  spec.add_dependency 'logging', '~> 2.3'
+
   # Web UI dependencies
   spec.add_dependency 'sinatra', '~> 3.1'
   spec.add_dependency 'sinatra-contrib', '~> 3.1'
@@ -51,7 +58,6 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "webmock", "~> 3.18"
   spec.add_development_dependency "timecop", "~> 0.9"
   spec.add_development_dependency "pry"
-  spec.add_development_dependency "fast-mcp"
   spec.add_development_dependency "dry-schema", "~> 1.13"
 
   # Prevent pushing this gem to RubyGems.org by default.
