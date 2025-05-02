@@ -11,6 +11,9 @@ module ADK
   module Tools
     # Abstract base class for tools that initiate asynchronous background tasks via Sidekiq.
     class BaseAsyncJobTool < ADK::Tool
+      # Description for this base tool (primarily for informational purposes)
+      tool_description "Base class for tools that initiate long-running tasks via Sidekiq background jobs. Subclasses must implement `sidekiq_worker_class` and `prepare_job_arguments`. Use 'check_job_status' tool to retrieve results."
+
       # --- Job Result Handling Configuration ---
       # Prefix for Redis keys used to store job results.
       JOB_RESULT_REDIS_PREFIX = 'adk:job_result:'
