@@ -590,70 +590,95 @@ module ADK
 
         is_running = @agents.key?(name)
 
-        # --- Fetch Tool Metadata (Native + MCP) ---
-        # (Existing tool metadata fetching logic...)
-        native_tools = ADK::GlobalToolManager.list_all_tools.select { |t|
-          configured_tool_names.include?(t[:name].to_s)
-        }
-        mcp_tool_results = fetch_mcp_tools(mcp_servers_json) # This returns an ARRAY of result hashes
+        # --- START: Refactored Tool Metadata Fetching (Copied from GET /display/tool_table) ---
 
-        # --- FIXED: Iterate through results and extract tools from successful ones ---
-        successful_mcp_tools = []
+        # 1. Get NATIVE tool info from registry and format parameters/source
+        all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map do |tm|
+          parameters_array = []
+          # Convert native params hash to array format
+          if tm[:parameters].is_a?(Hash) && !tm[:parameters].empty?
+            tm[:parameters].each do |param_name, details|
+              parameters_array << {
+                name: param_name,
+                type: details[:type],
+                description: details[:description],
+                required: details[:required]
+              }
+            end
+          end
+          tm.merge(parameters: parameters_array, source: :native, source_detail: "Native")
+        end
+
+        # 2. Fetch MCP tool results and convert parameters/mark source
+        # mcp_servers_json is already fetched above
+        mcp_configs = []
+        begin
+          mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
+        rescue JSON::ParserError => e
+          logger.error("Invalid JSON in mcp_servers_json for agent '#{name}' (GET /agents/:name): #{e.message}")
+          mcp_configs = [] # Continue without MCP if JSON is invalid
+        end
+        mcp_tool_results = fetch_mcp_tools(mcp_configs) # Contains raw results and status
+
+        fetched_mcp_tools_metadata = []
         mcp_tool_results.each do |result|
           if result[:status] == :success && result[:tools]
-            successful_mcp_tools.concat(result[:tools])
+            result[:tools].each do |mcp_tool_schema|
+              parameters = []
+              begin
+                input_schema = mcp_tool_schema[:inputSchema]
+                if input_schema && input_schema.is_a?(Hash)
+                  properties = input_schema['properties'] || {}
+                  required = input_schema['required'] || []
+                  # Use SchemaConverter here
+                  parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required)
+                end
+              rescue => e
+                logger.error("Error converting MCP schema for tool '#{mcp_tool_schema[:name]}' (GET /agents/:name): #{e.message}")
+              end
+              fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
+                                              description: mcp_tool_schema[:description] || "",
+                                              parameters: parameters, # Use converted params
+                                              source: :mcp,
+                                              source_detail: "MCP (#{result[:server]})" } # Include server source
+            end
           end
         end
-        # --- END FIX ---
 
-        # Select tools from the successful list
-        mcp_tools = successful_mcp_tools.select { |t| configured_tool_names.include?(t[:name].to_s) }
-        # Mark MCP tools source (use the server from the *original* result hash if needed - requires more complex tracking)
-        # For now, we lose the specific server source here, might need adjustment if displaying source is crucial
-        mcp_tools.each { |t| t[:source] = :mcp; t[:source_detail] = "MCP" } # Simplified source detail
+        # 3. Merge native and processed MCP metadata into a single map
+        all_available_tools_metadata_map = {}
+        (all_native_tools_metadata + fetched_mcp_tools_metadata).each do |tm|
+          all_available_tools_metadata_map[tm[:name]] ||= tm # Prioritize native if name collision
+        end
 
-        # --- Merge Tools & Add Implicit Tools ---
-        view_configured_tools = (native_tools + mcp_tools).sort_by { |t| t[:name].to_s }
-        # Check if any configured tool is async
-        is_any_tool_async = view_configured_tools.any? { |t| t[:async] == true }
-        if is_any_tool_async && !configured_tool_names.include?('check_job_status')
-          check_job_status_tool = ADK::GlobalToolManager.get_tool_metadata(:check_job_status)
-          if check_job_status_tool
+        # 4. Filter map by configured symbols
+        configured_tool_syms = configured_tool_names.map(&:to_sym) # Convert strings to symbols
+        view_configured_tools = configured_tool_syms.map do |tool_sym|
+          all_available_tools_metadata_map[tool_sym]
+        end.compact # Remove nil entries if a configured tool wasn't found in the merged map
+
+        # 5. Handle Implicit Tool Addition
+        # Check if *any* of the *configured* tools (using the filtered list) might require check_job_status
+        # (Simplified check: Look for async flag in metadata if available, or class check if needed)
+        needs_check_job_status = view_configured_tools.any? do |tm|
+          tm[:async] == true || ADK::GlobalToolManager.find_class(tm[:name])&.ancestors&.include?(ADK::Tools::BaseAsyncJobTool)
+        end
+
+        if needs_check_job_status && !view_configured_tools.any? { |t| t[:name] == :check_job_status }
+          status_tool_meta = all_available_tools_metadata_map[:check_job_status]
+          if status_tool_meta
             # Add note that it was implicitly added
-            check_job_status_tool[:description] = "(Implicitly added) #{check_job_status_tool[:description]}"
-            view_configured_tools << check_job_status_tool.merge(source: :native, source_detail: "Native (Implicit)")
+            status_tool_meta_clone = status_tool_meta.dup
+            status_tool_meta_clone[:description] = "(Implicitly added) #{status_tool_meta_clone[:description]}"
+            status_tool_meta_clone[:source_detail] = "Native (Implicit)" # Clarify source
+            view_configured_tools << status_tool_meta_clone
+            logger.debug("Implicitly added check_job_status tool to view for agent '#{name}'")
           end
         end
+        # Sort the final list for consistent display
+        view_configured_tools.sort_by! { |t| t[:name].to_s }
 
-        # --- NEW: Load Chat Session ID & History (copied from GET /chat) ---
-        @session_id = nil
-        @chat_history_events = []
-        session[:adk_sessions] ||= {}
-        @session_id = session[:adk_sessions][name]
-        unless @session_id && @session_service.get_session(session_id: @session_id)
-          begin
-            new_session = @session_service.create_session(app_name: name, user_id: "web_user_#{SecureRandom.hex(4)}")
-            @session_id = new_session.id
-            session[:adk_sessions][name] = @session_id
-            logger.info("Created new ADK session for agent '#{name}' detail page: #{@session_id}")
-          rescue => e
-            logger.error("Failed to create ADK session for agent '#{name}': #{e.message}")
-            # Don't halt, just proceed without session/history
-          end
-        end
-        if @session_id # Only load history if session ID is valid
-          logger.debug("Using ADK session ID: #{@session_id} for agent '#{name}' detail page")
-          begin
-            adk_session_obj = @session_service.get_session(session_id: @session_id)
-            @chat_history_events = adk_session_obj&.events || []
-          rescue => e
-            logger.error("Failed to load chat history for session '#{@session_id}': #{e.message}")
-            # Proceed with empty history
-          end
-        else
-          logger.warn("No valid ADK session ID available for agent '#{name}' detail page chat.")
-        end
-        # --- END Chat Session/History Loading ---
+        # --- END: Refactored Tool Metadata Fetching ---
 
         # --- Assemble data for the view ---
         @view_agent_data = {
