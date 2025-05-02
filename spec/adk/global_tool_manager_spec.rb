@@ -79,6 +79,18 @@ RSpec.describe ADK::GlobalToolManager do
       expect { described_class.register_tool(String) }
         .not_to change { described_class.class_variable_get(:@@defined_tools).count }
     end
+
+    it 'uses klass.to_s in warning for anonymous non-tool classes' do
+      anon_class = Class.new
+      expect(logger_spy).to receive(:warn).with(/Attempted to register non-tool class: #{anon_class.to_s}/)
+      expect { described_class.register_tool(anon_class) }
+        .not_to change { described_class.class_variable_get(:@@defined_tools).count }
+    end
+
+    # Removing the test for the unreachable path where respond_to?(:tool_name) is false
+    # it 'infers tool name if class does not respond_to?(:tool_name)' do
+    #   ...
+    # end
   end
 
   describe '.find_class' do
