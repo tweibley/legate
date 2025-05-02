@@ -49,9 +49,12 @@ tr(data-agent-name=agent_name id=row_id class=(is_new_row ? 'is-newly-added' : '
 
   / Actions Column (Using dropdown for cleaner look)
   td(style="width: 100px; text-align: right;")
-    .dropdown.is-hoverable.is-right
-      .dropdown-trigger
-        button.button.is-small.is-ghost aria-haspopup="true" aria-controls="dropdown-menu-#{agent_name}"
+    - dropdown_id = "agent-actions-dropdown-#{agent_name}" # Define unique ID
+    .dropdown.is-hoverable.is-right( id=dropdown_id
+                                      )
+      .dropdown-trigger( onmouseenter="adjustDropdownDirection('#{dropdown_id}')" )
+        button.button.is-small.is-ghost( aria-haspopup="true" aria-controls="dropdown-menu-#{agent_name}"
+                                          )
           span.icon.is-small
             i.fas.fa-ellipsis-h
       .dropdown-menu id="dropdown-menu-#{agent_name}" role="menu"

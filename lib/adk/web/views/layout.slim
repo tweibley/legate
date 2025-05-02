@@ -365,6 +365,49 @@ html(class="has-navbar-fixed-top")
           });
       }
 
+      function adjustDropdownDirection(dropdownId) {
+        console.log("Adjusting dropdown:" + dropdownId);
+        const dropdown = document.getElementById(dropdownId);
+        if (!dropdown) {
+          console.warn("Dropdown element not found:" + dropdownId);
+          return;
+        }
+        const menu = dropdown.querySelector('.dropdown-menu');
+        if (!menu) {
+          console.warn("Dropdown menu not found within:" + dropdownId);
+          return;
+        }
+        const trigger = dropdown.querySelector('.dropdown-trigger button');
+        if (!trigger) {
+          console.warn("Dropdown trigger button not found within:" + dropdownId);
+          return;
+        }
+        const tableContainer = trigger.closest('.table-container');
+        if (!tableContainer) {
+            console.warn("Table container not found for dropdown:" + dropdownId);
+            return;
+        }
+
+        const triggerRect = trigger.getBoundingClientRect();
+        const containerRect = tableContainer.getBoundingClientRect();
+        
+        const spaceBelow = containerRect.bottom - triggerRect.bottom;
+        const menuHeight = menu.offsetHeight;
+
+        const spaceAboveInContainer = triggerRect.top - containerRect.top;
+
+        console.log("Trigger Rect Top:", triggerRect.top, "Container Rect Top:", containerRect.top, "Container Rect Bottom:", containerRect.bottom);
+        console.log("Space Below (relative):", spaceBelow, "Space Above (relative):", spaceAboveInContainer, "Actual Menu Height:", menuHeight);
+
+        if (spaceBelow < menuHeight && spaceAboveInContainer >= menuHeight) {
+          console.log("Adding is-up class to", dropdownId);
+          dropdown.classList.add('is-up');
+        } else {
+          console.log("Removing is-up class from", dropdownId);
+          dropdown.classList.remove('is-up');
+        }
+      }
+
       function startHealthCheckPolling() {
           if (healthCheckIntervalId === null) {
               checkServerHealth();
