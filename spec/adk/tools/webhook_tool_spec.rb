@@ -137,9 +137,11 @@ RSpec.describe ADK::Tools::WebhookTool do
         # Check status symbol and data
         expect(result[:status]).to eq(:success)
         expect(result[:result][:response_body]).to eq("Signed OK")
-        expect(a_request(:post, url).with(
-                 headers: { 'X-Hub-Signature-256' => "sha256=#{expected_signature}" }
-               )).to have_been_made.once
+        # Check for signature AND the default content-type for hash payloads
+        expect(a_request(:post, url).with do |req|
+          req.headers['X-Hub-Signature-256'] == "sha256=#{expected_signature}" &&
+          req.headers['Content-Type']&.start_with?('application/json')
+        end).to have_been_made.once
       end
     end
 

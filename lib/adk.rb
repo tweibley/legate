@@ -132,6 +132,8 @@ require_relative 'adk/agent'
 require_relative 'adk/cli'
 
 # Tools (Order doesn't strictly matter here, but keep AgentTool first if it uses others)
+require_relative 'adk/tools/base/http_client'
+require_relative 'adk/tools/webhook_tool'
 require_relative 'adk/tools/agent_tool'
 require_relative 'adk/tools/echo'
 require_relative 'adk/tools/calculator'

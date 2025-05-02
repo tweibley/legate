@@ -78,6 +78,9 @@ module ADK
             final_options[:instrumentor_params] = { logger: ADK.logger }
           end
 
+          # Store connection options for potential use in make_request for absolute URLs
+          @http_connection_options = final_options.dup
+
           begin
             log_options_for_debug = final_options.dup
             log_options_for_debug[:headers] = '[REDACTED]' unless ADK.logger.level == Logger::DEBUG
@@ -87,7 +90,8 @@ module ADK
             # Create connection using the (mandatory) base URL
             @http_client = Excon.new(@http_base_url.to_s, final_options)
 
-            @http_default_options = final_options.reject { |k, _|
+            # Store default *request* options and headers separately
+            @http_default_request_options = final_options.reject { |k, _|
               [:headers, :instrumentor, :instrumentor_params].include?(k)
             }
             @http_default_headers = merged_headers
@@ -111,10 +115,12 @@ module ADK
         # Centralized method for making HTTP requests and handling common errors/wrapping.
         def make_request(method, path, body: nil, query: {}, headers: {}, options: {})
           begin
-            raise ADK::ToolError, 'HTTP client not initialized. Call setup_http_client first.' unless @http_client
-            raise ADK::ToolError, 'Base URL not set properly.' unless @http_base_url # Should always be set now
+            # Ensure setup was called, but @http_client might not be used if path is absolute
+            raise ADK::ToolError,
+                  'HTTP client options not initialized. Call setup_http_client first.' unless @http_connection_options
+            raise ADK::ToolError, 'Base URL not set properly during setup.' unless @http_base_url
 
-            request_params = @http_default_options.merge(options)
+            request_params = @http_default_request_options.merge(options)
             request_params[:method] = method
 
             target_uri = nil
@@ -130,15 +136,23 @@ module ADK
                 target_uri = URI.join(@http_base_url, path)
               end
 
-              # If the path was absolute, override host/scheme/port based on it
+              # Path/Query setup differs slightly for absolute vs relative
               if is_absolute
-                request_params[:scheme] = target_uri.scheme
-                request_params[:host] = target_uri.host
-                request_params[:port] = target_uri.port
+                # For absolute URLs, the full path/query is part of target_uri
+                # We don't need to set host/scheme/port in request_params
+                # as Excon.new will use the full target_uri.to_s
+                request_params[:path] = target_uri.request_uri # Path + Query
+              else
+                # For relative URLs, use the persistent client and set path/query
+                request_params[:path] = target_uri.request_uri # Path + Query (relative to base)
               end
-              request_params[:path] = target_uri.request_uri
+
+              # Merge explicit query params with any existing in the URI
               uri_query = URI.decode_www_form(target_uri.query || '').to_h
-              request_params[:query] = uri_query.merge(query) unless query.empty?
+              final_query = uri_query.merge(query)
+              request_params[:query] = final_query unless final_query.empty?
+              # Update path if query was added/changed (remove original query part if exists)
+              request_params[:path] = target_uri.path
             rescue URI::InvalidURIError => e
               raise ADK::ToolError, "Invalid URL or path provided: #{path} - #{e.message}", cause: e
             end
@@ -184,11 +198,37 @@ module ADK
               end
             end
 
-            # 5. Execute Request and Handle Excon Errors
+            # 5. Execute Request: Choose client based on absolute vs relative path
             ADK.logger.info "Executing HTTP #{method.to_s.upcase} request to #{target_uri}"
-            ADK.logger.debug "Excon Request Params: #{request_params.inspect}"
 
-            response = @http_client.request(request_params)
+            response = nil
+            if is_absolute
+              ADK.logger.debug "Using temporary Excon client for absolute URL: #{target_uri}"
+
+              # Prepare options for the temporary Excon client instance
+              temp_client_options = @http_connection_options.reject { |k, _| k == :headers }
+              # Deep duplicate headers hash to avoid modifying the original
+              final_headers_for_new = Marshal.load(Marshal.dump(@http_connection_options[:headers] || {}))
+              # Merge the fully processed request_params[:headers] (which includes defaults and customs)
+              final_headers_for_new.merge!(request_params[:headers].transform_keys(&:to_s))
+              temp_client_options[:headers] = final_headers_for_new
+
+              temp_client = Excon.new(target_uri.to_s, temp_client_options)
+
+              # Prepare the params for the .request call (method, body, query, etc., NO headers)
+              request_params_for_absolute = request_params.reject { |k, _| k == :headers }
+
+              ADK.logger.debug "Excon Temp Request Params (for .request call): #{request_params_for_absolute.inspect}"
+              ADK.logger.debug "Excon Temp Client Options (for .new call): #{temp_client_options.inspect}"
+              response = temp_client.request(request_params_for_absolute)
+            else
+              ADK.logger.debug "Using persistent Excon client for relative path: #{target_uri}"
+              # Use the persistent client setup with the base URL
+              raise ADK::ToolError, 'Persistent HTTP client not initialized.' unless @http_client
+
+              ADK.logger.debug "Excon Persistent Request Params: #{request_params.inspect}"
+              response = @http_client.request(request_params)
+            end
 
             ADK.logger.info "Received HTTP response: Status #{response.status}"
             ADK.logger.debug "Response Body: #{response.body[0..500]}..."

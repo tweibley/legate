@@ -27,8 +27,9 @@ module ADK
       # Initializes the tool and the underlying HTTP client.
       def initialize(**options)
         super(**options)
-        # Restore placeholder URL
-        setup_http_client(base_url: 'http://placeholder.invalid/')
+        # Provide a dummy base_url, required by setup_http_client.
+        # The actual target URL is provided absolute in perform_execution.
+        setup_http_client(base_url: 'https://placeholder.invalid')
       end
 
       private
@@ -57,7 +58,8 @@ module ADK
 
         # Handle payload encoding
         if payload.is_a?(Hash)
-          # Let make_request handle setting default Content-Type if needed
+          # Set Content-Type here as make_request receives a string
+          request_headers['Content-Type'] ||= 'application/json; charset=utf-8'
           begin
             body_string = JSON.generate(payload)
           rescue JSON::GeneratorError => e
@@ -65,7 +67,8 @@ module ADK
           end
         else
           body_string = payload.to_s
-          # Don't modify headers here; let make_request handle it based on body type
+          # For string payload, *don't* set CT unless explicitly provided in custom_headers.
+          # make_request will handle removing default CT if necessary.
         end
 
         # Calculate signature if secret is provided
