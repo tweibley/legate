@@ -169,8 +169,11 @@ section.section
                    span Send
                    span.icon.is-small#send-button-indicator.htmx-indicator.ml-2
                      i.fas.fa-spinner.fa-pulse
-          - unless agent_data[:running]
-             p.help.is-danger Agent must be running to chat.
+
+          / Container for help text
+          div#chat-status-help-container
+            / Always render the paragraph, hide conditionally with class
+            p.help.is-danger#chat-status-help class=(agent_data[:running] ? 'is-hidden' : '') Agent must be running to chat.
 
       div.content-tab.is-hidden#config-tab
         div#agent-configuration-content

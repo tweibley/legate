@@ -988,16 +988,20 @@ module ADK
         )
         # --- END NEW OOB swaps ---
 
+        # --- NEW: OOB swap for chat help text (hide on start by replacing p tag) ---
+        chat_help_oob_html = %(<p id="chat-status-help" hx-swap-oob="outerHTML" class="help is-danger is-hidden">Agent must be running to chat.</p>)
+        # --- END NEW OOB swap ---
+
         # --- Return combined HTML ---
         status 200 # Explicitly set 200 OK
-        status_controls_html + execute_button_oob_html + chat_input_oob_html + chat_button_oob_html
+        status_controls_html + execute_button_oob_html + chat_input_oob_html + chat_button_oob_html + chat_help_oob_html
       end
 
       # --- ADDED START: Missing stop/detail route ---
       # POST /agents/:name/stop/detail - Stop a runtime instance (from agent detail view).
       # Calls the `_stop_agent` helper method.
       # Returns the `_agent_status_controls.slim` partial for the detail view's status section,
-      # plus an OOB swap fragment to disable/update the "Execute Task" button.
+      # plus OOB swap fragments to disable/update the "Execute Task" button, chat input/button, and chat help text.
       post '/agents/:name/stop/detail' do |name|
         content_type :html
         stop_success = _stop_agent(name) # <<< Use helper
@@ -1053,9 +1057,13 @@ module ADK
         )
         # --- END NEW OOB swaps ---
 
+        # --- NEW: OOB swap for chat help text (show on stop by replacing p tag) ---
+        chat_help_oob_html = %(<p id="chat-status-help" hx-swap-oob="outerHTML" class="help is-danger">Agent must be running to chat.</p>)
+        # --- END NEW OOB swap ---
+
         # Return combined HTML
         status 200
-        status_controls_html + execute_button_oob_html + chat_input_oob_html + chat_button_oob_html
+        status_controls_html + execute_button_oob_html + chat_input_oob_html + chat_button_oob_html + chat_help_oob_html
       end
       # --- ADDED END ---
 
