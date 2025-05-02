@@ -75,5 +75,5 @@
             span Send
             span.icon.is-small#send-button-indicator.htmx-indicator.ml-2
               i.fas.fa-spinner.fa-pulse
-     - unless @agent_data[:running]
+      - unless @agent_data[:running]
         p.help.is-danger Agent must be running to chat.
