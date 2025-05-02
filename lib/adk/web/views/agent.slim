@@ -5,42 +5,42 @@
 
 section.section
   .container
-    .box.mb-5(style="background-color: #ffffff;")
-      .level
+    .box.mb-5.agent-header-box
+      .level.is-mobile
         .level-left
           div
             div#agent-name-display.mb-1
               == slim :_display_agent_name, locals: { agent_data: agent_data }
-            div#agent-description-display hx-swap="innerHTML"
+            div#agent-description-display hx-swap="outerHTML"
               == slim :_display_agent_description, locals: { agent_data: agent_data }
 
         .level-right
-          div id="agent-status-controls-#{agent_name.gsub(/[^a-zA-Z0-9_-]/, '-')}"
-            == slim :_agent_status_controls, locals: { agent_data: agent_data }
+           div#agent-status-controls-container
+              == slim :_agent_status_controls, locals: { agent_data: agent_data }
 
-    .tabs.is-boxed.is-medium
-      ul
-        li data-tab="execute"
-          a href="#execute"
-            span.icon.is-small
-              i.fas.fa-play-circle aria-hidden="true"
-            span Execute Task
-        li data-tab="chat"
-          a href="#chat"
-            span.icon.is-small
-              i.fas.fa-comments aria-hidden="true"
-            span Chat
-        li data-tab="config"
-          a href="#config"
-            span.icon.is-small
-              i.fas.fa-cogs aria-hidden="true"
-            span Configuration
-        li data-tab="tools"
-          a href="#tools"
-            span.icon.is-small
-              i.fas.fa-tools aria-hidden="true"
-            span Tools
-
+    .custom-rounded-tabs-container
+      .tabs
+        ul
+          li data-tab="execute"
+            a href="#execute"
+              span.icon.is-small
+                i.fas.fa-play-circle aria-hidden="true"
+              span Execute
+          li data-tab="chat"
+            a href="#chat"
+              span.icon.is-small
+                i.fas.fa-comments aria-hidden="true"
+              span Chat
+          li data-tab="config"
+            a href="#config"
+              span.icon.is-small
+                i.fas.fa-cogs aria-hidden="true"
+              span Config
+          li data-tab="tools"
+            a href="#tools"
+              span.icon.is-small
+                i.fas.fa-tools aria-hidden="true"
+              span Tools
 
     div#tab-content
 
@@ -101,42 +101,60 @@ section.section
         .box
           h3.title.is-5 Agent Chat
 
-          #chat-history.box( style="height: 450px; overflow-y: scroll; margin-bottom: 1rem; background-color: #ffffff; border: 1px solid #dbdbdb;"
-                           hx-on::after-swap="this.scrollTop = this.scrollHeight"
-                           _="init set my scrollTop to my scrollHeight end" )
+          #chat-history.box.chat-history-box( hx-on::after-swap="this.scrollTop = this.scrollHeight"
+                                              _="init set my scrollTop to my scrollHeight end" )
 
              - if defined?(@chat_history_events) && @chat_history_events && !@chat_history_events.empty?
                - @chat_history_events.each do |event|
+
                  - if event.role == :user
-                   .message.is-link.is-small.mb-2(id="event-#{event.event_id}")
-                     .message-header style="background-color: #eef6fc; color: #1d72aa;"
+                   .message.is-link.is-small.mb-2.user-message(id="event-#{event.event_id}")
+                     .message-header
                        p You
-                     .message-body(style="border-color: #eef6fc;")= event.content
+                     .message-body= event.content
 
                  - elsif event.role == :agent
-                   - agent_response_content = event.content
-                   - is_complex_content = (agent_response_content.is_a?(Hash) && agent_response_content.key?(:status)) || (agent_response_content.is_a?(Array) && agent_response_content.first.is_a?(Hash) && agent_response_content.first.key?(:status))
-                   - msg_class = 'is-light'
-                   - if is_complex_content
-                     - status = agent_response_content.is_a?(Array) ? agent_response_content.first[:status] : agent_response_content[:status]
-                     - case status
-                     - when :error; msg_class = 'is-danger'
-                     - when :pending; msg_class = 'is-warning'
-                     - else; msg_class = 'is-success'
-                   - else; msg_class = 'is-success'
+                   - agent_result_content = event.content
+                   - response_data = process_agent_response(event)
 
-                   .message class="#{msg_class} is-small mb-4" id="event-#{event.event_id}"
+                   .message class="#{response_data[:msg_class]} is-small mb-4 agent-message" id="event-#{response_data[:event_id]}"
                      .message-header
                        p Agent (#{agent_name})
+                       - unless response_data[:raw_json_content].empty?
+                         button.button.is-light.is-small.ml-auto( onclick="var el = document.getElementById('raw-#{response_data[:event_id]}'); el.style.display = (el.style.display == 'none' ? 'block' : 'none');" )
+                           | Raw
                      .message-body
-                       div style="white-space: pre-wrap; word-break: break-all;" = format_historical_agent_content(agent_response_content)
+                       div style="white-space: pre-wrap; word-break: break-all; margin-bottom: 0.5rem;" = response_data[:display_content]
+
+                       - if event.is_a?(ADK::Event) && event.content.is_a?(Hash) && event.content[:plan_details].is_a?(Array) && !event.content[:plan_details].empty?
+                         details.execution-plan-details
+                           summary.execution-plan-summary
+                             | Execution Plan (#{event.content[:plan_details].size} step#{'s' if event.content[:plan_details].size != 1})
+                           .execution-plan-steps
+                             - event.content[:plan_details].each_with_index do |step_detail, index|
+                               .execution-plan-step
+                                 p.step-title Step #{index + 1}: #{step_detail[:tool_name]}
+                                 p.step-params-label Parameters:
+                                 pre.step-params-pre= pretty_json(step_detail[:params])
+
+                                 - result_status = step_detail[:result][:status]
+                                 - result_class = case result_status when :success then 'has-text-success-dark' when :error then 'has-text-danger-dark' when :pending then 'has-text-warning-dark' else 'has-text-grey' end
+
+                                 p class="step-result-label #{result_class}" Result (#{result_status}):
+                                 pre class="step-result-pre #{result_class}"= pretty_json(step_detail[:result])
+
+                       - unless response_data[:raw_json_content].empty?
+                         div.raw-json-container id="raw-#{response_data[:event_id]}" style="display: none;"
+                           pre.raw-json-pre= response_data[:raw_json_content]
+
                  - else
-                   
+
+
              - else
                p.has-text-grey-light.is-italic Start chatting... Messages will appear here.
-             
 
-          form#chat-form( hx-post="/agents/#{agent_name}/chat"
+
+          form#chat-form.chat-input-form( hx-post="/agents/#{agent_name}/chat"
                        hx-target="#chat-history"
                        hx-swap="beforeend"
                        hx-indicator="#send-button-indicator"
@@ -166,7 +184,9 @@ section.section
             .level-right
               button.button.is-link.is-light( hx-get="/agents/#{agent_name}/edit/tools"
                                               hx-target="#agent-tools-table-container"
-                                              hx-swap="outerHTML" )
+                                              hx-swap="outerHTML" hx-indicator="this .htmx-indicator")
+                span.icon.is-small.htmx-indicator
+                   i.fas.fa-spinner.fa-spin
                 span.icon.is-small
                   i.fas.fa-pencil-alt
                 span Edit Tools
@@ -183,7 +203,7 @@ section.section
 
     javascript:
       document.addEventListener('DOMContentLoaded', function () {
-        const tabs = document.querySelectorAll('.tabs li');
+        const tabs = document.querySelectorAll('.custom-rounded-tabs-container .tabs li');
         const tabContentBoxes = document.querySelectorAll('#tab-content > .content-tab');
 
         function activateTab(tabElement) {
@@ -233,7 +253,7 @@ section.section
          let activatedFromHash = false;
          if (window.location.hash) {
              const hash = window.location.hash.substring(1);
-             const targetTabElement = document.querySelector(`.tabs li[data-tab="${hash}"]`);
+             const targetTabElement = document.querySelector(`.custom-rounded-tabs-container .tabs li[data-tab="${hash}"]`);
              if (targetTabElement) {
                  activateTab(targetTabElement);
                  activatedFromHash = true;
@@ -242,7 +262,7 @@ section.section
              }
          }
          if (!activatedFromHash) {
-            const defaultTab = document.querySelector('.tabs li[data-tab="execute"]');
+            const defaultTab = document.querySelector('.custom-rounded-tabs-container .tabs li[data-tab="execute"]');
             if (defaultTab) {
                 activateTab(defaultTab);
             } else {

@@ -1,27 +1,24 @@
 / File: lib/adk/web/views/_agent_status_controls.slim
-
-/ Expects 'agent_data' (Hash or Agent object)
 - agent_name = agent_data.is_a?(Hash) ? agent_data[:name] : agent_data.name
 - is_running = agent_data.is_a?(Hash) ? agent_data[:running] : agent_data.running?
 - container_id = "agent-status-controls-#{agent_name.gsub(/[^a-zA-Z0-9_-]/, '-')}"
 
 div(id=container_id)
-  / Status Text (Using Tag)
-  p
-    strong Status:
-    span.tag.ml-2 class=(is_running ? 'is-success' : 'is-danger')
-      = is_running ? 'Running' : 'Stopped'
+  .field
+    label.label.is-small Status
+    .control
+      span.tag.is-medium.is-rounded class=(is_running ? 'is-success' : 'is-danger')
+        = is_running ? 'Running' : 'Stopped'
 
-  / Buttons Container
-  .buttons.mt-3
-    / Start Button with Icon - CHANGE hx-swap to innerHTML
-    button.button.is-success(hx-post="/agents/#{agent_name}/start/detail" hx-target="##{container_id}" hx-swap="innerHTML" disabled=is_running)
-      span.icon.is-small
-        i.fas.fa-play
-      span Start
+  .field.is-grouped.is-grouped-right
+    .control
+      button.button.is-success.is-light.is-small(hx-post="/agents/#{agent_name}/start/detail" hx-target="##{container_id}" hx-swap="innerHTML" disabled=is_running)
+        span.icon.is-small
+          i.fas.fa-play
+        span Start
 
-    / Stop Button with Icon - CHANGE hx-swap to innerHTML
-    button.button.is-danger(hx-post="/agents/#{agent_name}/stop/detail" hx-target="##{container_id}" hx-swap="innerHTML" disabled=!is_running)
-      span.icon.is-small
-        i.fas.fa-stop
-      span Stop
+    .control
+      button.button.is-danger.is-light.is-small(hx-post="/agents/#{agent_name}/stop/detail" hx-target="##{container_id}" hx-swap="innerHTML" disabled=!is_running)
+        span.icon.is-small
+          i.fas.fa-stop
+        span Stop

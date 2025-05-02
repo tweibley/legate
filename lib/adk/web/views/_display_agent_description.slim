@@ -1,10 +1,8 @@
 / File: lib/adk/web/views/_display_agent_description.slim
-/ Expects locals: agent_data (Hash: {name, description, ...})
-
-div.is-flex.is-align-items-center
-  p.subtitle.mr-2= agent_data[:description]
+div#agent-description-display
+  p.subtitle.mb-1= agent_data[:description]
   button.button.is-small.is-ghost( hx-get="/agents/#{agent_data[:name]}/edit/description"
-                                    hx-target="#agent-description-display"
-                                    hx-swap="innerHTML" )
+                                  hx-target="#agent-description-display"
+                                  hx-swap="outerHTML" )
     span.icon.is-small
       i.fas.fa-pencil-alt

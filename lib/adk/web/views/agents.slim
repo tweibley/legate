@@ -1,76 +1,86 @@
 / File: lib/adk/web/views/agents.slim
-.content
-  h1.title Agents
+.content.mb-5
+  h1.title.is-2 Agents
   p.subtitle Manage agent definitions and runtime instances.
 
-details.box.mb-5
-  summary.is-clickable style="font-weight: bold; font-size: 1.2em;"
+details.box.mb-5.create-agent-details
+  summary.is-clickable
     span.icon.mr-2
-      i.fas.fa-plus-circle.has-text-link
-    | Create New Agent Definition
+      i.fas.fa-plus-circle
+    strong Create New Agent Definition
 
   .mt-4
     form(hx-post="/agents" hx-target="#agent-list-tbody" hx-swap="beforeend" _="on htmx:afterRequest this.closest('details').removeAttribute('open'); this.reset(); destroyCodeMirrorInstance('mcp_servers_json'); destroyCodeMirrorInstance('instruction');")
-      .field
-        label.label Name
-        .control.has-icons-left
-          input.input(type="text" name="name" placeholder="Unique agent name (e.g., customer-support-agent)" required=true)
-          span.icon.is-small.is-left
-            i.fas.fa-robot
-      .field
-        label.label for="description" Description
-        .control
-          textarea.textarea#description name="description" placeholder="What does this agent do? (e.g., Handles initial customer support queries)" required="required" rows="2"
-      .field
-        label.label for="instruction" Instructions (System Prompt)
-        .control
-          textarea.textarea#instruction name="instruction" rows="4" placeholder="(Optional) Guide the agent's behavior, persona, and tool usage (e.g., You are a helpful assistant that only uses provided tools. Be concise.)"
-        p.help Guide the agent's behavior, persona, and tool usage. Markdown is supported by some models.
-      .field
-        label.label for="model" Language Model
-        .control.has-icons-left
-          .select.is-fullwidth
-            select(name="model")
-              - default_model = ADK::Agent::DEFAULT_MODEL
-              - @available_models.each do |model_name|
-                option(value=model_name selected=(model_name == default_model)) = model_name
-          span.icon.is-small.is-left
-            i.fas.fa-brain
-      .field
-        label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
-        .control
-          textarea.textarea#mcp_servers_json name="mcp_servers_json" rows="5" placeholder='[{"type": "stdio", "command": "...", "args": ["..."]}]'
-        p.help
-          | Enter a valid JSON array of MCP server objects. Example:
-          code style="font-size: 0.8em;" [{"type": "stdio", "command": "npx", "args": ["@mcp/server", "/path/to/tools"]}]
-          | . Leave empty if no MCP servers are needed.
+      .columns.is-multiline
+        .column.is-half
+          .field
+            label.label Name
+            .control.has-icons-left
+              input.input(type="text" name="name" placeholder="unique-agent-name" required=true)
+              span.icon.is-small.is-left
+                i.fas.fa-robot
+        .column.is-half
+          .field
+            label.label for="model" Language Model
+            .control.has-icons-left
+              .select.is-fullwidth
+                select(name="model")
+                  - default_model = ADK::Agent::DEFAULT_MODEL
+                  - @available_models.each do |model_name|
+                    option(value=model_name selected=(model_name == default_model)) = model_name
+              span.icon.is-small.is-left
+                i.fas.fa-brain
 
-      .field
-        label.label Tools
-        .control
-          - if @available_tools && !@available_tools.empty?
-            .panel
-              p.panel-heading Available Tools
-              - @available_tools.each do |tool_info|
-                label.panel-block.is-clickable
-                  input.mr-3(type="checkbox" name="tools[]" value=tool_info[:name])
-                  span
-                    strong #{tool_info[:name].to_s.capitalize}
-                    br
-                    small.has-text-grey #{tool_info[:description]}
-          - else
-            .notification.is-warning.is-light No tools available for selection.
+        .column.is-full
+          .field
+            label.label for="description" Description
+            .control
+              textarea.textarea#description name="description" placeholder="What does this agent do?" required="required" rows="2"
 
-      .field
-        label.label Planning Fallback
-        p.help Select behavior when the agent cannot determine which tool to use.
-        .control.has-icons-left
-          .select.is-fullwidth
-            select(name="fallback_mode")
-              option(value="error" selected=true) Return Error Message
-              option(value="echo") Attempt Echo Tool (if available)
-          span.icon.is-small.is-left
-            i.fas.fa-random
+        .column.is-full
+          .field
+            label.label for="instruction" Instructions (System Prompt)
+            .control
+              textarea.textarea#instruction name="instruction" rows="4" placeholder="Guide the agent's behavior, persona, and tool usage..."
+            p.help Guide the agent's behavior, persona, and tool usage. Markdown is supported by some models.
+
+        .column.is-half
+          .field
+            label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
+            .control
+              textarea.textarea#mcp_servers_json name="mcp_servers_json" rows="5" placeholder='[{"type": "stdio", "command": "..."}]'
+            p.help
+              | Enter a valid JSON array or leave empty. Example:
+              code | [{"type": "stdio", "command": "npx", "args": [...]}]
+
+        .column.is-half
+          .field
+            label.label Planning Fallback
+            p.help Select behavior when the agent cannot determine which tool to use.
+            .control.has-icons-left
+              .select.is-fullwidth
+                select(name="fallback_mode")
+                  option(value="error" selected=true) Return Error Message
+                  option(value="echo") Attempt Echo Tool (if available)
+              span.icon.is-small.is-left
+                i.fas.fa-random
+
+        .column.is-full
+          .field
+            label.label Tools
+            .control
+              - if @available_tools && !@available_tools.empty?
+                .panel.tool-selection-panel
+                  p.panel-heading Available Tools
+                  - @available_tools.each do |tool_info|
+                    label.panel-block.is-clickable
+                      input.mr-3(type="checkbox" name="tools[]" value=tool_info[:name])
+                      span
+                        strong #{tool_info[:name].to_s.capitalize}
+                        br
+                        small.has-text-grey #{tool_info[:description]}
+              - else
+                .notification.is-warning.is-light No tools available for selection.
 
       .field.mt-5
         .control
@@ -84,28 +94,29 @@ details.box.mb-5
     .level-left
       h2.title.is-4 Defined Agents
     .level-right
-      button.button.is-light(hx-get="/agents/list" hx-target="#agent-list-tbody" hx-swap="innerHTML" hx-indicator="#agent-list-spinner")
-        span.icon#agent-list-spinner.htmx-indicator
-            i.fas.fa-spinner.fa-spin
+      button.button.is-light#refresh-agent-list-btn(hx-get="/agents/list" hx-target="#agent-list-tbody" hx-swap="innerHTML" hx-indicator="#refresh-agent-list-btn .htmx-indicator")
+        span.icon.is-small.htmx-indicator
+          i.fas.fa-spinner.fa-spin
         span.icon
-            i.fas.fa-sync
+          i.fas.fa-sync
         span Refresh List
 
 
-  table.table.is-fullwidth.is-striped.is-hoverable#agent-list-table(data-testid="agent-list-table")
-    thead
-      tr
-        th Status
-        th Name
-        th Description
-        th Model
-        th Configured Tools
-        th Actions
-    tbody#agent-list-tbody
-      - if @view_agents && !@view_agents.empty?
-        - @view_agents.each do |agent_info|
-          == slim :_agent_row, locals: { agent_info: agent_info, available_tools: @available_tools }
-      - else
-        tr#no-agents-row
-          td(colspan="6").has-text-centered.has-text-grey
-            | No agent definitions found. Use the 'Create New Agent Definition' section above.
+  .table-container
+    table.table.is-fullwidth.is-striped.is-hoverable#agent-list-table(data-testid="agent-list-table")
+      thead
+        tr
+          th Status
+          th Name
+          th Description
+          th Model
+          th Configured Tools
+          th.has-text-right Actions
+      tbody#agent-list-tbody
+        - if @view_agents && !@view_agents.empty?
+          - @view_agents.each do |agent_info|
+            == slim :_agent_row, locals: { agent_info: agent_info, available_tools: @available_tools }
+        - else
+          tr#no-agents-row
+            td(colspan="6").has-text-centered.has-text-grey-light.is-italic
+              | No agent definitions found. Use the 'Create New Agent Definition' section above.

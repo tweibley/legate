@@ -1,39 +1,39 @@
-.content
-  h1.title Tools
-  p.subtitle Browse and manage available tools
+/ File: lib/adk/web/views/tools.slim
+.content.mb-5
+  h1.title.is-2 Tools
+  p.subtitle Browse available tools that can be used by agents.
 
-section.section
-  .container
-    h1.title Available Native Tools
-    p.subtitle Shows tools built directly into this ADK application.
+.box
+  h2.title.is-4 Available Native Tools
+  p.subtitle.is-6 Shows tools built directly into this ADK application.
 
-    - if @native_tools.nil? || @native_tools.empty?
-      .notification.is-warning No native tools found.
-    - else
-      .box
-        table.table.is-striped.is-hoverable.is-fullwidth
-          thead
+  - if @native_tools.nil? || @native_tools.empty?
+    .notification.is-warning No native tools found.
+  - else
+    .table-container
+      table.table.is-striped.is-hoverable.is-fullwidth
+        thead
+          tr
+            th Name
+            th Description
+            th Parameters
+        tbody
+          - @native_tools.each do |tool|
             tr
-              th Name
-              th Description
-              th Parameters
-          tbody
-            - @native_tools.each do |tool|
-              tr
-                td
-                  a href="/tools/#{tool[:name]}"
-                    strong = tool[:name]
-                td = tool[:description]
-                td
-                  - if tool[:parameters].empty?
-                    em None
-                  - else
-                    ul style="list-style: none; margin-left: 0; padding-left: 0;"
-                      - tool[:parameters].each do |param|
-                        li
-                          code = param[:name]
-                          |  (#{param[:type]})
-                          - if param[:required]
-                            == ' <span class="tag is-danger is-light is-small">Required</span>'
-                          div style="padding-left: 1em;"
-                            small = param[:description]
+              td style="vertical-align: top;"
+                a href="/tools/#{tool[:name]}"
+                  strong = tool[:name]
+              td style="vertical-align: top;"
+                = tool[:description] || content_tag(:em, "[no description provided]")
+              td
+                - if tool[:parameters].empty?
+                  em None
+                - else
+                  dl.parameters-list
+                    - tool[:parameters].each do |param|
+                      dt
+                        code = param[:name]
+                        span.tag.is-light.is-family-code.ml-1 = param[:type]
+                        - if param[:required]
+                          span.tag.is-danger.is-light.is-small.ml-1 Required
+                      dd = param[:description]

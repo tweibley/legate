@@ -1,123 +1,367 @@
 @use "sass:color";
+/* public/css/main.css */
 
-// Variables
-$primary-color: #3498db;
-$secondary-color: #2ecc71;
-$text-color: #333;
-$background-color: #f9f9f9;
-$border-color: #ddd;
-
-// Reset
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
+/* --- General Theme Adjustments --- */
 body {
-  font-family: 'Helvetica Neue', Arial, sans-serif;
-  line-height: 1.6;
-  color: $text-color;
-  background-color: $background-color;
+  background-color: #f8f9fa; /* Light grey background */
+  color: #4a4a4a; /* Default text color */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif; /* System font stack */
 }
 
-// Layout
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 20px;
+h1.title, h2.title, h3.title, h4.title, h5.title, h6.title {
+    font-weight: 600; /* Slightly bolder titles */
 }
 
-header {
-  background-color: $primary-color;
-  color: white;
-  padding: 1rem 0;
-  margin-bottom: 2rem;
-  
-  h1 {
-    font-size: 2rem;
-  }
+.subtitle {
+    color: #6c757d; /* Softer subtitle color */
 }
 
-// Navigation
-nav {
-  background-color: color.adjust($primary-color, $lightness: -10%);
-  padding: 0.5rem 0;
-  
-  ul {
+/* --- Navbar --- */
+.navbar.is-white {
+  border-bottom: 1px solid #dee2e6; /* Slightly darker border */
+}
+.navbar-item, .navbar-link {
+    font-weight: 500;
+}
+strong.has-text-link { /* Navbar Brand */
+    font-weight: 700;
+    font-size: 1.2em;
+}
+
+/* --- Cards & Boxes --- */
+.card, .box {
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.07); /* Slightly deeper shadow */
+  border: 1px solid #e9ecef; /* Subtle border */
+  border-radius: 8px; /* More rounded corners */
+}
+.box:not(:last-child), .card:not(:last-child) {
+    margin-bottom: 1.75rem; /* Increase spacing */
+}
+
+/* --- Agent Page Header --- */
+.agent-header-box {
+  border: 1px solid #dee2e6;
+}
+.agent-header-box .level-left > div {
+    flex-grow: 1; /* Allow left side to take available space */
+    margin-right: 1rem; /* Add some space between left and right */
+    width: 100%; /* Allow it to take width before flex applies */
+    min-width: 0; /* Important for flex-grow with potentially long content */
+}
+
+/* --- Agent Page Header Description --- */
+#agent-description-display {
+  margin-bottom: 0.5rem; /* Add some space below */
+}
+#agent-description-display p.subtitle {
+    line-height: 1.4; /* Improve readability */
+    margin-right: 0.5rem; /* Space before potential button */
+    /* display: inline; Let it be block */
+    margin-bottom: 0 !important; /* Override default */
+}
+#agent-description-display button.is-ghost {
+   vertical-align: top; /* Align button nicely with text */
+   margin-left: 0.25rem;
+   margin-top: 0.25rem; /* Add slight top margin */
+}
+
+/* Ensure the edit form takes space */
+#agent-description-display form {
+    width: 100%; /* Make form take full width of its container */
+}
+#agent-description-display form .textarea {
+    width: 100%; /* Ensure textarea uses the width */
+    min-height: 6em; /* Give it a decent minimum height */
+}
+#agent-description-display form .field.is-grouped {
+    margin-top: 0.75rem; /* More space above buttons */
+}
+#agent-description-display form .label.is-small {
+    margin-bottom: 0.25rem;
+    color: #6c757d; /* Match subtitle color */
+    font-weight: normal; /* Match subtitle weight */
+}
+
+
+/* --- Agent Status Controls --- */
+#agent-status-controls-container .field {
+    margin-bottom: 0.5rem !important; /* Reduce space below status label/tag */
+}
+#agent-status-controls-container .label.is-small {
+    margin-bottom: 0.25rem; /* Space between Status label and tag */
+    font-weight: 600; /* Make label slightly bolder */
+    color: #6c757d;
+}
+#agent-status-controls-container .tag.is-medium.is-rounded {
+    padding-left: 1em;
+    padding-right: 1em;
+    font-weight: 600;
+}
+#agent-status-controls-container .field.is-grouped {
+    margin-top: 0.75rem; /* Space above buttons */
+    justify-content: flex-end; /* Align buttons right */
+}
+#agent-status-controls-container .button.is-small {
+    font-weight: 500;
+}
+
+
+/* --- Custom Rounded Tabs --- */
+.custom-rounded-tabs-container {
+  background-color: #e9ecef; /* Background for the tab bar area */
+  padding: 0.5rem 0.5rem 0 0.5rem; /* Padding around tabs */
+  border-radius: 8px; /* Rounded corners for the bar */
+  margin-bottom: 1.75rem; /* Space below tabs */
+  overflow: hidden; /* Hide bottom part of inactive tabs */
+}
+
+.custom-rounded-tabs-container .tabs {
+    margin-bottom: 0 !important; /* Override Bulma's default margin */
+}
+
+.custom-rounded-tabs-container .tabs ul {
+    border-bottom: none; /* Remove the default bottom border */
+    align-items: flex-end; /* Align tabs to the bottom */
+}
+
+.custom-rounded-tabs-container .tabs li {
+    margin-right: 0.25rem; /* Space between tabs */
+}
+
+.custom-rounded-tabs-container .tabs li a {
+    border: 1px solid #ced4da; /* Border for inactive */
+    border-bottom: none; /* Remove bottom border */
+    border-radius: 6px 6px 0 0; /* Top rounded corners */
+    background-color: #f8f9fa; /* Slightly off-white inactive */
+    color: #6c757d; /* Dimmed text for inactive */
+    padding: 0.8em 1.25em; /* Adjust padding */
+    font-weight: 500;
+    position: relative; /* Needed for z-index */
+    bottom: -1px; /* Pull down slightly to overlap container bg */
+    transition: all 0.2s ease-in-out;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); /* Subtle inset shadow */
+}
+
+.custom-rounded-tabs-container .tabs li a:hover {
+    background-color: #ffffff; /* White on hover */
+    color: #3273dc; /* Link color on hover */
+    border-color: #adb5bd; /* Slightly darker border on hover */
+    box-shadow: none;
+}
+
+.custom-rounded-tabs-container .tabs li.is-active a {
+    background-color: #ffffff; /* Active tab background (match content bg) */
+    color: #3273dc; /* Active tab text color */
+    border-color: #ced4da; /* Match inactive border */
+    border-bottom-color: #ffffff !important; /* Make bottom border same as bg to "connect" */
+    font-weight: 600;
+    position: relative;
+    z-index: 2; /* Bring active tab forward */
+    bottom: 0; /* Align exactly with bottom */
+    padding-bottom: calc(0.8em + 1px); /* Extend slightly to cover container bg edge */
+    box-shadow: 0 -2px 4px rgba(0,0,0,0.03); /* Subtle top shadow to lift */
+}
+
+/* Adjust icon color */
+.custom-rounded-tabs-container .tabs li a .icon {
+    color: inherit; /* Inherit color from the anchor */
+}
+
+/* --- Tab Content Spacing --- */
+#tab-content > .content-tab > .box,
+#tab-content > .content-tab > .columns {
+    margin-top: 0; /* Remove extra top margin if tabs provide enough */
+}
+
+/* --- Tables --- */
+.table-container {
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    overflow-x: auto;
+}
+.table {
+  background-color: #ffffff;
+  font-size: 0.9rem;
+  border-radius: 6px;
+}
+.table thead th {
+  color: #495057;
+  font-weight: 600;
+  border-bottom-width: 2px;
+  border-color: #dee2e6;
+}
+.table td, .table th {
+   vertical-align: middle;
+   padding: 0.8em 0.75em;
+   border-color: #dee2e6;
+}
+.table.is-striped tbody tr:nth-child(even) {
+    background-color: #f8f9fa;
+}
+.table.is-hoverable tbody tr:hover {
+    background-color: #e9ecef;
+}
+
+/* --- Forms & Panels --- */
+.create-agent-details summary {
+    font-size: 1.1em;
+    font-weight: 600;
+    padding: 0.75em 1em;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    border-radius: 8px 8px 0 0;
+    margin: -1.25rem -1.25rem 0 -1.25rem;
+}
+.create-agent-details[open] summary {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+.create-agent-details > .mt-4 {
+    padding-top: 1.5rem;
+}
+.create-agent-details summary::marker {
+    color: #3273dc;
+}
+.create-agent-details summary .icon {
+    color: #3273dc;
+    vertical-align: middle;
+}
+
+.panel.tool-selection-panel .panel-heading {
+    background-color: #e9ecef;
+    font-weight: 600;
+}
+.panel.tool-selection-panel .panel-block label.is-clickable:hover {
+  background-color: #f8f9fa;
+}
+
+/* --- Parameter Lists (Tools Page) --- */
+dl.parameters-list dt, dl.parameters-list-detailed dt {
+    font-weight: 600;
+    margin-bottom: 0.2em;
+    color: #343a40;
+}
+dl.parameters-list dd, dl.parameters-list-detailed dd {
+    margin-left: 1.5em;
+    margin-bottom: 0.8em;
+    color: #495057;
+    font-size: 0.95em;
+}
+
+/* --- CodeMirror --- */
+.CodeMirror {
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  font-size: 0.9em;
+  height: auto;
+}
+.CodeMirror-readonly .CodeMirror-cursor { display: none !important; }
+pre[style*="background-color: #fafafa;"] { /* Display instructions */
+    border: 1px solid #e9ecef;
+    font-size: 0.95em;
+}
+
+/* --- Chat --- */
+.chat-history-box {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6 !important;
+    padding: 1rem;
+    height: 450px;
+    overflow-y: scroll;
+    margin-bottom: 1rem;
     display: flex;
-    list-style: none;
-    
-    li {
-      margin-right: 1rem;
-      
-      a {
-        color: white;
-        text-decoration: none;
-        
-        &:hover {
-          text-decoration: underline;
-        }
-      }
-    }
-  }
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.message.user-message {
+    align-self: flex-end;
+    max-width: 75%;
+    border-radius: 15px 15px 0 15px !important;
+}
+.message.agent-message {
+    align-self: flex-start;
+    max-width: 75%;
+    border-radius: 15px 15px 15px 0 !important;
+}
+.message.user-message .message-header,
+.message.agent-message .message-header {
+    border-bottom: none;
+    border-radius: 15px 15px 0 0;
+    padding: 0.5em 1em;
+    display: flex;
+    align-items: center;
+}
+.message.agent-message .message-header button {
+    margin-left: auto;
 }
 
-// Cards
-.card {
-  background-color: white;
-  border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  
-  h2 {
-    color: $primary-color;
-    margin-bottom: 1rem;
-  }
+.message.user-message .message-body {
+    border-radius: 0 0 0 15px;
+    border-width: 0 1px 1px 1px;
+    padding: 0.75em 1em;
+}
+.message.agent-message .message-body {
+    border-radius: 0 0 15px 0;
+    border-width: 0 1px 1px 1px;
+    padding: 0.75em 1em;
+}
+.message.user-message.is-link .message-header {
+    background-color: #3273dc;
+    color: white;
+}
+.message.user-message.is-link .message-body {
+    border-color: #3273dc;
+    background-color: #f0f5fc;
+}
+.message.agent-message.is-light { background-color: #e9ecef; border: 1px solid #ced4da; }
+.message.agent-message.is-light .message-header { background-color: #ced4da; color: #495057; }
+.message.agent-message.is-light .message-body { border-color: #ced4da; background-color: #e9ecef; color: #363636; }
+.message.agent-message.is-success { background-color: #eaf7ec; border-color: #9fd8a0; }
+.message.agent-message.is-success .message-header { background-color: #9fd8a0; color: #256c3b; }
+.message.agent-message.is-success .message-body { border-color: #9fd8a0; background-color: #eaf7ec; }
+.message.agent-message.is-danger { background-color: #fdecea; border-color: #f6a3a1; }
+.message.agent-message.is-danger .message-header { background-color: #f6a3a1; color: #b71c1c; }
+.message.agent-message.is-danger .message-body { border-color: #f6a3a1; background-color: #fdecea; }
+.message.agent-message.is-warning { background-color: #fffbeb; border-color: #ffe58a; }
+.message.agent-message.is-warning .message-header { background-color: #ffe58a; color: #7a4f01; }
+.message.agent-message.is-warning .message-body { border-color: #ffe58a; background-color: #fffbeb; }
+
+/* Execution Plan Details Styles (within chat message body) */
+.message-body .execution-plan-details { margin-top: 1rem; border-top: 1px solid #eee; padding-top: 0.5rem; }
+.message-body .execution-plan-summary { cursor: pointer; font-weight: bold; color: #363636; font-size: 0.9em; }
+.message-body .execution-plan-steps { margin-top: 0.5rem; padding-left: 1em; border-left: 3px solid #dbdbdb; }
+.message-body .execution-plan-step { margin-bottom: 1rem; }
+.message-body .step-title { font-weight: bold; font-size: 0.85em; margin-bottom: 0.25rem; }
+.message-body .step-params-label, .message-body .step-result-label { font-size: 0.8em; color: #555; margin-bottom: 0.1rem; }
+.message-body .step-params-pre, .message-body .step-result-pre { font-size: 0.8em; white-space: pre-wrap; word-break: break-all; background-color: #f5f5f5; padding: 0.5em; border-radius: 3px; margin-bottom: 0.5rem; }
+.message-body .step-result-pre { margin-bottom: 0; }
+
+/* Raw JSON container */
+.message-body .raw-json-container { display: none; margin-top: 0.5rem; border-top: 1px dashed #ccc; padding-top: 0.5rem; }
+.message-body .raw-json-pre { white-space: pre-wrap; word-break: break-all; font-size: 0.8em; color: #555; }
+
+.chat-input-form { margin-top: 1rem; }
+
+/* Button hover/focus states */
+.button:focus, .button.is-focused { box-shadow: 0 0 0 2px rgba(50, 115, 220, 0.25); }
+.button.is-link:hover { background-color: #276cda; }
+.button.is-success:hover { background-color: #2f855a; }
+.button.is-danger:hover { background-color: #cc0f35; }
+.button.is-light:hover { background-color: #e8e8e8; }
+
+/* --- Footer --- */
+.footer {
+    background-color: #f8f9fa; /* Match body background */
+    padding: 2rem 1.5rem 3rem; /* Adjust padding */
 }
 
-// Buttons
-.button {
-  display: inline-block;
-  background-color: $primary-color;
-  color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 4px;
-  text-decoration: none;
-  border: none;
-  cursor: pointer;
-  transition: background-color 0.3s;
-  
-  &:hover {
-    background-color: color.adjust($primary-color, $lightness: -10%);
-  }
-  
-  &.secondary {
-    background-color: $secondary-color;
-    
-    &:hover {
-      background-color: color.adjust($secondary-color, $lightness: -10%);
-    }
-  }
+/* --- HTMX Indicator --- */
+.htmx-indicator{
+  display:none;
 }
-
-// Forms
-form {
-  .form-group {
-    margin-bottom: 1rem;
-    
-    label {
-      display: block;
-      margin-bottom: 0.5rem;
-      font-weight: bold;
-    }
-    
-    input, textarea, select {
-      width: 100%;
-      padding: 0.5rem;
-      border: 1px solid $border-color;
-      border-radius: 4px;
-    }
-  }
-} 
+.htmx-request .htmx-indicator{
+  display:inline;
+}
+.htmx-request.htmx-indicator{
+  display:inline;
+}

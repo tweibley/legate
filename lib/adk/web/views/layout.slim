@@ -2,7 +2,7 @@
 doctype html
 html(class="has-navbar-fixed-top")
   head
-    title ADK - Agent Development Kit
+    title Ruby ADK - Agent Development Kit
     meta charset="utf-8"
     meta name="viewport" content="width=device-width, initial-scale=1"
     link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"
@@ -25,7 +25,7 @@ html(class="has-navbar-fixed-top")
       .container
         .navbar-brand
           a.navbar-item href="/"
-            strong.has-text-link ADK
+            strong.has-text-link Ruby ADK
           a.navbar-burger(role="button" aria-label="menu" aria-expanded="false" data-target="navbarBasicMenu")
             span(aria-hidden="true")
             span(aria-hidden="true")
@@ -35,11 +35,12 @@ html(class="has-navbar-fixed-top")
             a.navbar-item(href="/agents") Agents
             a.navbar-item(href="/tools") Tools
 
-    section.section
-      .container
-        #toast-container style="position: fixed; top: calc(3.25rem + 1em); right: 1em; z-index: 9999; width: 300px;"
-        #flash-messages
-        == yield
+    main role="main"
+      section.section
+        .container
+          #toast-container style="position: fixed; top: calc(3.25rem + 1em); right: 1em; z-index: 9999; width: 300px;"
+          #flash-messages
+          == yield
 
     #health-check-modal.modal
       .modal-background
@@ -53,7 +54,7 @@ html(class="has-navbar-fixed-top")
 
     footer.footer.mt-6
       .content.has-text-centered
-        p.is-size-7.has-text-grey
+        p.is-size-7.has-text-grey-light
           strong Ruby ADK Web UI
 
     javascript:
