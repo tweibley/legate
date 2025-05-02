@@ -76,10 +76,8 @@ html(class="has-navbar-fixed-top")
       window.codeMirrorObservers = window.codeMirrorObservers || {};
 
       function initCodeMirrorEditor(editorElement, options = {}) {
-        console.log("====> initCodeMirrorEditor entered. Element:", editorElement);
         if (editorElement && editorElement.id && !window.codeMirrorInstances[editorElement.id]) {
           const elementId = editorElement.id;
-          console.log(`Initializing CodeMirror for #${elementId}`);
           try {
             const defaultOptions = {
               lineNumbers: true,
@@ -112,14 +110,12 @@ html(class="has-navbar-fixed-top")
             });
 
             window.codeMirrorInstances[elementId] = instance;
-            console.log(`CodeMirror initialized successfully for #${elementId}`);
 
             setTimeout(() => instance.refresh(), 50);
 
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
-                       console.log(`CodeMirror instance #${elementId} became visible. Refreshing.`);
                        if(window.codeMirrorInstances[elementId]) {
                           setTimeout(() => window.codeMirrorInstances[elementId].refresh(), 50);
                        }
@@ -130,27 +126,22 @@ html(class="has-navbar-fixed-top")
             window.codeMirrorObservers[elementId] = observer;
 
           } catch (e) {
-            console.error(`Error initializing CodeMirror for #${elementId}:`, e);
             editorElement.style.display = 'block';
           }
         } else if (editorElement && editorElement.id && window.codeMirrorInstances[editorElement.id]) {
           const elementId = editorElement.id;
-          console.log(`CodeMirror instance #${elementId} already exists. Refreshing.`);
           setTimeout(() => {
              if (window.codeMirrorInstances[elementId]) {
                 window.codeMirrorInstances[elementId].refresh()
              }
             }, 50);
         } else if (!editorElement) {
-            console.warn("initCodeMirrorEditor called with null element.");
         } else if (!editorElement.id) {
-            console.warn("initCodeMirrorEditor called with element lacking an ID.");
         }
       }
 
       function destroyCodeMirrorInstance(elementId) {
         if (window.codeMirrorObservers && window.codeMirrorObservers[elementId]) {
-          console.log(`Disconnecting IntersectionObserver for #${elementId}`);
           window.codeMirrorObservers[elementId].disconnect();
           delete window.codeMirrorObservers[elementId];
         }
@@ -158,14 +149,11 @@ html(class="has-navbar-fixed-top")
         if (window.codeMirrorInstances && window.codeMirrorInstances[elementId]) {
           const instance = window.codeMirrorInstances[elementId];
           const wrapper = instance.getWrapperElement();
-          console.log(`Destroying CodeMirror instance for #${elementId}`);
           try {
             instance.toTextArea();
           } catch (e) {
-            console.error(`Error reverting CodeMirror to textarea for #${elementId}:`, e);
           }
           if (wrapper && wrapper.parentNode) {
-             console.log(`Explicitly removing CodeMirror wrapper element for #${elementId}.`);
              wrapper.parentNode.removeChild(wrapper);
           }
           delete window.codeMirrorInstances[elementId];
@@ -173,7 +161,6 @@ html(class="has-navbar-fixed-top")
       }
 
       function initializeRelevantEditors(targetElement = document.body) {
-        console.log("Scanning for editors to initialize within:", targetElement);
         const editorsToInit = [
           { id: 'mcp_servers_json', options: {} },
           { id: 'instruction', options: { mode: 'text/plain'} },
@@ -188,33 +175,25 @@ html(class="has-navbar-fixed-top")
           if (targetElement && targetElement !== document.body && typeof targetElement.querySelector === 'function') {
              element = targetElement.querySelector(`#${editor.id}`);
              if (element) {
-                console.log(`Found editor #${editor.id} within swapped targetElement.`);
                 foundIn = 'target';
              }
           }
 
           if (!element && (!targetElement || targetElement === document.body)) {
-            console.log(`Editor #${editor.id} not found in target, searching document.`);
             element = document.getElementById(editor.id);
              if (element) {
-                console.log(`Found editor #${editor.id} within document.`);
                 foundIn = 'document';
              }
           }
           
-          console.log(`---> Checking ${editor.id}: Found element?`, !!element, `(in ${foundIn || 'none'})`); 
-          
           if (element) {
-             console.log(`---> Calling initCodeMirrorEditor for ${editor.id}`);
              initCodeMirrorEditor(element, editor.options);
           } else {
-              // console.debug(`Editor #${editor.id} not found in the current scope.`);
           }
         });
       }
 
       document.addEventListener('DOMContentLoaded', () => {
-         console.log("DOMContentLoaded: Initializing editors.");
          initializeRelevantEditors(document.body);
          checkServerHealth();
          setInterval(checkServerHealth, 5000);
@@ -223,19 +202,15 @@ html(class="has-navbar-fixed-top")
       document.body.addEventListener('htmx:afterSwap', function(event) {
         const targetElement = event.detail.target;
         const newElement = event.detail.elt;
-        console.log("htmx:afterSwap: Original target=", targetElement, " New element=", newElement);
-        console.log("====> Passing this element to initializeRelevantEditors:", newElement || targetElement);
 
         if (newElement) {
             initializeRelevantEditors(newElement);
         } else {
-            console.warn("htmx:afterSwap: No new element (event.detail.elt) found to scan. Falling back to original target.");
             initializeRelevantEditors(targetElement);
         }
 
         const triggerHeader = event.detail.xhr.getResponseHeader('HX-Trigger-After-Swap');
         if (triggerHeader) {
-          console.log("Processing HX-Trigger-After-Swap header:", triggerHeader);
           try {
             if (triggerHeader.startsWith('{') && triggerHeader.endsWith('}')) {
                const triggers = JSON.parse(triggerHeader);
@@ -255,7 +230,6 @@ html(class="has-navbar-fixed-top")
               });
             }
           } catch (e) {
-             console.error("Error processing HX-Trigger-After-Swap header:", e);
              if (triggerHeader === 'showRestartToast') showToast("Agent automatically restarted.", "is-info");
           }
         }
@@ -266,7 +240,6 @@ html(class="has-navbar-fixed-top")
 
           if (swapTarget && swapTarget.id === 'agent-mcp-display-container') {
               const editorId = 'mcp-json-editor';
-              console.log(`htmx:beforeSwap: Destroying known editor '${editorId}' in ${swapTarget.id}`);
               destroyCodeMirrorInstance(editorId);
           }
       });
@@ -277,12 +250,10 @@ html(class="has-navbar-fixed-top")
         const elt = config.elt;
 
         if (elt && elt.id === 'generate-example-task-btn') {
-           console.log("htmx:afterRequest from generate button.");
            const editorId = 'task-json-editor';
            const editorInstance = window.codeMirrorInstances[editorId];
 
            if (!editorInstance) {
-               console.error("Task editor CodeMirror instance not found for generate example.");
                showToast("Task editor is not ready. Please wait.", "is-warning");
                return;
            }
@@ -291,21 +262,17 @@ html(class="has-navbar-fixed-top")
              try {
                const responseJson = xhr.responseText;
                editorInstance.setValue(responseJson);
-               console.log("Task editor updated with generated example.");
                showToast("Example task generated.", "is-info", 2000);
              } catch (e) {
-               console.error("Error setting value from generate example response:", e);
                showToast("Failed to update task editor with example.", "is-danger");
              }
            } else {
-             console.error("Generate example request failed. Status:", xhr.status);
              showToast(`Failed to generate example (Status: ${xhr.status})`, "is-danger");
            }
          }
 
          const triggerHeader = xhr.getResponseHeader('HX-Trigger-After-Swap');
          if (config.path && config.path.includes('/execute') && triggerHeader && triggerHeader.startsWith('showTaskError')) {
-             console.log("htmx:afterRequest from execute task with error trigger:", triggerHeader);
              try {
                  const responseJson = xhr.responseText;
                  const parsedResponse = JSON.parse(responseJson);
@@ -319,11 +286,8 @@ html(class="has-navbar-fixed-top")
                  const targetElement = document.getElementById('task-result');
                  if (targetElement) {
                      targetElement.innerHTML = errorHtml;
-                 } else {
-                     console.error("Could not find #task-result element to display error.");
                  }
              } catch (e) {
-                 console.error("Error parsing error response from /execute:", e);
                  const targetElement = document.getElementById('task-result');
                  if (targetElement) {
                      targetElement.innerHTML = '<div class="notification is-danger is-light mt-3 is-small">Failed to parse error response from server.</div>';
@@ -335,7 +299,6 @@ html(class="has-navbar-fixed-top")
       function showToast(message, type = 'is-info', duration = 4000) {
           const toastContainer = document.getElementById('toast-container');
           if (!toastContainer) {
-              console.error("Toast container not found!");
               return;
           }
 
@@ -389,16 +352,13 @@ html(class="has-navbar-fixed-top")
               throw new Error(`Server status: ${response.status}`);
             }
             if (isServerUnavailable) {
-              console.log("Server connection restored.");
               healthCheckModal.classList.remove('is-active');
               isServerUnavailable = false;
               showToast("Server connection restored.", "is-success");
             }
           })
           .catch(error => {
-            console.warn("Health check failed:", error.message);
             if (!isServerUnavailable) {
-              console.log("Server connection lost. Displaying modal.");
               healthCheckModal.classList.add('is-active');
               isServerUnavailable = true;
             }
@@ -407,7 +367,6 @@ html(class="has-navbar-fixed-top")
 
       function startHealthCheckPolling() {
           if (healthCheckIntervalId === null) {
-              console.log("Starting health check polling.");
               checkServerHealth();
               healthCheckIntervalId = setInterval(checkServerHealth, 5000);
           }
@@ -415,7 +374,6 @@ html(class="has-navbar-fixed-top")
 
        function stopHealthCheckPolling() {
           if (healthCheckIntervalId !== null) {
-              console.log("Stopping health check polling.");
               clearInterval(healthCheckIntervalId);
               healthCheckIntervalId = null;
           }
