@@ -218,9 +218,6 @@ module ADK
               end
             end
           end
-        ensure
-          # Check if connection died while waiting (important after blocking operations)
-          raise ConnectionError, "Connection lost while reading message" unless connected?
         end
 
         # Disconnects from the server process.
