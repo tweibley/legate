@@ -4,16 +4,18 @@
 
 - show_edit_button = defined?(show_edit_button) ? show_edit_button : true
 
-label.label.is-small MCP Server Configurations (JSON)
+/ Single root element matching the swap target ID
+div#agent-mcp-display-container
+  label.label.is-small MCP Server Configurations (JSON)
 
-/ Container for content and button
-.is-flex.is-align-items-flex-start
-  / Use flex-grow-1 so the pre takes up space, pushing the button right
-  div.is-flex-grow-1
-    pre.mcp-json-display.is-size-7 = agent_data[:mcp_display_string]
+  / Container for content and button
+  .is-flex.is-align-items-flex-start
+    / Use flex-grow-1 so the pre takes up space, pushing the button right
+    div.is-flex-grow-1
+      pre.mcp-json-display.is-size-7 = agent_data[:mcp_display_string]
 
-  / Edit button with left margin, shown conditionally
-  - if show_edit_button
-    button.button.is-small.is-text.has-text-grey.ml-2 hx-get="/agents/#{agent_data[:name]}/edit/mcp" hx-target="#agent-mcp-display-container" hx-swap="outerHTML"
-      span.icon.is-small
-        i.fas.fa-pencil-alt
+    / Edit button with left margin, shown conditionally
+    - if show_edit_button
+      button.button.is-small.is-text.has-text-grey.ml-2 hx-get="/agents/#{agent_data[:name]}/edit/mcp" hx-target="#agent-mcp-display-container" hx-swap="outerHTML"
+        span.icon.is-small
+          i.fas.fa-pencil-alt

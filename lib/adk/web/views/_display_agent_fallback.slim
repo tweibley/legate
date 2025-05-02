@@ -4,15 +4,17 @@
 
 - show_edit_button = defined?(show_edit_button) ? show_edit_button : true
 
-/ Use a flex container to keep text and button together
-.is-flex.is-align-items-center
-  div
-    label.label.is-small Planning Fallback
-    - fallback_text = agent_data[:fallback_mode] == :echo ? "Echo User Input" : "Return Error Message"
-    p= fallback_text
+/ Single root element matching the swap target ID
+div#agent-fallback-display-container
+  / Use a flex container to keep text and button together
+  .is-flex.is-align-items-center
+    div
+      label.label.is-small Planning Fallback
+      - fallback_text = agent_data[:fallback_mode] == :echo ? "Echo User Input" : "Return Error Message"
+      p= fallback_text
 
-  / Edit button with left margin for spacing, shown conditionally
-  - if show_edit_button
-    button.button.is-small.is-text.has-text-grey.ml-2 hx-get="/agents/#{agent_data[:name]}/edit/fallback" hx-target="#agent-fallback-display-container" hx-swap="outerHTML"
-      span.icon.is-small
-        i.fas.fa-pencil-alt
+    / Edit button with left margin for spacing, shown conditionally
+    - if show_edit_button
+      button.button.is-small.is-text.has-text-grey.ml-2 hx-get="/agents/#{agent_data[:name]}/edit/fallback" hx-target="#agent-fallback-display-container" hx-swap="outerHTML"
+        span.icon.is-small
+          i.fas.fa-pencil-alt

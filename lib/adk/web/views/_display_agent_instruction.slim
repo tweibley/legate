@@ -1,24 +1,27 @@
-/! File: lib/adk/web/views/_display_agent_instruction.slim
+/ File: lib/adk/web/views/_display_agent_instruction.slim
 / Displays the agent instructions and optionally an edit button.
 / Expects locals: agent_data, show_edit_button (boolean, optional, defaults to true)
 
 - show_edit_button = defined?(show_edit_button) ? show_edit_button : true
 
-label.label.is-small Instructions (System Prompt)
+/ Single root element matching the swap target ID
+div#agent-instruction-display-container
+  / CORRECT INDENTATION: Everything below is a child of the root div
+  label.label.is-small Instructions (System Prompt)
 
-/ Container for content and button
-.is-flex.is-align-items-flex-start
-  / Use flex-grow-1 so the pre takes up space, pushing the button right
-  div.is-flex-grow-1
-    - instruction_text = agent_data[:instruction]
-    - if instruction_text.nil? || instruction_text.strip.empty?
-      p.has-text-grey.is-italic No specific instructions provided.
-    - else
-      / Use a pre tag for better formatting of multi-line instructions
-      pre.instruction-display.is-size-7= instruction_text
+  / Container for content and button
+  .is-flex.is-align-items-flex-start
+    / Use flex-grow-1 so the pre takes up space, pushing the button right
+    div.is-flex-grow-1
+      - instruction_text = agent_data[:instruction]
+      - if instruction_text.nil? || instruction_text.strip.empty?
+        p.has-text-grey.is-italic No specific instructions provided.
+      - else
+        / Use a pre tag for better formatting of multi-line instructions
+        pre.instruction-display.is-size-7= instruction_text
 
-  / Edit button with left margin, shown conditionally
-  - if show_edit_button
-    button.button.is-small.is-text.has-text-grey.ml-2 hx-get="/agents/#{agent_data[:name]}/edit/instruction" hx-target="#agent-instruction-display-container" hx-swap="outerHTML"
-      span.icon.is-small
-        i.fas.fa-pencil-alt
+    / Edit button with left margin, shown conditionally
+    - if show_edit_button
+      button.button.is-small.is-text.has-text-grey.ml-2 hx-get="/agents/#{agent_data[:name]}/edit/instruction" hx-target="#agent-instruction-display-container" hx-swap="outerHTML"
+        span.icon.is-small
+          i.fas.fa-pencil-alt

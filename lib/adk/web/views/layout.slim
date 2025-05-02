@@ -73,10 +73,12 @@ html(class="has-navbar-fixed-top")
       });
 
       window.codeMirrorInstances = window.codeMirrorInstances || {};
+      window.codeMirrorObservers = window.codeMirrorObservers || {};
 
-      function initCodeMirrorEditor(elementId, options = {}) {
-        const editorElement = document.getElementById(elementId);
-        if (editorElement && !window.codeMirrorInstances[elementId]) {
+      function initCodeMirrorEditor(editorElement, options = {}) {
+        console.log("====> initCodeMirrorEditor entered. Element:", editorElement);
+        if (editorElement && editorElement.id && !window.codeMirrorInstances[editorElement.id]) {
+          const elementId = editorElement.id;
           console.log(`Initializing CodeMirror for #${elementId}`);
           try {
             const defaultOptions = {
@@ -118,33 +120,53 @@ html(class="has-navbar-fixed-top")
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                        console.log(`CodeMirror instance #${elementId} became visible. Refreshing.`);
-                       setTimeout(() => instance.refresh(), 50);
+                       if(window.codeMirrorInstances[elementId]) {
+                          setTimeout(() => window.codeMirrorInstances[elementId].refresh(), 50);
+                       }
                     }
                 });
             }, { threshold: 0.1 });
-
             observer.observe(instance.getWrapperElement());
+            window.codeMirrorObservers[elementId] = observer;
 
           } catch (e) {
             console.error(`Error initializing CodeMirror for #${elementId}:`, e);
             editorElement.style.display = 'block';
           }
-        } else if (window.codeMirrorInstances[elementId]) {
+        } else if (editorElement && editorElement.id && window.codeMirrorInstances[editorElement.id]) {
+          const elementId = editorElement.id;
+          console.log(`CodeMirror instance #${elementId} already exists. Refreshing.`);
           setTimeout(() => {
              if (window.codeMirrorInstances[elementId]) {
                 window.codeMirrorInstances[elementId].refresh()
              }
             }, 50);
+        } else if (!editorElement) {
+            console.warn("initCodeMirrorEditor called with null element.");
+        } else if (!editorElement.id) {
+            console.warn("initCodeMirrorEditor called with element lacking an ID.");
         }
       }
 
       function destroyCodeMirrorInstance(elementId) {
+        if (window.codeMirrorObservers && window.codeMirrorObservers[elementId]) {
+          console.log(`Disconnecting IntersectionObserver for #${elementId}`);
+          window.codeMirrorObservers[elementId].disconnect();
+          delete window.codeMirrorObservers[elementId];
+        }
+
         if (window.codeMirrorInstances && window.codeMirrorInstances[elementId]) {
+          const instance = window.codeMirrorInstances[elementId];
+          const wrapper = instance.getWrapperElement();
           console.log(`Destroying CodeMirror instance for #${elementId}`);
           try {
-            window.codeMirrorInstances[elementId].toTextArea();
+            instance.toTextArea();
           } catch (e) {
             console.error(`Error reverting CodeMirror to textarea for #${elementId}:`, e);
+          }
+          if (wrapper && wrapper.parentNode) {
+             console.log(`Explicitly removing CodeMirror wrapper element for #${elementId}.`);
+             wrapper.parentNode.removeChild(wrapper);
           }
           delete window.codeMirrorInstances[elementId];
         }
@@ -156,22 +178,37 @@ html(class="has-navbar-fixed-top")
           { id: 'mcp_servers_json', options: {} },
           { id: 'instruction', options: { mode: 'text/plain'} },
           { id: 'mcp-json-editor', options: {} },
-          { id: 'edit-instruction-textarea', options: { mode: 'text/plain' } },
           { id: 'mcp-json-display', options: { readOnly: true } },
           { id: 'task-json-editor', options: {} },
         ];
 
         editorsToInit.forEach(editor => {
-          if (targetElement && typeof targetElement.querySelector === 'function') {
-             const element = targetElement.querySelector(`#${editor.id}`);
+          let element = null;
+          let foundIn = null;
+          if (targetElement && targetElement !== document.body && typeof targetElement.querySelector === 'function') {
+             element = targetElement.querySelector(`#${editor.id}`);
              if (element) {
-               initCodeMirrorEditor(editor.id, editor.options);
+                console.log(`Found editor #${editor.id} within swapped targetElement.`);
+                foundIn = 'target';
              }
-          } else if (!targetElement || targetElement === document.body) {
-             const element = document.getElementById(editor.id);
-              if (element) {
-                initCodeMirrorEditor(editor.id, editor.options);
-              }
+          }
+
+          if (!element && (!targetElement || targetElement === document.body)) {
+            console.log(`Editor #${editor.id} not found in target, searching document.`);
+            element = document.getElementById(editor.id);
+             if (element) {
+                console.log(`Found editor #${editor.id} within document.`);
+                foundIn = 'document';
+             }
+          }
+          
+          console.log(`---> Checking ${editor.id}: Found element?`, !!element, `(in ${foundIn || 'none'})`); 
+          
+          if (element) {
+             console.log(`---> Calling initCodeMirrorEditor for ${editor.id}`);
+             initCodeMirrorEditor(element, editor.options);
+          } else {
+              // console.debug(`Editor #${editor.id} not found in the current scope.`);
           }
         });
       }
@@ -184,8 +221,17 @@ html(class="has-navbar-fixed-top")
       });
 
       document.body.addEventListener('htmx:afterSwap', function(event) {
-        console.log("htmx:afterSwap: Initializing editors in swapped content target:", event.detail.target);
-        initializeRelevantEditors(event.detail.target);
+        const targetElement = event.detail.target;
+        const newElement = event.detail.elt;
+        console.log("htmx:afterSwap: Original target=", targetElement, " New element=", newElement);
+        console.log("====> Passing this element to initializeRelevantEditors:", newElement || targetElement);
+
+        if (newElement) {
+            initializeRelevantEditors(newElement);
+        } else {
+            console.warn("htmx:afterSwap: No new element (event.detail.elt) found to scan. Falling back to original target.");
+            initializeRelevantEditors(targetElement);
+        }
 
         const triggerHeader = event.detail.xhr.getResponseHeader('HX-Trigger-After-Swap');
         if (triggerHeader) {
@@ -217,42 +263,12 @@ html(class="has-navbar-fixed-top")
 
       document.body.addEventListener('htmx:beforeSwap', function(event) {
           const swapTarget = event.detail.target;
-          if (swapTarget && typeof swapTarget.querySelectorAll === 'function') {
-             console.log("htmx:beforeSwap: Checking for editors to destroy in target:", swapTarget);
-              const textareas = swapTarget.querySelectorAll('textarea');
-              textareas.forEach(textarea => {
-                  if (textarea.id && window.codeMirrorInstances[textarea.id]) {
-                      destroyCodeMirrorInstance(textarea.id);
-                  }
-              });
-          }
-          const elt = event.detail.elt;
-          if (elt) {
-              const targetSelector = elt.getAttribute('hx-target');
-              if (targetSelector) {
-                  try {
-                      let targetElement = null;
-                      if (targetSelector === 'this') {
-                          targetElement = elt;
-                      } else if (targetSelector.startsWith('closest ')) {
-                          targetElement = elt.closest(targetSelector.substring(8));
-                      } else {
-                           targetElement = document.querySelector(targetSelector);
-                      }
 
-                      if (targetElement && typeof targetElement.querySelectorAll === 'function') {
-                         const textareasInTarget = targetElement.querySelectorAll('textarea');
-                          textareasInTarget.forEach(textarea => {
-                              if (textarea.id && window.codeMirrorInstances[textarea.id]) {
-                                  destroyCodeMirrorInstance(textarea.id);
-                              }
-                          });
-                      }
-                  } catch (e) {
-                      console.warn("Error finding target element in beforeSwap:", e)
-                  }
-              }
-           }
+          if (swapTarget && swapTarget.id === 'agent-mcp-display-container') {
+              const editorId = 'mcp-json-editor';
+              console.log(`htmx:beforeSwap: Destroying known editor '${editorId}' in ${swapTarget.id}`);
+              destroyCodeMirrorInstance(editorId);
+          }
       });
 
       document.body.addEventListener('htmx:afterRequest', function(event) {

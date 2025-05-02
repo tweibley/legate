@@ -1,11 +1,8 @@
 / File: lib/adk/web/views/_edit_agent_mcp.slim
 / Form for editing MCP Server JSON using CodeMirror
 
-/! Use outer div as target for swap to include potential error messages
-div#agent-mcp-display
-  form( hx-put="/agents/#{agent_data[:name]}/update/mcp"
-        hx-target="#agent-mcp-display" / Target the outer div
-        hx-swap="innerHTML" ) / Replace the whole form section on save/cancel
+/! Add container ID to the form, put attributes on one line using space separation
+form#agent-mcp-display-container hx-put="/agents/#{agent_data[:name]}/update/mcp" hx-target="#agent-mcp-display-container" hx-swap="outerHTML"
 
     / --- Display Error Message if Present ---
     - if defined?(error_message) && error_message
@@ -26,13 +23,11 @@ div#agent-mcp-display
     .field.is-grouped.is-grouped-right.mt-4
       .control
         / Button to cancel editing and revert to display view
-        button.button.is-light( type="button"
-                                hx-get="/agents/#{agent_data[:name]}/display/mcp"
-                                hx-target="#agent-mcp-display" / Target the outer div
-                                hx-swap="innerHTML" )
+        /! Ensure cancel targets the container ID
+        button.button.is-light type="button" hx-get="/agents/#{agent_data[:name]}/display/mcp" hx-target="#agent-mcp-display-container" hx-swap="outerHTML"
           span Cancel
       .control
-        button.button.is-success(type="submit")
+        button.button.is-success type="submit"
           span.icon.is-small
             i.fas.fa-check
           span Save MCP Config

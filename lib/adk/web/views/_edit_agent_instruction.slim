@@ -19,3 +19,31 @@
 /       button.button.is-link type="submit" Save
 /     .control
 /       a.button.is-light hx-get="/agents/#{agent_data[:name]}/display/instruction" Cancel
+
+/! Form for editing agent instructions
+
+/ Add container ID, use correct hx-* attributes
+form#agent-instruction-display-container hx-put="/agents/#{agent_data[:name]}/update/instruction" hx-target="#agent-instruction-display-container" hx-swap="outerHTML"
+
+  / --- Display Error Message if Present ---
+  - if defined?(error_message) && error_message
+    .notification.is-danger.is-light.mb-3
+      button.delete type="button" onclick="this.parentElement.remove()"
+      = error_message
+
+  .field
+    label.label for="edit-instruction-textarea" Instructions (System Prompt)
+    .control
+      / Textarea ID for CodeMirror JS
+      textarea.textarea#edit-instruction-textarea name="value" rows="5" placeholder="Guide the agent's behavior, persona, and tool usage..." == agent_data[:instruction]
+
+  .field.is-grouped.is-grouped-right.mt-4
+    .control
+      / Cancel button targets container ID
+      button.button.is-light type="button" hx-get="/agents/#{agent_data[:name]}/display/instruction" hx-target="#agent-instruction-display-container" hx-swap="outerHTML"
+        span Cancel
+    .control
+      button.button.is-success type="submit"
+        span.icon.is-small
+          i.fas.fa-check
+        span Save Instructions
