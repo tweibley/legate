@@ -3,14 +3,14 @@
   h1.title.is-2 Agents
   p.subtitle Manage agent definitions and runtime instances.
 
-details.box.mb-5.create-agent-details
+details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remove @open" )
   summary.is-clickable
     span.icon.mr-2
       i.fas.fa-plus-circle
     strong Create New Agent Definition
 
   .mt-4
-    form(hx-post="/agents" hx-target="#agent-list-tbody" hx-swap="beforeend" _="on htmx:afterRequest this.closest('details').removeAttribute('open'); this.reset(); destroyCodeMirrorInstance('mcp_servers_json'); destroyCodeMirrorInstance('instruction');")
+    form(hx-post="/agents" hx-target="#agent-list-tbody" hx-swap="beforeend" _="on htmx:afterRequest call this.reset() then call destroyCodeMirrorInstance('mcp_servers_json') then call destroyCodeMirrorInstance('instruction')")
       .columns.is-multiline
         .column.is-half
           .field

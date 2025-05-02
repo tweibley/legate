@@ -512,11 +512,16 @@ module ADK
         content_type :html
         # <<< Add instruction to data passed to partial if needed by _agent_row >>>
         agent_data = { name: agent_name, description: agent_description, running: false,
-                       configured_tools: selected_tools, model: model_to_save, fallback_mode: selected_fallback, instruction: instruction }
+                       configured_tools: selected_tools, model: model_to_save, fallback_mode: selected_fallback, instruction: instruction,
+                       is_new: true } # <<< ADDED is_new flag
         available_tools = ADK::GlobalToolManager.list_all_tools
         agent_row_html = slim(:_agent_row, layout: false,
                                            locals: { agent_info: agent_data, available_tools: available_tools })
         oob_remove_message_html = "<tr id='no-agents-row' hx-swap-oob='true'></tr>"
+
+        # Trigger event to close the details section on the client
+        headers 'HX-Trigger' => 'closeCreateAgentForm'
+
         agent_row_html + oob_remove_message_html
       end
 

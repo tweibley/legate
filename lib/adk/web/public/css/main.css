@@ -514,3 +514,23 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
 .htmx-request.htmx-indicator {
   display: inline;
 }
+
+/* ---- Helper Classes ---- */
+.is-clickable {
+  cursor: pointer;
+}
+
+/* Add new animation for newly added table rows */
+@keyframes highlight-fade {
+  0% { background-color: hsl(48, 100%, 67%, 0.7); } /* Bulma yellow, slightly transparent */
+  100% { background-color: transparent; }
+}
+
+.is-newly-added td {
+  animation: highlight-fade 2.5s ease-out forwards;
+}
+
+/* Improve panel block spacing */
+.panel-block:not(:last-child) {
+  margin-bottom: 0.75rem;
+}
