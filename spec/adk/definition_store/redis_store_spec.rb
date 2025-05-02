@@ -122,6 +122,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       expect(mock_redis).to receive(:hset).with(agent_key, 'model', model)
       expect(mock_redis).to receive(:hset).with(agent_key, 'fallback_mode', fallback_str)
       expect(mock_redis).to receive(:hset).with(agent_key, 'mcp_servers_json', mcp_servers_json)
+      expect(mock_redis).to receive(:hset).with(agent_key, 'instruction', '') # Expect default instruction
       expect(mock_redis).to receive(:sadd).with(agents_set_key, agent_name)
       expect(ADK.logger).to receive(:info).with("Agent definition '#{agent_name}' saved successfully.")
 
@@ -138,9 +139,9 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
 
     it 'saves with empty array JSON if mcp_servers_json is nil or empty' do
       # Ensure multi returns an array, not true, fixing NoMethodError: undefined method `any?` for true
-      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1] * 7).twice
+      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1] * 8).twice # Now 8 commands (with instruction)
       expect(mock_redis).to receive(:hset).with(agent_key, 'mcp_servers_json', '[]').twice # Once for nil, once for empty string
-      allow(mock_redis).to receive(:hset).with(agent_key, anything, anything) # Allow other hsets
+      allow(mock_redis).to receive(:hset) # Allow other hsets
       allow(mock_redis).to receive(:sadd)
       expect(@store.save_definition(**save_args.merge(mcp_servers_json: nil))).to be true
       expect(@store.save_definition(**save_args.merge(mcp_servers_json: '   '))).to be true
@@ -148,9 +149,9 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
 
     it 'saves with empty array JSON if tools is nil or not an array' do
       # Ensure multi returns an array
-      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1] * 7).twice
+      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1] * 8).twice # 8 commands
       expect(mock_redis).to receive(:hset).with(agent_key, 'tools', '[]').twice # Once for nil, once for non-array
-      allow(mock_redis).to receive(:hset).with(agent_key, anything, anything) # Allow other hsets
+      allow(mock_redis).to receive(:hset) # Allow other hsets
       allow(mock_redis).to receive(:sadd)
       expect(@store.save_definition(**save_args.merge(tools: nil))).to be true
       expect(@store.save_definition(**save_args.merge(tools: 'not-an-array'))).to be true
@@ -167,16 +168,12 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
 
     it 'raises ArgumentError for invalid MCP JSON' do
       invalid_json = '{"url": "bad"}' # Not an array
-      # Remove logger expectation - focus on the raised error
-      # expect(ADK.logger).to receive(:error).with(/Invalid MCP JSON provided/)
       expect {
         @store.save_definition(**save_args.merge(mcp_servers_json: invalid_json))
       }.to raise_error(ArgumentError,
                        /MCP configuration must be a JSON array/)
 
       unparseable_json = '[{not json]}'
-      # Remove logger expectation - focus on the raised error
-      # expect(ADK.logger).to receive(:error).with(/Invalid MCP JSON provided/)
       expect {
         @store.save_definition(**save_args.merge(mcp_servers_json: unparseable_json))
       }.to raise_error(ArgumentError,
@@ -185,7 +182,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
 
     it 'raises StoreError if Redis transaction is aborted' do
       expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return(nil) # Simulate abort
-      allow(mock_redis).to receive(:hset) # Assume commands were added before abort
+      allow(mock_redis).to receive(:hset)
       allow(mock_redis).to receive(:sadd)
       expect(ADK.logger).to receive(:error).with(/Redis transaction for saving agent .* failed \(aborted\)/)
       expect {
@@ -195,8 +192,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
 
     it 'raises StoreError on Redis command error within MULTI' do
       # Simulate a command error object being returned in the multi results
-      error_result = [1, Redis::CommandError.new('Mock Command Error'), 1, 1, 1, 1, 1]
-      # Expect multi to yield the mock redis instance
+      error_result = [1, Redis::CommandError.new('Mock Command Error'), 1, 1, 1, 1, 1, 1] # 8 results
       expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return(error_result)
 
       # Expect the calls *within* the multi block explicitly
@@ -206,12 +202,10 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       expect(mock_redis).to receive(:hset).with(agent_key, 'model', model || ADK::Agent::DEFAULT_MODEL)
       expect(mock_redis).to receive(:hset).with(agent_key, 'fallback_mode', fallback_str)
       expect(mock_redis).to receive(:hset).with(agent_key, 'mcp_servers_json', mcp_servers_json || '[]')
+      expect(mock_redis).to receive(:hset).with(agent_key, 'instruction', '') # Expect default instruction
       expect(mock_redis).to receive(:sadd).with(agents_set_key, agent_name)
 
-      # Expect the logger call from this specific block
       expect(ADK.logger).to receive(:error).with(/Redis command error during multi.*#{error_result.inspect}/)
-
-      # Expect the specific StoreError
       expect {
         @store.save_definition(**save_args)
       }.to raise_error(ADK::DefinitionStore::StoreError,
@@ -241,7 +235,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
     it 'raises StoreError on unexpected errors' do
       unexpected_error = StandardError.new('Something unexpected')
       expect(mock_redis).to receive(:multi).and_raise(unexpected_error)
-      expect(ADK.logger).to receive(:error).with(/Unexpected error saving agent.*#{unexpected_error.class}.*#{unexpected_error.message}/m) # Match multi-line backtrace log
+      expect(ADK.logger).to receive(:error).with(/Unexpected error saving agent.*#{unexpected_error.class}.*#{unexpected_error.message}/m)
       expect {
         @store.save_definition(**save_args)
       }.to raise_error(ADK::DefinitionStore::StoreError,
@@ -251,34 +245,59 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
 
   describe '#get_definition' do
     let(:redis_hash_values) do
+      # Ensure this array aligns with AGENT_DEFINITION_FIELDS order
       [
-        agent_name,
-        description,
-        tools_json,
-        model,
-        fallback_str,
-        mcp_servers_json
+        agent_name,          # name
+        description,         # description
+        tools_json,          # tools
+        model,               # model
+        fallback_str,        # fallback_mode
+        mcp_servers_json,    # mcp_servers_json
+        ''                   # instruction (default empty string)
       ]
     end
     let(:expected_definition) do
       {
-        name: agent_name,
+        name: agent_name.to_sym, # Should return symbol
         description: description,
-        tools: tools,
+        tools: tools.map(&:to_sym), # Should return symbols
         model: model,
         fallback_mode: fallback_mode,
-        mcp_servers_json: mcp_servers_json
+        mcp_servers_json: mcp_servers_json,
+        instruction: ''
       }
     end
 
+    # This test needs adjustment based on whether get_definition should symbolize keys/values
     it 'successfully retrieves and parses an existing definition' do
-      expect(mock_redis).to receive(:hmget)
-        .with(agent_key, *described_class::AGENT_DEFINITION_FIELDS)
-        .and_return(redis_hash_values)
-      expect(ADK.logger).to receive(:debug).with("Retrieved definition for agent '#{agent_name}'.")
+      # Expected data including default instruction and assuming get_definition symbolizes keys and tool names
+      expected_definition_get = {
+        name: :test_agent, # Symbolized
+        description: 'A test agent description',
+        model: 'gpt-4o',
+        instruction: '', # Expect default empty string
+        tools: [:tool_a, :tool_b], # Symbolized
+        fallback_mode: :error,
+        mcp_servers_json: JSON.generate([{ url: 'http://localhost:8080' }])
+      }
+      # Mock redis values corresponding to the expected hash
+      redis_values_get = [
+        'test_agent',
+        'A test agent description',
+        '["tool_a", "tool_b"]', # Tools as JSON string
+        'gpt-4o',
+        'error', # Fallback mode as string
+        JSON.generate([{ url: 'http://localhost:8080' }]),
+        '' # Instruction
+      ]
 
-      definition = @store.get_definition(agent_name)
-      expect(definition).to eq(expected_definition)
+      expect(mock_redis).to receive(:hmget)
+        .with("#{described_class::AGENT_HASH_PREFIX}test_agent", *described_class::AGENT_DEFINITION_FIELDS)
+        .and_return(redis_values_get)
+      expect(ADK.logger).to receive(:debug).with("Retrieved definition for agent 'test_agent'.")
+
+      definition = @store.get_definition('test_agent')
+      expect(definition).to eq(expected_definition_get)
     end
 
     it 'returns nil if agent name is nil or empty' do
@@ -288,7 +307,6 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
     end
 
     it 'returns nil if agent definition does not exist in Redis' do
-      # hmget returns an array of nils if key doesn't exist
       expect(mock_redis).to receive(:hmget)
         .with(agent_key, *described_class::AGENT_DEFINITION_FIELDS)
         .and_return([nil] * described_class::AGENT_DEFINITION_FIELDS.length)
@@ -356,7 +374,6 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       tools_index = described_class::AGENT_DEFINITION_FIELDS.index('tools')
       bad_tools_json_values[tools_index] = '[not json'
       expect(mock_redis).to receive(:hmget).and_return(bad_tools_json_values)
-      # Simplify regex to be less brittle regarding .inspect formatting
       expect(ADK.logger).to receive(:error).with(/Failed to parse JSON fields for agent '#{agent_name}'.*unexpected token at 'not json'/)
       expect {
         @store.get_definition(agent_name)
@@ -409,16 +426,12 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
     it 'validates MCP JSON during update' do
       invalid_mcp_update = { mcp_servers_json: '{"not": "an array"}' }
       expect(mock_redis).not_to receive(:hset)
-      # Remove logger expectation - focus on the raised error
-      # expect(ADK.logger).to receive(:error).with(/Invalid MCP JSON provided for updating/)
       expect {
         @store.update_definition(agent_name,
                                  invalid_mcp_update)
       }.to raise_error(ArgumentError, /MCP configuration must be a JSON array/)
 
       unparseable_mcp_update = { mcp_servers_json: '[[bad' }
-      # Remove logger expectation - focus on the raised error
-      # expect(ADK.logger).to receive(:error).with(/Invalid MCP JSON provided for updating/)
       expect {
         @store.update_definition(agent_name,
                                  unparseable_mcp_update)
@@ -481,15 +494,12 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
 
     it 'raises StoreError on JSON generation error for tools update' do
       bad_tools_update = { tools: ['tool1'] }
-      # Create a double that raises the error when to_json is called
       bad_tools_array = ['tool1']
       allow(bad_tools_array).to receive(:to_json).and_raise(JSON::GeneratorError.new("tool json gen error"))
       bad_tools_update_with_mock = { tools: bad_tools_array }
 
       expect(mock_redis).not_to receive(:hset)
-      # Logger expectation should match the message from the rescue block in update_definition
       expect(ADK.logger).to receive(:error).with(/Failed to serialize tools array to JSON for updating agent.*tool json gen error/)
-      # Expect the StoreError that wraps the original JSON error
       expect {
         @store.update_definition(agent_name,
                                  bad_tools_update_with_mock)
@@ -498,8 +508,6 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
 
     it 'raises StoreError on unexpected errors' do
       unexpected_error = StandardError.new('Boom')
-      # The `hset` mock should expect the processed `redis_updates` hash, not the raw `updates`
-      # We need to know what the processed hash looks like for the 'updates' hash
       processed_updates = { 'description' => 'New description', 'model' => 'gpt-4-turbo' }
       expect(mock_redis).to receive(:hset).with(agent_key, processed_updates).and_raise(unexpected_error)
       expect(ADK.logger).to receive(:error).with(/Unexpected error updating agent.*#{unexpected_error.class}.*#{unexpected_error.message}/m)
@@ -513,7 +521,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
 
   describe '#delete_definition' do
     it 'successfully deletes an existing agent using MULTI' do
-      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1, 1]) # Simulate 1 key deleted, 1 member removed
+      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1, 1])
       expect(mock_redis).to receive(:del).with(agent_key)
       expect(mock_redis).to receive(:srem).with(agents_set_key, agent_name)
       expect(ADK.logger).to receive(:info).with("Agent definition '#{agent_name}' deleted successfully (or did not exist).")
@@ -521,7 +529,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
     end
 
     it 'returns true even if agent did not exist (idempotent)' do
-      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([0, 0]) # Simulate 0 deleted/removed
+      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([0, 0])
       expect(mock_redis).to receive(:del).with(agent_key)
       expect(mock_redis).to receive(:srem).with(agents_set_key, agent_name)
       expect(ADK.logger).to receive(:info).with("Agent definition '#{agent_name}' deleted successfully (or did not exist).")
@@ -535,7 +543,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
     end
 
     it 'raises StoreError if Redis transaction is aborted' do
-      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return(nil) # Simulate abort
+      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return(nil)
       allow(mock_redis).to receive(:del)
       allow(mock_redis).to receive(:srem)
       expect(ADK.logger).to receive(:error).with(/Redis transaction for deleting agent .* failed \(aborted\)/)
@@ -569,88 +577,164 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
     let(:agent_name_1) { 'agent1' }
     let(:agent_name_2) { 'agent2' }
     let(:agent_names) { [agent_name_1, agent_name_2] }
-    let(:agent_key_1) { "#{described_class::AGENT_HASH_PREFIX}#{agent_name_1}" }
-    let(:agent_key_2) { "#{described_class::AGENT_HASH_PREFIX}#{agent_name_2}" }
-
-    let(:summary_fields) { %w[name description model] }
-    let(:summary_values_1) { [agent_name_1, 'Desc 1', 'Model A'] }
-    let(:summary_values_2) { [agent_name_2, 'Desc 2', nil] } # Agent 2 missing model
-
+    let(:agent_key_1) { @store.send(:agent_redis_key, agent_name_1) }
+    let(:agent_key_2) { @store.send(:agent_redis_key, agent_name_2) }
+    let(:all_fields) { ADK::DefinitionStore::RedisStore::AGENT_DEFINITION_FIELDS }
+    # Correct mock data generation to return actual expected values for this test
+    let(:summary_values_1) {
+      # Simulating data fetched for agent1
+      vals = {}
+      vals['name'] = agent_name_1
+      vals['description'] = "Desc 1"
+      vals['model'] = ADK::Agent::DEFAULT_MODEL
+      vals['tools'] = '[]' # JSON string
+      vals['fallback_mode'] = 'error'
+      vals['mcp_servers_json'] = '[]'
+      vals['instruction'] = ''
+      all_fields.map { |f| vals[f] } # Return values in correct order
+    }
+    let(:summary_values_2) {
+      # Simulating data fetched for agent2
+      vals = {}
+      vals['name'] = agent_name_2
+      vals['description'] = "Desc 2"
+      vals['model'] = ADK::Agent::DEFAULT_MODEL
+      vals['tools'] = '[]'
+      vals['fallback_mode'] = 'error'
+      vals['mcp_servers_json'] = '[]'
+      vals['instruction'] = ''
+      all_fields.map { |f| vals[f] }
+    }
     let(:expected_list) do
       [
-        { name: agent_name_1, description: 'Desc 1', model: 'Model A' },
-        { name: agent_name_2, description: 'Desc 2', model: ADK::Agent::DEFAULT_MODEL } # Default model applied
-      ].sort_by { |h| h[:name] } # Ensure same sorting as method
+        {
+          name: :agent1, # Expect symbols from transform_keys
+          description: "Desc 1",
+          model: ADK::Agent::DEFAULT_MODEL,
+          tools: [], # Expect empty array from JSON parse/default
+          fallback_mode: :error, # Expect symbol from conversion
+          mcp_servers_json: '[]',
+          instruction: ''
+        },
+        {
+          name: :agent2, # Expect symbols
+          description: "Desc 2",
+          model: ADK::Agent::DEFAULT_MODEL,
+          tools: [],
+          fallback_mode: :error,
+          mcp_servers_json: '[]',
+          instruction: ''
+        }
+      ].sort_by { |h| h[:name] }
     end
 
-    it 'returns a sorted array of definition summaries' do
-      expect(mock_redis).to receive(:smembers).with(agents_set_key).and_return(agent_names)
-      # Mock the pipelined hmget calls
-      expect(mock_redis).to receive(:pipelined).and_yield(mock_redis).and_return([summary_values_1, summary_values_2])
-      # Expect hmget to be called within the pipeline block for each agent
-      expect(mock_redis).to receive(:hmget).with(agent_key_1, *summary_fields)
-      expect(mock_redis).to receive(:hmget).with(agent_key_2, *summary_fields)
-      expect(ADK.logger).to receive(:debug).with("Listed 2 agent definitions.")
+    context 'when agents exist' do
+      before do
+        allow(mock_redis).to receive(:smembers).with(ADK::DefinitionStore::RedisStore::AGENTS_SET_KEY).and_return(agent_names)
+        allow(mock_redis).to receive(:pipelined).and_yield(mock_redis).and_return([summary_values_1, summary_values_2])
+        expect(mock_redis).to receive(:hmget).with(agent_key_1, *all_fields)
+        expect(mock_redis).to receive(:hmget).with(agent_key_2, *all_fields)
+      end
 
-      definitions = @store.list_definitions
-      expect(definitions).to eq(expected_list)
-      # Verify sorting
-      expect(definitions.map { |d| d[:name] }).to eq([agent_name_1, agent_name_2])
+      it 'returns a sorted array of definition summaries' do
+        expect(ADK.logger).to receive(:debug).with("Listed 2 agent definitions.")
+        definitions = @store.list_definitions
+        expect(definitions).to eq(expected_list)
+        expect(definitions.map { |d| d[:name] }).to eq([:agent1, :agent2]) # Verify sorting
+      end
     end
 
-    it 'returns an empty array if no agents are defined' do
-      expect(mock_redis).to receive(:smembers).with(agents_set_key).and_return([])
-      expect(mock_redis).not_to receive(:pipelined)
-      # Remove logger expectation as the code returns early before logging
-      # expect(ADK.logger).to receive(:debug).with("Listed 0 agent definitions.") # Assuming debug logs count
-      expect(@store.list_definitions).to eq([])
+    context 'when no agents are defined' do
+      before do
+        expect(mock_redis).to receive(:smembers).with(ADK::DefinitionStore::RedisStore::AGENTS_SET_KEY).and_return([])
+        expect(mock_redis).not_to receive(:pipelined)
+        # No hmget expectation
+      end
+
+      it 'returns an empty array' do
+        expect(@store.list_definitions).to eq([])
+      end
     end
 
-    it 'handles inconsistencies where agent hash is missing and logs warning' do
-      expect(mock_redis).to receive(:smembers).with(agents_set_key).and_return(agent_names)
-      # Simulate agent 2 hash missing (hmget returns array of nils)
-      expect(mock_redis).to receive(:pipelined).and_yield(mock_redis).and_return([summary_values_1, [nil, nil, nil]])
-      expect(mock_redis).to receive(:hmget).with(agent_key_1, *summary_fields)
-      expect(mock_redis).to receive(:hmget).with(agent_key_2, *summary_fields)
+    context 'handles inconsistencies where agent hash is missing and logs warning' do
+      before do
+        # Mock setup for inconsistency test
+        agent_names_inc = ['agent1', 'agent2'] # Use different var name
+        agent_key_1_inc = "#{ADK::DefinitionStore::RedisStore::AGENT_HASH_PREFIX}agent1"
+        agent_key_2_inc = "#{ADK::DefinitionStore::RedisStore::AGENT_HASH_PREFIX}agent2"
+        all_fields_inc = ADK::DefinitionStore::RedisStore::AGENT_DEFINITION_FIELDS
+        # Agent 1 is missing (hmget returns nils)
+        agent1_values = [nil] * all_fields_inc.count
+        # Agent 2 exists
+        agent2_values = all_fields_inc.map { |f| f == 'name' ? 'agent2' : "agent2_#{f}" }
+        agent2_values[all_fields_inc.index('tools')] = '["tool_c"]'
 
-      expect(ADK.logger).to receive(:warn).with("Inconsistency: Agent name '#{agent_name_2}' found in set but hash key missing or empty.")
-      expect(ADK.logger).to receive(:debug).with("Listed 1 agent definitions.")
+        expect(mock_redis).to receive(:smembers).with(ADK::DefinitionStore::RedisStore::AGENTS_SET_KEY).and_return(agent_names_inc)
+        # Ensure pipelined returns an array containing the results for each agent
+        allow(mock_redis).to receive(:pipelined).and_yield(mock_redis).and_return([agent1_values, agent2_values])
+        # Expect hmget calls within the pipeline
+        expect(mock_redis).to receive(:hmget).with(agent_key_1_inc, *all_fields_inc)
+        expect(mock_redis).to receive(:hmget).with(agent_key_2_inc, *all_fields_inc)
+      end
 
-      definitions = @store.list_definitions
-      # Only agent 1 should be returned
-      expect(definitions.count).to eq(1)
-      expect(definitions.first[:name]).to eq(agent_name_1)
+      it 'handles inconsistencies where agent hash is missing and logs warning' do
+        # Expect warning log for agent1
+        expect(ADK.logger).to receive(:warn).with("Inconsistency: Agent name 'agent1' found in set but hash key missing or empty.")
+        expect(ADK.logger).to receive(:debug).with("Listed 1 agent definitions.") # Only agent 2 should be listed
+
+        definitions = @store.list_definitions
+        # Only agent 2 should be returned
+        expect(definitions.count).to eq(1)
+        expect(definitions.first[:name]).to eq(:agent2) # Expect symbol key
+        expect(definitions.first[:description]).to eq("agent2_description")
+        expect(definitions.first[:tools]).to eq([:tool_c]) # Expect symbolized tool names
+      end
     end
 
-    it 'raises StoreError on Redis error during smembers' do
-      redis_error = Redis::ConnectionError.new('Read failed')
-      expect(mock_redis).to receive(:smembers).and_raise(redis_error)
-      expect(ADK.logger).to receive(:error).with(/Redis error listing agents.*#{redis_error.class}.*#{redis_error.message}/)
-      expect {
-        @store.list_definitions
-      }.to raise_error(ADK::DefinitionStore::StoreError,
-                       /Redis error listing agent definitions: #{redis_error.message}/)
+    context 'on Redis error during smembers' do
+      before do
+        expect(mock_redis).to receive(:smembers).with(ADK::DefinitionStore::RedisStore::AGENTS_SET_KEY).and_raise(
+          Redis::BaseError, "Connection failed"
+        )
+        expect(mock_redis).not_to receive(:pipelined)
+        # No hmget expectation
+      end
+
+      it 'raises StoreError' do
+        expect { @store.list_definitions }.to raise_error(ADK::DefinitionStore::StoreError,
+                                                          /Redis error listing agent definitions: Connection failed/)
+      end
     end
 
-    it 'raises StoreError on Redis error during pipelined hmget' do
-      redis_error = Redis::TimeoutError.new('Pipeline timeout')
-      expect(mock_redis).to receive(:smembers).with(agents_set_key).and_return(agent_names)
-      expect(mock_redis).to receive(:pipelined).and_raise(redis_error)
-      expect(ADK.logger).to receive(:error).with(/Redis error listing agents.*#{redis_error.class}.*#{redis_error.message}/)
-      expect {
-        @store.list_definitions
-      }.to raise_error(ADK::DefinitionStore::StoreError,
-                       /Redis error listing agent definitions: #{redis_error.message}/)
+    context 'on Redis error during pipelined hmget' do
+      before do
+        expect(mock_redis).to receive(:smembers).with(ADK::DefinitionStore::RedisStore::AGENTS_SET_KEY).and_return(['agent1'])
+        expect(mock_redis).to receive(:pipelined).and_raise(Redis::BaseError, "Pipeline failed")
+        # No hmget expectation
+      end
+
+      it 'raises StoreError' do
+        expect { @store.list_definitions }.to raise_error(ADK::DefinitionStore::StoreError,
+                                                          /Redis error listing agent definitions: Pipeline failed/)
+      end
     end
 
-    it 'raises StoreError on unexpected errors' do
-      unexpected_error = StandardError.new('List broke')
-      expect(mock_redis).to receive(:smembers).and_raise(unexpected_error)
-      expect(ADK.logger).to receive(:error).with(/Unexpected error listing agents.*#{unexpected_error.class}.*#{unexpected_error.message}/m)
-      expect {
-        @store.list_definitions
-      }.to raise_error(ADK::DefinitionStore::StoreError,
-                       /Unexpected error listing agent definitions: #{unexpected_error.message}/)
+    context 'on unexpected errors' do
+      let(:unexpected_error) { StandardError.new("List broke") }
+      before do
+        agent_names_mock = ['agent1']
+        expect(mock_redis).to receive(:smembers).with(ADK::DefinitionStore::RedisStore::AGENTS_SET_KEY).and_return(agent_names_mock)
+        # Simulate pipeline returning normally, but zip failing later
+        expect(mock_redis).to receive(:pipelined).and_return([['value1']])
+        # Stub zip on the specific array instance
+        allow(agent_names_mock).to receive(:zip).and_raise(unexpected_error)
+        # No hmget expectation
+      end
+
+      it 'raises StoreError' do
+        expect { @store.list_definitions }.to raise_error(ADK::DefinitionStore::StoreError,
+                                                          /Unexpected error listing agent definitions: List broke/)
+      end
     end
   end
 
@@ -697,7 +781,6 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
   describe '#check_connection' do
     it 'returns true if redis ping returns PONG' do
       expect(mock_redis).to receive(:ping).and_return('PONG')
-      # Note: Debug logging is commented out in the source, so not expecting logger.debug
       expect(@store.check_connection).to be true
     end
 
@@ -720,7 +803,4 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       expect(@store.check_connection).to be false
     end
   end
-
-  # --- Placeholder for other describe blocks ---
-  # describe '#check_connection' do ... end
 end

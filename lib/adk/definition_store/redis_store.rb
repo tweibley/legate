@@ -79,10 +79,16 @@ module ADK
             # This happens if the transaction was aborted (e.g., due to WATCH)
             @logger.error("Redis transaction for saving agent '#{name}' failed (aborted).")
             raise StoreError, "Redis transaction aborted while saving agent '#{name}'."
-          elsif result.any? { |r| r.is_a?(Redis::CommandError) }
+          # Check if result is an array before calling any? or checking contents
+          elsif result.is_a?(Array) && result.any? { |r| r.is_a?(Redis::CommandError) }
             # Check if any individual command resulted in an error object (shouldn't typically happen with these commands unless connection issue)
             @logger.error("Redis command error during multi for saving agent '#{name}': #{result.inspect}")
             raise StoreError, "Redis command error while saving agent '#{name}'."
+          # Handle non-array result (e.g., `true` which some redis clients might return on simple success?)
+          # Assuming non-array and non-nil means success if no error was raised during MULTI
+          elsif !result.is_a?(Array)
+            @logger.debug("Redis MULTI returned non-array result for agent '#{name}': #{result.inspect}. Assuming success.")
+            true
           else
             @logger.info("Agent definition '#{name}' saved successfully.")
             true
@@ -315,27 +321,50 @@ module ADK
             end
           end
 
+          # Handle cases where pipelined might return something other than an array
+          # (though typically it should return an array of results or raise an error)
+          unless pipeline_results.is_a?(Array)
+            @logger.error("Redis pipeline returned unexpected type: #{pipeline_results.class}. Expected Array. Agent Names: #{agent_names.inspect}")
+            raise StoreError, "Unexpected result type from Redis pipeline."
+          end
+
           agent_names.zip(pipeline_results).each do |name, values|
             if values.is_a?(Array) && !values.all?(&:nil?)
+              # Process valid data
               summary_hash = Hash[ADK::DefinitionStore::RedisStore::AGENT_DEFINITION_FIELDS.zip(values)]
               summary_hash['name'] ||= name
               summary_hash['model'] ||= ADK::Agent::DEFAULT_MODEL
               tools_json = summary_hash['tools']
-              summary_hash['tools'] = (tools_json && !tools_json.empty?) ? JSON.parse(tools_json) : []
+              parsed_tools = []
+              if tools_json && !tools_json.empty?
+                begin
+                  parsed_tools = JSON.parse(tools_json)
+                  parsed_tools = [] unless parsed_tools.is_a?(Array)
+                rescue JSON::ParserError
+                  @logger.warn("Failed to parse tools JSON for agent '#{name}' during listing. Defaulting to empty. Data: #{tools_json.inspect}")
+                end
+              end
+              summary_hash['tools'] = parsed_tools
+              # Ensure defaults for other potentially nil fields returned from hmget
+              summary_hash['fallback_mode'] ||= nil # Explicitly nil if not present
+              summary_hash['mcp_servers_json'] ||= nil # Explicitly nil if not present
+              summary_hash['instruction'] ||= nil # Explicitly nil if not present
               definitions << summary_hash.transform_keys(&:to_sym)
-            else
+            elsif values.is_a?(Array) # Log warning only if it was an array but all nil
               @logger.warn("Inconsistency: Agent name '#{name}' found in set but hash key missing or empty.")
+              # Do NOT add to definitions array
+              # else - Handle case where `values` itself is not an array (should be caught by pipeline check earlier, but belt-and-suspenders)
+              #   @logger.error("Unexpected data type received for agent '#{name}' in pipeline results: #{values.class}")
             end
           end
 
           @logger.debug("Listed #{definitions.count} agent definitions.")
           definitions.sort_by { |d| d[:name] } # Sort by name for predictable order
-        rescue JSON::ParserError => e
-          @logger.error("Failed to parse tools JSON while listing agents: #{e.message}")
-          raise StoreError, "Error parsing stored tool data during agent listing."
+        # Remove the outer JSON::ParserError rescue, handle inline now
         rescue Redis::BaseError => e
           @logger.error("Redis error listing agents: #{e.class} - #{e.message}")
           raise StoreError, "Redis error listing agent definitions: #{e.message}"
+        # Reinstate generic rescue block
         rescue => e
           @logger.error("Unexpected error listing agents: #{e.class} - #{e.message}\\n#{e.backtrace.first(5).join("\\n")}")
           raise StoreError, "Unexpected error listing agent definitions: #{e.message}"

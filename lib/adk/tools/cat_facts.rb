@@ -50,9 +50,13 @@ module ADK
         # Network/HTTP/Timeout errors are automatically handled and raised as ADK::ToolError
         response = http_get('/fact')
 
-        # Parse the JSON response body using the base module helper
-        # JSON parsing errors are automatically handled and raised as ADK::ToolError
-        data = parse_json_response(response)
+        # Parse the JSON response body directly
+        begin
+          data = JSON.parse(response.body)
+        rescue JSON::ParserError => e
+          raise ADK::ToolError, "Failed to parse JSON response from Cat Fact API: #{e.message}", cause: e
+        end
+
         fact = data['fact'] # Extract the 'fact' field
 
         # Check if a valid fact was received

@@ -361,7 +361,9 @@ RSpec.describe ADK::Planner do
     end
 
     # Keep original basic tests as well
-    let(:planner_basic) { described_class.new(agent: agent_without_tools, logger: mock_logger) } # Use agent without instruction for these
+    let(:planner_basic) {
+      described_class.new(agent: agent_without_tools, logger: mock_logger)
+    } # Use agent without instruction for these
 
     it 'includes the task in the prompt' do
       result = planner_basic.send(:build_multi_step_gemini_prompt, task, tools_description)
