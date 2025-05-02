@@ -118,5 +118,5 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
             == slim :_agent_row, locals: { agent_info: agent_info, available_tools: @available_tools }
         - else
           tr#no-agents-row
-            td(colspan="6").has-text-centered.has-text-grey-light.is-italic
+            td(colspan="6" class="has-text-centered has-text-grey-light is-italic")
               | No agent definitions found. Use the 'Create New Agent Definition' section above.
