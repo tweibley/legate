@@ -449,3 +449,119 @@ ADK supports offloading long-running tasks to Sidekiq background jobs, preventin
 *   Requires a running Redis instance and a separate Sidekiq worker process for your jobs.
 
 See the detailed documentation: [docs/async_jobs_sidekiq.md](docs/async_jobs_sidekiq.md)
+
+## Creating Custom Tools
+
+(Existing content about creating tools...)
+
+### Making HTTP Requests in Tools
+
+If your custom tool needs to make HTTP requests to external APIs, you can leverage the built-in `ADK::Tools::Base::HttpClient` mixin. This provides a standardized way to make requests using the `excon` gem, handling common concerns like default headers, timeouts, logging, JSON encoding, and error wrapping.
+
+**1. Include the Module:**
+
+```ruby
+require_relative '../tool'
+require_relative 'base/http_client' 
+
+class MyApiTool < ADK::Tool
+  include ADK::Tools::Base::HttpClient
+  
+  # ... tool metadata ...
+
+  API_BASE_URL = 'https://api.my_service.com/v2/'
+
+  def initialize(**options)
+    super(**options)
+    # Setup the client in initialize
+    setup_http_client(
+      base_url: API_BASE_URL,
+      headers: { 'Accept' => 'application/vnd.api+json' }, 
+      options: { read_timeout: 10, connect_timeout: 3 }
+    )
+  end
+  
+  private
+  
+  def perform_execution(params, context)
+    # ... use helper methods ...
+  end
+end
+```
+
+**2. Setup the Client:**
+
+Call `setup_http_client` within your tool's `initialize` method. Key arguments:
+
+*   `base_url:` (String, Required): The base URL for the API your tool interacts with.
+*   `headers:` (Hash, Optional): Default headers to send with every request (e.g., `Accept`, `Content-Type`). A default `User-Agent` is automatically added.
+*   `options:` (Hash, Optional): Options passed directly to `Excon.new`. Use this to configure timeouts (`:read_timeout`, `:write_timeout`, `:connect_timeout`), persistence (`:persistent`, default: `true`), proxy settings (`:proxy`), SSL verification (`:ssl_verify_peer`), etc.
+
+**3. Use Request Helpers:**
+
+The module provides public helper methods for common HTTP verbs:
+
+*   `http_get(path, query: {}, headers: {}, options: {})`
+*   `http_post(path, body: nil, query: {}, headers: {}, options: {})`
+*   `http_put(path, body: nil, query: {}, headers: {}, options: {})`
+*   `http_delete(path, query: {}, headers: {}, options: {})`
+
+These methods handle joining the `path` with the `base_url`, merging default/per-request headers and options, and automatic JSON encoding for `Hash` bodies in POST/PUT requests.
+
+```ruby
+# Inside perform_execution
+def perform_execution(params, context)
+  # Simple GET request
+  resource_id = params[:id]
+  response = http_get("items/#{resource_id}", query: { fields: 'name,value' })
+  data = JSON.parse(response.body)
+
+  # POST with Hash payload (auto-JSON encoded)
+  create_payload = { name: params[:name], value: params[:value] }
+  # Override read timeout for this specific request
+  post_response = http_post("items", body: create_payload, options: { read_timeout: 5 })
+  
+  # POST with string payload (e.g., XML) and custom headers
+  xml_payload = "<data><name>#{params[:name]}</name></data>"
+  xml_headers = { 'Content-Type' => 'application/xml', 'X-API-Key' => context.get_credential(:api_key) }
+  xml_response = http_post("items/import", body: xml_payload, headers: xml_headers)
+
+  # Return combined result (example)
+  { status: :success, result: { created_id: JSON.parse(post_response.body)['id'], import_status: xml_response.status } }
+rescue ADK::ToolError => e
+  # Handle specific errors from HttpClient
+  ADK.logger.error "API Tool Error: #{e.message}"
+  if e.is_a?(ADK::ToolHttpError) && e.response&.status == 401
+    # Potentially trigger re-authentication or specific handling
+    return { status: :error, error_message: "Authentication failed: #{e.message}" }
+  end
+  # Re-raise or return generic error
+  { status: :error, error_message: e.message }
+end
+```
+
+**4. Authentication:**
+
+The `HttpClient` module does *not* manage authentication state itself. Your tool is responsible for retrieving credentials (e.g., from its configuration or the `ToolContext`) and injecting them into the `headers:` parameter for each request helper call.
+
+```ruby
+# Example using context for a Bearer token
+auth_token = context.get_credential(:bearer_token)
+response = http_get("/protected", headers: { 'Authorization' => "Bearer #{auth_token}" })
+
+# Example using context for an API key
+api_key = context.get_credential(:api_key)
+response = http_post("/data", body: {..}, headers: { 'X-Api-Key' => api_key })
+```
+
+**5. Error Handling:**
+
+The request helpers automatically rescue common `Excon::Error` subclasses and re-raise them as standardized `ADK::ToolError` subclasses:
+
+*   `ADK::ToolTimeoutError` (for timeouts)
+*   `ADK::ToolNetworkError` (for socket/connection issues)
+*   `ADK::ToolCertificateError` (for SSL cert issues, inherits from `ToolNetworkError`)
+*   `ADK::ToolHttpError` (for 4xx/5xx responses). Includes the `Excon::Response` object in the `response` attribute.
+*   `ADK::ToolError` (for other Excon errors or internal issues like JSON parsing failure).
+
+Your tool should typically rescue `ADK::ToolError` (or specific subclasses) in its `perform_execution` method to handle these failures gracefully.
