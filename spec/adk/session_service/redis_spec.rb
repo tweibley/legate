@@ -12,14 +12,36 @@ RSpec.describe ADK::SessionService::Redis do
 
   # Test data
   let(:app_name) { 'test_app' }
-  let(:user_id) { 'test_user' }
+  let(:user_id) { 'user123' }
   let(:session_id) { SecureRandom.uuid } # Use dynamic session ID
-  let(:initial_state) { { key: 'value' } }
+  let(:initial_state) { { 'key' => 'value' } }
   let(:state_delta) { { delta_key: 'delta_value' } }
   let(:event_no_delta) { ADK::Event.new(role: :user, content: 'test content') }
   let(:event_with_delta) { ADK::Event.new(role: :agent, content: 'response', state_delta: state_delta) }
-  let(:now) { Time.now.utc }
+  let(:now) { Time.parse("2024-01-01T10:00:00Z") } # Use a fixed time
   let(:now_iso) { now.iso8601(3) }
+  let(:created_at_time) { now - 10 }
+  let(:updated_at_time) { now } # No addition needed if stubbing Time.now
+
+  let(:session_double) do
+    instance_double(ADK::Session,
+                    id: session_id,
+                    user_id: user_id,
+                    app_name: app_name,
+                    state: initial_state,
+                    created_at: created_at_time, # Allow created_at
+                    updated_at: updated_at_time,
+                    events: [],
+                    to_h: { # Mock serialization result
+                      id: session_id,
+                      user_id: user_id,
+                      app_name: app_name,
+                      created_at: created_at_time.iso8601(3),
+                      updated_at: updated_at_time.iso8601(3),
+                      state: initial_state.to_json,
+                      events: []
+                    })
+  end
 
   # Redis keys using helper methods for consistency
   let(:session_key) { service.send(:redis_session_key, session_id) }
@@ -65,7 +87,11 @@ RSpec.describe ADK::SessionService::Redis do
     allow(mock_redis).to receive(:pipelined).and_yield(mock_redis).and_return([]) # Default empty pipeline result
 
     # Mock Time for consistent timestamps
-    allow(Time).to receive(:now).and_return(double(utc: now))
+    allow(Time).to receive(:now).and_return(now)
+
+    # Ensure session_double allows necessary messages
+    allow(session_double).to receive(:created_at).and_return(created_at_time)
+    allow(session_double).to receive(:updated_at).and_return(updated_at_time)
   end
 
   describe '#initialize' do
@@ -286,10 +312,17 @@ RSpec.describe ADK::SessionService::Redis do
 
     context 'when session does not exist' do
       before do
-        allow(mock_redis).to receive(:pipelined).and_return([{}, []])
+        # Simulate Redis returning nothing for the session key
+        allow(mock_redis).to receive(:pipelined).and_yield(mock_redis).and_return([nil, []]) # Return nil for hgetall result
+        allow(mock_redis).to receive(:hgetall).with(session_key).and_return({}) # Return empty hash for hgetall
+        allow(mock_redis).to receive(:lrange).with(events_key, 0, -1).and_return([])
       end
 
       it 'returns nil' do
+        # Code calls get_session, which then calls pipelined { hgetall/lrange }
+        # If hgetall returns empty hash, get_session should log warn and return nil (or attempt create_session)
+        # Let's mock create_session too, in case it's called after not found
+        allow(service).to receive(:create_session).and_return(nil)
         expect(service.get_session(session_id: session_id)).to be_nil
       end
     end

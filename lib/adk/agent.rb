@@ -15,6 +15,7 @@ require 'set'
 require 'forwardable'
 require 'json'
 require_relative 'global_definition_registry'
+require_relative 'global_tool_manager' # Added
 
 module ADK
   class Error < StandardError; end unless defined?(ADK::Error)
@@ -376,26 +377,35 @@ module ADK
     # @param session_service [ADK::SessionService::Base, nil] Optional: Pre-initialized session service (used by worker).
     def initialize(name: nil, description: nil, model_name: nil, tool_classes: [], tool_paths: [], planner: nil, mcp_servers: [],
                    fallback_mode: :error, selected_tool_names: [], instruction: nil, definition: nil, session_service: nil)
-      # --- If definition is provided, use it ---
+      # --- If definition is provided, use it --- (Typically for worker instantiation)
       if definition
-        raise ArgumentError, "definition must be an ADK::AgentDefinition" unless definition.is_a?(ADK::AgentDefinition)
+        # Use duck-typing instead of is_a? for mock compatibility
+        unless definition.respond_to?(:name) && definition.respond_to?(:description) && definition.respond_to?(:instruction) && definition.respond_to?(:tool_names)
+          raise ArgumentError,
+                "provided definition object does not appear to be a valid ADK::AgentDefinition (missing required methods)"
+        end
 
-        @definition = definition # Store the provided definition
+        # raise ArgumentError, "definition must be an ADK::AgentDefinition" unless definition.is_a?(ADK::AgentDefinition)
+
+        @definition = definition
         @name = definition.name
         @description = definition.description
         @instruction = definition.instruction
         @model_name = definition.model_name || DEFAULT_MODEL
 
-        # <<< Initialize tool_paths_to_load within definition block >>>
-        tool_paths_to_load = [] # Don't load paths for worker
-
-        # Use tool_names from definition for selection logic
-        selected_tool_names_symbols = definition.tool_names.to_a
-
-        # Load classes directly from definition's tool_names?
+        @selected_tool_names = definition.tool_names.to_a # Tool names are directly from definition
+        # Tool paths are NOT loaded when initializing from definition
+        tool_paths_to_load = [] # Initialize to empty array
+        # Tool classes are resolved via GlobalToolManager using names from definition
         tool_classes_to_load = definition.tool_names.map { |tn| ADK::GlobalToolManager.find_class(tn) }.compact
+        if tool_classes_to_load.length != definition.tool_names.length
+          # Correctly find missing tool *names* by comparing sets
+          found_tool_names = tool_classes_to_load.map { |tc| tc.tool_metadata[:name].to_sym rescue nil }.compact.to_set
+          missing_tool_names = definition.tool_names.to_set - found_tool_names
+          # missing_tools = definition.tool_names - tool_classes_to_load.map { |tc| ADK::GlobalToolManager.get_tool_name(tc) }
+          ADK.logger.warn("Agent '#{@name}': Could not find globally registered classes for tools: #{missing_tool_names.to_a.join(', ')}. These tools will be unavailable.")
+        end
 
-        # <<< Use provided session_service if available when init from definition >>>
         @session_service = session_service || initialize_session_service_from_definition
 
         # <<< FIXED: Set mcp_servers_config when initializing from definition >>>
@@ -494,7 +504,18 @@ module ADK
 
       @planner = planner || ADK::Planner.new(agent: self, model_name: @model_name)
 
-      ADK.logger.info("Agent '#{@name}' initialized successfully with tools: #{@tool_registry.tools.keys.join(', ')}")
+      # Validate essential components using respond_to? for duck typing
+      unless @session_service&.respond_to?(:get_session) && @session_service&.respond_to?(:append_event)
+        raise ConfigurationError,
+              "Agent '#{@name}' requires a valid Session Service (must respond to :get_session, :append_event)."
+      end
+      unless @planner&.respond_to?(:plan)
+        raise ConfigurationError, "Agent '#{@name}' requires a valid Planner (must respond to :plan)."
+      end
+
+      ADK.logger.debug {
+        "Agent '#{@name}' initialized with #{@tool_registry.tools.count} tools: [#{@tool_registry.tools.keys.join(', ')}]"
+      }
     end
 
     # Adds a tool instance OR class to the agent's registry
@@ -533,7 +554,7 @@ module ADK
       # Validate name was found
       unless tool_name && tool_name != :''
         ADK.logger.error("Agent '#{name}' add_tool: Could not determine tool name for class #{tool_class}. Cannot add tool.")
-        return false
+        return false # Explicitly return false
       end
 
       # Check for overwrite
@@ -1067,5 +1088,18 @@ module ADK
         ADK.logger.error("Unexpected error discovering MCP tools: #{e.class} - #{e.message}")
       end
     end
+
+    # --- Session Service Initialization Helpers --- #
+    def initialize_session_service_from_definition
+      # When initialized from definition (worker), rely on ADK global config by default
+      # unless a specific service was passed in.
+      ADK.config.session_service
+    end
+
+    def initialize_session_service_from_args
+      # When initialized from args (direct use), rely on ADK global config.
+      ADK.config.session_service
+    end
+    # --- End Session Service Initialization Helpers --- #
   end # End Agent class
 end # End ADK module

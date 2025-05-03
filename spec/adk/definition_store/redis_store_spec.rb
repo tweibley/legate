@@ -7,6 +7,7 @@ require 'json'
 require 'adk/definition_store/redis_store'
 require 'adk/errors' # Include ADK::Errors for specific error types
 require 'adk/agent' # Required for DEFAULT_MODEL constant
+require 'logger'
 
 RSpec.describe ADK::DefinitionStore::RedisStore do
   # Use spy for logger to track calls without strict expectation setup everywhere
@@ -15,7 +16,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
                            del: 0, srem: 0, smembers: [])
   }
   let(:logger_double) { spy('Logger') }
-  let(:store) { described_class.new(mock_redis) }
+  let(:store) { described_class.new(redis_client: mock_redis) }
 
   # Sample definition data
   let(:agent_name) { 'test_agent' }
@@ -29,18 +30,20 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
   let(:mcp_servers_json) { mcp_servers.to_json }
   let(:agent_key) { "#{described_class::AGENT_HASH_PREFIX}#{agent_name}" }
   let(:agents_set_key) { described_class::AGENTS_SET_KEY }
+  let(:webhook_enabled) { false }
+  let(:webhook_secret) { nil }
 
   before do
     # Stub the ADK logger to prevent actual logging during tests
     allow(ADK).to receive(:logger).and_return(logger_double)
     # Re-initialize store in each test to ensure clean state and logger stubbing
-    @store = described_class.new(mock_redis)
+    @store = described_class.new(redis_client: mock_redis)
   end
 
   describe '#initialize' do
     it 'initializes with a Redis client and logs info' do
       expect(ADK.logger).to receive(:info).with("ADK::DefinitionStore::RedisStore initialized.")
-      described_class.new(mock_redis)
+      described_class.new(redis_client: mock_redis)
     end
 
     it 'logs error and sets @redis to nil if logger.info fails during initialization' do
@@ -52,7 +55,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
 
       store_instance = nil
       expect {
-        store_instance = described_class.new(mock_redis)
+        store_instance = described_class.new(redis_client: mock_redis)
       }.not_to raise_error # The rescue block should prevent the error from propagating
 
       expect(store_instance.instance_variable_get(:@redis)).to be_nil
@@ -61,7 +64,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
     it 'logs an error during operations if initialized with a non-functional client' do
       bad_redis = instance_double(Redis)
       allow(bad_redis).to receive(:ping).and_raise(Redis::CannotConnectError, 'mock connection error')
-      store_with_bad_client = described_class.new(bad_redis)
+      store_with_bad_client = described_class.new(redis_client: bad_redis)
 
       expect(ADK.logger).to receive(:error).with(/Redis connection check failed: Redis::CannotConnectError - mock connection error/)
       expect(store_with_bad_client.check_connection).to be false
@@ -75,7 +78,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
     end
 
     it 'raises ConfigurationError if redis client is nil when methods are called' do
-      store_no_redis = described_class.new(nil)
+      store_no_redis = described_class.new(redis_client: nil)
       expect {
         store_no_redis.save_definition(name: agent_name, description: description, tools: tools, model: model,
                                        fallback_mode: fallback_mode, mcp_servers_json: mcp_servers_json)
@@ -110,7 +113,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
   describe '#save_definition' do
     let(:save_args) {
       { name: agent_name, description: description, tools: tools, model: model, fallback_mode: fallback_mode,
-        mcp_servers_json: mcp_servers_json }
+        mcp_servers_json: mcp_servers_json, webhook_enabled: webhook_enabled, webhook_secret: webhook_secret }
     }
 
     it 'successfully saves a valid definition using MULTI' do
@@ -123,6 +126,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       expect(mock_redis).to receive(:hset).with(agent_key, 'fallback_mode', fallback_str)
       expect(mock_redis).to receive(:hset).with(agent_key, 'mcp_servers_json', mcp_servers_json)
       expect(mock_redis).to receive(:hset).with(agent_key, 'instruction', '') # Expect default instruction
+      expect(mock_redis).to receive(:hset).with(agent_key, 'webhook_enabled', webhook_enabled.to_s)
+      expect(mock_redis).to receive(:hset).with(agent_key, 'webhook_secret', webhook_secret || '')
       expect(mock_redis).to receive(:sadd).with(agents_set_key, agent_name)
       expect(ADK.logger).to receive(:info).with("Agent definition '#{agent_name}' saved successfully.")
 
@@ -203,6 +208,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       expect(mock_redis).to receive(:hset).with(agent_key, 'fallback_mode', fallback_str)
       expect(mock_redis).to receive(:hset).with(agent_key, 'mcp_servers_json', mcp_servers_json || '[]')
       expect(mock_redis).to receive(:hset).with(agent_key, 'instruction', '') # Expect default instruction
+      expect(mock_redis).to receive(:hset).with(agent_key, 'webhook_enabled', webhook_enabled.to_s)
+      expect(mock_redis).to receive(:hset).with(agent_key, 'webhook_secret', webhook_secret || '')
       expect(mock_redis).to receive(:sadd).with(agents_set_key, agent_name)
 
       expect(ADK.logger).to receive(:error).with(/Redis command error during multi.*#{error_result.inspect}/)
@@ -253,7 +260,9 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         model,               # model
         fallback_str,        # fallback_mode
         mcp_servers_json,    # mcp_servers_json
-        ''                   # instruction (default empty string)
+        '',                  # instruction (default empty string)
+        webhook_enabled.to_s, # webhook_enabled
+        webhook_secret || '' # webhook_secret
       ]
     end
     let(:expected_definition) do
@@ -264,7 +273,9 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         model: model,
         fallback_mode: fallback_mode,
         mcp_servers_json: mcp_servers_json,
-        instruction: ''
+        instruction: '',
+        webhook_enabled: webhook_enabled,
+        webhook_secret: webhook_secret
       }
     end
 
@@ -278,7 +289,9 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         instruction: '', # Expect default empty string
         tools: [:tool_a, :tool_b], # Symbolized
         fallback_mode: :error,
-        mcp_servers_json: JSON.generate([{ url: 'http://localhost:8080' }])
+        mcp_servers_json: JSON.generate([{ url: 'http://localhost:8080' }]),
+        webhook_enabled: false,
+        webhook_secret: nil
       }
       # Mock redis values corresponding to the expected hash
       redis_values_get = [
@@ -288,7 +301,9 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         'gpt-4o',
         'error', # Fallback mode as string
         JSON.generate([{ url: 'http://localhost:8080' }]),
-        '' # Instruction
+        '', # Instruction
+        'false',
+        ''
       ]
 
       expect(mock_redis).to receive(:hmget)
@@ -591,6 +606,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       vals['fallback_mode'] = 'error'
       vals['mcp_servers_json'] = '[]'
       vals['instruction'] = ''
+      vals['webhook_enabled'] = webhook_enabled.to_s
+      vals['webhook_secret'] = webhook_secret || ''
       all_fields.map { |f| vals[f] } # Return values in correct order
     }
     let(:summary_values_2) {
@@ -603,6 +620,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       vals['fallback_mode'] = 'error'
       vals['mcp_servers_json'] = '[]'
       vals['instruction'] = ''
+      vals['webhook_enabled'] = webhook_enabled.to_s
+      vals['webhook_secret'] = webhook_secret || ''
       all_fields.map { |f| vals[f] }
     }
     let(:expected_list) do
@@ -614,7 +633,9 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
           tools: [], # Expect empty array from JSON parse/default
           fallback_mode: :error, # Expect symbol from conversion
           mcp_servers_json: '[]',
-          instruction: ''
+          instruction: '',
+          webhook_enabled: webhook_enabled.to_s,
+          webhook_secret: webhook_secret || ''
         },
         {
           name: :agent2, # Expect symbols
@@ -623,7 +644,9 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
           tools: [],
           fallback_mode: :error,
           mcp_servers_json: '[]',
-          instruction: ''
+          instruction: '',
+          webhook_enabled: webhook_enabled.to_s,
+          webhook_secret: webhook_secret || ''
         }
       ].sort_by { |h| h[:name] }
     end

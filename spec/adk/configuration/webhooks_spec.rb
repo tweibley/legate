@@ -6,49 +6,24 @@ RSpec.describe ADK::Configuration::Webhooks do
   subject(:config) { described_class.new }
 
   describe '#initialize' do
-    it 'sets listener_enabled to false' do
-      expect(config.listener_enabled).to be false
-    end
-
-    it 'sets listen_address to 127.0.0.1' do
+    it 'sets default values' do
+      expect(config.listener_enabled).to be true
       expect(config.listen_address).to eq('127.0.0.1')
-    end
-
-    it 'sets listen_port to 9292' do
       expect(config.listen_port).to eq(9292)
-    end
-
-    it 'sets base_path to /webhooks' do
       expect(config.base_path).to eq('/webhooks')
-    end
-
-    it 'sets enable_dynamic_agent_handler to false' do
-      expect(config.enable_dynamic_agent_handler).to be false
-    end
-
-    it 'sets dynamic_agent_route_pattern to /agents/:agent_name/trigger' do
+      expect(config.enable_dynamic_agent_handler).to be true
       expect(config.dynamic_agent_route_pattern).to eq('/agents/:agent_name/trigger')
-    end
-
-    it 'sets global_validator to nil' do
       expect(config.global_validator).to be_nil
-    end
-
-    it 'sets global_secret to nil' do
       expect(config.global_secret).to be_nil
-    end
-
-    it 'sets default_session_service to nil' do
       expect(config.default_session_service).to be_nil
-    end
-
-    it 'initializes validators as an empty hash' do
       expect(config.instance_variable_get(:@validators)).to eq({})
-    end
-
-    it 'initializes static_routes as an empty hash' do
       expect(config.static_routes).to eq({})
     end
+
+    # Redundant specific tests removed as they are covered by 'sets default values'
+    # it 'sets listener_enabled to true' do ... end
+    # it 'sets enable_dynamic_agent_handler to true' do ... end
+    # ... other specific default tests ...
   end
 
   describe 'accessors' do

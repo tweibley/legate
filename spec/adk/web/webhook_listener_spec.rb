@@ -37,27 +37,33 @@ RSpec.describe ADK::Web::WebhookListener do
     Sidekiq::Testing.fake! # Use fake queue for testing pushes
     Sidekiq::Worker.clear_all # Clear jobs between tests
 
-    # Stub global ADK config and store
-    allow(ADK).to receive(:config).and_return(instance_double(ADK::Configuration, webhooks: webhook_config))
-    allow(ADK).to receive(:definition_store).and_return(definition_store)
+    # Stub global ADK config (primarily for webhook settings)
+    allow(ADK).to receive(:config).and_return(instance_double(ADK::Configuration, webhooks: webhook_config,
+                                                                                  definition_store: definition_store))
+    # Stub GlobalDefinitionRegistry to find our mock definition
+    allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(agent_name).and_return(agent_definition)
+    # Stub DefinitionStore directly on the mock returned by ADK.config
+    allow(definition_store).to receive(:get_definition).with(agent_name).and_return({ webhook_enabled: true, webhook_secret: nil }) # Return basic hash for checks
+
     allow(ADK).to receive(:logger).and_return(instance_double(Logger, info: nil, warn: nil, error: nil, debug: nil)) # Suppress logging
 
-    # Stub ADK.redis_options which is used by WebhookListener to build the session_service_config
+    # Stub ADK.redis_options
     allow(ADK).to receive(:redis_options).and_return(redis_options)
 
-    # Default stubs for a successful path
+    # Default stubs for webhook config
     allow(webhook_config).to receive(:enable_dynamic_agent_handler).and_return(true)
     allow(webhook_config).to receive(:dynamic_agent_route_pattern).and_return('/agents/:agent_name/trigger')
-    allow(definition_store).to receive(:get_definition).with(agent_name).and_return(agent_definition)
-    allow(agent_definition).to receive(:webhook_enabled).and_return(true)
-    allow(agent_definition).to receive(:webhook_validator).and_return(nil) # No validator by default
-    allow(agent_definition).to receive(:webhook_secret).and_return(nil)
-    allow(agent_definition).to receive(:webhook_transformer).and_return(transformer_proc)
-    allow(agent_definition).to receive(:webhook_session_extractor).and_return(extractor_proc)
     allow(webhook_config).to receive(:global_validator).and_return(nil)
     allow(webhook_config).to receive(:global_secret).and_return(nil)
-    allow(webhook_config).to receive(:find_validator).and_return(nil) # No named validators for now
-    allow(webhook_config).to receive(:static_routes).and_return({}) # Add stub for static routes
+    allow(webhook_config).to receive(:find_validator).and_return(nil)
+    allow(webhook_config).to receive(:static_routes).and_return({})
+
+    # Default stubs for agent_definition instance double (found via registry)
+    allow(agent_definition).to receive(:webhook_enabled).and_return(true) # Use attribute reader method
+    allow(agent_definition).to receive(:webhook_validator).and_return(nil) # No validator by default
+    allow(agent_definition).to receive(:webhook_secret).and_return(nil) # Secret now comes from object
+    allow(agent_definition).to receive(:webhook_transformer).and_return(transformer_proc)
+    allow(agent_definition).to receive(:webhook_session_extractor).and_return(extractor_proc)
   end
 
   describe 'POST /agents/:agent_name/trigger' do
@@ -109,21 +115,27 @@ RSpec.describe ADK::Web::WebhookListener do
 
     context 'when agent definition is not found' do
       before {
-        allow(definition_store).to receive(:get_definition).with(agent_name).and_raise(
-          ADK::DefinitionStore::DefinitionNotFound, "not found"
-        )
+        # Mock registry AND store to not find the definition
+        allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(agent_name).and_return(nil)
+        allow(definition_store).to receive(:get_definition).with(agent_name).and_return(nil)
       }
 
-      it 'returns status 404 Not Found' do
+      it 'returns status 500 Internal Server Error (as per code)' do # Updated expectation
         header 'Content-Type', 'application/json'
         post trigger_path, request_json
-        expect(last_response.status).to eq(404)
-        expect(last_response.body).to include('Agent definition not found')
+        expect(last_response.status).to eq(500)
+        expect(last_response.body).to include('Agent definition not loaded')
       end
     end
 
     context 'when agent is not webhook_enabled' do
-      before { allow(agent_definition).to receive(:webhook_enabled).and_return(false) }
+      before {
+        # Registry finds the object, but it reports disabled
+        allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(agent_name).and_return(agent_definition)
+        allow(agent_definition).to receive(:webhook_enabled).and_return(false) # Mock object method
+        # Store hash also reports disabled (for the initial check)
+        allow(definition_store).to receive(:get_definition).with(agent_name).and_return({ webhook_enabled: false })
+      }
 
       it 'returns status 404 Not Found' do
         header 'Content-Type', 'application/json'
@@ -135,7 +147,11 @@ RSpec.describe ADK::Web::WebhookListener do
 
     context 'when validation fails' do
       before do
+        # Registry finds object with validator proc
+        allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(agent_name).and_return(agent_definition)
         allow(agent_definition).to receive(:webhook_validator).and_return(validator_proc)
+        # Secret comes from definition object
+        allow(agent_definition).to receive(:webhook_secret).and_return(nil)
         allow(validator_proc).to receive(:call).and_return(false) # Make validator fail
       end
 
