@@ -14,10 +14,15 @@ module ADK
       AGENT_HASH_PREFIX = "adk:agent:"
       AGENTS_SET_KEY = "adk:agents:all_names"
 
+      # Note: Validator, Transformer, Extractor are Procs and cannot be directly serialized to Redis easily.
+      # They are handled by the AgentDefinition object in memory, not persisted here by default.
       # Expected field names in the Redis hash
-      AGENT_DEFINITION_FIELDS = %w[name description tools model fallback_mode mcp_servers_json instruction].freeze
+      AGENT_DEFINITION_FIELDS = %w[name description tools model fallback_mode mcp_servers_json instruction
+                                   webhook_enabled webhook_secret].freeze
 
-      def initialize(redis_client)
+      # Expects a keyword argument for the Redis client instance.
+      # @param redis_client [Redis] An instance of the Redis client.
+      def initialize(redis_client:)
         @redis = redis_client
         @logger = ADK.logger
         @logger.info("ADK::DefinitionStore::RedisStore initialized.")
@@ -37,11 +42,14 @@ module ADK
       # @param fallback_mode [Symbol] The fallback behavior (:error or :echo).
       # @param mcp_servers_json [String] A JSON string representing the MCP server configurations array.
       # @param instruction [String, nil] Optional instructions for the agent.
+      # @param webhook_enabled [Boolean] Whether webhooks are enabled.
+      # @param webhook_secret [String, nil] Secret for webhook validation.
       # @return [Boolean] true if successful, false otherwise.
       # @raise [ArgumentError] if required fields (name) are missing or invalid.
       # @raise [ConfigurationError] if Redis client is not available.
       # @raise [StoreError] for Redis errors during save.
-      def save_definition(name:, description:, tools:, model:, fallback_mode:, mcp_servers_json:, instruction: nil)
+      def save_definition(name:, description:, tools:, model:, fallback_mode:, mcp_servers_json:, instruction: nil,
+                          webhook_enabled: false, webhook_secret: nil)
         raise ConfigurationError, "Redis client not available." unless @redis
         raise ArgumentError, "Agent name cannot be empty." if name.nil? || name.strip.empty?
 
@@ -69,6 +77,8 @@ module ADK
             multi.hset(agent_key, 'fallback_mode', fallback_str)
             multi.hset(agent_key, 'mcp_servers_json', mcp_json_to_save)
             multi.hset(agent_key, 'instruction', instruction || "") # Save instruction (empty string if nil)
+            multi.hset(agent_key, 'webhook_enabled', webhook_enabled.to_s) # Store boolean as string ('true'/'false')
+            multi.hset(agent_key, 'webhook_secret', webhook_secret || "") # Store secret (empty if nil)
             multi.sadd(AGENTS_SET_KEY, name)
           end
 
@@ -112,15 +122,17 @@ module ADK
 
       # Retrieves a single agent definition from Redis.
       # @param agent_name [String] The name of the agent to retrieve.
-      # @return [Hash, nil] A hash representing the agent definition, or nil if not found.
-      #   The hash includes keys: :name, :description, :tools (Array), :model, :fallback_mode (Symbol), :mcp_servers_json (String), :instruction (String)
+      # @return [Hash, nil] A hash representing the agent definition (symbol keys), or nil if not found.
+      #   Includes :name, :description, :tools, :model, :fallback_mode, :mcp_servers_json, :instruction, :webhook_enabled, :webhook_secret
       # @raise [ConfigurationError] if Redis client is not available.
       # @raise [StoreError] for Redis errors during retrieval or JSON parsing errors.
       def get_definition(agent_name)
+        # Convert symbol to string if needed
+        agent_name_str = agent_name.to_s
         raise ConfigurationError, "Redis client not available." unless @redis
-        return nil if agent_name.nil? || agent_name.strip.empty?
+        return nil if agent_name_str.nil? || agent_name_str.strip.empty?
 
-        agent_key = agent_redis_key(agent_name)
+        agent_key = agent_redis_key(agent_name_str) # Use string key
 
         begin
           # Fetch all fields defined in AGENT_DEFINITION_FIELDS
@@ -138,8 +150,8 @@ module ADK
 
           # --- Process and Type Convert ---
           # Ensure name consistency (though fetched from hash)
-          # Convert name to symbol
-          definition_hash['name'] = agent_name.to_sym
+          # Use original agent_name symbol for consistency
+          definition_hash['name'] = agent_name.is_a?(Symbol) ? agent_name : agent_name_str.to_sym
           # Deserialize tools JSON
           tools_json = definition_hash['tools']
           # Convert tool names to symbols
@@ -153,6 +165,12 @@ module ADK
           definition_hash['mcp_servers_json'] ||= '[]'
           # Ensure instruction is present (defaults to '' if nil)
           definition_hash['instruction'] ||= "" # Ensure instruction defaults to empty string if missing in Redis
+          # --- Process Webhook Fields ---
+          definition_hash['webhook_enabled'] = (definition_hash['webhook_enabled'] == 'true') # Convert string back to boolean
+          definition_hash['webhook_secret'] = definition_hash['webhook_secret'] # Already string (or empty string)
+          definition_hash['webhook_secret'] = nil if definition_hash['webhook_secret']&.empty? # Convert empty string back to nil
+          # Note: Procs (validator, transformer, extractor) are not stored/retrieved.
+          # --- END Webhook Fields ---
           # --- Return symbol-keyed hash for consistency? ---
           # Let's convert keys to symbols for internal consistency, matching save_definition inputs.
           symbolized_hash = definition_hash.transform_keys(&:to_sym)

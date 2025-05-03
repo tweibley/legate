@@ -32,11 +32,11 @@ module ADK
       attr_accessor :default_session_service
 
       def initialize
-        @listener_enabled = false
+        @listener_enabled = true # Enable listener by default for easier testing/use
         @listen_address = '127.0.0.1' # Default to loopback for security
         @listen_port = 9292
         @base_path = '/webhooks'
-        @enable_dynamic_agent_handler = false
+        @enable_dynamic_agent_handler = true # Enable dynamic handler by default for easier testing
         @dynamic_agent_route_pattern = '/agents/:agent_name/trigger'
         @global_validator = nil
         @global_secret = nil

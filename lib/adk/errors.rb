@@ -78,4 +78,7 @@ module ADK
   module DefinitionStore
     class DefinitionNotFound < StoreError; end
   end
+
+  # Error related to definition or session storage operations.
+  class StoreError < Error; end
 end

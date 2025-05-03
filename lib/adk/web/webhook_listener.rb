@@ -7,6 +7,7 @@ require 'json'
 require 'sidekiq' # For Sidekiq::Client.push
 require 'adk' # To access ADK.config, ADK.logger, ADK.definition_store
 require 'adk/errors' # For ADK::WebhookConfigurationError
+require_relative '../global_definition_registry' # <<< Added require
 require 'mustermann' # For path pattern matching
 
 module ADK
@@ -123,24 +124,38 @@ module ADK
         end
 
         # --- Handler Logic (Agent name confirmed) ---
-        raw_request_body = env['rack.input.json'] || request.body.read
+        # Read raw body *first* for validation purposes
         request.body.rewind
+        raw_request_body = request.body.read
+        request.body.rewind # Rewind again for potential JSON parsing or handler use
+
+        parsed_json_body = env['rack.input.json'] # Parsed by 'before' hook if Content-Type was JSON
 
         logger.info("WebhookListener: Processing dynamic agent trigger for: #{agent_name_sym}")
 
         # Load agent definition (errors handled by Sinatra error blocks)
-        definition = ADK.definition_store.get_definition(agent_name_sym)
+        store = ADK.config.definition_store
+        raise ADK::ConfigurationError, "Definition store not available via ADK.config.definition_store" unless store
 
-        # Check definition.webhook_enabled
-        unless definition.webhook_enabled
-          logger.warn("Agent '#{agent_name_sym}' is not enabled for webhooks (webhook_enabled=false).")
-          halt 404, json({ status: :error, error_message: "Webhook endpoint not found for this agent." })
-          return # Explicitly return after halt
+        # --- MODIFIED: Fetch hash AND in-memory definition --- #
+        definition_hash = store.get_definition(agent_name_sym)
+        in_memory_definition = ADK::GlobalDefinitionRegistry.find(agent_name_sym)
+
+        unless in_memory_definition
+          # This indicates the agent definition file wasn't loaded in the listener process
+          logger.error("WebhookListener: In-memory definition for :#{agent_name_sym} not found in GlobalDefinitionRegistry.")
+          halt 500, json({ status: :error, error_message: "Internal Server Error: Agent definition not loaded." })
         end
 
-        # Perform Validation
-        validator_config = definition.webhook_validator || webhook_config.global_validator
-        secret = definition.webhook_secret || webhook_config.global_secret
+        # --- Check webhook_enabled using the HASH from the store --- #
+        unless definition_hash && definition_hash[:webhook_enabled]
+          logger.warn("Agent '#{agent_name_sym}' is not enabled for webhooks (webhook_enabled=false or definition hash missing). Definition Hash: #{definition_hash.inspect}")
+          halt 404, json({ status: :error, error_message: "Webhook endpoint not found for this agent." })
+        end
+
+        # Perform Validation (Use HASH for secret, IN-MEMORY for validator proc/symbol)
+        validator_config = in_memory_definition.webhook_validator || webhook_config.global_validator
+        secret = definition_hash[:webhook_secret] # Secret comes from the store
         if validator_config
           validator_proc = validator_config.is_a?(Proc) ? validator_config : webhook_config.find_validator(validator_config)
 
@@ -166,9 +181,10 @@ module ADK
         end
 
         # 5. Perform Transformation (Required if webhook_enabled is true)
-        transformer = definition.webhook_transformer
+        # --- USE IN-MEMORY DEFINITION FOR PROC --- #
+        transformer = in_memory_definition.webhook_transformer
         unless transformer.is_a?(Proc)
-          logger.error("Webhook configuration error for '#{agent_name_sym}': Missing webhook_transformer Proc.")
+          logger.error("Webhook configuration error for '#{agent_name_sym}': Missing webhook_transformer Proc in in-memory definition.")
           halt 500,
                json({ status: :error,
                       error_message: "Internal Server Error: Agent webhook configuration incomplete (transformer)." })
@@ -176,7 +192,7 @@ module ADK
 
         begin
           # Pass the parsed JSON body if available, otherwise the raw body string
-          payload_for_transform = env['rack.input.json'] || raw_request_body
+          payload_for_transform = parsed_json_body || raw_request_body
           transformed_user_input = transformer.call(payload_for_transform)
           logger.debug("Webhook payload transformed successfully for agent '#{agent_name_sym}'.")
         rescue ADK::WebhookConfigurationError => e
@@ -188,9 +204,10 @@ module ADK
         end
 
         # 6. Extract Session ID (Required if webhook_enabled is true)
-        extractor = definition.webhook_session_extractor
+        # --- USE IN-MEMORY DEFINITION FOR PROC --- #
+        extractor = in_memory_definition.webhook_session_extractor
         unless extractor.is_a?(Proc)
-          logger.error("Webhook configuration error for '#{agent_name_sym}': Missing webhook_session_extractor Proc.")
+          logger.error("Webhook configuration error for '#{agent_name_sym}': Missing webhook_session_extractor Proc in in-memory definition.")
           halt 500,
                json({ status: :error,
                       error_message: "Internal Server Error: Agent webhook configuration incomplete (session extractor)." })
@@ -198,7 +215,7 @@ module ADK
 
         begin
           # Pass the parsed JSON body if available, otherwise the raw body string
-          payload_for_extract = env['rack.input.json'] || raw_request_body
+          payload_for_extract = parsed_json_body || raw_request_body
           session_id = extractor.call(payload_for_extract)
           raise ADK::WebhookConfigurationError,
                 "Session extractor must return a non-empty String session ID." unless session_id.is_a?(String) && !session_id.strip.empty?

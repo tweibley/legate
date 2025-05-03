@@ -25,7 +25,7 @@ module ADK
 
     def initialize
       # Set defaults
-      @definition_store = ADK::DefinitionStore::RedisStore.new(Redis.new(ADK.redis_options))
+      @definition_store = ADK::DefinitionStore::RedisStore.new(redis_client: Redis.new(ADK.redis_options))
       @session_service = ADK::SessionService::InMemory.new
       @default_model_name = 'gemini-1.5-flash'
       @default_temperature = 0.7

@@ -5,6 +5,10 @@ require 'dotenv/load' if File.exist?('.env') # Load early for ENV vars
 require 'logger'
 require 'sidekiq'
 require_relative 'adk/version'
+require 'redis'
+require 'forwardable'
+require 'active_support/security_utils' # For secure_compare in validator
+require 'openssl' # For HMAC in validator
 
 # --- Eager Logger Initialization (Moved BEFORE other ADK requires) ---
 module ADK
@@ -109,6 +113,26 @@ module ADK
   rescue => e # Catch potential NoMethodError if logger is somehow still nil
     puts "[WARN] Error configuring Sidekiq, logger might not be available: #{e.message}"
   end
+
+  # --- NEW: Register Core Webhook Validators --- #
+  config.webhooks.register_validator(:hmac_sha256) do |request, secret|
+    return false unless secret
+
+    signature_header = request.env['HTTP_X_HUB_SIGNATURE_256']
+    return false unless signature_header&.start_with?('sha256=')
+
+    expected_signature = signature_header.delete_prefix('sha256=')
+    request.body.rewind
+    payload_body = request.body.read
+    request.body.rewind
+    calculated_signature = OpenSSL::HMAC.hexdigest('sha256', secret, payload_body)
+    ActiveSupport::SecurityUtils.secure_compare(calculated_signature, expected_signature)
+  end
+  # --- END NEW --- #
+
+  # Reset configuration (mainly for testing)
+  def self.reset_config!
+  end
 end
 
 # --- Initial Sidekiq Configuration Call (Logger is now guaranteed) ---
@@ -141,6 +165,18 @@ require_relative 'adk/tools/random_number_tool'
 require_relative 'adk/tools/base_async_job_tool'
 require_relative 'adk/tools/check_job_status_tool'
 require_relative 'adk/tools/sleepy_tool'
+
+# <<< ADDED: Require the webhook worker >>>
+require_relative 'adk/webhook_job_worker'
+
+# <<< ADDED BACK: Ensure example agent definition is loaded for worker/web >>>
+# Using corrected relative path
+begin
+  require_relative '../examples/webhook_receiver_agent'
+rescue LoadError => e
+  # Log the error with more detail, including the path attempted
+  ADK.logger.warn("Could not load example agent '../examples/webhook_receiver_agent.rb': #{e.message}. This might be expected.")
+end
 
 module ADK
   # Reopen module if needed for final definitions

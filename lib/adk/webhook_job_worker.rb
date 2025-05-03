@@ -56,12 +56,28 @@ module ADK
         end
 
         # 3. Load Agent Definition
-        definition = ADK.definition_store.get_definition(agent_name_sym)
+        definition_hash = ADK.config.definition_store.get_definition(agent_name_sym)
+        unless definition_hash
+          raise ADK::DefinitionStore::DefinitionNotFound, "Definition not found in store for :#{agent_name_sym}"
+        end
+
         ADK.logger.debug("WebhookJobWorker loaded definition for: #{agent_name_sym}")
 
         # 4. Instantiate Agent
-        agent = ADK::Agent.new(definition: definition)
+        in_memory_definition = ADK::GlobalDefinitionRegistry.find(agent_name_sym)
+        unless in_memory_definition
+          # This indicates the agent definition file wasn't loaded in the worker process
+          # This is a critical configuration error.
+          raise ADK::ConfigurationError,
+                "In-memory definition for :#{agent_name_sym} not found in GlobalDefinitionRegistry within worker."
+        end
+
+        # --- Pass the initialized session service to the agent --- #
+        agent = ADK::Agent.new(definition: in_memory_definition, session_service: session_service)
         ADK.logger.debug("WebhookJobWorker instantiated agent: #{agent.name}")
+
+        # 5. Start Agent Runtime (Agent needs to be running to execute tasks)
+        agent.start
 
         # 6. Call agent.run_task
         ADK.logger.info("WebhookJobWorker calling agent.run_task for session: #{session_id}")

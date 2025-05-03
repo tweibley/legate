@@ -5,10 +5,12 @@
 $LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
 
 require 'adk'
-require 'adk/definition_store/filesystem' # Need filesystem store for this example
+require 'adk/definition_store/redis_store' # Use Redis store
 require 'adk/session_service/redis'     # Need redis service for worker
+require_relative 'webhook_receiver_agent' # Ensure agent definition is loaded
 require 'openssl'
 require 'active_support/security_utils' # For secure_compare
+require 'json'
 
 # --- Configuration ---
 
@@ -23,8 +25,8 @@ end
 
 # Configure ADK for the E2E test
 ADK.configure do |config|
-  # 1. Definition Store: Use Filesystem to load the receiver agent
-  config.definition_store = ADK::DefinitionStore::Filesystem.new(File.expand_path('.', __dir__))
+  # 1. Definition Store: Use RedisStore
+  config.definition_store = ADK::DefinitionStore::RedisStore.new(redis_client: Redis.new(ADK.redis_options))
   
   # 2. Webhook Listener Settings
   config.webhooks.listener_enabled = true
@@ -36,24 +38,25 @@ ADK.configure do |config|
   config.webhooks.enable_dynamic_agent_handler = true
   # Keep default route pattern: /agents/:agent_name/trigger
   
-  # 4. Register the HMAC validator used by the receiver agent
-  config.webhooks.register_validator(:hmac_sha256) do |request, secret|
-    return false unless secret 
-    signature_header = request.env['HTTP_X_HUB_SIGNATURE_256']
-    return false unless signature_header&.start_with?('sha256=')
-    expected_signature = signature_header.delete_prefix('sha256=')
-    request.body.rewind 
-    payload_body = request.body.read
-    request.body.rewind 
-    calculated_signature = OpenSSL::HMAC.hexdigest('sha256', secret, payload_body)
-    ActiveSupport::SecurityUtils.secure_compare(calculated_signature, expected_signature)
-  end
-  
   # 5. Default Session Service for Worker (Needs to match worker expectation)
   # The listener passes ADK.redis_options to the job payload.
   # Ensure the worker uses RedisSessionService with these options.
   config.webhooks.default_session_service = ADK::SessionService::Redis.new(redis_client: Redis.new(ADK.redis_options)) 
   # Note: This specific instance isn't used directly, but aligns config with worker behavior.
+end
+
+# --- Verify Agent Definition Was Saved --- 
+# The `require_relative 'webhook_receiver_agent'` should have triggered ADK::Agent.define,
+# which saves the definition to the configured store (ADK.config.definition_store).
+begin 
+  retrieved_def = ADK.config.definition_store.get_definition(:webhook_receiver)
+  unless retrieved_def && retrieved_def[:name] == :webhook_receiver
+    raise "Failed to retrieve :webhook_receiver definition from the Redis store after loading."
+  end
+  puts "Verified :webhook_receiver definition exists in Redis store."
+rescue => e
+  puts "Error verifying agent definition in Redis: #{e.message}"
+  exit(1)
 end
 
 # --- Process Management ---
@@ -62,15 +65,17 @@ sidekiq_pid = nil
 
 begin
   puts "Starting ADK Web Server (with Webhook Listener) on port #{ADK.config.webhooks.listen_port}..."
-  # Run in background, redirect output to avoid cluttering runner output
-  web_server_pid = Process.spawn("bundle exec adk web start --port #{ADK.config.webhooks.listen_port}", out: "/dev/null", err: "/dev/null")
+  puts "--- ADK Web Server Output START ---"
+  # Use rackup with the new config.ru
+  port = ADK.config.webhooks.listen_port
+  web_server_pid = Process.spawn("bundle exec rackup config.ru -p #{port}") 
   # Wait briefly for server to start
   sleep 2 
   
   puts "Starting Sidekiq worker for 'adk_webhooks' queue..."
   # Run in background, redirect output
   # Ensure the worker can load the ADK environment (hence bundle exec)
-  sidekiq_pid = Process.spawn("bundle exec sidekiq -q adk_webhooks -r ./lib/adk.rb", out: "/dev/null", err: "/dev/null")
+  sidekiq_pid = Process.spawn("bundle exec sidekiq -q adk_webhooks -r ./lib/adk.rb") 
   # Wait briefly for worker to start
   sleep 2
 

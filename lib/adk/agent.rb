@@ -13,6 +13,8 @@ require_relative 'mcp/client'
 require_relative 'mcp/tool_wrapper'
 require 'set'
 require 'forwardable'
+require 'json'
+require_relative 'global_definition_registry'
 
 module ADK
   class Error < StandardError; end unless defined?(ADK::Error)
@@ -44,11 +46,14 @@ module ADK
     attr_reader :webhook_transformer
     # @return [Proc, nil] The session extractor proc for webhook requests.
     attr_reader :webhook_session_extractor
+    # @return [Symbol] The fallback mode (:error or :echo). Defaults to :error.
+    attr_reader :fallback_mode
+    # @return [Array<Hash>] Configuration for MCP servers. Defaults to [].
+    attr_reader :mcp_servers
 
     # Delegate common attributes to the definition proxy for easier access during definition
-    def_delegators :@proxy, :name=, :description=, :instruction=, :use_tool, :model_name=, :temperature=,
-                   :webhook_enabled=, :webhook_validator=, :webhook_secret=, :webhook_transformer=,
-                   :webhook_session_extractor=
+    # Only delegate methods needed *within* the define block
+    def_delegators :@proxy, :use_tool
 
     def initialize
       @name = nil
@@ -63,6 +68,8 @@ module ADK
       @webhook_secret = nil
       @webhook_transformer = nil
       @webhook_session_extractor = nil
+      @fallback_mode = :error # Default fallback mode
+      @mcp_servers = [] # Default MCP servers
       # -----------------------
 
       @proxy = DefinitionProxy.new(self)
@@ -85,16 +92,16 @@ module ADK
       raise ArgumentError,
             "Agent '#{@name}' must have an instruction." if @instruction.nil? || @instruction.strip.empty?
 
-      if webhook_enabled
+      # Explicitly check instance variable to bypass potential method resolution issues
+      if @webhook_enabled
         # raise ArgumentError, "Agent '#{@name}' enabled for webhooks must define a webhook_transformer." unless @webhook_transformer.is_a?(Proc)
         # raise ArgumentError, "Agent '#{@name}' enabled for webhooks must define a webhook_session_extractor." unless @webhook_session_extractor.is_a?(Proc)
-        unless webhook_transformer.is_a?(Proc)
+        unless @webhook_transformer.is_a?(Proc)
           ADK.logger.warn { "Agent '#{@name}' is webhook_enabled but lacks a valid :webhook_transformer Proc." }
         end
-        unless webhook_session_extractor.is_a?(Proc)
+        unless @webhook_session_extractor.is_a?(Proc)
           ADK.logger.warn { "Agent '#{@name}' is webhook_enabled but lacks a valid :webhook_session_extractor Proc." }
         end
-
       end
     end
 
@@ -112,7 +119,9 @@ module ADK
         webhook_validator: @webhook_validator.is_a?(Proc) ? '<Proc>' : @webhook_validator,
         webhook_secret: @webhook_secret ? '<present>' : nil,
         webhook_transformer: @webhook_transformer.is_a?(Proc) ? '<Proc>' : nil,
-        webhook_session_extractor: @webhook_session_extractor.is_a?(Proc) ? '<Proc>' : nil
+        webhook_session_extractor: @webhook_session_extractor.is_a?(Proc) ? '<Proc>' : nil,
+        fallback_mode: @fallback_mode,
+        mcp_servers: @mcp_servers
       }
     end
 
@@ -208,6 +217,29 @@ module ADK
 
         @definition.instance_variable_set(:@webhook_session_extractor, extractor_proc)
       end
+
+      # Sets the fallback mode for the agent.
+      # @param mode [Symbol] :error or :echo.
+      def fallback_mode(mode)
+        valid_modes = [:error, :echo]
+        unless valid_modes.include?(mode)
+          raise ArgumentError, "Invalid fallback_mode '#{mode}'. Must be one of: #{valid_modes.join(', ')}."
+        end
+
+        @definition.instance_variable_set(:@fallback_mode, mode)
+      end
+
+      # Configures MCP servers for the agent.
+      # @param server_configs [Hash, Array<Hash>] MCP server configuration(s).
+      def mcp_servers(*server_configs)
+        configs = Array(server_configs).flatten.compact
+        # Basic validation: Ensure it's an array of hashes?
+        unless configs.all? { |c| c.is_a?(Hash) }
+          raise ArgumentError, "MCP server configurations must be provided as Hashes."
+        end
+
+        @definition.instance_variable_set(:@mcp_servers, configs)
+      end
       # -----------------------------
     end
     private_constant :DefinitionProxy
@@ -222,58 +254,10 @@ module ADK
                 :instruction, :definition
 
     # --- Builder Class for `define` method ---
-    class AgentBuilder
-      attr_accessor :name, :description, :model_name, :fallback_mode, :mcp_servers, :selected_tool_names, :instruction
-      attr_reader :tool_paths, :tool_classes # Keep track of both
-
-      def initialize
-        @name = nil
-        @description = nil
-        @model_name = nil
-        @fallback_mode = :error
-        @tool_paths = []
-        @tool_classes = []
-        @mcp_servers = []
-        @selected_tool_names = []
-        @instruction = nil # Initialize instruction
-        # Planner is not directly configured here, it's created by Agent#initialize
-      end
-
-      # Sets the paths for automatic tool discovery.
-      # @param paths [String, Array<String>] One or more directory paths.
-      def discover_tools_in(*paths)
-        @tool_paths.concat(Array(paths).flatten.compact.uniq)
-      end
-
-      # Adds native tool classes directly.
-      # @param classes [Class, Array<Class>] One or more classes inheriting from ADK::Tool.
-      def add_tool_classes(*classes)
-        @tool_classes.concat(Array(classes).flatten.compact)
-      end
-
-      # Builds the Agent instance using the collected configuration.
-      # @return [ADK::Agent] The configured agent instance.
-      # @raise [ArgumentError] if required attributes like name or description are missing.
-      def build
-        raise ArgumentError, "Agent name must be set in the define block." unless @name && !@name.strip.empty?
-
-        raise ArgumentError,
-              "Agent description must be set in the define block." unless @description && !@description.strip.empty?
-
-        ADK::Agent.new(
-          name: @name,
-          description: @description,
-          instruction: @instruction, # Pass instruction
-          model_name: @model_name, # Defaults handled in initialize
-          tool_classes: @tool_classes,
-          tool_paths: @tool_paths,
-          mcp_servers: @mcp_servers,
-          fallback_mode: @fallback_mode,
-          selected_tool_names: @selected_tool_names
-          # Planner is created internally by ADK::Agent.new
-        )
-      end
-    end
+    # class AgentBuilder
+    #   ...
+    #   ...
+    # end
     # --- End Builder Class ---
 
     # --- Class Method for Configuration DSL ---
@@ -292,12 +276,86 @@ module ADK
     # @yieldparam builder [ADK::Agent::AgentBuilder] The builder object to configure the agent.
     # @return [ADK::Agent] The newly configured agent instance.
     # @raise [ArgumentError] if the block is not provided or required attributes are missing.
-    def self.define
+    def self.define(&block)
       raise ArgumentError, "ADK::Agent.define requires a block." unless block_given?
 
-      builder = AgentBuilder.new
-      yield builder
-      builder.build
+      # 1. Create a new AgentDefinition
+      definition = ADK::AgentDefinition.new
+
+      # 2. Evaluate the block within the definition's proxy DSL
+      # Use the definition instance's define method which takes the block
+      # This also handles internal validation via validate!
+      begin
+        definition.define(&block)
+      rescue ArgumentError => e
+        # Re-raise DSL validation errors immediately
+        raise e
+      end
+
+      # 3. Save the validated definition using the configured definition store
+      begin
+        store = ADK.config.definition_store
+        raise ADK::ConfigurationError, "ADK.config.definition_store is not configured." unless store
+
+        # Ensure store responds to save_definition
+        unless store.respond_to?(:save_definition)
+          raise ADK::ConfigurationError,
+                "Configured definition store (#{store.class}) does not support :save_definition method."
+        end
+
+        # Extract values using instance variables to avoid delegation issues
+        agent_name = definition.instance_variable_get(:@name)
+        description = definition.instance_variable_get(:@description)
+        tool_names = definition.instance_variable_get(:@tool_names).map(&:to_s)
+        model = definition.instance_variable_get(:@model_name)
+        fallback_mode = definition.instance_variable_get(:@fallback_mode)
+        mcp_servers = definition.instance_variable_get(:@mcp_servers) || []
+        instruction = definition.instance_variable_get(:@instruction)
+        webhook_enabled = definition.instance_variable_get(:@webhook_enabled)
+        webhook_secret = definition.instance_variable_get(:@webhook_secret)
+
+        # Prepare MCP JSON
+        mcp_json = JSON.generate(mcp_servers)
+
+        # Call save_definition with keyword arguments
+        store.save_definition(
+          name: agent_name.to_s,
+          description: description,
+          tools: tool_names,
+          model: model,
+          fallback_mode: fallback_mode,
+          mcp_servers_json: mcp_json,
+          instruction: instruction,
+          webhook_enabled: webhook_enabled,
+          webhook_secret: webhook_secret
+        )
+
+        # Use extracted name for logging
+        ADK.logger.info("Agent definition '#{agent_name}' saved to store.")
+      rescue JSON::GeneratorError => e
+        agent_name_for_log = definition.instance_variable_get(:@name) || 'unknown'
+        ADK.logger.error("Failed to serialize MCP servers for definition '#{agent_name_for_log}': #{e.message}")
+        raise ADK::StoreError, "Internal error preparing definition '#{agent_name_for_log}' for storage."
+      # Catch config errors specifically
+      rescue ADK::ConfigurationError => e
+        agent_name_for_log = definition.instance_variable_get(:@name) || 'unknown'
+        ADK.logger.error("Configuration error during definition save for '#{agent_name_for_log}': #{e.message}")
+        raise e
+      # Catch store-specific errors (like connection issues, Redis errors, ArgumentErrors from store method)
+      rescue ADK::StoreError, ArgumentError => e
+        agent_name_for_log = definition.instance_variable_get(:@name) || 'unknown'
+        ADK.logger.error("Failed to save definition '#{agent_name_for_log}' to store: #{e.class} - #{e.message}")
+        raise e # Re-raise store/argument errors
+      rescue => e # Catch other unexpected errors
+        agent_name_for_log = definition.instance_variable_get(:@name) || 'unknown'
+        ADK.logger.error("Unexpected error saving definition '#{agent_name_for_log}' to store: #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
+        raise ADK::StoreError, "Unexpected error saving definition '#{agent_name_for_log}': #{e.message}"
+      end
+
+      # <<< ADDED BACK: Register the in-memory definition object globally >>>
+      GlobalDefinitionRegistry.register(definition)
+
+      definition # Return the definition instance
     end
     # --- End Class Method ---
 
@@ -315,8 +373,9 @@ module ADK
     # @param selected_tool_names [Array<Symbol>] List of tool names explicitly selected in the agent definition (used for MCP).
     # @param instruction [String, nil] Optional: Instructions for the agent's behavior (system prompt).
     # @param definition [ADK::AgentDefinition, nil] Optional: An agent definition object. If provided, other args are ignored.
+    # @param session_service [ADK::SessionService::Base, nil] Optional: Pre-initialized session service (used by worker).
     def initialize(name: nil, description: nil, model_name: nil, tool_classes: [], tool_paths: [], planner: nil, mcp_servers: [],
-                   fallback_mode: :error, selected_tool_names: [], instruction: nil, definition: nil)
+                   fallback_mode: :error, selected_tool_names: [], instruction: nil, definition: nil, session_service: nil)
       # --- If definition is provided, use it ---
       if definition
         raise ArgumentError, "definition must be an ADK::AgentDefinition" unless definition.is_a?(ADK::AgentDefinition)
@@ -326,15 +385,22 @@ module ADK
         @description = definition.description
         @instruction = definition.instruction
         @model_name = definition.model_name || DEFAULT_MODEL
-        # TODO: How should fallback_mode, tool_paths, mcp_servers be handled when init from definition?
-        # For now, assume they are not relevant for worker-instantiated agents.
-        @fallback_mode = :error # Default for worker?
-        tool_paths_to_load = [] # Don't load paths for worker?
-        mcp_servers_config_str = '[]'
+
+        # <<< Initialize tool_paths_to_load within definition block >>>
+        tool_paths_to_load = [] # Don't load paths for worker
+
         # Use tool_names from definition for selection logic
         selected_tool_names_symbols = definition.tool_names.to_a
+
         # Load classes directly from definition's tool_names?
         tool_classes_to_load = definition.tool_names.map { |tn| ADK::GlobalToolManager.find_class(tn) }.compact
+
+        # <<< Use provided session_service if available when init from definition >>>
+        @session_service = session_service || initialize_session_service_from_definition
+
+        # <<< FIXED: Set mcp_servers_config when initializing from definition >>>
+        # Default to empty array if not present in definition
+        mcp_servers_config_str = definition.mcp_servers || []
 
         ADK.logger.info("Initializing agent '#{@name}' from definition...")
       else
@@ -351,6 +417,9 @@ module ADK
         selected_tool_names_symbols = selected_tool_names.map(&:to_sym)
         tool_classes_to_load = tool_classes
         @definition = nil # No separate definition object in this path
+
+        # <<< Use provided session_service if available when init from args >>>
+        @session_service = session_service || initialize_session_service_from_args
 
         ADK.logger.info("Initializing agent '#{@name}' from arguments...")
       end
