@@ -11,9 +11,195 @@ require_relative 'planner'
 require_relative 'tool_registry'
 require_relative 'mcp/client'
 require_relative 'mcp/tool_wrapper'
+require 'set'
+require 'forwardable'
 
 module ADK
   class Error < StandardError; end unless defined?(ADK::Error)
+
+  # Represents the static definition of an Agent, including its name,
+  # description, instructions, tools, and model configuration.
+  class AgentDefinition
+    extend Forwardable
+
+    # @return [Symbol] The unique name identifying this agent definition.
+    attr_reader :name
+    # @return [String] A description of the agent's purpose.
+    attr_reader :description
+    # @return [String] The core instructions given to the language model.
+    attr_reader :instruction
+    # @return [Set<Symbol>] A set of names of the tools available to this agent.
+    attr_reader :tool_names
+    # @return [String, nil] The specific model name to use (e.g., "gpt-4-turbo"). Overrides global default.
+    attr_reader :model_name
+    # @return [Float, nil] The temperature setting for the model. Overrides global default.
+    attr_reader :temperature
+    # @return [Boolean] Whether this agent can be triggered by webhooks. Defaults to false.
+    attr_reader :webhook_enabled
+    # @return [Symbol, Proc, nil] The validator (name or proc) for webhook requests.
+    attr_reader :webhook_validator
+    # @return [String, nil] The secret key for webhook validation.
+    attr_reader :webhook_secret
+    # @return [Proc, nil] The transformer proc for webhook payloads.
+    attr_reader :webhook_transformer
+    # @return [Proc, nil] The session extractor proc for webhook requests.
+    attr_reader :webhook_session_extractor
+
+    # Delegate common attributes to the definition proxy for easier access during definition
+    def_delegators :@proxy, :name=, :description=, :instruction=, :use_tool, :model_name=, :temperature=,
+                   :webhook_enabled=, :webhook_validator=, :webhook_secret=, :webhook_transformer=,
+                   :webhook_session_extractor=
+
+    def initialize
+      @name = nil
+      @description = ''
+      @instruction = ''
+      @tool_names = Set.new
+      @model_name = nil
+      @temperature = nil
+      # --- Webhook Defaults ---
+      @webhook_enabled = false
+      @webhook_validator = nil
+      @webhook_secret = nil
+      @webhook_transformer = nil
+      @webhook_session_extractor = nil
+      # -----------------------
+
+      @proxy = DefinitionProxy.new(self)
+    end
+
+    # DSL method used within `Agent.define` block.
+    # @param block [Proc] The block containing the definition DSL calls.
+    def define(&block)
+      @proxy.instance_eval(&block)
+      validate!
+      self
+    end
+
+    # Validates that the definition has all required fields.
+    # @raise [ArgumentError] If validation fails.
+    def validate!
+      raise ArgumentError, 'Agent definition must have a name.' if @name.nil? || @name.to_s.strip.empty?
+      raise ArgumentError, 'Agent name must be a Symbol.' unless @name.is_a?(Symbol)
+      raise ArgumentError, "Agent '#{@name}' must have an instruction." if @instruction.nil? || @instruction.strip.empty?
+
+      if webhook_enabled
+        # raise ArgumentError, "Agent '#{@name}' enabled for webhooks must define a webhook_transformer." unless @webhook_transformer.is_a?(Proc)
+        # raise ArgumentError, "Agent '#{@name}' enabled for webhooks must define a webhook_session_extractor." unless @webhook_session_extractor.is_a?(Proc)
+        unless webhook_transformer.is_a?(Proc)
+            ADK.logger.warn { "Agent '#{@name}' is webhook_enabled but lacks a valid :webhook_transformer Proc." }
+        end
+        unless webhook_session_extractor.is_a?(Proc)
+            ADK.logger.warn { "Agent '#{@name}' is webhook_enabled but lacks a valid :webhook_session_extractor Proc." }
+        end
+
+      end
+    end
+
+    # Returns a hash representation suitable for logging or inspection.
+    # @return [Hash]
+    def to_h
+      {
+        name: @name,
+        description: @description,
+        instruction: @instruction,
+        tool_names: @tool_names.to_a,
+        model_name: @model_name,
+        temperature: @temperature,
+        webhook_enabled: @webhook_enabled,
+        webhook_validator: @webhook_validator.is_a?(Proc) ? '<Proc>' : @webhook_validator,
+        webhook_secret: @webhook_secret ? '<present>' : nil,
+        webhook_transformer: @webhook_transformer.is_a?(Proc) ? '<Proc>' : nil,
+        webhook_session_extractor: @webhook_session_extractor.is_a?(Proc) ? '<Proc>' : nil
+      }
+    end
+
+    # Internal proxy class to provide a clean DSL within the `define` block.
+    class DefinitionProxy
+      def initialize(definition)
+        @definition = definition
+      end
+
+      # Sets the agent name.
+      # @param name [Symbol] Unique identifier for the agent.
+      def name(name)
+        raise ArgumentError, 'Agent name must be a Symbol.' unless name.is_a?(Symbol)
+        @definition.instance_variable_set(:@name, name)
+      end
+
+      # Sets the agent description.
+      # @param description [String]
+      def description(description)
+        @definition.instance_variable_set(:@description, description.to_s)
+      end
+
+      # Sets the agent's core instruction.
+      # @param instruction [String]
+      def instruction(instruction)
+        @definition.instance_variable_set(:@instruction, instruction.to_s)
+      end
+
+      # Registers a tool for the agent to use.
+      # @param tool_name [Symbol] The registered name of the tool.
+      # @param options [Hash] Tool-specific options (currently unused).
+      def use_tool(tool_name, _options = {})
+        raise ArgumentError, 'Tool name must be a Symbol.' unless tool_name.is_a?(Symbol)
+        # TODO: Validate tool_name against a global registry?
+        @definition.instance_variable_get(:@tool_names) << tool_name
+      end
+
+      # Sets the specific model name for this agent.
+      # @param model_name [String, Symbol]
+      def model_name(model_name)
+        @definition.instance_variable_set(:@model_name, model_name.to_sym)
+      end
+
+      # Sets the temperature for this agent.
+      # @param temperature [Float]
+      def temperature(temperature)
+        @definition.instance_variable_set(:@temperature, temperature.to_f)
+      end
+
+      # --- Webhook Configuration DSL ---
+
+      # Enables or disables webhook triggering for this agent.
+      # @param enabled [Boolean]
+      def webhook_enabled(enabled)
+        @definition.instance_variable_set(:@webhook_enabled, !!enabled)
+      end
+
+      # Sets the validator for webhook requests.
+      # @param validator [Symbol, Proc] The name of a registered validator or a Proc.
+      def webhook_validator(validator)
+        unless validator.is_a?(Symbol) || validator.is_a?(Proc)
+          raise ArgumentError, 'webhook_validator must be a Symbol or a Proc.'
+        end
+        @definition.instance_variable_set(:@webhook_validator, validator)
+      end
+
+      # Sets the secret key for webhook validation.
+      # @param secret [String]
+      def webhook_secret(secret)
+        @definition.instance_variable_set(:@webhook_secret, secret.to_s)
+      end
+
+      # Sets the transformer proc for webhook payloads.
+      # @param transformer_proc [Proc]
+      def webhook_transformer(transformer_proc)
+        raise ArgumentError, 'webhook_transformer must be a Proc.' unless transformer_proc.is_a?(Proc)
+        @definition.instance_variable_set(:@webhook_transformer, transformer_proc)
+      end
+
+      # Sets the session extractor proc for webhook requests.
+      # @param extractor_proc [Proc]
+      def webhook_session_extractor(extractor_proc)
+        raise ArgumentError, 'webhook_session_extractor must be a Proc.' unless extractor_proc.is_a?(Proc)
+        @definition.instance_variable_set(:@webhook_session_extractor, extractor_proc)
+      end
+      # -----------------------------
+    end
+    private_constant :DefinitionProxy
+  end
 
   # Agent class represents an AI agent that can perform tasks using tools and a planner.
   # It operates within the context of a session managed by a SessionService.
@@ -21,7 +207,7 @@ module ADK
     DEFAULT_MODEL = 'gemini-2.0-flash' # Updated default model
 
     attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode,
-                :instruction
+                :instruction, :definition
 
     # --- Builder Class for `define` method ---
     class AgentBuilder
