@@ -9,6 +9,7 @@ require_relative 'adk/version'
 # --- Central ADK Logger Configuration ---
 module ADK
   @logger = nil
+  @configuration = nil # Add instance variable to hold config
 
   # Default Redis connection options (used by SessionService and Sidekiq)
   @redis_options = {
@@ -73,10 +74,21 @@ module ADK
   end
 
   # Configure ADK settings
+  # Initializes and yields the configuration object.
   def self.configure
-    yield self
-    # Reconfigure Sidekiq if Redis settings change
+    # Initialize configuration only once
+    @configuration ||= ADK::Configuration.new
+    yield @configuration # Yield the instance
+    # Reconfigure Sidekiq if Redis settings change after yield
     configure_sidekiq
+  end
+
+  # Returns the singleton configuration instance.
+  # Ensures configuration is initialized if not already done.
+  # @return [ADK::Configuration]
+  def self.config
+    # Ensure configuration exists, initializing if necessary
+    @configuration ||= ADK::Configuration.new
   end
 
   # Accessors for Redis config
