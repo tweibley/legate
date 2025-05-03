@@ -14,12 +14,6 @@ module ADK
     # @return [ADK::SessionService::Base] The service used to manage agent session state.
     attr_accessor :session_service
 
-    # @return [String, nil] Optional default OpenAI API key.
-    attr_accessor :openai_api_key
-
-    # @return [String, nil] Optional default OpenAI organization ID.
-    attr_accessor :openai_organization_id
-
     # @return [Symbol] Default model name to use if not specified in agent definition.
     attr_accessor :default_model_name
 
@@ -33,8 +27,6 @@ module ADK
       # Set defaults
       @definition_store = ADK::DefinitionStore::RedisStore.new(Redis.new(ADK.redis_options))
       @session_service = ADK::SessionService::InMemory.new
-      @openai_api_key = ENV['OPENAI_API_KEY']
-      @openai_organization_id = ENV['OPENAI_ORGANIZATION_ID']
       @default_model_name = 'gemini-1.5-flash'
       @default_temperature = 0.7
       @webhooks = ADK::Configuration::Webhooks.new
