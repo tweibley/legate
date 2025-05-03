@@ -1016,6 +1016,9 @@ module ADK
 
     # Connects to all configured MCP servers.
     def connect_mcp_servers
+      # Return early if no MCP servers configured
+      return if @mcp_servers_config.nil? || @mcp_servers_config.empty?
+      
       @mcp_servers_config.each do |config|
         # Transform keys to symbols for the client
         symbolized_config = config.transform_keys(&:to_sym)
@@ -1052,6 +1055,8 @@ module ADK
 
     # Disconnects all active MCP clients.
     def disconnect_mcp_servers
+      return if @mcp_clients.nil? || @mcp_clients.empty?
+      
       @mcp_clients.each do |client|
         begin
           ADK.logger.info("Disconnecting MCP client...")
