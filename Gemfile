@@ -30,9 +30,8 @@ group :test do
   gem 'simplecov', require: false
   gem 'redis-client', '>= 0.22.1' # For testing Redis session service
   gem 'rack-test' # Added for Sinatra/Rack app testing
+  gem "sidekiq"
 end
-
-gem "sidekiq"
 
 gem "fast-mcp", '~> 1.1.0'
 

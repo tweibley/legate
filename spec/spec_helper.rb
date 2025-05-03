@@ -4,20 +4,23 @@ require 'bundler/setup'
 require 'simplecov'
 require 'dotenv/load'
 
-SimpleCov.start do
-  # Exclude spec files and vendor directory from coverage report
-  add_filter '/spec/'
-  add_filter '/vendor/'
-  add_filter '/config/'
-  add_filter '/.bundle/'
-  add_filter 'bin/'
-  add_filter 'coverage/'
-  add_filter '/examples/' # Exclude examples
-
-  # Enable branch coverage and check coverage (optional: set minimums)
-  enable_coverage :branch
-  # minimum_coverage line: 90, branch: 80 # Uncomment to enforce coverage minimums
+SimpleCov.profiles.define 'adk' do
+  add_filter 'lib/adk/web/app.rb'
+  add_group 'Tools', 'lib/adk/tools'
+  add_group 'Workers', 'lib/adk/workers'
+  add_group 'Agents', 'lib/adk/agents'
+  add_group 'Events', 'lib/adk/events'
+  add_group 'Stores', 'lib/adk/stores'
+  add_group 'Utils', 'lib/adk/utils'
+  add_group 'Examples', 'examples'
+  add_group 'MCP', 'lib/adk/mcp'
+  add_group 'CLI', 'lib/adk/cli'
+  add_group 'Errors', 'lib/adk/errors'
+  add_group 'Session Service', 'lib/adk/session_service'
+  add_group 'Web', 'lib/adk/web'
 end
+
+SimpleCov.start 'adk'
 
 # --- Load ADK Library ---
 require 'adk'
