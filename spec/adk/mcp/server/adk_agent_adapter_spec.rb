@@ -13,20 +13,26 @@ require 'adk/tool_registry' # Need for mocking
 require 'securerandom' # Need for mocking
 require 'adk/global_tool_manager' # Added require
 require 'adk/agent' # Make sure Agent class is loaded for stub_const
+require 'adk/definition_store/redis_store' # To mock its interface
 
 RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
   let(:logger_spy) { spy('Logger') }
   let(:agent_name) { 'test_agent' }
   let(:session_service_instance) { ADK::SessionService::InMemory.new }
   let(:mock_redis) { instance_double(Redis, ping: true) } # Renamed for clarity
-  let(:global_tool_manager_double) { class_double(ADK::GlobalToolManager).as_stubbed_const } # Use this for mocking
+  let(:global_tool_manager_double) {
+    class_double(ADK::GlobalToolManager).as_stubbed_const(transfer_nested_constants: true)
+  } # Use this for mocking
   let(:agent_class_double) { class_double(ADK::Agent).as_stubbed_const }
   let(:agent_instance_double) { instance_double(ADK::Agent, start: nil, stop: nil, running?: false) }
   let(:session_double) { instance_double(ADK::Session, id: 'temp_session_123') }
   let(:securerandom_double) { class_double(SecureRandom).as_stubbed_const }
+  let(:redis_store_double) { instance_double(ADK::DefinitionStore::RedisStore) }
+  let(:adk_config_double) { instance_double(ADK::Configuration, definition_store: redis_store_double) }
 
   before do
-    allow(ADK::Mcp).to receive(:logger).and_return(logger_spy)
+    allow(ADK).to receive(:logger).and_return(logger_spy)
+    allow(ADK).to receive(:config).and_return(adk_config_double)
     allow(Redis).to receive(:new).and_return(mock_redis) # Mock redis connection used by class & instance methods
     # Default successful agent load
     allow(mock_redis).to receive(:hmget)
@@ -44,6 +50,14 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     # Default SecureRandom mock - allow both hex and uuid
     allow(securerandom_double).to receive(:hex).with(4).and_return('abcd') # Consistent temp user id
     allow(securerandom_double).to receive(:uuid).and_return('mock-uuid-123') # Needed for Event initialization
+    # Allow necessary methods on the double
+    allow(global_tool_manager_double).to receive(:find_class).with(:tool_a).and_return(Class.new) # Stub for the tool in mocked redis def
+    allow(global_tool_manager_double).to receive(:reset!) # Allow reset!
+    allow(global_tool_manager_double).to receive(:register_tool) # Allow registration attempts
+
+    # This setup for :mock_adapter_tool might not be needed if tests mock redis correctly
+    # class MockAdapterTool < ADK::Tool; self.explicit_tool_name = :mock_adapter_tool; end unless defined?(MockAdapterTool)
+    # allow(global_tool_manager_double).to receive(:find_class).with(:mock_adapter_tool).and_return(MockAdapterTool)
   end
 
   describe '.wrap' do

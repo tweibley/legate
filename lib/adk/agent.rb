@@ -248,7 +248,7 @@ module ADK
       # Adds native tool classes directly.
       # @param classes [Class, Array<Class>] One or more classes inheriting from ADK::Tool.
       def add_tool_classes(*classes)
-        @tool_classes.concat(Array(classes).flatten.compact.uniq)
+        @tool_classes.concat(Array(classes).flatten.compact)
       end
 
       # Builds the Agent instance using the collected configuration.
@@ -360,33 +360,42 @@ module ADK
       @tool_registry = ADK::ToolRegistry.new
       ADK.logger.debug("Agent '#{@name}' created its ToolRegistry instance: #{@tool_registry.object_id}")
 
-      initial_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
-
+      # 1. Discover tools from paths (if any) and update GlobalToolManager
+      newly_discovered_tool_names = Set.new
       unless tool_paths_to_load.empty?
+        initial_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
         _discover_and_load_tools(tool_paths_to_load)
+        current_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
+        newly_discovered_tool_names = current_global_tools - initial_global_tools
+        ADK.logger.debug("[Agent Init '#{@name}'] Newly discovered tool names: #{newly_discovered_tool_names.to_a.inspect}")
       end
 
-      current_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
-      newly_discovered_tool_names = (current_global_tools - initial_global_tools).to_a
-      ADK.logger.debug("[Agent Init '#{@name}'] Initial global tools: #{initial_global_tools.inspect}")
-      ADK.logger.debug("[Agent Init '#{@name}'] Current global tools: #{current_global_tools.inspect}")
-      ADK.logger.debug("[Agent Init '#{@name}'] Newly discovered tool names: #{newly_discovered_tool_names.inspect}")
+      # 2. Register tool *classes* passed directly (via add_tool_classes or from definition)
+      ADK.logger.debug("[Agent Init '#{@name}'] Registering explicitly provided tool classes: #{tool_classes_to_load.inspect}")
+      tool_classes_to_load.each do |tool_class|
+        ADK.logger.debug("[Agent Init '#{@name}'] Processing class from builder: #{tool_class.inspect} (Object ID: #{tool_class.object_id})")
+        register_tool_class(tool_class) # Use the agent's specific register method
+      end
 
-      # Register tool *classes* passed directly or loaded from definition
-      tool_classes_to_load.each { |tool_class| register_tool_class(tool_class) }
-
-      ADK.logger.debug("[Agent Init '#{@name}'] Adding newly discovered tools: #{newly_discovered_tool_names.inspect}")
+      # 3. Register newly *discovered* tool classes (from paths) that weren't explicitly passed
+      ADK.logger.debug("[Agent Init '#{@name}'] Registering newly discovered tool classes (from paths): #{newly_discovered_tool_names.to_a.inspect}")
       newly_discovered_tool_names.each do |tool_name|
-        ADK.logger.debug("[Agent Init '#{@name}'] Processing discovered tool: #{tool_name.inspect}")
         tool_class = ADK::GlobalToolManager.find_class(tool_name)
         if tool_class
-          ADK.logger.debug("[Agent Init '#{@name}'] Found class #{tool_class} for #{tool_name.inspect}, attempting register_tool_class...")
-          register_tool_class(tool_class) # Register the class in the agent's registry
+          # Check if already registered from step 2 before registering again
+          unless @tool_registry.find_class(tool_name)
+            ADK.logger.debug("[Agent Init '#{@name}'] Registering discovered tool #{tool_name.inspect} (class: #{tool_class})...")
+            register_tool_class(tool_class) # Use the agent's specific register method
+          else
+            ADK.logger.debug("[Agent Init '#{@name}'] Skipping registration of discovered tool #{tool_name.inspect}, already registered via explicit classes.")
+          end
         else
-          ADK.logger.error("[Agent Init '#{@name}'] Failed to find class for discovered tool '#{tool_name}' in GlobalToolManager.")
+          # This case should be rare now due to _discover_and_load_tools logic
+          ADK.logger.error("[Agent Init '#{@name}'] Failed to find class for discovered tool '#{tool_name}' in GlobalToolManager during agent init.")
         end
       end
 
+      # 4. Register mandatory tools like CheckJobStatusTool if needed
       if defined?(Sidekiq)
         unless @tool_registry.find_class(:check_job_status)
           begin
@@ -498,6 +507,7 @@ module ADK
     # @param tool_class [Class] The tool class to register (must inherit from ADK::Tool).
     # @return [Boolean] True if registration was successful, false otherwise.
     def register_tool_class(tool_class)
+      ADK.logger.debug("[register_tool_class] Registering class: #{tool_class.inspect} (Object ID: #{tool_class.object_id})")
       # Basic validation
       unless tool_class < ADK::Tool
         ADK.logger.error("Agent '#{name}': Attempted to register invalid object (must inherit from ADK::Tool): #{tool_class.inspect}")
@@ -505,12 +515,13 @@ module ADK
       end
 
       # Get name via metadata method
-      metadata = tool_class.tool_metadata
-      tool_name = metadata[:name]&.to_sym
+      metadata = tool_class.tool_metadata # <-- Revert to getting metadata hash first
+      tool_name = metadata[:name]&.to_sym # <-- Revert to checking :name key
+      ADK.logger.debug("[register_tool_class] Determined tool name: #{tool_name.inspect} for class #{tool_class.inspect}")
 
       unless tool_name
         # Use logger method, not direct access
-        ADK.logger.error("Agent '#{name}': Tool class #{tool_class} missing name in its metadata. Cannot register.")
+        ADK.logger.error("Agent '#{name}': Tool class #{tool_class} missing name in its metadata. Cannot register.") # <-- Revert error message
         return false
       end
 

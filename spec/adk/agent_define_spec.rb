@@ -24,7 +24,11 @@ RSpec.describe ADK::Agent, ".define" do
   let(:tool_path) { 'spec/adk/fixtures/tools/dir_a' } # Path with FixtureToolA
   let(:another_path) { 'spec/adk/fixtures/tools/dir_b' } # Path with FixtureToolB
   let(:tool_class) { MockDefineTool }
-  let(:another_tool_class) { AnotherMockTool }
+
+  # Add a before block to reset the global manager specifically for this file
+  before(:each) do
+    ADK::GlobalToolManager.reset!
+  end
 
   it "creates an agent instance with the configured attributes" do
     agent = ADK::Agent.define do |a|
@@ -79,6 +83,14 @@ RSpec.describe ADK::Agent, ".define" do
   # Since discover_tools_in can be difficult to test reliably,
   # let's focus on testing that the agent can handle multiple tool_classes
   it "handles multiple calls to add_tool_classes" do
+    # Define AnotherMockTool locally for this test
+    unless defined?(AnotherMockToolForTest)
+      class AnotherMockToolForTest < ADK::Tool
+        tool_description "Another mock tool for this test."
+        self.explicit_tool_name = :another_mock_tool # Use the original name
+      end
+    end
+
     # Define fixture tools directly in the test
     unless defined?(FixtureToolA)
       class FixtureToolA < ADK::Tool
@@ -109,13 +121,13 @@ RSpec.describe ADK::Agent, ".define" do
       a.name = agent_name
       a.description = agent_description
       a.add_tool_classes tool_class, FixtureToolA # First batch of tools
-      a.add_tool_classes another_tool_class, FixtureToolB # Second batch of tools
+      a.add_tool_classes AnotherMockToolForTest, FixtureToolB # Second batch of tools - use local class
     end
 
     # Verify the tools were registered with the agent
     expect(agent.find_tool_class(:fixture_tool_a)).to eq(FixtureToolA)
     expect(agent.find_tool_class(:fixture_tool_b)).to eq(FixtureToolB)
     expect(agent.find_tool_class(:mock_define_tool)).to eq(tool_class)
-    expect(agent.find_tool_class(:another_mock_tool)).to eq(another_tool_class)
+    expect(agent.find_tool_class(:another_mock_tool)).to eq(AnotherMockToolForTest) # Check against local class
   end
 end
