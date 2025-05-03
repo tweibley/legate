@@ -86,7 +86,7 @@ module ADK
         ADK.logger.error("WebhookJobWorker failed: Could not find definition for agent '#{agent_name_sym}'. Error: #{e.message}")
         # Non-retryable error for this job if definition is gone.
         raise # Re-raise to let Sidekiq handle retries/dead set based on config
-      rescue ADK::SessionService::SessionError => e
+      rescue ADK::SessionError => e
         ADK.logger.error("WebhookJobWorker failed: Session service error for session '#{session_id}'. Error: #{e.message}")
         raise # Retryable?
       rescue NotImplementedError => e # Catch session service type error
