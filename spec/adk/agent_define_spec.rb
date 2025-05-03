@@ -76,44 +76,43 @@ RSpec.describe ADK::Agent, ".define" do
     end.to raise_error(ArgumentError, /Agent description must be set/)
   end
 
-  it "handles multiple calls to discover_tools_in and add_tool_classes" do
-    # Manual approach - let's directly register the needed tools with the agent
-    # First load the fixture tools into memory
-    require 'adk/tool'
-    
-    # Define the fixture tools directly in the test if they're not already defined
+  # Since discover_tools_in can be difficult to test reliably,
+  # let's focus on testing that the agent can handle multiple tool_classes
+  it "handles multiple calls to add_tool_classes" do
+    # Define fixture tools directly in the test
     unless defined?(FixtureToolA)
       class FixtureToolA < ADK::Tool
         self.explicit_tool_name = :fixture_tool_a
-        tool_description 'Fixture Tool A from Dir A'
+        tool_description 'Fixture Tool A'
         parameter :param_a, type: :string, required: true
-      
+
         def perform_execution(params, context)
           { status: :success, result: "Fixture A processed: #{params[:param_a]}" }
         end
       end
     end
-    
+
     unless defined?(FixtureToolB)
       class FixtureToolB < ADK::Tool
         self.explicit_tool_name = :fixture_tool_b
-        tool_description 'Fixture Tool B from Dir B'
+        tool_description 'Fixture Tool B'
         parameter :param_b, type: :integer
-      
+
         def perform_execution(params, context)
           { status: :success, result: "Fixture B processed: #{params[:param_b]}" }
         end
       end
     end
-    
-    # Create our agent
+
+    # Create an agent with multiple add_tool_classes calls
     agent = ADK::Agent.define do |a|
       a.name = agent_name
       a.description = agent_description
-      a.add_tool_classes tool_class, another_tool_class, FixtureToolA, FixtureToolB
+      a.add_tool_classes tool_class, FixtureToolA # First batch of tools
+      a.add_tool_classes another_tool_class, FixtureToolB # Second batch of tools
     end
-    
-    # Verify all tools were registered with the agent
+
+    # Verify the tools were registered with the agent
     expect(agent.find_tool_class(:fixture_tool_a)).to eq(FixtureToolA)
     expect(agent.find_tool_class(:fixture_tool_b)).to eq(FixtureToolB)
     expect(agent.find_tool_class(:mock_define_tool)).to eq(tool_class)
