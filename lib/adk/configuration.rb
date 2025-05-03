@@ -1,0 +1,47 @@
+require 'adk/agent'
+require 'adk/definition_store/filesystem'
+require 'adk/session_service/memory'
+require 'adk/configuration/webhooks'
+require 'adk/configuration/logging'
+
+module ADK
+  # Central configuration object for the ADK framework.
+  # Access via `ADK.config` after calling `ADK.configure`.
+  class Configuration
+    # @return [ADK::DefinitionStore::Base] The store used to load agent definitions.
+    attr_accessor :definition_store
+
+    # @return [ADK::SessionService::Base] The service used to manage agent session state.
+    attr_accessor :session_service
+
+    # @return [String, nil] Optional default OpenAI API key.
+    attr_accessor :openai_api_key
+
+    # @return [String, nil] Optional default OpenAI organization ID.
+    attr_accessor :openai_organization_id
+
+    # @return [Symbol] Default model name to use if not specified in agent definition.
+    attr_accessor :default_model_name
+
+    # @return [Float] Default temperature to use if not specified in agent definition.
+    attr_accessor :default_temperature
+
+    # @return [ADK::Configuration::Logging] Logging configuration.
+    attr_reader :logging
+
+    # @return [ADK::Configuration::Webhooks] Webhook configuration.
+    attr_reader :webhooks
+
+    def initialize
+      # Set defaults
+      @definition_store = ADK::DefinitionStore::Filesystem.new(File.join(Dir.pwd, 'agents'))
+      @session_service = ADK::SessionService::Memory.new
+      @openai_api_key = ENV['OPENAI_API_KEY']
+      @openai_organization_id = ENV['OPENAI_ORGANIZATION_ID']
+      @default_model_name = :gpt_4o_mini
+      @default_temperature = 0.7
+      @logging = ADK::Configuration::Logging.new
+      @webhooks = ADK::Configuration::Webhooks.new
+    end
+  end
+end 
