@@ -565,20 +565,81 @@ module ADK
       @tool_registry.find_class(tool_name.to_sym)
     end
 
-    # @return [ADK::AgentTaskResult] The result of the task execution.
-    # @raise [NotImplementedError] Subclasses might override this, or a default implementation is needed.
+    # @return [ADK::Event] The final agent event.
     def run_task(session_id:, user_input:, session_service:)
-      # TODO: Implement the core logic for running a task based on definition
-      # - Get/create session using session_service
-      # - Format messages (instruction, history, user_input)
-      # - Call appropriate LLM client (needs client injection/configuration)
-      # - Handle tool calls
-      # - Append results to session
-      # - Return result object
-      # raise NotImplementedError, "'run_task' must be implemented by the framework or specific agent subclasses."
-      ADK.logger.warn("ADK::Agent#run_task called but not fully implemented.")
-      # Return a dummy success event for now to allow worker test flow
-      ADK::Event.new(role: :agent, content: { status: :success, result: "Task processed (dummy)" })
+      # --- Pre-execution Checks --- #
+      unless running?
+        err_msg = "Agent '#{name}' runtime is not active (stopped)."
+        ADK.logger.error(err_msg)
+        return ADK::Event.new(role: :agent, content: { status: :error, error_message: err_msg })
+      end
+
+      session = session_service.get_session(session_id: session_id)
+      unless session
+        err_msg = "Session not found: #{session_id}"
+        ADK.logger.error(err_msg)
+        # Even if session isn't found, return an event for consistency?
+        return ADK::Event.new(role: :agent, content: { status: :error, error_message: err_msg })
+      end
+      # --------------------------- #
+
+      # --- Log User Input --- #
+      user_event = ADK::Event.new(role: :user, content: user_input)
+      session_service.append_event(session_id: session_id, event: user_event)
+      # ---------------------- #
+
+      # --- Prepare for Planner --- #
+      # Combine system instruction + history + latest input
+      # (Assuming planner needs a simple string or specific format)
+      # TODO: Refine message formatting based on Planner requirements
+      history = session.events.map { |e|
+        "#{e.role}: #{e.content.is_a?(Hash) ? e.content.inspect : e.content}"
+      }.join("\n")
+      planner_input = [self.instruction, history, "user: #{user_input}"].compact.join("\n\n")
+      # ------------------------- #
+
+      # --- Plan and Execute --- #
+      final_agent_event = nil
+      begin
+        plan = @planner.plan(planner_input)
+        execution_result = execute_plan(plan, session, session_service)
+
+        # --- Create Final Agent Event --- #
+        # execution_result = { details: plan_details, last_result: original_hash_or_nil }
+        final_content = execution_result[:last_result] || execution_result[:details]
+
+        # Merge plan details into the final content if it's a hash
+        if final_content.is_a?(Hash)
+          final_content = final_content.merge(plan_details: execution_result[:details])
+        else # Should not happen if execute_plan returns error hash correctly
+          ADK.logger.error("Unexpected result format from execute_plan: #{final_content.inspect}")
+          final_content = { status: :error, error_message: "Internal error processing plan result.",
+                            result: final_content }
+          final_content = final_content.merge(plan_details: execution_result[:details]) if execution_result[:details]
+        end
+
+        final_agent_event = ADK::Event.new(role: :agent, content: final_content)
+        # ---------------------------- #
+      rescue StandardError => e
+        # Handle critical errors during planning or execution itself
+        ADK.logger.error("Critical error during run_task for session '#{session_id}': #{e.class} - #{e.message}\nBacktrace: #{e.backtrace.join("\n")}")
+        error_content = { status: :error, error_message: "An internal error occurred: #{e.message}" }
+        # Attempt to add plan details if available from a partial execution
+        # error_content = error_content.merge(plan_details: execution_result[:details]) if execution_result && execution_result[:details]
+        final_agent_event = ADK::Event.new(role: :agent, content: error_content)
+      end
+      # ------------------------ #
+
+      # --- Log Final Agent Event --- #
+      begin
+        session_service.append_event(session_id: session_id, event: final_agent_event)
+      rescue StandardError => e
+        # Log failure to append the *final* event, but still return it
+        ADK.logger.error("Failed to append final agent event for session '#{session_id}': #{e.class} - #{e.message}")
+      end
+      # --------------------------- #
+
+      return final_agent_event
     end
 
     private
@@ -713,10 +774,10 @@ module ADK
         sanitized_result_for_plan = {}
         if current_result_hash.is_a?(Hash)
           sanitized_result_for_plan[:status] = current_result_hash[:status]
-          sanitized_result_for_plan[:error_message] =
-            current_result_hash[:error_message] if current_result_hash.key?(:error_message)
-          sanitized_result_for_plan[:error_class] =
-            current_result_hash[:error_class] if current_result_hash.key?(:error_class)
+          # Always include error keys, defaulting to nil if not present
+          sanitized_result_for_plan[:error_message] = current_result_hash[:error_message] # Defaults to nil if key missing
+          sanitized_result_for_plan[:error_class] = current_result_hash[:error_class] # Defaults to nil if key missing
+          # Include other relevant keys if present
           sanitized_result_for_plan[:job_id] = current_result_hash[:job_id] if current_result_hash.key?(:job_id)
           sanitized_result_for_plan[:message] = current_result_hash[:message] if current_result_hash.key?(:message)
           # Only include :result value if it's simple
