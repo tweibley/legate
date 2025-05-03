@@ -282,16 +282,19 @@ end
 
 ## 9. Deployment Considerations
 
-*   **Listener Process:** Run the Sinatra/Rack listener application as a separate process (e.g., via `puma`, `unicorn`) managed by a process supervisor (e.g., `systemd`, `foreman`). Include it in your `Procfile`.
+*   **Development Environment:** For development, the recommended approach is to run the Webhook Listener *within* the main ADK Web UI process started by the existing `adk web start` CLI command. This is achieved by conditionally mounting the Webhook Listener Rack application within the main application's `config.ru` (or equivalent Rack setup).
+*   **Production Environment:**
+    *   **Option A (Standalone):** Run the Sinatra/Rack listener application as a separate, dedicated process (e.g., via `puma`, `unicorn`) managed by a process supervisor (e.g., `systemd`). This provides better isolation and independent scaling for webhook handling.
+    *   **Option B (Mounted):** Continue mounting the listener within the main web application process if resource usage and security posture allow.
 *   **Sidekiq Workers:** Run one or more Sidekiq worker processes configured to listen to the `adk_webhooks` queue (or relevant queues).
-*   **Dependencies:** Ensure the listener and worker environments have access to necessary gems (ADK, Sinatra, Sidekiq, Redis client, etc.) and configurations (environment variables).
+*   **Dependencies:** Ensure the listener (whether standalone or mounted) and worker environments have access to necessary gems (ADK, Sinatra, Sidekiq, Redis client, etc.) and configurations (environment variables).
 
 ## 10. Developer Experience
 
-*   Provide a `rake` task or CLI command (e.g., `bundle exec adk start_webhook_listener`) to easily run the listener.
-*   Offer clear documentation for central configuration (`ADK.configure`), defining agent webhook metadata, implementing validators/transformers, and deployment.
-*   Include example webhook-enabled agent definitions.
-*   Consider a generator command (e.g., `adk generate agent my_agent --webhook-enabled`) to scaffold an agent definition file with placeholder webhook metadata.
+*   **Simplified Startup (Dev):** Use the existing `adk web start` command (or equivalent). In development mode, this single command will start both the main Web UI and the integrated Webhook Listener (if enabled in config).
+*   **Clear Documentation:** Provide documentation for central configuration (`ADK.configure`), defining agent webhook metadata, implementing validators/transformers, deployment options (dev vs. prod), and examples.
+*   **Examples:** Include example webhook-enabled agent definitions.
+*   **Generator:** Consider a generator command (e.g., `adk generate agent my_agent --webhook-enabled`) to scaffold an agent definition file with placeholder webhook metadata.
 
 ## 11. Future Considerations
 
@@ -380,13 +383,14 @@ Testing this feature requires a multi-layered approach:
     *   [ ] Update `ADK::Agent` or `ADK::DefinitionStore` accordingly.
     *   [ ] Add unit tests for metadata access.
 3.  **Webhook Listener (Rack App):**
-    *   [ ] Create a basic Sinatra/Rack application (`ADK::Web::WebhookListener`?).
+    *   [ ] Create a basic Sinatra/Rack application (`ADK::Web::WebhookListener`).
     *   [ ] Implement logic to read ADK configuration for listener settings (port, address, base path).
     *   [ ] Implement routing logic:
         *   Mount static routes defined in config.
         *   Mount dynamic agent handler if enabled, using the configured pattern.
     *   [ ] Implement request body parsing (JSON primarily). Ensure body is rewindable.
-    *   [ ] Implement basic error handling middleware (catch errors, return appropriate HTTP status codes).
+    *   [ ] Implement basic error handling middleware.
+    *   **[ ] Modify `config.ru` (or equivalent Rack setup used by `adk web start`): Conditionally mount `ADK::Web::WebhookListener` at `config.webhooks.base_path` based on `config.webhooks.listener_enabled` and development/test environment.**
 4.  **Dynamic Agent Handler:**
     *   [ ] Implement the handler logic triggered by the dynamic route pattern.
     *   [ ] Extract `agent_name` from the request path.
@@ -412,8 +416,8 @@ Testing this feature requires a multi-layered approach:
     *   [ ] Add unit tests for worker logic (mocking dependencies).
 6.  **Integration & Plumbing:**
     *   [ ] Ensure Sidekiq is a dependency (potentially optional, guarded).
-    *   [ ] Provide a way to start the listener (e.g., `rake adk:webhooks:start_listener` task or CLI command).
-    *   [ ] Add integration tests using `rack-test` and `Sidekiq::Testing`.
+    *   **[ ] Verify `adk web start` command correctly boots the combined app (UI + Listener) in development mode.**
+    *   [ ] Add integration tests using `rack-test` (targeting the mounted app) and `Sidekiq::Testing`.
 7.  **Documentation:**
     *   [ ] Update `README.md` with overview of webhook features.
     *   [ ] Write detailed documentation on configuring the listener (`ADK.configure`).
@@ -422,5 +426,3 @@ Testing this feature requires a multi-layered approach:
     *   [ ] Document deployment considerations (running listener, workers).
 8.  **CLI Generator (Optional):**
     *   [ ] Implement `adk generate agent <name> --webhook-enabled` command to scaffold agent definition with webhook metadata placeholders.
-
-</rewritten_file> 
