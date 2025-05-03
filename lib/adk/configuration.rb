@@ -35,7 +35,7 @@ module ADK
       @session_service = ADK::SessionService::InMemory.new
       @openai_api_key = ENV['OPENAI_API_KEY']
       @openai_organization_id = ENV['OPENAI_ORGANIZATION_ID']
-      @default_model_name = :gpt_4o_mini
+      @default_model_name = 'gemini-1.5-flash'
       @default_temperature = 0.7
       @webhooks = ADK::Configuration::Webhooks.new
     end
