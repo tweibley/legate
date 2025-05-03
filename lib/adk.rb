@@ -5,17 +5,15 @@ require 'dotenv/load' if File.exist?('.env') # Load early for ENV vars
 require 'logger'
 require 'sidekiq'
 require_relative 'adk/version'
-require_relative 'adk/configuration' # Require Configuration class early
 
-# --- Central ADK Module --- 
+# --- Eager Logger Initialization (Moved BEFORE other ADK requires) ---
 module ADK
-  # --- Eager Logger Initialization ---
   @logger = begin
     default_level = ENV['RACK_ENV'] == 'development' ? 'DEBUG' : 'WARN'
     level_str = ENV['ADK_LOG_LEVEL']&.upcase || default_level
     log_target = $stdout
     if ['NONE', 'SILENT'].include?(level_str)
-      log_target = IO::NULL 
+      log_target = IO::NULL
       level = Logger::FATAL + 1
     else
       level = case level_str
@@ -31,15 +29,24 @@ module ADK
     logger_instance.level = level
     logger_instance.formatter = proc { |severity, _, _, msg| "#{severity}: #{msg}\n" }
     unless ['NONE', 'SILENT'].include?(level_str)
-      # Use puts here as logger might not be fully ready for complex formatting?
       puts "--> ADK Logger initialized with level: #{level_str}, target: #{log_target == IO::NULL ? 'NULL' : 'STDOUT'}"
     end
     logger_instance
   end
-  # --- End Eager Logger Initialization ---
-  
-  @configuration = nil 
 
+  # --- Define Logger Accessor Method EARLY ---
+  def self.logger
+    @logger
+  end
+end
+# --- End Eager Logger Initialization & Accessor ---
+
+# --- NOW Require Configuration (Depends on Logger for its own initialization maybe?) ---
+require_relative 'adk/configuration'
+
+# --- Central ADK Module (Reopened) ---
+module ADK
+  @configuration = nil
   @redis_options = {
     url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0')
   }
@@ -64,26 +71,19 @@ module ADK
     end
   end
 
-  # Access the eagerly initialized logger
-  def self.logger
-    @logger
-  end
-
   # Configure ADK settings
   def self.configure
     # Initialize configuration only once
-    @configuration ||= ADK::Configuration.new
+    @configuration ||= ADK::Configuration.new # Configuration class is now loaded
     yield @configuration # Yield the instance
     # Reconfigure Sidekiq if Redis settings change after yield
     configure_sidekiq
   end
 
   # Returns the singleton configuration instance.
-  # Ensures configuration is initialized if not already done.
-  # @return [ADK::Configuration]
   def self.config
     # Ensure configuration exists, initializing if necessary
-    @configuration ||= ADK::Configuration.new
+    @configuration ||= ADK::Configuration.new # Configuration class is now loaded
   end
 
   # Accessors for Redis config
@@ -98,31 +98,28 @@ module ADK
 
   # --- Sidekiq Configuration ---
   def self.configure_sidekiq
+    # Ensure logger is available before trying to use it
+    current_logger = ADK.logger
     Sidekiq.configure_client do |config|
-      config.redis = @redis_options.dup # Use a dup to avoid modification issues
-      logger.info("Sidekiq client configured with Redis: #{@redis_options[:url]}")
+      config.redis = @redis_options.dup
+      current_logger.info("Sidekiq client configured with Redis: #{@redis_options[:url]}") if current_logger
     end
-    # Optional: Configure server as well, though ADK itself doesn't run the server.
-    # Sidekiq.configure_server do |config|
-    #   config.redis = @redis_options.dup
-    #   logger.info("Sidekiq server configured with Redis: #{@redis_options[:url]}")
-    # end
   rescue Redis::CannotConnectError => e
-    logger.error("Sidekiq failed to configure Redis client: #{e.message}")
-    # Decide whether to raise or just log. Logging might be safer for library use.
+    current_logger.error("Sidekiq failed to configure Redis client: #{e.message}") if current_logger
+  rescue => e # Catch potential NoMethodError if logger is somehow still nil
+    puts "[WARN] Error configuring Sidekiq, logger might not be available: #{e.message}"
   end
-  # --- End Sidekiq Configuration ---
 end
 
-# --- Initial Sidekiq Configuration Call (Depends on Logger being ready) ---
+# --- Initial Sidekiq Configuration Call (Logger is now guaranteed) ---
 ADK.configure_sidekiq
 
-# --- Require components AFTER core module setup (Logger, Config, etc.) ---
+# --- Require rest of components ---
 require_relative 'adk/errors'
 require_relative 'adk/event'
 require_relative 'adk/session'
-require_relative 'adk/tool_context' 
-require_relative 'adk/tool' # Now logger is ready before this require
+require_relative 'adk/tool_context'
+require_relative 'adk/tool' # Logger is definitely ready now
 require_relative 'adk/tool_registry'
 require_relative 'adk/global_tool_manager'
 require_relative 'adk/planner'
@@ -133,7 +130,7 @@ require_relative 'adk/mcp'
 require_relative 'adk/agent'
 require_relative 'adk/cli'
 
-# Tools (Can now safely inherit and use ADK.logger)
+# Tools
 require_relative 'adk/tools/base/http_client'
 require_relative 'adk/tools/webhook_tool'
 require_relative 'adk/tools/agent_tool'
@@ -146,7 +143,7 @@ require_relative 'adk/tools/check_job_status_tool'
 require_relative 'adk/tools/sleepy_tool'
 
 module ADK
-  class Error < StandardError; end
-  # Define SessionService module base for namespacing
+  # Reopen module if needed for final definitions
+  # class Error < StandardError; end # Already defined
   module SessionService; end
 end

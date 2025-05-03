@@ -54,13 +54,12 @@ RSpec.describe "Webhook Integration" do
   # --- Test Setup ---
   before(:each) do
     # IMPORTANT: Use inline testing for immediate job execution
-    Sidekiq::Testing.inline! 
+    Sidekiq::Testing.inline!
 
     # Stub global ADK components
     allow(ADK).to receive(:config).and_return(instance_double(ADK::Configuration, webhooks: webhook_config))
     allow(ADK).to receive(:definition_store).and_return(definition_store)
     allow(ADK).to receive(:logger).and_return(instance_double(Logger, info: nil, warn: nil, error: nil, debug: nil))
-    allow(ADK).to receive(:redis_options).and_return(expected_redis_opts)
 
     # Configure webhook listener via mocked config
     allow(webhook_config).to receive(:listener_enabled).and_return(true)
@@ -71,10 +70,10 @@ RSpec.describe "Webhook Integration" do
     allow(webhook_config).to receive(:global_secret).and_return(nil)
     allow(webhook_config).to receive(:find_validator).and_return(nil) # No named validators for now
     allow(webhook_config).to receive(:static_routes).and_return({}) # Add stub for static routes
-    
+
     # Configure the Agent Definition for webhook success
     # --- Capture outer scope 'agent_name' for use inside block ---
-    current_agent_name = agent_name 
+    current_agent_name = agent_name
     # -----------------------------------------------------------
     agent_definition.define do |a|
       a.name current_agent_name # Use captured variable
@@ -87,10 +86,10 @@ RSpec.describe "Webhook Integration" do
 
     # Stub definition store to return our configured definition
     allow(definition_store).to receive(:get_definition).with(agent_name).and_return(agent_definition)
-    
+
     # Stub Session Service instantiation (still needed)
     allow(ADK::SessionService::Redis).to receive(:new).with(expected_redis_opts).and_return(session_service)
-    
+
     # Default stub for run_task - will be called on the *real* agent instance created by worker
     # We need to allow any instance of ADK::Agent to receive run_task
     allow_any_instance_of(ADK::Agent).to receive(:run_task)
@@ -119,7 +118,8 @@ RSpec.describe "Webhook Integration" do
       post trigger_path, request_json
 
       # Verify listener response
-      expect(last_response.status).to eq(202), "Expected status 202 but got #{last_response.status}. Body: #{last_response.body}"
+      expect(last_response.status).to eq(202),
+                                      "Expected status 202 but got #{last_response.status}. Body: #{last_response.body}"
       expect(last_response.content_type).to include('application/json')
       response_json = JSON.parse(last_response.body)
       expect(response_json['status']).to eq('accepted')
@@ -130,32 +130,32 @@ RSpec.describe "Webhook Integration" do
     # although many listener errors are covered by listener unit tests.
     # For example:
     context 'when agent definition is not webhook_enabled' do
-       before do 
-         # Reconfigure definition for this context
-         # --- Capture outer scope 'agent_name' again ---
-         current_agent_name_local = agent_name
-         # -------------------------------------------
-         agent_definition.define do |a| 
-           a.name current_agent_name_local # Use captured variable
-           a.instruction 'Test Instruction'
-           a.webhook_enabled false # <<< Set to false for this context
-           a.webhook_validator nil 
-           a.webhook_transformer ->(body) { "Input from push event: #{body['event']}" }
-           a.webhook_session_extractor ->(body) { "repo-session-#{body.dig('repo', 'id')}" }
-         end
-         # Ensure the store returns this modified definition
-         allow(definition_store).to receive(:get_definition).with(agent_name).and_return(agent_definition)
-       end
-       
-       it 'returns 404' do
-         header 'Content-Type', 'application/json'
-         post trigger_path, request_json
-         expect(last_response.status).to eq(404)
-         expect(last_response.body).to include('Webhook endpoint not found')
-       end
+      before do
+        # Reconfigure definition for this context
+        # --- Capture outer scope 'agent_name' again ---
+        current_agent_name_local = agent_name
+        # -------------------------------------------
+        agent_definition.define do |a|
+          a.name current_agent_name_local # Use captured variable
+          a.instruction 'Test Instruction'
+          a.webhook_enabled false # <<< Set to false for this context
+          a.webhook_validator nil
+          a.webhook_transformer ->(body) { "Input from push event: #{body['event']}" }
+          a.webhook_session_extractor ->(body) { "repo-session-#{body.dig('repo', 'id')}" }
+        end
+        # Ensure the store returns this modified definition
+        allow(definition_store).to receive(:get_definition).with(agent_name).and_return(agent_definition)
+      end
+
+      it 'returns 404' do
+        header 'Content-Type', 'application/json'
+        post trigger_path, request_json
+        expect(last_response.status).to eq(404)
+        expect(last_response.body).to include('Webhook endpoint not found')
+      end
     end
-    
+
     # Example for validation failure (requires more setup for validator/secret)
     # context 'when validation fails' do ... end
   end
-end 
+end

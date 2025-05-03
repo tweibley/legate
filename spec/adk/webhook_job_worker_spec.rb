@@ -46,7 +46,9 @@ RSpec.describe ADK::WebhookJobWorker do
     allow(ADK).to receive(:definition_store).and_return(definition_store)
 
     # Stub dependency instantiation
-    allow(ADK::SessionService::Redis).to receive(:new).with(redis_options).and_return(session_service)
+    # REMOVED allow(ADK::SessionService::Redis).to receive(:new).with(redis_options).and_return(session_service)
+    # We will stub this only in specific tests where instantiation is expected to succeed.
+
     # Stub Agent.new using the :definition keyword arg (as per worker code)
     allow(ADK::Agent).to receive(:new).with(definition: definition).and_return(agent)
 
@@ -59,22 +61,37 @@ RSpec.describe ADK::WebhookJobWorker do
 
   describe '#perform' do
     context 'with a valid payload' do
+      # REMOVED specific before block stubbing Redis.new
+      # before do
+      #  allow(ADK::SessionService::Redis).to receive(:new).with(redis_options).and_return(session_service)
+      # end
+
       it 'instantiates Redis SessionService with correct options' do
-        expect(ADK::SessionService::Redis).to receive(:new).with(redis_options).and_return(session_service)
+        # Expect new to be called with the redis_client keyword arg
+        expect(ADK::SessionService::Redis).to receive(:new) do |args|
+          expect(args).to have_key(:redis_client)
+          expect(args[:redis_client]).to be_a(Redis)
+          # Optionally check client config: expect(args[:redis_client].config.options[:url]).to include('localhost:6379/5')
+          session_service # Return the double
+        end.at_least(:once) # Use at_least(:once) as other tests might also trigger it indirectly
         worker.perform(valid_payload)
       end
 
       it 'loads the correct agent definition' do
+        # Need to allow Redis.new to succeed here for the test to proceed
+        allow(ADK::SessionService::Redis).to receive(:new).and_return(session_service)
         expect(definition_store).to receive(:get_definition).with(agent_name).and_return(definition)
         worker.perform(valid_payload)
       end
 
       it 'instantiates the agent with the definition' do
+        allow(ADK::SessionService::Redis).to receive(:new).and_return(session_service)
         expect(ADK::Agent).to receive(:new).with(definition: definition).and_return(agent)
         worker.perform(valid_payload)
       end
 
       it 'calls agent.run_task with correct arguments' do
+        allow(ADK::SessionService::Redis).to receive(:new).and_return(session_service)
         expect(agent).to receive(:run_task)
           .with(session_id: session_id, user_input: user_input, session_service: session_service)
           .and_return(success_event)
@@ -82,6 +99,7 @@ RSpec.describe ADK::WebhookJobWorker do
       end
 
       it 'logs success when task completes successfully' do
+        allow(ADK::SessionService::Redis).to receive(:new).and_return(session_service)
         allow(agent).to receive(:run_task).and_return(success_event)
         expect(logger).to receive(:info).with(/WebhookJobWorker starting job:/)
         expect(logger).to receive(:info).with(/WebhookJobWorker calling agent.run_task/)
@@ -90,6 +108,7 @@ RSpec.describe ADK::WebhookJobWorker do
       end
 
       it 'logs error when task returns an error status' do
+        allow(ADK::SessionService::Redis).to receive(:new).and_return(session_service)
         allow(agent).to receive(:run_task).and_return(error_event)
         expect(logger).to receive(:info).with(/WebhookJobWorker starting job:/)
         expect(logger).to receive(:info).with(/WebhookJobWorker calling agent.run_task/)
@@ -120,13 +139,14 @@ RSpec.describe ADK::WebhookJobWorker do
 
     context 'when session service instantiation fails' do
       it 'raises NotImplementedError for unsupported type' do
-        invalid_config = { type: :unsupported }
+        invalid_config = { 'type' => 'unsupported' }
         payload = valid_payload.merge('session_service_config' => invalid_config)
         expect { worker.perform(payload) }.to raise_error(NotImplementedError, /Unsupported session service type/)
       end
 
       it 'propagates Redis connection errors' do
-        allow(ADK::SessionService::Redis).to receive(:new).and_raise(Redis::CannotConnectError)
+        # Expect Redis.new (called inside worker) to raise error
+        expect(Redis).to receive(:new).with(url: 'redis://localhost:6379/5').and_raise(Redis::CannotConnectError) # Match **redis_opts_sym
         expect { worker.perform(valid_payload) }.to raise_error(Redis::CannotConnectError)
       end
     end
@@ -145,4 +165,4 @@ RSpec.describe ADK::WebhookJobWorker do
       end
     end
   end
-end 
+end

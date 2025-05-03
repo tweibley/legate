@@ -32,4 +32,4 @@ module ADK
       @webhooks = ADK::Configuration::Webhooks.new
     end
   end
-end 
+end

@@ -16,65 +16,6 @@ module ADK
     class WebhookListener < Sinatra::Base
       helpers Sinatra::CustomLogger # Use ADK.logger
 
-      # --- Class-level setup for static routes ---
-      # Define routes based on configuration *after* the class definition
-      def self.setup_static_routes(app_instance)
-        webhook_config = ADK.config.webhooks
-        logger = ADK.logger
-
-        webhook_config.static_routes.each do |method_path, route_config|
-          method, path = method_path.split(' ', 2)
-          http_method = method.downcase.to_sym
-
-          unless [:get, :post, :put, :patch, :delete, :head, :options].include?(http_method)
-            logger.error("WebhookListener: Invalid HTTP method '#{method}' specified for static route '#{path}'. Skipping.")
-            next
-          end
-          unless route_config.handler.is_a?(Proc)
-            logger.error("WebhookListener: Invalid handler (not a Proc) for static route '#{method_path}'. Skipping.")
-            next
-          end
-
-          logger.debug("WebhookListener: Defining static route: #{http_method.upcase} #{path}")
-
-          # Use Sinatra's routing DSL (e.g., app_instance.get, app_instance.post)
-          app_instance.send(http_method, path) do
-            # --- Validation Logic (Copied & adapted from dynamic route) ---
-            validator_config = route_config.validator
-            secret = route_config.secret
-            if validator_config
-              validator_proc = validator_config.is_a?(Proc) ? validator_config : webhook_config.find_validator(validator_config)
-              if validator_proc.nil?
-                logger.error("Static Route Validation Error [#{method_path}]: Validator '#{validator_config}' not found.")
-                halt 500, json({ status: :error, error_message: "Internal Server Error: Static route validator configuration issue." })
-              end
-              begin
-                is_valid = validator_proc.call(request, secret)
-                unless is_valid
-                  logger.warn("Static Route Validation Failed [#{method_path}]")
-                  halt 401, json({ status: :error, error_message: "Unauthorized: Invalid request signature or credentials." })
-                end
-                logger.debug("Static Route Validation OK [#{method_path}]")
-              rescue StandardError => e
-                logger.error("Error during static route validation [#{method_path}]: #{e.message}")
-                halt 500, json({ status: :error, error_message: "Internal Server Error during static route validation." })
-              end
-            end
-            # --- End Validation Logic ---
-
-            # Execute the handler proc
-            begin
-              route_config.handler.call(request) # Pass request to handler
-            rescue StandardError => e
-              logger.error("Error executing static route handler [#{method_path}]: #{e.class} - #{e.message}")
-              logger.error(e.backtrace.join("\n"))
-              halt 500, json({ status: :error, error_message: "Internal Server Error in static route handler." })
-            end
-          end
-        end
-      end
-      # --- End Class-level setup ---
-
       configure do
         set :logger, ADK.logger
         # Disable Sinatra's built-in error handling to provide custom responses
@@ -82,12 +23,14 @@ module ADK
         set :raise_errors, false # Let our error handler catch them
         # Prevent Sinatra from starting its own server if run directly (we mount it)
         set :server, :noop
-
-        # Call setup *after* ADK config is likely loaded but before server starts
-        # Note: This runs when the class is loaded, assuming ADK config is done.
-        # If config happens later, this needs rethinking (e.g., setup in initialize/before filter).
-        setup_static_routes(self) 
       end
+
+      # --- Instance Initialization ---
+      def initialize(app = nil)
+        super(app) # Call Sinatra::Base initializer
+        setup_static_routes! # Setup routes on instance creation
+      end
+      # ---------------------------
 
       # --- Middleware/Hooks ---
 
@@ -162,21 +105,21 @@ module ADK
         unless match_params
           return pass # Didn't match dynamic pattern, try other routes (static, not_found)
         end
-        
+
         # Pattern matched. Now check if handler enabled.
         unless webhook_config.enable_dynamic_agent_handler
-           logger.warn("Webhook dynamic route matched, but handler is disabled.")
-           halt 403, json({ status: :error, error_message: "Dynamic agent webhooks are disabled." }) # Explicit 403
+          logger.warn("Webhook dynamic route matched, but handler is disabled.")
+          halt 403, json({ status: :error, error_message: "Dynamic agent webhooks are disabled." }) # Explicit 403
         end
 
         # Handler enabled and pattern matched. Extract agent name.
         agent_name_param = match_params['agent_name']
         if agent_name_param
-           agent_name_sym = agent_name_param.to_sym
+          agent_name_sym = agent_name_param.to_sym
         else
-           logger.error("Webhook dynamic route matched, but required 'agent_name' parameter missing in pattern or path.")
-           # Consider this a server config error if name is expected but missing
-           halt 500, json({ status: :error, error_message: "Internal Server Error: Route configuration issue." })
+          logger.error("Webhook dynamic route matched, but required 'agent_name' parameter missing in pattern or path.")
+          # Consider this a server config error if name is expected but missing
+          halt 500, json({ status: :error, error_message: "Internal Server Error: Route configuration issue." })
         end
 
         # --- Handler Logic (Agent name confirmed) ---
@@ -210,7 +153,8 @@ module ADK
             is_valid = validator_proc.call(request, secret)
             unless is_valid
               logger.warn("Webhook validation failed for agent '#{agent_name_sym}'.")
-              halt 401, json({ status: :error, error_message: "Unauthorized: Invalid request signature or credentials." })
+              halt 401,
+                   json({ status: :error, error_message: "Unauthorized: Invalid request signature or credentials." })
             end
             logger.debug("Webhook validation successful for agent '#{agent_name_sym}'.")
           rescue StandardError => e
@@ -225,7 +169,9 @@ module ADK
         transformer = definition.webhook_transformer
         unless transformer.is_a?(Proc)
           logger.error("Webhook configuration error for '#{agent_name_sym}': Missing webhook_transformer Proc.")
-          halt 500, json({ status: :error, error_message: "Internal Server Error: Agent webhook configuration incomplete (transformer)." })
+          halt 500,
+               json({ status: :error,
+                      error_message: "Internal Server Error: Agent webhook configuration incomplete (transformer)." })
         end
 
         begin
@@ -233,9 +179,9 @@ module ADK
           payload_for_transform = env['rack.input.json'] || raw_request_body
           transformed_user_input = transformer.call(payload_for_transform)
           logger.debug("Webhook payload transformed successfully for agent '#{agent_name_sym}'.")
-        rescue ADK::WebhookConfigurationError => e 
+        rescue ADK::WebhookConfigurationError => e
           # Re-raise specific config errors to be caught by dedicated handler
-          raise e 
+          raise e
         rescue StandardError => e
           logger.error("Error during webhook transformation for '#{agent_name_sym}': #{e.class} - #{e.message}")
           halt 500, json({ status: :error, error_message: "Internal Server Error during payload transformation." })
@@ -245,17 +191,21 @@ module ADK
         extractor = definition.webhook_session_extractor
         unless extractor.is_a?(Proc)
           logger.error("Webhook configuration error for '#{agent_name_sym}': Missing webhook_session_extractor Proc.")
-          halt 500, json({ status: :error, error_message: "Internal Server Error: Agent webhook configuration incomplete (session extractor)." })
+          halt 500,
+               json({ status: :error,
+                      error_message: "Internal Server Error: Agent webhook configuration incomplete (session extractor)." })
         end
 
         begin
           # Pass the parsed JSON body if available, otherwise the raw body string
           payload_for_extract = env['rack.input.json'] || raw_request_body
           session_id = extractor.call(payload_for_extract)
-          raise ADK::WebhookConfigurationError, "Session extractor must return a non-empty String session ID." unless session_id.is_a?(String) && !session_id.strip.empty?
+          raise ADK::WebhookConfigurationError,
+                "Session extractor must return a non-empty String session ID." unless session_id.is_a?(String) && !session_id.strip.empty?
+
           logger.debug("Webhook session ID extracted successfully for agent '#{agent_name_sym}': #{session_id}")
         rescue ADK::WebhookConfigurationError => e
-           # Re-raise specific config errors to be caught by dedicated handler
+          # Re-raise specific config errors to be caught by dedicated handler
           raise e
         rescue StandardError => e
           logger.error("Error during webhook session extraction for '#{agent_name_sym}': #{e.class} - #{e.message}")
@@ -265,7 +215,7 @@ module ADK
         # 7. Enqueue Job
         begin
           # TODO: Define ADK::WebhookJobWorker class
-          # worker_class = ADK::WebhookJobWorker 
+          # worker_class = ADK::WebhookJobWorker
           worker_class_name = 'ADK::WebhookJobWorker' # Use string name for Sidekiq
 
           # Prepare session service config (assuming Redis for now based on user prompt)
@@ -273,13 +223,18 @@ module ADK
           # ADK.redis_options provides the base Redis config hash.
           session_service_config = ADK.redis_options.dup
           # Optionally add type marker if multiple service types could be used?
-          session_service_config[:type] = :redis # Example marker
+          # session_service_config[:type] = :redis # Symbols might not serialize well
+
+          # --- Ensure config keys are strings for Sidekiq ---
+          string_key_config = session_service_config.transform_keys(&:to_s)
+          string_key_config['type'] = 'redis' # Use string type marker
+          # --------------------------------------------------
 
           job_payload = {
-            'agent_definition_name' => agent_name_sym.to_s, # Sidekiq args should be simple types
+            'agent_definition_name' => agent_name_sym.to_s,
             'session_id' => session_id,
             'transformed_user_input' => transformed_user_input,
-            'session_service_config' => session_service_config
+            'session_service_config' => string_key_config # Use stringified keys
           }
 
           # Use Sidekiq Client API directly
@@ -290,35 +245,111 @@ module ADK
           )
 
           if job_id.nil?
-             logger.error("Failed to enqueue webhook job for agent '#{agent_name_sym}': Sidekiq push returned nil.")
-             halt 503, json({ status: :error, error_message: "Service Unavailable: Failed to queue background job." })
+            logger.error("Failed to enqueue webhook job for agent '#{agent_name_sym}': Sidekiq push returned nil.")
+            halt 503, json({ status: :error, error_message: "Service Unavailable: Failed to queue background job." })
           end
 
           logger.info("Webhook job enqueued successfully for agent '#{agent_name_sym}'. Session: #{session_id}, Job ID: #{job_id}")
 
-        rescue Redis::CannotConnectError, Sidekiq::Error => e # Catch Sidekiq/Redis errors
-           logger.error("Failed to enqueue webhook job for agent '#{agent_name_sym}': #{e.class} - #{e.message}")
-           halt 503, json({ status: :error, error_message: "Service Unavailable: Error connecting to job queue." })
+        # Catch standard errors during push, differentiate status code
+        rescue Redis::CannotConnectError => e
+          logger.error("Failed to enqueue webhook job (Redis Connect Error) for agent '#{agent_name_sym}': #{e.class} - #{e.message}")
+          halt 503, json({ status: :error, error_message: "Service Unavailable: Error connecting to job queue." })
         rescue StandardError => e
           logger.error("Unexpected error during job enqueuing for '#{agent_name_sym}': #{e.class} - #{e.message}")
+          # Check if it's likely a Sidekiq issue vs. other standard error?
+          # For now, return 500 for unexpected errors during this phase.
           halt 500, json({ status: :error, error_message: "Internal Server Error during job queuing." })
         end
 
         # 8. Return 202 Accepted
         content_type :json
         status 202
-        json({ status: :accepted, message: "Request for agent '#{agent_name_sym}' accepted and queued.", job_id: job_id })
+        json({ status: :accepted, message: "Request for agent '#{agent_name_sym}' accepted and queued.",
+               job_id: job_id })
       end
 
       # Catch-all for undefined routes within the listener's base path
       not_found do
         content_type :json
         # Only set body if not already set by a specific halt
-        if response.body.empty? 
-          json({ status: :error, error_message: "Webhook route not found: #{request.request_method} #{request.path_info}" })
-        end 
+        if response.body.empty?
+          json({ status: :error,
+                 error_message: "Webhook route not found: #{request.request_method} #{request.path_info}" })
+        end
         status 404 # Ensure status is 404
       end
+
+      private
+
+      # --- Instance method to set up static routes ---
+      def setup_static_routes!
+        webhook_config = ADK.config.webhooks
+        logger = ADK.logger # Use instance logger helper
+
+        webhook_config.static_routes.each do |method_path, route_config|
+          method, path = method_path.split(' ', 2)
+          http_method = method.downcase.to_sym
+
+          unless [:get, :post, :put, :patch, :delete, :head, :options].include?(http_method)
+            logger.error("WebhookListener: Invalid HTTP method '#{method}' specified for static route '#{path}'. Skipping.")
+            next
+          end
+          unless route_config.handler.is_a?(Proc)
+            logger.error("WebhookListener: Invalid handler (not a Proc) for static route '#{method_path}'. Skipping.")
+            next
+          end
+
+          logger.debug("WebhookListener: Defining static route: #{http_method.upcase} #{path}")
+
+          # Use Sinatra's instance-level routing DSL (get, post, etc.)
+          self.class.send(http_method, path) do |*route_params|
+            # Re-fetch config inside route block in case it changed?
+            # Or rely on config captured during initialization?
+            # Let's assume config is stable after init for simplicity.
+
+            # --- Validation Logic ---
+            # (Same as before, but now inside instance route block)
+            current_validator_config = route_config.validator # Use captured route_config
+            current_secret = route_config.secret
+            if current_validator_config
+              current_validator_proc = current_validator_config.is_a?(Proc) ? current_validator_config : webhook_config.find_validator(current_validator_config)
+              if current_validator_proc.nil?
+                logger.error("Static Route Validation Error [#{method_path}]: Validator '#{current_validator_config}' not found.")
+                halt 500,
+                     json({ status: :error,
+                            error_message: "Internal Server Error: Static route validator configuration issue." })
+              end
+              begin
+                is_valid = current_validator_proc.call(request, current_secret)
+                unless is_valid
+                  logger.warn("Static Route Validation Failed [#{method_path}]")
+                  halt 401,
+                       json({ status: :error,
+                              error_message: "Unauthorized: Invalid request signature or credentials." })
+                end
+                logger.debug("Static Route Validation OK [#{method_path}]")
+              rescue StandardError => e
+                logger.error("Error during static route validation [#{method_path}]: #{e.message}")
+                halt 500,
+                     json({ status: :error, error_message: "Internal Server Error during static route validation." })
+              end
+            end
+            # --- End Validation Logic ---
+
+            # Execute the handler proc
+            begin
+              # Pass route params along with request to handler? Handler signature is just `call(request)` for now.
+              route_config.handler.call(request)
+            rescue StandardError => e
+              logger.error("Error executing static route handler [#{method_path}]: #{e.class} - #{e.message}")
+              logger.error(e.backtrace.join("\n"))
+              halt 500, json({ status: :error, error_message: "Internal Server Error in static route handler." })
+            end
+          end
+        end
+      end
+      # --- End instance method ---
     end
   end
-end 
+end

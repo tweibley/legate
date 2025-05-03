@@ -81,16 +81,18 @@ module ADK
     def validate!
       raise ArgumentError, 'Agent definition must have a name.' if @name.nil? || @name.to_s.strip.empty?
       raise ArgumentError, 'Agent name must be a Symbol.' unless @name.is_a?(Symbol)
-      raise ArgumentError, "Agent '#{@name}' must have an instruction." if @instruction.nil? || @instruction.strip.empty?
+
+      raise ArgumentError,
+            "Agent '#{@name}' must have an instruction." if @instruction.nil? || @instruction.strip.empty?
 
       if webhook_enabled
         # raise ArgumentError, "Agent '#{@name}' enabled for webhooks must define a webhook_transformer." unless @webhook_transformer.is_a?(Proc)
         # raise ArgumentError, "Agent '#{@name}' enabled for webhooks must define a webhook_session_extractor." unless @webhook_session_extractor.is_a?(Proc)
         unless webhook_transformer.is_a?(Proc)
-            ADK.logger.warn { "Agent '#{@name}' is webhook_enabled but lacks a valid :webhook_transformer Proc." }
+          ADK.logger.warn { "Agent '#{@name}' is webhook_enabled but lacks a valid :webhook_transformer Proc." }
         end
         unless webhook_session_extractor.is_a?(Proc)
-            ADK.logger.warn { "Agent '#{@name}' is webhook_enabled but lacks a valid :webhook_session_extractor Proc." }
+          ADK.logger.warn { "Agent '#{@name}' is webhook_enabled but lacks a valid :webhook_session_extractor Proc." }
         end
 
       end
@@ -124,6 +126,7 @@ module ADK
       # @param name [Symbol] Unique identifier for the agent.
       def name(name)
         raise ArgumentError, 'Agent name must be a Symbol.' unless name.is_a?(Symbol)
+
         @definition.instance_variable_set(:@name, name)
       end
 
@@ -144,6 +147,7 @@ module ADK
       # @param options [Hash] Tool-specific options (currently unused).
       def use_tool(tool_name, _options = {})
         raise ArgumentError, 'Tool name must be a Symbol.' unless tool_name.is_a?(Symbol)
+
         # TODO: Validate tool_name against a global registry?
         @definition.instance_variable_get(:@tool_names) << tool_name
       end
@@ -175,6 +179,7 @@ module ADK
         unless validator.nil? || validator.is_a?(Symbol) || validator.is_a?(Proc)
           raise ArgumentError, 'webhook_validator must be a Symbol, a Proc, or nil.'
         end
+
         @definition.instance_variable_set(:@webhook_validator, validator)
       end
 
@@ -188,7 +193,9 @@ module ADK
       # @param transformer_proc [Proc, nil] The transformer proc or nil.
       def webhook_transformer(transformer_proc)
         # Allow nil or Proc
-        raise ArgumentError, 'webhook_transformer must be a Proc or nil.' unless transformer_proc.nil? || transformer_proc.is_a?(Proc)
+        raise ArgumentError,
+              'webhook_transformer must be a Proc or nil.' unless transformer_proc.nil? || transformer_proc.is_a?(Proc)
+
         @definition.instance_variable_set(:@webhook_transformer, transformer_proc)
       end
 
@@ -196,7 +203,9 @@ module ADK
       # @param extractor_proc [Proc, nil] The extractor proc or nil.
       def webhook_session_extractor(extractor_proc)
         # Allow nil or Proc
-        raise ArgumentError, 'webhook_session_extractor must be a Proc or nil.' unless extractor_proc.nil? || extractor_proc.is_a?(Proc)
+        raise ArgumentError,
+              'webhook_session_extractor must be a Proc or nil.' unless extractor_proc.nil? || extractor_proc.is_a?(Proc)
+
         @definition.instance_variable_set(:@webhook_session_extractor, extractor_proc)
       end
       # -----------------------------
@@ -308,9 +317,10 @@ module ADK
     # @param definition [ADK::AgentDefinition, nil] Optional: An agent definition object. If provided, other args are ignored.
     def initialize(name: nil, description: nil, model_name: nil, tool_classes: [], tool_paths: [], planner: nil, mcp_servers: [],
                    fallback_mode: :error, selected_tool_names: [], instruction: nil, definition: nil)
-      # --- If definition is provided, use it --- 
+      # --- If definition is provided, use it ---
       if definition
         raise ArgumentError, "definition must be an ADK::AgentDefinition" unless definition.is_a?(ADK::AgentDefinition)
+
         @definition = definition # Store the provided definition
         @name = definition.name
         @description = definition.description
@@ -322,14 +332,15 @@ module ADK
         tool_paths_to_load = [] # Don't load paths for worker?
         mcp_servers_config_str = '[]'
         # Use tool_names from definition for selection logic
-        selected_tool_names_symbols = definition.tool_names.to_a 
+        selected_tool_names_symbols = definition.tool_names.to_a
         # Load classes directly from definition's tool_names?
         tool_classes_to_load = definition.tool_names.map { |tn| ADK::GlobalToolManager.find_class(tn) }.compact
 
         ADK.logger.info("Initializing agent '#{@name}' from definition...")
-      else 
-        # --- Original initialization logic --- 
-        raise ArgumentError, "Agent name must be provided if not using definition." unless name 
+      else
+        # --- Original initialization logic ---
+        raise ArgumentError, "Agent name must be provided if not using definition." unless name
+
         @name = name
         @description = description || ''
         @instruction = instruction
@@ -392,14 +403,14 @@ module ADK
 
       # --- Parse MCP Server Config (uses mcp_servers_config_str) ---
       if mcp_servers_config_str.is_a?(String) && !mcp_servers_config_str.strip.empty?
-         # ... (rest of existing MCP parsing) ...
+      # ... (rest of existing MCP parsing) ...
       elsif mcp_servers_config_str.is_a?(Array)
         @mcp_servers_config = mcp_servers_config_str # Already an array
       else
         ADK.logger.debug("Agent '#{@name}': No valid MCP server config provided. Defaulting to empty array.")
         @mcp_servers_config = []
       end
-      
+
       @selected_tool_names = selected_tool_names_symbols # Store selected tool names (used for MCP)
       @mcp_clients = [] # Store active MCP client instances
 

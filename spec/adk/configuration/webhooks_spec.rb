@@ -185,4 +185,4 @@ RSpec.describe ADK::Configuration::Webhooks do
       expect(route_config.secret).to be_nil
     end
   end
-end 
+end

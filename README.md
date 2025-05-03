@@ -565,3 +565,26 @@ The request helpers automatically rescue common `Excon::Error` subclasses and re
 *   `ADK::ToolError` (for other Excon errors or internal issues like JSON parsing failure).
 
 Your tool should typically rescue `ADK::ToolError` (or specific subclasses) in its `perform_execution` method to handle these failures gracefully.
+
+## Web UI
+
+The ADK includes a web interface (built with Sinatra and HTMX) for managing agent definitions, viewing sessions, and interacting with agents.
+
+To start the web UI:
+
+```bash
+bundle exec adk web start
+```
+
+## Inbound Webhooks (New!)
+
+The ADK now supports triggering agent tasks via incoming HTTP webhooks. This allows external systems (like Git repositories, CI/CD pipelines, monitoring tools, or other applications) to initiate agent workflows asynchronously.
+
+Key features include:
+
+*   **Dynamic Agent Routing:** Trigger specific agents using a configurable URL pattern (e.g., `POST /webhooks/agents/your_agent_name/trigger`).
+*   **Agent-Defined Configuration:** Webhook behavior (validation, payload transformation, session mapping) is configured directly within the agent's definition metadata.
+*   **Asynchronous Processing:** Webhooks are quickly acknowledged (`202 Accepted`), and the corresponding agent task is queued for background processing using Sidekiq.
+*   **Security:** Supports request validation using shared secrets (e.g., HMAC) or custom logic.
+
+For detailed configuration and usage, please refer to the [Webhook Implementation Plan](docs/inbound-webhook-to-agent.md).

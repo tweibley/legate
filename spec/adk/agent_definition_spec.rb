@@ -63,13 +63,13 @@ RSpec.describe ADK::AgentDefinition do
       expect(definition.webhook_validator).to eq(validator_proc)
     end
 
-    it 'raises ArgumentError if webhook_validator is not Symbol or Proc' do
+    it 'raises ArgumentError if webhook_validator is not Symbol, a Proc, or nil' do
       expect do
         definition.define do |a|
           minimal_valid_block_proc.call(a) # Call the proc correctly
           a.webhook_validator 'invalid'
         end
-      end.to raise_error(ArgumentError, 'webhook_validator must be a Symbol or a Proc.')
+      end.to raise_error(ArgumentError, 'webhook_validator must be a Symbol, a Proc, or nil.')
     end
 
     it 'allows setting webhook_secret' do
@@ -89,13 +89,13 @@ RSpec.describe ADK::AgentDefinition do
       expect(definition.webhook_transformer).to eq(transformer_proc)
     end
 
-    it 'raises ArgumentError if webhook_transformer is not a Proc' do
+    it 'raises ArgumentError if webhook_transformer is not a Proc or nil' do
       expect do
         definition.define do |a|
           minimal_valid_block_proc.call(a) # Call the proc correctly
           a.webhook_transformer :not_a_proc
         end
-      end.to raise_error(ArgumentError, 'webhook_transformer must be a Proc.')
+      end.to raise_error(ArgumentError, 'webhook_transformer must be a Proc or nil.')
     end
 
     it 'allows setting webhook_session_extractor' do
@@ -107,13 +107,13 @@ RSpec.describe ADK::AgentDefinition do
       expect(definition.webhook_session_extractor).to eq(extractor_proc)
     end
 
-    it 'raises ArgumentError if webhook_session_extractor is not a Proc' do
+    it 'raises ArgumentError if webhook_session_extractor is not a Proc or nil' do
       expect do
         definition.define do |a|
           minimal_valid_block_proc.call(a) # Call the proc correctly
           a.webhook_session_extractor 'not_a_proc_either'
         end
-      end.to raise_error(ArgumentError, 'webhook_session_extractor must be a Proc.')
+      end.to raise_error(ArgumentError, 'webhook_session_extractor must be a Proc or nil.')
     end
   end
 
@@ -137,7 +137,9 @@ RSpec.describe ADK::AgentDefinition do
       end
 
       it 'logs a warning if webhook_transformer is not a Proc' do
-        expect(ADK.logger).to receive(:warn) { |&block| expect(block.call).to match(/lacks a valid :webhook_transformer Proc/) }
+        expect(ADK.logger).to receive(:warn) { |&block|
+          expect(block.call).to match(/lacks a valid :webhook_transformer Proc/)
+        }
         definition.define do |a|
           minimal_valid_block_proc.call(a)
           a.webhook_enabled true
@@ -147,7 +149,9 @@ RSpec.describe ADK::AgentDefinition do
       end
 
       it 'logs a warning if webhook_session_extractor is not a Proc' do
-        expect(ADK.logger).to receive(:warn) { |&block| expect(block.call).to match(/lacks a valid :webhook_session_extractor Proc/) }
+        expect(ADK.logger).to receive(:warn) { |&block|
+          expect(block.call).to match(/lacks a valid :webhook_session_extractor Proc/)
+        }
         definition.define do |a|
           minimal_valid_block_proc.call(a)
           a.webhook_enabled true
@@ -158,8 +162,12 @@ RSpec.describe ADK::AgentDefinition do
 
       it 'logs two warnings if both transformer and extractor are missing' do
         # Expect warn to be called with a block, matching the implementation
-        expect(ADK.logger).to receive(:warn) { |&block| expect(block.call).to match(/lacks a valid :webhook_transformer Proc/) }.ordered
-        expect(ADK.logger).to receive(:warn) { |&block| expect(block.call).to match(/lacks a valid :webhook_session_extractor Proc/) }.ordered
+        expect(ADK.logger).to receive(:warn) { |&block|
+          expect(block.call).to match(/lacks a valid :webhook_transformer Proc/)
+        }.ordered
+        expect(ADK.logger).to receive(:warn) { |&block|
+          expect(block.call).to match(/lacks a valid :webhook_session_extractor Proc/)
+        }.ordered
         definition.define do |a|
           minimal_valid_block_proc.call(a)
           a.webhook_enabled true
@@ -226,4 +234,4 @@ RSpec.describe ADK::AgentDefinition do
       expect(local_definition.to_h[:webhook_secret]).to be_nil
     end
   end
-end 
+end

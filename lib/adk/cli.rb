@@ -20,7 +20,8 @@ module ADK
       end
 
       # Register subcommands
-      register(AgentCommands, 'agent', 'agent <command>', 'Manage ADK agents and execution (list, save, delete, generate, execute, start)')
+      register(AgentCommands, 'agent', 'agent <command>',
+               'Manage ADK agents and execution (list, save, delete, generate, execute, start)')
       register(ToolCommands, 'tool', 'tool <command>', 'Manage ADK tools')
       register(WebCommands, 'web', 'web <command>', 'Manage ADK web interface')
       register(SessionCommands, 'session', 'session <command>', 'Manage ADK sessions')

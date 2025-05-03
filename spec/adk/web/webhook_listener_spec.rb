@@ -51,7 +51,8 @@ RSpec.describe ADK::Web::WebhookListener do
     allow(agent_definition).to receive(:webhook_session_extractor).and_return(extractor_proc)
     allow(webhook_config).to receive(:global_validator).and_return(nil)
     allow(webhook_config).to receive(:global_secret).and_return(nil)
-    allow(ADK).to receive(:redis_options).and_return({ url: 'redis://mockhost:6379/1', type: :redis }) # Mock redis options
+    allow(webhook_config).to receive(:find_validator).and_return(nil) # No named validators for now
+    allow(webhook_config).to receive(:static_routes).and_return({}) # Add stub for static routes
   end
 
   describe 'POST /agents/:agent_name/trigger' do
@@ -99,7 +100,11 @@ RSpec.describe ADK::Web::WebhookListener do
     end
 
     context 'when agent definition is not found' do
-      before { allow(definition_store).to receive(:get_definition).with(agent_name).and_raise(ADK::DefinitionStore::DefinitionNotFound, "not found") }
+      before {
+        allow(definition_store).to receive(:get_definition).with(agent_name).and_raise(
+          ADK::DefinitionStore::DefinitionNotFound, "not found"
+        )
+      }
 
       it 'returns status 404 Not Found' do
         header 'Content-Type', 'application/json'
@@ -145,7 +150,7 @@ RSpec.describe ADK::Web::WebhookListener do
         expect(last_response.body).to include('Internal Server Error during payload transformation')
       end
     end
-    
+
     context 'when transformation raises WebhookConfigurationError' do
       let(:transformer_proc) { ->(payload) { raise ADK::WebhookConfigurationError, "Bad payload for transform" } }
       before { allow(agent_definition).to receive(:webhook_transformer).and_return(transformer_proc) }
@@ -169,7 +174,7 @@ RSpec.describe ADK::Web::WebhookListener do
         expect(last_response.body).to include('Internal Server Error during session ID extraction')
       end
     end
-    
+
     context 'when session extraction raises WebhookConfigurationError' do
       let(:extractor_proc) { ->(payload) { raise ADK::WebhookConfigurationError, "Missing ID for session" } }
       before { allow(agent_definition).to receive(:webhook_session_extractor).and_return(extractor_proc) }
@@ -192,7 +197,7 @@ RSpec.describe ADK::Web::WebhookListener do
         expect(last_response.body).to include('Error connecting to job queue')
       end
     end
-    
+
     context 'when Sidekiq push returns nil' do
       before { allow(Sidekiq::Client).to receive(:push).and_return(nil) }
 
@@ -207,4 +212,4 @@ RSpec.describe ADK::Web::WebhookListener do
     # TODO: Add tests for global validators/secrets if needed
     # TODO: Add tests for static route handling (once implemented)
   end
-end 
+end

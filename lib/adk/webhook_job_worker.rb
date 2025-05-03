@@ -6,8 +6,9 @@ require 'adk' # Access ADK.logger, ADK.definition_store etc.
 # Require necessary components the worker interacts with
 require 'adk/agent'
 require 'adk/session_service/redis' # Assuming Redis based on prompt
-require 'adk/session_service/base' 
+require 'adk/session_service/base'
 require 'adk/errors'
+require 'redis'
 
 module ADK
   # Sidekiq worker responsible for processing agent tasks triggered by webhooks.
@@ -17,32 +18,40 @@ module ADK
 
     def perform(job_payload)
       ADK.logger.info("WebhookJobWorker starting job: #{job_payload.inspect}")
-      
+
       session_service = nil
       agent = nil
       definition = nil
-      
-      begin 
-        # 1. Parse Payload
+
+      begin
+        # 1. Parse Payload & Validate (Inside Begin)
         agent_name_sym = job_payload['agent_definition_name']&.to_sym
         session_id = job_payload['session_id']
         user_input = job_payload['transformed_user_input']
         session_service_config = job_payload['session_service_config']
-
         unless agent_name_sym && session_id && user_input && session_service_config
-          ADK.logger.error("WebhookJobWorker failed: Invalid job payload. Missing required keys.")
-          raise ArgumentError, "Invalid job payload: #{job_payload.inspect}"
+          # Log is good, but raise to signal failure to Sidekiq
+          raise ArgumentError, "Invalid job payload: Missing required keys in #{job_payload.inspect}"
         end
 
         # 2. Instantiate Session Service
-        # Assuming Redis based on config structure used in listener
-        service_type = session_service_config.fetch('type', 'redis').to_sym # Use string key
+        service_type = session_service_config.fetch('type', 'redis').to_sym
         if service_type == :redis
-          # Pass Redis connection options from config
-          redis_opts = session_service_config.transform_keys(&:to_sym).reject { |k, _| k == :type } # Convert back to symbols, remove type
-          session_service = ADK::SessionService::Redis.new(redis_opts)
-          ADK.logger.debug("WebhookJobWorker using RedisSessionService with options: #{redis_opts}")
+          # Convert keys to symbols and remove :type
+          redis_opts_sym = session_service_config.transform_keys(&:to_sym).reject { |k, _| k == :type }
+          # Explicitly create Redis client instance using options from config
+          begin
+            redis_client = Redis.new(**redis_opts_sym)
+            redis_client.ping # Verify connection early
+          rescue Redis::BaseError => e
+            ADK.logger.error("WebhookJobWorker: Failed to connect to Redis using config [#{redis_opts_sym}]: #{e.message}")
+            raise # Re-raise connection error
+          end
+          # Pass the client instance using the keyword argument
+          session_service = ADK::SessionService::Redis.new(redis_client: redis_client)
+          ADK.logger.debug("WebhookJobWorker using RedisSessionService with options: #{redis_opts_sym}")
         else
+          # Config error, likely non-retryable
           raise NotImplementedError, "Unsupported session service type in job config: #{service_type}"
         end
 
@@ -51,18 +60,8 @@ module ADK
         ADK.logger.debug("WebhookJobWorker loaded definition for: #{agent_name_sym}")
 
         # 4. Instantiate Agent
-        # This might need adjustment depending on how Agent initialization evolves.
-        # Assuming Agent.new can work with just a definition for task execution.
-        # TODO: Verify Agent initialization strategy for workers.
-        agent = ADK::Agent.new(definition: definition) # Pass definition instead of individual args
+        agent = ADK::Agent.new(definition: definition)
         ADK.logger.debug("WebhookJobWorker instantiated agent: #{agent.name}")
-
-        # 5. Get/Create Session (Session service handles creation)
-        # Ensure session exists - get_session likely doesn't create, need explicit create or ensure_session?
-        # Let's assume `run_task` can handle session creation via the service if needed, or relies on pre-existence.
-        # session = session_service.get_session(session_id: session_id)
-        # raise StandardError, "Session not found by service: #{session_id}" unless session
-        # For now, pass session_id directly to run_task as per current Agent#run_task signature.
 
         # 6. Call agent.run_task
         ADK.logger.info("WebhookJobWorker calling agent.run_task for session: #{session_id}")
@@ -80,27 +79,28 @@ module ADK
           ADK.logger.info("WebhookJobWorker: Agent task finished successfully for session #{session_id}. Result: #{result_content.inspect}")
         end
 
-      rescue ArgumentError => e # Catch payload validation error
-         ADK.logger.error("WebhookJobWorker failed due to invalid payload: #{e.message}")
-         # Don't re-raise, let Sidekiq move to Dead Set or handle retries if applicable
+      # --- Refined Error Handling ---
+      rescue ArgumentError => e # Payload validation failed
+        ADK.logger.error("WebhookJobWorker failed due to invalid payload: #{e.message}")
+        raise # Re-raise ArgumentError: Non-retryable input error.
       rescue ADK::DefinitionStore::DefinitionNotFound => e
-        ADK.logger.error("WebhookJobWorker failed: Could not find definition for agent '#{agent_name_sym}'. Error: #{e.message}")
-        # Non-retryable error for this job if definition is gone.
-        raise # Re-raise to let Sidekiq handle retries/dead set based on config
-      rescue ADK::SessionError => e
+        ADK.logger.error("WebhookJobWorker failed: Agent definition '#{agent_name_sym}' not found. #{e.message}")
+        raise # Re-raise DefinitionNotFound: Non-retryable if definition deleted.
+      rescue NotImplementedError => e # Session Service type invalid
+        ADK.logger.error("WebhookJobWorker failed: Configuration error - #{e.message}")
+        raise # Re-raise NotImplementedError: Non-retryable config error.
+      rescue Redis::CannotConnectError => e # Specific potentially retryable infra error
+        ADK.logger.error("WebhookJobWorker failed: Cannot connect to Redis for session service. #{e.message}")
+        raise # Re-raise - let Sidekiq handle retry based on Redis availability.
+      rescue ADK::SessionError => e # Other potentially retryable session issues
         ADK.logger.error("WebhookJobWorker failed: Session service error for session '#{session_id}'. Error: #{e.message}")
-        raise # Retryable?
-      rescue NotImplementedError => e # Catch session service type error
-         ADK.logger.error("WebhookJobWorker failed: #{e.message}")
-         raise # Non-retryable config issue
-      rescue StandardError => e
+        raise # Re-raise - let Sidekiq handle retry.
+      rescue StandardError => e # Catch-all for unexpected errors during execution
         ADK.logger.error("WebhookJobWorker failed unexpectedly for agent '#{agent_name_sym}', session '#{session_id}': #{e.class} - #{e.message}")
         ADK.logger.error(e.backtrace.join("\n"))
-        # Do NOT re-raise in inline testing context for integration specs,
-        # as it prevents the listener from returning 202.
-        # Unit tests should cover worker error handling specifics.
-        # raise 
+        raise # Re-raise StandardError: Let Sidekiq handle retry for transient issues.
+        # -----------------------------
       end
     end
   end
-end 
+end

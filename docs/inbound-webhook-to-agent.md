@@ -369,60 +369,60 @@ Testing this feature requires a multi-layered approach:
 ## 13. Implementation Checklist
 
 1.  **Configuration:**
-    *   [ ] Extend `ADK::Configuration` with a `Webhooks` sub-configuration object (`config.webhooks`).
-    *   [ ] Add config options: `listener_enabled`, `listen_address`, `listen_port`, `base_path`.
-    *   [ ] Add config options: `enable_dynamic_agent_handler`, `dynamic_agent_route_pattern`.
-    *   [ ] Add config mechanism for registering/retrieving named validators (`register_validator`, `find_validator`).
-    *   [ ] Add config for global validator/secret (optional).
-    *   [ ] Add config for default session service.
-    *   [ ] Add config mechanism for registering static routes (`register_route`).
-    *   [ ] Add unit tests for Webhooks configuration.
+    *   [X] Extend `ADK::Configuration` with a `Webhooks` sub-configuration object (`config.webhooks`).
+    *   [X] Add config options: `listener_enabled`, `listen_address`, `listen_port`, `base_path`.
+    *   [X] Add config options: `enable_dynamic_agent_handler`, `dynamic_agent_route_pattern`.
+    *   [X] Add config mechanism for registering/retrieving named validators (`register_validator`, `find_validator`).
+    *   [X] Add config for global validator/secret (optional).
+    *   [X] Add config for default session service.
+    *   [X] Add config mechanism for registering static routes (`register_route`).
+    *   [X] Add unit tests for Webhooks configuration.
 2.  **Agent Definition Metadata:**
-    *   [ ] Decide on the mechanism for defining webhook metadata (e.g., methods within `Agent.define` block).
-    *   [ ] Implement storage/retrieval of metadata fields: `webhook_enabled`, `webhook_validator`, `webhook_secret`, `webhook_transformer`, `webhook_session_extractor`. Ensure `enabled` defaults to `false`.
-    *   [ ] Update `ADK::Agent` or `ADK::DefinitionStore` accordingly.
-    *   [ ] Add unit tests for metadata access.
+    *   [X] Decide on the mechanism for defining webhook metadata (e.g., methods within `Agent.define` block).
+    *   [X] Implement storage/retrieval of metadata fields: `webhook_enabled`, `webhook_validator`, `webhook_secret`, `webhook_transformer`, `webhook_session_extractor`. Ensure `enabled` defaults to `false`.
+    *   [X] Update `ADK::Agent` or `ADK::DefinitionStore` accordingly.
+    *   [X] Add unit tests for metadata access.
 3.  **Webhook Listener (Rack App):**
-    *   [ ] Create a basic Sinatra/Rack application (`ADK::Web::WebhookListener`).
-    *   [ ] Implement logic to read ADK configuration for listener settings (port, address, base path).
-    *   [ ] Implement routing logic:
-        *   Mount static routes defined in config.
-        *   Mount dynamic agent handler if enabled, using the configured pattern.
-    *   [ ] Implement request body parsing (JSON primarily). Ensure body is rewindable.
-    *   [ ] Implement basic error handling middleware.
-    *   **[ ] Modify `config.ru` (or equivalent Rack setup used by `adk web start`): Conditionally mount `ADK::Web::WebhookListener` at `config.webhooks.base_path` based on `config.webhooks.listener_enabled` and development/test environment.**
+    *   [X] Create a basic Sinatra/Rack application (`ADK::Web::WebhookListener`).
+    *   [X] Implement logic to read ADK configuration for listener settings (port, address, base path).
+    *   [X] Implement routing logic:
+        *   [X] Mount static routes defined in config.
+        *   [X] Mount dynamic agent handler if enabled, using the configured pattern.
+    *   [X] Implement request body parsing (JSON primarily). Ensure body is rewindable.
+    *   [X] Implement basic error handling middleware.
+    *   [X] Modify `config.ru` (or equivalent Rack setup used by `adk web start`): Conditionally mount `ADK::Web::WebhookListener` at `config.webhooks.base_path` based on `config.webhooks.listener_enabled` and development/test environment.
 4.  **Dynamic Agent Handler:**
-    *   [ ] Implement the handler logic triggered by the dynamic route pattern.
-    *   [ ] Extract `agent_name` from the request path.
-    *   [ ] Use `ADK::DefinitionStore` to find the agent definition. Handle not found case (404).
-    *   [ ] Check `webhook_enabled` metadata (403/404 if false).
-    *   [ ] Retrieve validator config; find named validator via `config.webhooks.find_validator`; execute validation. Handle failure (401/403).
-    *   [ ] Retrieve and execute `webhook_transformer`. Handle errors (400/500).
-    *   [ ] Retrieve and execute `webhook_session_extractor`. Handle errors (400/500).
-    *   [ ] Construct job payload hash.
-    *   [ ] Enqueue job using Sidekiq client API (`ADK::WebhookJobWorker.perform_async`). Handle enqueue errors (503).
-    *   [ ] Return `202 Accepted` on success.
-    *   [ ] Add unit tests for handler logic (mocking DefinitionStore, queue).
+    *   [X] Implement the handler logic triggered by the dynamic route pattern.
+    *   [X] Extract `agent_name` from the request path.
+    *   [X] Use `ADK::DefinitionStore` to find the agent definition. Handle not found case (404).
+    *   [X] Check `webhook_enabled` metadata (403/404 if false).
+    *   [X] Retrieve validator config; find named validator via `config.webhooks.find_validator`; execute validation. Handle failure (401/403).
+    *   [X] Retrieve and execute `webhook_transformer`. Handle errors (400/500).
+    *   [X] Retrieve and execute `webhook_session_extractor`. Handle errors (400/500).
+    *   [X] Construct job payload hash.
+    *   [X] Enqueue job using Sidekiq client API (`ADK::WebhookJobWorker.perform_async`). Handle enqueue errors (503).
+    *   [X] Return `202 Accepted` on success.
+    *   [X] Add unit tests for handler logic (mocking DefinitionStore, queue).
 5.  **Webhook Worker:**
-    *   [ ] Create `ADK::WebhookJobWorker` Sidekiq worker class.
-    *   [ ] Implement `perform` method accepting the job payload hash.
-    *   [ ] Parse payload: `agent_definition_name`, `session_id`, `transformed_user_input`, `session_service_config`.
-    *   [ ] Instantiate the correct `SessionService`.
-    *   [ ] Load the `AgentDefinition` using `ADK::DefinitionStore`. Handle errors.
-    *   [ ] Instantiate the `Agent`. Handle errors.
-    *   [ ] Get/Create the `ADK::Session` via the `SessionService`. Handle errors.
-    *   [ ] Call `agent.run_task` with `session_id`, `transformed_user_input`, and `session_service`.
-    *   [ ] Log success/failure of the task execution.
-    *   [ ] Add unit tests for worker logic (mocking dependencies).
+    *   [X] Create `ADK::WebhookJobWorker` Sidekiq worker class.
+    *   [X] Implement `perform` method accepting the job payload hash.
+    *   [X] Parse payload: `agent_definition_name`, `session_id`, `transformed_user_input`, `session_service_config`.
+    *   [X] Instantiate the correct `SessionService`.
+    *   [X] Load the `AgentDefinition` using `ADK::DefinitionStore`. Handle errors.
+    *   [X] Instantiate the `Agent`. Handle errors.
+    *   [X] Get/Create the `ADK::Session` via the `SessionService`. Handle errors.
+    *   [X] Call `agent.run_task` with `session_id`, `transformed_user_input`, and `session_service`.
+    *   [X] Log success/failure of the task execution.
+    *   [X] Add unit tests for worker logic (mocking dependencies).
 6.  **Integration & Plumbing:**
     *   [ ] Ensure Sidekiq is a dependency (potentially optional, guarded).
-    *   **[ ] Verify `adk web start` command correctly boots the combined app (UI + Listener) in development mode.**
-    *   [ ] Add integration tests using `rack-test` (targeting the mounted app) and `Sidekiq::Testing`.
+    *   [X] Verify `adk web start` command correctly boots the combined app (UI + Listener) in development mode.
+    *   [X] Add integration tests using `rack-test` (targeting the mounted app) and `Sidekiq::Testing`.
 7.  **Documentation:**
-    *   [ ] Update `README.md` with overview of webhook features.
-    *   [ ] Write detailed documentation on configuring the listener (`ADK.configure`).
-    *   [ ] Write detailed documentation on defining Agent webhook metadata.
-    *   [ ] Provide examples of common validators (HMAC), transformers, and session extractors.
-    *   [ ] Document deployment considerations (running listener, workers).
+    *   [X] Update `README.md` with overview of webhook features.
+    *   [X] Write detailed documentation on configuring the listener (`ADK.configure`).
+    *   [X] Write detailed documentation on defining Agent webhook metadata.
+    *   [X] Provide examples of common validators (HMAC), transformers, and session extractors.
+    *   [X] Document deployment considerations (running listener, workers).
 8.  **CLI Generator (Optional):**
-    *   [ ] Implement `adk generate agent <name> --webhook-enabled` command to scaffold agent definition with webhook metadata placeholders.
+    *   [X] Implement `adk generate agent <name> --webhook-enabled` command to scaffold agent definition with webhook metadata placeholders.
