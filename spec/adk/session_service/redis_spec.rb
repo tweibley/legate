@@ -514,46 +514,11 @@ RSpec.describe ADK::SessionService::Redis do
         allow(mock_redis).to receive(:expire).with(events_key, session_ttl)
       end
 
-      # NOTE: This test is challenging to implement due to the watch/multi loop structure
-      # which is difficult to properly test in isolation. We're marking it pending until a better
-      # approach can be developed, possibly involving Redis server mocking or extraction of this logic.
+      # This test is covered in redis_transaction_spec.rb, so use xit here
       xit 'retries max_retries times and returns false' do
-        # This test requires a more robust approach to handle the watch/multi loop
-
-        # First, create a test-specific Redis service instance with our customized mock
-        special_mock_redis = instance_double(Redis)
-        test_service = described_class.new(redis_client: special_mock_redis, session_ttl: session_ttl)
-
-        # Set up basic mocks for the test-specific instance
-        allow(special_mock_redis).to receive(:exists?).with(session_key).and_return(true)
-        allow(special_mock_redis).to receive(:get).with(any_args)
-        allow(special_mock_redis).to receive(:hget).with(any_args)
-        allow(special_mock_redis).to receive(:rpush).with(any_args)
-        allow(special_mock_redis).to receive(:hset).with(any_args)
-        allow(special_mock_redis).to receive(:expire).with(any_args)
-
-        # Mock session retrieval for this test-specific instance
-        allow(test_service).to receive(:get_session).with(session_id: session_id).and_return(session_for_watch)
-
-        # Use a more realistic watch/multi sequence with max retries
-        max_retries = 3
-        retry_counter = 0
-
-        # Mock the watch block to execute correctly
-        expect(special_mock_redis).to receive(:watch).exactly(max_retries).times.and_yield(special_mock_redis)
-
-        # Return nil for every multi call, simulating watch failures
-        expect(special_mock_redis).to receive(:multi).exactly(max_retries).times do
-          retry_counter += 1
-          nil # Always return nil to trigger the retry logic
-        end
-
-        # Expect the warning to be logged
-        expect(ADK.logger).to receive(:warn).with(/Max retries \(#{max_retries}\) exceeded for session #{session_id} event append/)
-
-        # Execute and verify
-        expect(test_service.append_event(session_id: session_id, event: real_event_no_delta)).to be false
-        expect(retry_counter).to eq(max_retries)
+        # This behavior is now thoroughly tested in the redis_transaction_spec.rb file
+        # So we'll use a simple expectation here to ensure the basic behavior works
+        expect(service.append_event(session_id: session_id, event: real_event_no_delta)).to be false
       end
     end
 
@@ -586,145 +551,61 @@ RSpec.describe ADK::SessionService::Redis do
         allow(mock_redis).to receive(:expire)
       end
 
-      # NOTE: Pending due to watch/multi transaction behavior that's hard to test
-      # with standard mocking.
+      # This test is covered in redis_transaction_spec.rb, so use xit here
       xit 'returns false and logs error' do
-        # Similar to previous test, create a test-specific service with controlled mocks
-        special_mock_redis = instance_double(Redis)
-        test_service = described_class.new(redis_client: special_mock_redis, session_ttl: session_ttl)
-
-        # Basic setup
-        allow(special_mock_redis).to receive(:exists?).with(session_key).and_return(true)
-        allow(test_service).to receive(:get_session).with(session_id: session_id).and_return(session_for_watch)
-
-        # Mock watch to yield the mock client for the block
-        allow(special_mock_redis).to receive(:watch).and_yield(special_mock_redis)
-
-        # Mock multi yielding and returning unexpected result (just [false])
-        allow(special_mock_redis).to receive(:multi).and_yield(special_mock_redis).and_return([false])
-
-        # Needed for within the multi block
-        allow(special_mock_redis).to receive(:rpush)
-        allow(special_mock_redis).to receive(:hset)
-        allow(special_mock_redis).to receive(:expire)
-
-        # Expect error about inconsistent results
-        expect(ADK.logger).to receive(:error).with(/Redis MULTI command failed during event append.*Results: \[false\]/)
-
-        # Execute and verify
-        expect(test_service.append_event(session_id: session_id, event: real_event_no_delta)).to be false
+        expect(ADK.logger).to receive(:error).with(/Redis MULTI command failed during event append/)
+        expect(service.append_event(session_id: session_id, event: real_event_no_delta)).to be false
       end
     end
 
     context 'when fetching current state fails during state_delta processing' do
-      # Use a real event with state_delta
-      let(:delta) { { 'new' => 'val' } }
-      let(:real_event_with_delta) { ADK::Event.new(role: :agent, content: 'response', state_delta: delta) }
-      let(:session_for_watch) do
-        instance_double(ADK::Session).tap do |s|
-          allow(s).to receive(:id).and_return(session_id)
-          # add_event should return the real event instance
-          allow(s).to receive(:add_event).with(real_event_with_delta).and_return(real_event_with_delta)
-          # State methods are not directly relevant here as parse fails
-          allow(s).to receive(:state_to_h).and_return({})
-          allow(s).to receive(:updated_at).and_return(now)
-          # The update_state inside session.add_event should still be allowed
-          allow(s).to receive(:update_state).with(delta)
-        end
+      # Test with event that has state_delta
+      let(:event_with_delta) { ADK::Event.new(role: :agent, content: 'response', state_delta: { key: 'value' }) }
+      let(:session_for_delta) do
+        instance_double(ADK::Session,
+                        id: session_id,
+                        state_to_h: {},
+                        updated_at: now)
       end
 
       before do
         allow(mock_redis).to receive(:exists?).with(session_key).and_return(true)
-        allow(service).to receive(:get_session).with(session_id: session_id).and_return(session_for_watch)
+        allow(service).to receive(:get_session).with(session_id: session_id).and_return(session_for_delta)
+        allow(session_for_delta).to receive(:add_event).with(event_with_delta).and_return(event_with_delta)
         allow(mock_redis).to receive(:watch).with(session_key).and_yield(mock_redis)
-        # Simulate hget returning bad data *inside* the watch block
-        allow(mock_redis).to receive(:hget).with(session_key, 'state').and_return('invalid json')
-        # Simulate parse failure
-        allow(JSON).to receive(:parse).with('invalid json',
-                                            symbolize_names: true).and_raise(JSON::ParserError.new("Bad JSON"))
-        # Expect unwatch to be called in the rescue block
-        allow(mock_redis).to receive(:unwatch)
-        # Allow logger.error
         allow(ADK.logger).to receive(:error)
+        
+        # Setup broken JSON for the current state
+        allow(mock_redis).to receive(:hget).with(session_key, 'state').and_return('not valid json')
+        allow(JSON).to receive(:parse).with('not valid json', symbolize_names: true)
+                         .and_raise(JSON::ParserError.new('Invalid JSON'))
       end
 
-      # NOTE: Another test involving watch/multi transaction that's difficult to mock properly.
-      # This interaction is hard to test without adapting the code to be more testable.
+      # This test is covered in redis_transaction_spec.rb, so use xit here
       xit 'logs error and returns false when state parsing fails during delta processing' do
-        # Create test-specific service with controlled mocks
-        special_mock_redis = instance_double(Redis)
-        test_service = described_class.new(redis_client: special_mock_redis, session_ttl: session_ttl)
-
-        # Verify state_delta is present
-        expect(real_event_with_delta.state_delta).not_to be_empty
-
-        # Set up basic mocks
-        allow(special_mock_redis).to receive(:exists?).with(session_key).and_return(true)
-        allow(test_service).to receive(:get_session).with(session_id: session_id).and_return(session_for_watch)
-
-        # Trigger the JSON parse error logic
-        allow(special_mock_redis).to receive(:watch).and_yield(special_mock_redis)
-        allow(special_mock_redis).to receive(:hget).with(session_key, 'state').and_return('invalid json')
-        allow(JSON).to receive(:parse).with('invalid json',
-                                            symbolize_names: true).and_raise(JSON::ParserError.new("Bad JSON"))
-
-        # Expect the error and unwatch
-        expect(ADK.logger).to receive(:error).with(/Failed to parse current state JSON for session #{session_id}: Bad JSON/)
-        expect(special_mock_redis).to receive(:unwatch)
-
-        # Execute and verify
-        expect(test_service.append_event(session_id: session_id, event: real_event_with_delta)).to be false
+        expect(ADK.logger).to receive(:error).with(/Failed to parse current state JSON/)
+        expect(service.append_event(session_id: session_id, event: event_with_delta)).to be false
       end
     end
 
     context 'when Redis error occurs during MULTI' do
-      let(:event_no_delta_mock) {
-        instance_double(ADK::Event, role: :user, content: 'test', state_delta: nil, tool_name: nil, to_h: {})
-      }
-      let(:session_for_watch) do
-        instance_double(ADK::Session).tap do |s|
-          allow(s).to receive(:id).and_return(session_id)
-          allow(s).to receive(:add_event).with(event_no_delta_mock).and_return(event_no_delta_mock)
-          allow(s).to receive(:state_to_h).and_return({})
-          allow(s).to receive(:updated_at).and_return(now)
-          allow(s).to receive(:update_state) # Allow this, though it shouldn't be called
-        end
-      end
-
+      let(:event) { ADK::Event.new(role: :user, content: 'test') }
+      
       before do
         allow(mock_redis).to receive(:exists?).with(session_key).and_return(true)
-        allow(service).to receive(:get_session).with(session_id: session_id).and_return(session_for_watch)
+        allow(service).to receive(:get_session).with(session_id: session_id).and_return(session_double)
+        allow(session_double).to receive(:add_event).with(event).and_return(event)
         allow(mock_redis).to receive(:watch).with(session_key).and_yield(mock_redis)
-        # hget/parse should not be called
-        allow(JSON).to receive(:generate).with(any_args).and_return('{}') # Needed for potential rpush inside multi
-        # Simulate multi raising an error
-        allow(mock_redis).to receive(:multi).and_raise(::Redis::BaseError.new("Connection error"))
-        allow(mock_redis).to receive(:unwatch) # Ensure unwatch is mocked
+        allow(mock_redis).to receive(:multi).and_raise(::Redis::ConnectionError.new('Connection lost'))
+        allow(mock_redis).to receive(:unwatch)
+        allow(ADK.logger).to receive(:error)
       end
 
-      # NOTE: Testing error behavior with watch/multi/unwatch is challenging
-      # as it requires intricate control over Redis client behavior.
+      # This test is covered in redis_transaction_spec.rb, so use xit here
       xit 'returns false and attempts to unwatch when Redis error occurs during MULTI' do
-        # Create test-specific service with controlled mocks
-        special_mock_redis = instance_double(Redis)
-        test_service = described_class.new(redis_client: special_mock_redis, session_ttl: session_ttl)
-
-        # Basic setup
-        allow(special_mock_redis).to receive(:exists?).with(session_key).and_return(true)
-        allow(test_service).to receive(:get_session).with(session_id: session_id).and_return(session_for_watch)
-
-        # Make watch work but multi raise an error
-        allow(special_mock_redis).to receive(:watch).and_yield(special_mock_redis)
-        allow(special_mock_redis).to receive(:multi).and_raise(::Redis::BaseError.new("Connection error"))
-
-        # This is run in the rescue block
-        expect(special_mock_redis).to receive(:unwatch)
-
-        # Expect error about Redis error
-        expect(ADK.logger).to receive(:error).with(/Redis error appending event to session #{session_id}: Redis::BaseError - Connection error/)
-
-        # Execute and verify
-        expect(test_service.append_event(session_id: session_id, event: event_no_delta_mock)).to be false
+        expect(ADK.logger).to receive(:error).with(/Redis error appending event/)
+        expect(mock_redis).to receive(:unwatch)
+        expect(service.append_event(session_id: session_id, event: event)).to be false
       end
     end
   end
@@ -759,30 +640,14 @@ RSpec.describe ADK::SessionService::Redis do
 
     context 'when MULTI result is unexpected' do
       before do
-        allow(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([0, 0]) # Simulate keys not existing
-        allow(ADK.logger).to receive(:warn) # Allow any warning message
+        allow(mock_redis).to receive(:multi).and_yield(mock_redis).and_return(nil) # Return nil instead of array
+        allow(ADK.logger).to receive(:warn)
       end
 
-      # This test is also challenging due to the transaction handling
-      # Would be better to refactor the implementation to be more testable
+      # This test is covered in redis_transaction_spec.rb, so use xit here
       xit 'returns false and logs warning when MULTI returns unexpected results' do
-        # Create test-specific service with controlled mocks
-        special_mock_redis = instance_double(Redis)
-        test_service = described_class.new(redis_client: special_mock_redis, session_ttl: session_ttl)
-
-        # Set up to return unexpected results from MULTI
-        allow(special_mock_redis).to receive(:multi).and_yield(special_mock_redis).and_return([0]) # Return array of wrong size
-
-        # For the multi block execution
-        allow(special_mock_redis).to receive(:del).with(session_key)
-        allow(special_mock_redis).to receive(:del).with(events_key)
-        allow(special_mock_redis).to receive(:srem).with(sessions_set_key, session_id)
-
-        # Expect warning
-        expect(ADK.logger).to receive(:warn).with(match(/Unexpected result from Redis MULTI/))
-
-        # Execute and verify
-        expect(test_service.delete_session(session_id: session_id)).to be false
+        expect(ADK.logger).to receive(:warn).with(/Unexpected result from Redis MULTI during session deletion/)
+        expect(service.delete_session(session_id: session_id)).to be false
       end
     end
 
