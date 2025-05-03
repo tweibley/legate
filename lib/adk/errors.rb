@@ -52,4 +52,30 @@ module ADK
     class ConfigurationError < Error; end
     class StoreError < Error; end
   end
+
+  # Error raised when a required tool is not found.
+  class ToolNotFound < Error; end
+
+  # Error raised during tool execution.
+  class ToolError < Error; end
+
+  # Error raised during planning phase.
+  class PlanningError < Error; end
+
+  # Error related to session management.
+  class SessionError < Error; end
+
+  # Error related to Multi-Capability Protocol (MCP) interactions.
+  class McpError < Error; end
+  class McpConnectionError < McpError; end
+  class McpProtocolError < McpError; end
+  class McpTimeoutError < McpError; end
+
+  # Error related to webhook configuration or processing within the listener.
+  class WebhookConfigurationError < Error; end
+
+  # Define DefinitionStore specific errors (nested or separate?)
+  module DefinitionStore
+    class DefinitionNotFound < StoreError; end
+  end
 end

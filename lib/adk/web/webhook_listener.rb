@@ -7,6 +7,7 @@ require 'json'
 require 'sidekiq' # For Sidekiq::Client.push
 require 'adk' # To access ADK.config, ADK.logger, ADK.definition_store
 require 'adk/errors' # For ADK::WebhookConfigurationError
+require 'mustermann' # For path pattern matching
 
 module ADK
   module Web
@@ -81,35 +82,56 @@ module ADK
         json({ status: :error, error_message: "Internal Server Error: #{e.message}" })
       end
 
-      # --- Routing --- 
+      # --- Routing ---
 
-      # Route for dynamically triggering agent tasks via webhooks.
-      post '/agents/:agent_name/trigger' do # Default pattern
+      # Dynamic route handler using pattern matching
+      post '*' do
         webhook_config = ADK.config.webhooks
-        agent_name_sym = params['agent_name']&.to_sym
-        raw_request_body = env['rack.input.json'] || request.body.read # Prefer parsed JSON
-        request.body.rewind # Ensure body is readable again if needed
+        agent_name_sym = nil
 
-        logger.info("WebhookListener: Received dynamic agent trigger for: #{agent_name_sym}")
+        # Match request path against configured pattern
+        configured_pattern = webhook_config.dynamic_agent_route_pattern
+        pattern = Mustermann.new(configured_pattern, type: :sinatra)
+        match_params = pattern.params(request.path_info)
 
-        # 1. Check if dynamic handler enabled
+        # Only proceed if the pattern matches
+        unless match_params
+          return pass # Didn't match dynamic pattern, try other routes (static, not_found)
+        end
+        
+        # Pattern matched. Now check if handler enabled.
         unless webhook_config.enable_dynamic_agent_handler
-          logger.warn("Dynamic agent handler is disabled, rejecting request for #{agent_name_sym}.")
-          halt 403, json({ status: :error, error_message: "Dynamic agent webhooks are disabled." })
+           logger.warn("Webhook dynamic route matched, but handler is disabled.")
+           halt 403, json({ status: :error, error_message: "Dynamic agent webhooks are disabled." }) # Explicit 403
         end
 
-        # 2. Load agent definition
-        # Errors like DefinitionNotFound are caught by the error handlers above
+        # Handler enabled and pattern matched. Extract agent name.
+        agent_name_param = match_params['agent_name']
+        if agent_name_param
+           agent_name_sym = agent_name_param.to_sym
+        else
+           logger.error("Webhook dynamic route matched, but required 'agent_name' parameter missing in pattern or path.")
+           # Consider this a server config error if name is expected but missing
+           halt 500, json({ status: :error, error_message: "Internal Server Error: Route configuration issue." })
+        end
+
+        # --- Handler Logic (Agent name confirmed) ---
+        raw_request_body = env['rack.input.json'] || request.body.read
+        request.body.rewind
+
+        logger.info("WebhookListener: Processing dynamic agent trigger for: #{agent_name_sym}")
+
+        # Load agent definition (errors handled by Sinatra error blocks)
         definition = ADK.definition_store.get_definition(agent_name_sym)
 
-        # 3. Check definition.webhook_enabled
+        # Check definition.webhook_enabled
         unless definition.webhook_enabled
           logger.warn("Agent '#{agent_name_sym}' is not enabled for webhooks (webhook_enabled=false).")
-          # Use 404 to avoid revealing agent existence if not webhook enabled
           halt 404, json({ status: :error, error_message: "Webhook endpoint not found for this agent." })
+          return # Explicitly return after halt
         end
 
-        # 4. Perform Validation
+        # Perform Validation
         validator_config = definition.webhook_validator || webhook_config.global_validator
         secret = definition.webhook_secret || webhook_config.global_secret
         if validator_config
@@ -235,7 +257,11 @@ module ADK
       # Catch-all for undefined routes within the listener's base path
       not_found do
         content_type :json
-        json({ status: :error, error_message: "Webhook route not found: #{request.request_method} #{request.path_info}" })
+        # Only set body if not already set by a specific halt
+        if response.body.empty? 
+          json({ status: :error, error_message: "Webhook route not found: #{request.request_method} #{request.path_info}" })
+        end 
+        status 404 # Ensure status is 404
       end
     end
   end

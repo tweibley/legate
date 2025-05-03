@@ -1,8 +1,8 @@
 require 'adk/agent'
-require 'adk/definition_store/filesystem'
-require 'adk/session_service/memory'
+require 'redis' # Required for RedisStore
+require_relative 'definition_store/redis_store' # Require the actual store
+require_relative 'session_service/in_memory' # Corrected path
 require 'adk/configuration/webhooks'
-require 'adk/configuration/logging'
 
 module ADK
   # Central configuration object for the ADK framework.
@@ -34,8 +34,8 @@ module ADK
 
     def initialize
       # Set defaults
-      @definition_store = ADK::DefinitionStore::Filesystem.new(File.join(Dir.pwd, 'agents'))
-      @session_service = ADK::SessionService::Memory.new
+      @definition_store = ADK::DefinitionStore::RedisStore.new(Redis.new(ADK.redis_options))
+      @session_service = ADK::SessionService::InMemory.new
       @openai_api_key = ENV['OPENAI_API_KEY']
       @openai_organization_id = ENV['OPENAI_ORGANIZATION_ID']
       @default_model_name = :gpt_4o_mini

@@ -211,6 +211,8 @@ GEM
     rack-protection (3.2.0)
       base64 (>= 0.1.0)
       rack (~> 2.2, >= 2.2.4)
+    rack-test (2.2.0)
+      rack (>= 1.3)
     rainbow (3.1.1)
     rake (13.2.1)
     redis (5.4.0)
@@ -279,6 +281,8 @@ GEM
       google-protobuf (~> 4.30)
     sass-embedded (1.87.0-x86_64-linux-musl)
       google-protobuf (~> 4.30)
+    sassc (2.4.0)
+      ffi (~> 1.9)
     securerandom (0.4.1)
     sidekiq (7.3.9)
       base64
@@ -359,14 +363,21 @@ DEPENDENCIES
   dotenv (~> 2.0)
   dry-schema (~> 1.13)
   fast-mcp (~> 1.1.0)
+  mustermann (~> 3.0)
   pry (~> 0.14)
   pry-byebug (~> 3.10)
   puma
+  rack-test
   rake (~> 13.0)
+  redis-client (>= 0.22.1)
   rspec (~> 3.12)
   rubocop (~> 1.50)
+  sassc
   sidekiq
   simplecov
+  sinatra (~> 3.2)
+  sinatra-contrib (~> 3.2)
+  slim (~> 5.0)
   timecop (~> 0.9)
   webmock
   yard (~> 0.9)

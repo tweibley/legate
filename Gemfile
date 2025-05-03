@@ -25,6 +25,24 @@ group :development do
   # gem 'temporalio'
 end
 
+group :test do
+  gem 'rspec', '~> 3.12'
+  gem 'simplecov', require: false
+  gem 'redis-client', '>= 0.22.1' # For testing Redis session service
+  gem 'rack-test' # Added for Sinatra/Rack app testing
+end
+
 gem "sidekiq"
 
 gem "fast-mcp", '~> 1.1.0'
+
+# Web UI dependencies
+gem 'sinatra', '~> 3.2'
+gem 'sinatra-contrib', '~> 3.2' # Provides custom_logger helper
+gem 'slim', '~> 5.0'
+gem 'sassc'
+# Required for webhook dynamic route matching
+gem 'mustermann', '~> 3.0'
+
+# Async job processing (Consider making optional?)
+# gem "temporalio"
