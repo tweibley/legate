@@ -4,6 +4,7 @@
 require 'thor'
 require 'redis'
 require 'json'
+require 'fileutils' # For creating directories
 require_relative '../tool_registry'
 require_relative '../agent'
 require_relative '../event'   # Need Event for result formatting understanding
@@ -232,6 +233,127 @@ module ADK
           say "Deletion cancelled.", :yellow
         end
       end
+
+      # --- NEW: Generate Agent Definition File ---
+      desc 'generate NAME', 'Generate a new agent definition file'
+      method_option :description, type: :string, default: 'A new ADK agent.', desc: 'Agent description'
+      method_option :instruction, type: :string, default: 'You are a helpful assistant.', desc: 'Agent instruction (system prompt)'
+      method_option :tools, type: :string, aliases: '-t', default: '', desc: 'Comma-separated list of tool names (e.g., "echo,calculator")'
+      method_option :model, type: :string, desc: "LLM model name (uses framework default if blank)"
+      method_option :dir, type: :string, default: './agents', desc: 'Directory to save the agent definition file'
+      method_option :force, type: :boolean, default: false, desc: 'Overwrite existing file without prompting'
+      method_option :webhook_enabled, type: :boolean, default: false, desc: 'Include webhook configuration placeholders'
+      def generate(name)
+        agent_name_sym = name.to_sym
+        dir_path = File.expand_path(options[:dir])
+        file_path = File.join(dir_path, "#{name}_agent.rb")
+        
+        # Check if file exists
+        if File.exist?(file_path) && !options[:force]
+          unless yes?("Agent file '#{file_path}' already exists. Overwrite? [y/N]", :yellow)
+            say "Generation cancelled.", :yellow
+            exit(0)
+          end
+        end
+        
+        # Ensure directory exists
+        begin
+          FileUtils.mkdir_p(dir_path)
+        rescue SystemCallError => e
+          say "Error: Could not create directory '#{dir_path}': #{e.message}", :red
+          exit(1)
+        end
+        
+        # Prepare template variables
+        agent_name_str = name
+        description = options[:description]
+        instruction = options[:instruction]
+        tools_list = options[:tools].split(',').map(&:strip).reject(&:empty?).map(&:to_sym)
+        model_str = options[:model] # Keep as string or nil
+        webhook_enabled = options[:webhook_enabled]
+
+        # --- Build Agent Definition Code ---
+        code = <<~RUBY
+          require 'adk'
+          
+          ADK::Agent.define do |a|
+            a.name = :#{agent_name_sym}
+            a.description = "#{description}"
+            a.instruction = "#{instruction}"
+            
+        RUBY
+        
+        # Add optional model
+        if model_str && !model_str.empty?
+          code += "  # Optional: Specify model (defaults to ADK.config.default_model_name)\n"
+          code += "  a.model_name = '#{model_str}'\n\n"
+        else
+          code += "  # Model will use framework default: #{ADK.config.default_model_name}\n\n"
+        end
+        
+        # Add tools
+        code += "  # Define tools the agent can use\n"
+        if tools_list.empty?
+          code += "  # a.use_tool :echo # Example\n"
+        else
+          tools_list.each { |tool| code += "  a.use_tool :#{tool}\n" }
+        end
+        code += "\n"
+
+        # Add webhook config if requested
+        if webhook_enabled
+          code += <<~WEBHOOK
+            # --- Webhook Configuration --- 
+            # This agent can be triggered by POST /webhooks/agents/#{agent_name_sym}/trigger
+            # (Assuming default listener base_path and dynamic_agent_route_pattern in ADK.configure)
+            
+            a.webhook_enabled true
+            
+            # Required: Convert incoming request body to the user_input for run_task
+            # Example: Extract data from a GitHub push payload
+            a.webhook_transformer ->(request_body) do 
+              # commits = request_body.fetch('commits', []
+              # pusher = request_body.dig('pusher', 'name') || 'Unknown'
+              # commit_messages = commits.map { |c| "- #{c['message']} (by #{c.dig('author','name')})" }.join("\n")
+              # raise ADK::WebhookConfigurationError, "Missing commits in payload." if commits.empty? && pusher == 'Unknown' # Example validation
+              # "New push by #{pusher}. Summarize commits:\n#{commit_messages}\"\n              raise NotImplementedError, "Please implement the webhook_transformer proc to convert request_body into agent user_input."
+            end
+
+            # Required: Extract a session ID string from the incoming request
+            # Example: Use repository ID for session grouping
+            a.webhook_session_extractor ->(request_body) do
+              # repo_id = request_body.dig('repository', 'id') 
+              # raise ADK::WebhookConfigurationError, "Missing repository ID in payload." unless repo_id
+              # "github_repo_#{repo_id}\" # Return the session_id string
+              # Or, for unique tasks: require 'securerandom'; SecureRandom.hex(8)
+              raise NotImplementedError, "Please implement the webhook_session_extractor proc to extract a session ID."
+            end
+            
+            # Optional: Validate incoming requests (recommended)
+            # See docs/webhooks.md for examples using :hmac_sha256 or custom procs.
+            # a.webhook_validator :hmac_sha256 # Reference a validator defined in ADK.configure
+            # a.webhook_secret ENV['AGENT_#{agent_name_str.upcase}_SECRET'] # Secret for the validator
+
+          WEBHOOK
+        end
+
+        code += "end\n" # Close ADK::Agent.define block
+        # --- End Build Code ---
+
+        # Write file
+        begin
+          File.write(file_path, code)
+          say "Agent definition file created at '#{file_path}'", :green
+          if webhook_enabled
+            say "\nWebhook configuration placeholders added. Please implement the required transformer and extractor procs.", :yellow
+            say "Remember to configure validation and secrets for production use!", :yellow
+          end
+        rescue SystemCallError => e
+          say "Error: Could not write file '#{file_path}': #{e.message}", :red
+          exit(1)
+        end
+      end
+      # --- END Generate Agent ---
 
       # --- Runtime/Execution Commands (Using Redis Definition) ---
 
