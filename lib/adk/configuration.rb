@@ -26,9 +26,6 @@ module ADK
     # @return [Float] Default temperature to use if not specified in agent definition.
     attr_accessor :default_temperature
 
-    # @return [ADK::Configuration::Logging] Logging configuration.
-    attr_reader :logging
-
     # @return [ADK::Configuration::Webhooks] Webhook configuration.
     attr_reader :webhooks
 
@@ -40,7 +37,6 @@ module ADK
       @openai_organization_id = ENV['OPENAI_ORGANIZATION_ID']
       @default_model_name = :gpt_4o_mini
       @default_temperature = 0.7
-      @logging = ADK::Configuration::Logging.new
       @webhooks = ADK::Configuration::Webhooks.new
     end
   end

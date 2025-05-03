@@ -5,22 +5,45 @@ require 'dotenv/load' if File.exist?('.env') # Load early for ENV vars
 require 'logger'
 require 'sidekiq'
 require_relative 'adk/version'
+require_relative 'adk/configuration' # Require Configuration class early
 
-# --- Central ADK Logger Configuration ---
+# --- Central ADK Module --- 
 module ADK
-  @logger = nil
-  @configuration = nil # Add instance variable to hold config
+  # --- Eager Logger Initialization ---
+  @logger = begin
+    default_level = ENV['RACK_ENV'] == 'development' ? 'DEBUG' : 'WARN'
+    level_str = ENV['ADK_LOG_LEVEL']&.upcase || default_level
+    log_target = $stdout
+    if ['NONE', 'SILENT'].include?(level_str)
+      log_target = IO::NULL 
+      level = Logger::FATAL + 1
+    else
+      level = case level_str
+              when 'DEBUG' then Logger::DEBUG
+              when 'INFO' then Logger::INFO
+              when 'WARN' then Logger::WARN
+              when 'ERROR' then Logger::ERROR
+              when 'FATAL' then Logger::FATAL
+              else Logger::WARN
+              end
+    end
+    logger_instance = Logger.new(log_target)
+    logger_instance.level = level
+    logger_instance.formatter = proc { |severity, _, _, msg| "#{severity}: #{msg}\n" }
+    unless ['NONE', 'SILENT'].include?(level_str)
+      # Use puts here as logger might not be fully ready for complex formatting?
+      puts "--> ADK Logger initialized with level: #{level_str}, target: #{log_target == IO::NULL ? 'NULL' : 'STDOUT'}"
+    end
+    logger_instance
+  end
+  # --- End Eager Logger Initialization ---
+  
+  @configuration = nil 
 
-  # Default Redis connection options (used by SessionService and Sidekiq)
   @redis_options = {
     url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0')
-    # Add other Redis options if needed (password, etc.)
   }
 
-  # Simplifies common environment setup like Bundler and Dotenv.
-  # Call this at the beginning of your application entry point.
-  # It attempts to load 'bundler/setup' and 'dotenv/load', ignoring
-  # LoadError if they are not available or needed in the current context.
   def self.load_environment
     begin
       require 'bundler/setup'
@@ -41,40 +64,12 @@ module ADK
     end
   end
 
+  # Access the eagerly initialized logger
   def self.logger
-    @logger ||= begin
-      # Default to DEBUG in development, WARN otherwise
-      default_level = ENV['RACK_ENV'] == 'development' ? 'DEBUG' : 'WARN'
-      level_str = ENV['ADK_LOG_LEVEL']&.upcase || default_level
-      log_target = $stdout # Default target
-      # Check for silent flag *before* setting level
-      if ['NONE', 'SILENT'].include?(level_str)
-        log_target = IO::NULL # Use the null device constant (more portable than '/dev/null')
-        level = Logger::FATAL + 1 # Still set level high for consistency
-      else
-
-        level = case level_str
-                when 'DEBUG' then Logger::DEBUG
-                when 'INFO' then Logger::INFO
-                when 'WARN' then Logger::WARN
-                when 'ERROR' then Logger::ERROR
-                when 'FATAL' then Logger::FATAL
-                else Logger::WARN # Default fallback
-                end
-      end
-      logger_instance = Logger.new(log_target) # Log to target (stdout or NULL)
-      logger_instance.level = level
-      logger_instance.formatter = proc { |severity, _, _, msg| "#{severity}: #{msg}\n" }
-      unless ['NONE', 'SILENT'].include?(level_str)
-        puts "--> ADK Logger initialized with level: #{level_str}, target: #{log_target == IO::NULL ? 'NULL' : 'STDOUT'}"
-      end
-
-      logger_instance
-    end
+    @logger
   end
 
   # Configure ADK settings
-  # Initializes and yields the configuration object.
   def self.configure
     # Initialize configuration only once
     @configuration ||= ADK::Configuration.new
@@ -119,31 +114,26 @@ module ADK
   # --- End Sidekiq Configuration ---
 end
 
-# --- Initial Sidekiq Configuration Call ---
+# --- Initial Sidekiq Configuration Call (Depends on Logger being ready) ---
 ADK.configure_sidekiq
 
-# --- Require components AFTER logger is configurable ---
+# --- Require components AFTER core module setup (Logger, Config, etc.) ---
 require_relative 'adk/errors'
 require_relative 'adk/event'
 require_relative 'adk/session'
-require_relative 'adk/tool_context'
-require_relative 'adk/tool'
+require_relative 'adk/tool_context' 
+require_relative 'adk/tool' # Now logger is ready before this require
 require_relative 'adk/tool_registry'
 require_relative 'adk/global_tool_manager'
-# --- Load dependencies BEFORE Agent ---
 require_relative 'adk/planner'
-# --- Load Services ---
 require_relative 'adk/session_service/base'
 require_relative 'adk/session_service/in_memory'
 require_relative 'adk/session_service/redis'
-
 require_relative 'adk/mcp'
-# --- Now load Agent ---
 require_relative 'adk/agent'
-# --- Load CLI and Tools last ---
 require_relative 'adk/cli'
 
-# Tools (Order doesn't strictly matter here, but keep AgentTool first if it uses others)
+# Tools (Can now safely inherit and use ADK.logger)
 require_relative 'adk/tools/base/http_client'
 require_relative 'adk/tools/webhook_tool'
 require_relative 'adk/tools/agent_tool'
