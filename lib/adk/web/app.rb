@@ -110,7 +110,7 @@ module ADK
           @logger.info("Successfully connected to Redis.")
 
           # 3. Instantiate the definition store
-          @definition_store = ADK::DefinitionStore::RedisStore.new(redis_client)
+          @definition_store = ADK::DefinitionStore::RedisStore.new(redis_client: Redis.new(ADK.redis_options))
           @logger.info("Agent Definition Store initialized.")
         rescue Redis::CannotConnectError => e
           @logger.error("Could not connect to Redis. Agent definition persistence disabled. #{e.message}")
