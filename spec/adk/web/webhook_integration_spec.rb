@@ -40,6 +40,7 @@ RSpec.describe "Webhook Integration" do
   let(:definition_store) { instance_double(ADK::DefinitionStore::RedisStore) }
   let(:agent_definition) { ADK::AgentDefinition.new } # Use a real definition object
   let(:session_service) { instance_double(ADK::SessionService::Redis) }
+  let(:redis_client) { instance_double(Redis) }
   let(:agent_instance) { instance_double(ADK::Agent, name: agent_name) }
 
   let(:agent_name) { :webhook_integration_agent }
@@ -50,6 +51,8 @@ RSpec.describe "Webhook Integration" do
   let(:expected_session_id) { 'repo-session-987' }
   let(:expected_user_input) { 'Input from push event: test_push' }
   let(:expected_redis_opts) { { url: 'redis://mockhost:6379/1' } }
+  # Define expected session service config structure for job payload
+  let(:expected_session_service_config) { { 'type' => 'redis', 'url' => 'redis://mockhost:6379/1' } }
 
   # --- Test Setup ---
   before(:each) do
@@ -60,6 +63,9 @@ RSpec.describe "Webhook Integration" do
     allow(ADK).to receive(:config).and_return(instance_double(ADK::Configuration, webhooks: webhook_config))
     allow(ADK).to receive(:definition_store).and_return(definition_store)
     allow(ADK).to receive(:logger).and_return(instance_double(Logger, info: nil, warn: nil, error: nil, debug: nil))
+
+    # Mock the global redis_options that WebhookListener uses to build job payload
+    allow(ADK).to receive(:redis_options).and_return(expected_redis_opts)
 
     # Configure webhook listener via mocked config
     allow(webhook_config).to receive(:listener_enabled).and_return(true)
@@ -87,8 +93,12 @@ RSpec.describe "Webhook Integration" do
     # Stub definition store to return our configured definition
     allow(definition_store).to receive(:get_definition).with(agent_name).and_return(agent_definition)
 
-    # Stub Session Service instantiation (still needed)
-    allow(ADK::SessionService::Redis).to receive(:new).with(expected_redis_opts).and_return(session_service)
+    # Setup Redis client mocking - this is what the worker actually uses
+    allow(Redis).to receive(:new).with(hash_including(expected_redis_opts)).and_return(redis_client)
+    allow(redis_client).to receive(:ping)
+
+    # Stub Session Service instantiation with redis_client
+    allow(ADK::SessionService::Redis).to receive(:new).with(redis_client: redis_client).and_return(session_service)
 
     # Default stub for run_task - will be called on the *real* agent instance created by worker
     # We need to allow any instance of ADK::Agent to receive run_task
@@ -106,7 +116,8 @@ RSpec.describe "Webhook Integration" do
   context "POST #{'/agents/:agent_name/trigger'} (Dynamic Agent Route)" do
     it 'successfully receives webhook, processes job, and calls agent.run_task' do
       # Expectations for worker interactions
-      expect(ADK::SessionService::Redis).to receive(:new).with(expected_redis_opts).and_return(session_service)
+      expect(Redis).to receive(:new).with(hash_including(expected_redis_opts)).and_return(redis_client)
+      expect(ADK::SessionService::Redis).to receive(:new).with(redis_client: redis_client).and_return(session_service)
       expect(definition_store).to receive(:get_definition).with(agent_name).and_return(agent_definition)
       # We expect run_task to be called on *an* instance, not a specific stub
       expect_any_instance_of(ADK::Agent).to receive(:run_task)

@@ -29,6 +29,8 @@ RSpec.describe ADK::Web::WebhookListener do
   let(:transformer_proc) { ->(payload) { "Transformed: #{payload['data']}" } }
   let(:extractor_proc) { ->(payload) { "session-#{payload['repo_id']}" } }
   let(:validator_proc) { ->(req, secret) { true } }
+  # Redis options used by the webhook listener
+  let(:redis_options) { { url: 'redis://mockhost:6379/1' } }
 
   # Reset Sidekiq testing mode before each example
   before(:each) do
@@ -39,6 +41,9 @@ RSpec.describe ADK::Web::WebhookListener do
     allow(ADK).to receive(:config).and_return(instance_double(ADK::Configuration, webhooks: webhook_config))
     allow(ADK).to receive(:definition_store).and_return(definition_store)
     allow(ADK).to receive(:logger).and_return(instance_double(Logger, info: nil, warn: nil, error: nil, debug: nil)) # Suppress logging
+
+    # Stub ADK.redis_options which is used by WebhookListener to build the session_service_config
+    allow(ADK).to receive(:redis_options).and_return(redis_options)
 
     # Default stubs for a successful path
     allow(webhook_config).to receive(:enable_dynamic_agent_handler).and_return(true)
@@ -64,7 +69,10 @@ RSpec.describe ADK::Web::WebhookListener do
           expect(job['args'][0]['agent_definition_name']).to eq(agent_name.to_s)
           expect(job['args'][0]['session_id']).to eq('session-repo-123')
           expect(job['args'][0]['transformed_user_input']).to eq('Transformed: some_value')
-          expect(job['args'][0]['session_service_config']).to eq({ url: 'redis://mockhost:6379/1', type: :redis })
+          # Update expectation to match the actual format used by WebhookListener
+          # The webhook listener stringifies all keys and adds 'type' => 'redis'
+          expect(job['args'][0]['session_service_config']).to eq({ 'url' => 'redis://mockhost:6379/1',
+                                                                   'type' => 'redis' })
           'fake_job_id' # Return a fake JID
         end
 
