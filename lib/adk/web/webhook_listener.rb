@@ -16,6 +16,65 @@ module ADK
     class WebhookListener < Sinatra::Base
       helpers Sinatra::CustomLogger # Use ADK.logger
 
+      # --- Class-level setup for static routes ---
+      # Define routes based on configuration *after* the class definition
+      def self.setup_static_routes(app_instance)
+        webhook_config = ADK.config.webhooks
+        logger = ADK.logger
+
+        webhook_config.static_routes.each do |method_path, route_config|
+          method, path = method_path.split(' ', 2)
+          http_method = method.downcase.to_sym
+
+          unless [:get, :post, :put, :patch, :delete, :head, :options].include?(http_method)
+            logger.error("WebhookListener: Invalid HTTP method '#{method}' specified for static route '#{path}'. Skipping.")
+            next
+          end
+          unless route_config.handler.is_a?(Proc)
+            logger.error("WebhookListener: Invalid handler (not a Proc) for static route '#{method_path}'. Skipping.")
+            next
+          end
+
+          logger.debug("WebhookListener: Defining static route: #{http_method.upcase} #{path}")
+
+          # Use Sinatra's routing DSL (e.g., app_instance.get, app_instance.post)
+          app_instance.send(http_method, path) do
+            # --- Validation Logic (Copied & adapted from dynamic route) ---
+            validator_config = route_config.validator
+            secret = route_config.secret
+            if validator_config
+              validator_proc = validator_config.is_a?(Proc) ? validator_config : webhook_config.find_validator(validator_config)
+              if validator_proc.nil?
+                logger.error("Static Route Validation Error [#{method_path}]: Validator '#{validator_config}' not found.")
+                halt 500, json({ status: :error, error_message: "Internal Server Error: Static route validator configuration issue." })
+              end
+              begin
+                is_valid = validator_proc.call(request, secret)
+                unless is_valid
+                  logger.warn("Static Route Validation Failed [#{method_path}]")
+                  halt 401, json({ status: :error, error_message: "Unauthorized: Invalid request signature or credentials." })
+                end
+                logger.debug("Static Route Validation OK [#{method_path}]")
+              rescue StandardError => e
+                logger.error("Error during static route validation [#{method_path}]: #{e.message}")
+                halt 500, json({ status: :error, error_message: "Internal Server Error during static route validation." })
+              end
+            end
+            # --- End Validation Logic ---
+
+            # Execute the handler proc
+            begin
+              route_config.handler.call(request) # Pass request to handler
+            rescue StandardError => e
+              logger.error("Error executing static route handler [#{method_path}]: #{e.class} - #{e.message}")
+              logger.error(e.backtrace.join("\n"))
+              halt 500, json({ status: :error, error_message: "Internal Server Error in static route handler." })
+            end
+          end
+        end
+      end
+      # --- End Class-level setup ---
+
       configure do
         set :logger, ADK.logger
         # Disable Sinatra's built-in error handling to provide custom responses
@@ -23,6 +82,11 @@ module ADK
         set :raise_errors, false # Let our error handler catch them
         # Prevent Sinatra from starting its own server if run directly (we mount it)
         set :server, :noop
+
+        # Call setup *after* ADK config is likely loaded but before server starts
+        # Note: This runs when the class is loaded, assuming ADK config is done.
+        # If config happens later, this needs rethinking (e.g., setup in initialize/before filter).
+        setup_static_routes(self) 
       end
 
       # --- Middleware/Hooks ---
@@ -244,14 +308,6 @@ module ADK
         content_type :json
         status 202
         json({ status: :accepted, message: "Request for agent '#{agent_name_sym}' accepted and queued.", job_id: job_id })
-      end
-
-      # Placeholder for static routes
-      # TODO: Add logic to map routes defined in config.webhooks.static_routes
-      get '/ping' do # Example static route
-        logger.info("WebhookListener: Received static ping")
-        content_type :json
-        json({ status: :ok, message: "Pong from ADK Webhook Listener" })
       end
 
       # Catch-all for undefined routes within the listener's base path
