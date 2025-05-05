@@ -7,6 +7,8 @@ require 'json'
 require 'yaml'
 require 'logger' # Needed for sample entrypoint
 require 'securerandom' # Needed for suggested project ID
+require 'redis'
+
 
 module ADK
   module CLI
@@ -23,8 +25,8 @@ module ADK
       desc 'generate', 'Generate deployment assets (Dockerfile, .dockerignore, cloud-specific configs)'
       method_option :cloud, type: :string, aliases: "-c", default: 'none', required: true,
                             enum: %w[gcp aws azure none], desc: 'Target cloud provider (gcp, aws, azure, none)'
-      method_option :entry_point, type: :string, aliases: "-e", required: true,
-                                  desc: 'Entry point script for the main application/web process (e.g., bin/web)'
+      method_option :entry_point, type: :string, aliases: "-e", required: false,
+                                  desc: 'Entry point script for the main application/web process (e.g., bin/web). Required unless --generate-sample-entrypoint is used.'
       method_option :agent_entry_points, type: :array, aliases: "-a",
                                          desc: 'Entry points for user agents (comma separated)'
       method_option :name, type: :string, aliases: "-n", default: DEFAULT_DEPLOYMENT_DIR_NAME,
@@ -46,7 +48,21 @@ module ADK
       # We might add options for agent service names, memory, cpu later.
 
       def generate(directory = ".")
+        # Determine the effective entry point
+        effective_entry_point = if options[:generate_sample_entrypoint]
+                                  options[:entry_point] || DEFAULT_SAMPLE_ENTRYPOINT_PATH
+                                else
+                                  options[:entry_point]
+                                end
+
+        # Validate entry_point is provided if sample isn't generated
+        unless effective_entry_point
+          say "Error: --entry-point is required unless --generate-sample-entrypoint is used.", :red
+          exit 1
+        end
+
         deployment_dir = File.expand_path(options[:name])
+        deployment_dir_basename = File.basename(deployment_dir)
         gcp_config_name = nil # Store generated config name for final message
         FileUtils.mkdir_p(deployment_dir)
 
@@ -54,12 +70,13 @@ module ADK
 
         # 0. Generate sample entrypoint if requested (BEFORE generating Dockerfiles)
         if options[:generate_sample_entrypoint]
-          generate_sample_entrypoint_script
+          generate_sample_entrypoint_script(effective_entry_point)
         end
 
-        # 1. Generate Generic Assets (Dockerfile(s), .dockerignore)
-        generate_dockerfiles(deployment_dir)
+        # 1. Generate Generic Assets (Dockerfile(s), .dockerignore, config.ru)
+        generate_dockerfiles(deployment_dir, effective_entry_point, deployment_dir_basename)
         generate_dockerignore(deployment_dir)
+        generate_config_ru(deployment_dir, effective_entry_point)
 
         # 2. Generate Cloud-Specific Assets
         case options[:cloud]
@@ -79,8 +96,7 @@ module ADK
 
         say "Deployment asset generation complete!", :green
         if options[:generate_sample_entrypoint]
-          say "NOTE: Sample entrypoint generated at '#{DEFAULT_SAMPLE_ENTRYPOINT_PATH}'.", :yellow
-          say "      Ensure your --entrypoint option matches this path ('#{options[:entry_point]}).", :yellow
+          say "NOTE: Sample entrypoint generated at '#{effective_entry_point}'.", :yellow
         end
         if gcp_config_name
           say "NOTE: A gcloud configuration named '#{gcp_config_name}' was created/updated.", :yellow
@@ -96,28 +112,35 @@ module ADK
 
       private
 
-      def generate_dockerfiles(directory)
+      def generate_dockerfiles(directory, main_entry_point, deployment_dir_basename)
         # Main Dockerfile
         main_dockerfile_path = File.join(directory, "Dockerfile")
-        generate_dockerfile_content(main_dockerfile_path, options[:entry_point], options[:base_image])
+        generate_dockerfile_content(main_dockerfile_path, main_entry_point, options[:base_image], deployment_dir_basename)
         say "Created main Dockerfile at #{main_dockerfile_path}", :cyan
 
         # Agent Dockerfiles (if specified)
         options[:agent_entry_points]&.each_with_index do |agent_entry, index|
           agent_name = File.basename(agent_entry, ".rb").gsub(/[^0-9a-z_.-]/i, '_')
           agent_dockerfile_path = File.join(directory, "Dockerfile.agent.#{agent_name}.#{index}")
-          generate_dockerfile_content(agent_dockerfile_path, agent_entry, options[:base_image])
+          generate_dockerfile_content(agent_dockerfile_path, agent_entry, options[:base_image], '')
           say "Created agent Dockerfile for '#{agent_entry}' at #{agent_dockerfile_path}", :cyan
         end
       end
 
-      def generate_dockerfile_content(path, entry_point, base_image)
+      def generate_dockerfile_content(path, entry_point, base_image, deployment_dir_basename)
         # Basic validation for entry point format (crude check)
         unless entry_point && entry_point.include?('/') || entry_point.start_with?('bin/')
           say "Warning: Entry point '#{entry_point}' does not look like a path. Ensure it's correct.", :yellow
         end
 
+        # Determine the path to config.ru relative to the build context (project root)
+        # config.ru is generated inside the deployment directory
+        config_ru_build_context_path = File.join(deployment_dir_basename, "config.ru")
+
+        # Apply changes based on user provided diff
         content = <<~DOCKERFILE
+          # syntax=docker/dockerfile:1
+
           # Dockerfile generated by ADK CLI
           ARG RUBY_VERSION=#{base_image.split(':').last || '3.2-slim'} # Extract tag if possible
           FROM #{base_image}
@@ -130,6 +153,7 @@ module ADK
               apt-get install -y --no-install-recommends \
                 build-essential \
                 git \
+                libcurl4 \
               && apt-get clean && \
               rm -rf /var/lib/apt/lists/*
 
@@ -139,17 +163,27 @@ module ADK
           # Copy dependency definition files
           COPY Gemfile Gemfile.lock ./
 
-          # Install gems
-          RUN bundle install --jobs $(nproc) --retry 3 --without development test
+          # Install ADK gem if present locally, then bundle install
+          COPY adk-ruby-*.gem ./
+          # Use wildcard and ignore errors if no gem file exists
+          RUN gem install adk-ruby-*.gem || echo "No local adk-ruby gem found, assuming it is in Gemfile."
+          RUN bundle config set without 'development test'
+          RUN bundle install --jobs $(nproc) --retry 3
 
           # Copy the rest of the application code
           # Ensure .dockerignore is properly configured
           COPY . .
+          # Copy the generated config.ru from the deployment dir in the build context
+          COPY #{config_ru_build_context_path} ./
 
           # --- Runtime Environment Variables ---
           # Set sensible defaults, overrideable at runtime (e.g., via Cloud Run)
           ENV RACK_ENV="production"
-          ENV PORT="8080" # Required by Cloud Run unless overridden
+
+          # Port (Required by Cloud Run)
+          ENV PORT="8080"
+
+          # Log Level
           ENV ADK_LOG_LEVEL="INFO"
 
           # Required for ADK session state, override with actual Redis URL
@@ -163,8 +197,11 @@ module ADK
           EXPOSE ${PORT}
 
           # --- Entry Point ---
-          # Runs the specified application or agent script
-          CMD ["bundle", "exec", "ruby", "#{entry_point}"]
+          # Runs the specified application or agent script using rackup
+          # Assumes a config.ru file exists in the root directory
+          # The config.ru should load the entrypoint script (e.g., bin/adk_web_entrypoint.rb)
+          # and run the defined Rack application (e.g., AdkWebApp).
+          CMD ["bundle", "exec", "rackup", "-p", "${PORT}", "-o", "0.0.0.0"]
         DOCKERFILE
 
         File.write(path, content)
@@ -223,9 +260,47 @@ module ADK
         say "Created .dockerignore at #{dockerignore_path}", :cyan
       end
 
+      # --- Generate config.ru (Generic) ---
+      def generate_config_ru(directory, entry_point_script)
+        config_ru_path = File.join(directory, "config.ru")
+
+        if File.exist?(config_ru_path)
+          say "Skipping config.ru generation, file already exists: #{config_ru_path}", :yellow
+          return
+        end
+
+        # Determine the relative path from config.ru (in deployment dir) to the entry_point
+        # This assumes entry_point_script is relative to the project root.
+        # We need the path *inside* the container (relative to /app)
+        relative_entry_point = entry_point_script # Use the path as provided (e.g., 'bin/adk_web_entrypoint.rb')
+
+        # Basic validation
+        unless relative_entry_point && relative_entry_point.include?('/')
+           say "Warning: Entry point '#{relative_entry_point}' for config.ru doesn't look like a relative path. Ensure it's correct.", :yellow
+        end
+
+        content = <<~RACKUP
+          # File: config.ru (Generated by ADK CLI)
+          # This file is used by 'rackup' to start the web application.
+
+          # Load the environment and application defined in the entrypoint script.
+          # Ensure the path is correct relative to the application root inside the container.
+          require_relative '#{relative_entry_point}'
+
+          # Tell rackup which Rack application class to run.
+          # This should match the class name defined in your entrypoint script (e.g., AdkWebApp).
+          run AdkWebApp
+
+        RACKUP
+
+        File.write(config_ru_path, content)
+        say "Created config.ru at #{config_ru_path}", :cyan
+        say "Ensure the entrypoint path in config.ru ('#{relative_entry_point}') is correct for your project structure.", :yellow
+      end
+
       # --- Sample Entrypoint Generation (Optional, generic) ---
-      def generate_sample_entrypoint_script
-        sample_path = File.expand_path(DEFAULT_SAMPLE_ENTRYPOINT_PATH)
+      def generate_sample_entrypoint_script(sample_path)
+        sample_path = File.expand_path(sample_path) # Ensure absolute path
         sample_dir = File.dirname(sample_path)
 
         unless Dir.exist?(sample_dir)
@@ -240,16 +315,21 @@ module ADK
 
         say "Generating sample entrypoint script at #{sample_path}", :cyan
 
-        content = <<~RUBY
+        content = <<-'RUBYCONTENT'
           #!/usr/bin/env ruby
           # frozen_string_literal: true
 
-          # --- Generated Sample ADK Web Entrypoint ---#{' '}
+          # --- Generated Sample ADK Web Entrypoint ---
           # This script provides a basic starting point for running ADK with a web server
           # and includes a /healthz endpoint suitable for Cloud Run health checks.
 
           require 'adk'
+          require 'adk/web'
+          require 'adk/agent'
+          require 'adk/session_service/base'
+          require 'adk/tools/echo'
           require 'sinatra/base'
+          require 'sinatra/json'
           require 'logger'
 
           # --- Configuration ---
@@ -257,75 +337,190 @@ module ADK
           # (e.g., REDIS_URL, ADK_SESSION_SERVICE, GOOGLE_API_KEY, PORT).
           # Ensure these are set correctly in your deployment environment (e.g., Cloud Run).
 
-          # Configure ADK basic settings
+          # Configure ADK settings if needed
+          # Example: Set the default model
+          # config.default_model_name = 'gemini-1.5-pro'
+
+          # Example: Configure webhooks if you plan to use them
+          # config.webhooks.listener_enabled = true
+          # config.webhooks.listen_address = '0.0.0.0' # Important for Cloud Run
+          # config.webhooks.listen_port = ENV.fetch('PORT', 8080).to_i
+          # config.webhooks.base_path = '/webhooks'
+          # config.webhooks.global_secret = ENV['WEBHOOK_SECRET'] # Load from env
+
+          # Set session service based on environment variable
+          # Defaults to :memory if not set
+          session_service_type = ENV.fetch('ADK_SESSION_SERVICE', 'memory').to_sym
           ADK.configure do |config|
-            config.logger = Logger.new($stdout)
-            # Set log level via ENV ('DEBUG', 'INFO', 'WARN', 'ERROR') or default to INFO
-            config.log_level = Logger.const_get(ENV.fetch('ADK_LOG_LEVEL', 'INFO').upcase) rescue Logger::INFO
-            # ADK should automatically pick up Redis if ENV['ADK_SESSION_SERVICE'] == 'redis'
-            # and ENV['REDIS_URL'] is set.
-            # config.definition_store_path = './tools' # Optional: Specify tool definition path
+            # Configure ADK settings if needed
+            # Example: Set the default model
+            # config.default_model_name = 'gemini-1.5-pro'
+
+            # Example: Configure webhooks if you plan to use them
+            # config.webhooks.listener_enabled = true
+            # config.webhooks.listen_address = '0.0.0.0' # Important for Cloud Run
+            # config.webhooks.listen_port = ENV.fetch('PORT', 8080).to_i
+            # config.webhooks.base_path = '/webhooks'
+            # config.webhooks.global_secret = ENV['WEBHOOK_SECRET'] # Load from env
+
+            # Set session service based on environment variable
+            # Defaults to :memory if not set
+            config.session_service = case session_service_type
+                                     when :redis
+                                       # Assumes REDIS_URL environment variable is set (e.g., redis://<redis_host>:<redis_port>)
+                                       # You might need to adjust Redis client options depending on your setup
+                                       ADK::SessionService::Redis.new
+                                     when :memory
+                                       ADK::SessionService::InMemory.new
+                                     else
+                                       raise "Unsupported ADK_SESSION_SERVICE: #{session_service_type}"
+                                     end
+
+            # Configure definition store (if using Redis)
+            if session_service_type == :redis
+              config.definition_store = ADK::DefinitionStore::RedisStore.new(redis_client: Redis.new(ADK.redis_options))
+            end
+
+            # --- IMPORTANT ---
+            # The ADK framework initializes its own logger.
+            # You generally don't need to set it here unless you have specific needs.
+            # If you DO need to customize logging, refer to the ADK documentation.
           end
 
-          # --- Health Check Application ---
-          # A simple Rack app to respond to health checks.
-          class HealthCheckApp < Sinatra::Base
+          ADK.logger.info("Sample ADK Web Entrypoint environment configured.")
+
+          # --- ADK Agent/Application Logic Integration ---
+          # You might load agent definitions or start background tasks here.
+          # Example:
+          # Dir[File.expand_path('../../../app/agents/**/*.rb', __FILE__)].each { |file| require file }
+          # puts "INFO: Loaded agent definitions."
+
+          # --- Define Rack Application(s) ---
+          # Define your main application logic within a Rack-compatible class (like Sinatra).
+          # The actual server (Puma, Unicorn, etc.) will be started via rackup/config.ru
+          # based on the Dockerfile\'s CMD.
+
+          class AdkWebApp < Sinatra::Base
             configure do
-              # Disable Sinatra's built-in logging if ADK logger is preferred
+              # Use the central ADK logger
+              set :logger, ADK.logger
+              # You might want to disable Sinatra\'s default logging if it\'s noisy
               # disable :logging
-              # set :dump_errors, false
             end
 
+            # --- Health Check Endpoint ---
+            # Cloud Run uses this to check if the container is ready to serve requests.
             get '/healthz' do
-              ADK.logger.debug("Health check received.")
-              status 200
-              headers 'Content-Type' => 'text/plain'
-              body 'OK'
+              # Check essential dependencies (e.g., database connection, ADK services)
+              # Return 503 if not ready.
+              begin
+                # Example: Check ADK session service (adjust based on your config)
+                # raise "Session service not available" unless ADK.config.session_service&.check_connection
+                status 200
+                headers 'Content-Type' => 'text/plain'
+                body 'OK'
+              rescue => e
+                logger.error("Health check failed: #{e.message}")
+                status 503
+                headers 'Content-Type' => 'text/plain'
+                body "Service Unavailable: #{e.message}"
+              end
             end
+
+            # --- Echo Agent Endpoint ---
+            post '/echo' do
+              content_type :json
+
+              begin
+                # 1. Get input from request body (expecting JSON: { "message": "..." })
+                request.body.rewind
+                request_payload = JSON.parse(request.body.read)
+                user_message = request_payload['message']
+
+                unless user_message
+                  halt 400, json({ status: :error, error_message: "Missing 'message' key in JSON request body." })
+                end
+
+                # 2. Get configured session service
+                session_service = ADK.config.session_service
+                unless session_service
+                  logger.error("/echo: ADK session service is not configured!")
+                  halt 500, json({ status: :error, error_message: "Internal Server Error: Session service not configured." })
+                end
+
+                # 3. Instantiate an ephemeral Echo agent
+                #    (No need to load a saved definition for this simple case)
+                echo_agent = ADK::Agent.new(
+                  name: :ephemeral_echo,
+                  description: 'Temporary Echo Agent',
+                  tool_classes: [ADK::Tools::Echo]
+                  # No instruction or model needed for just echo
+                )
+
+                # 4. Create a temporary session for this request
+                #    (You might want persistent sessions for real agents)
+                temp_session = session_service.create_session(app_name: :echo_service, user_id: "web_#{SecureRandom.hex(4)}")
+                session_id = temp_session.id
+
+                logger.info("/echo: Running echo task in session #{session_id} for message: \"#{user_message}\"")
+
+                # 5. Run the task
+                #    The Echo tool doesn't require planning, agent.run_task handles it.
+                final_event_or_error = echo_agent.run_task(
+                  session_id: session_id,
+                  user_input: user_message, # The agent/planner uses this
+                  session_service: session_service
+                  # We don't *need* to explicitly tell it to use the echo tool;
+                  # the agent should figure it out or the Echo tool might be a fallback.
+                  # If direct tool execution was needed: agent.execute_tool(:echo, {message: user_message}, session_id, session_service)
+                )
+
+                # 6. Process the result
+                if final_event_or_error.is_a?(ADK::Event)
+                  result_content = final_event_or_error.content
+                  # Successfully echoed
+                  json({ status: :success, echoed_message: result_content[:result] }) 
+                elsif final_event_or_error.is_a?(Hash) && final_event_or_error[:status] == :error
+                  # Handle errors reported by run_task
+                  logger.error("/echo: Agent execution failed: #{final_event_or_error[:error_message]}")
+                  status 500
+                  json(final_event_or_error) # Return the error hash
+                else
+                  # Unexpected result
+                  logger.error("/echo: Unexpected result from agent execution: #{final_event_or_error.inspect}")
+                  halt 500, json({ status: :error, error_message: "Internal Server Error: Unexpected agent result." })
+                end
+
+              rescue JSON::ParserError => e
+                logger.error("/echo: Invalid JSON input: #{e.message}")
+                halt 400, json({ status: :error, error_message: "Invalid JSON format: #{e.message}" })
+              rescue => e
+                logger.error("/echo: Unhandled error: #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
+                halt 500, json({ status: :error, error_message: "Internal Server Error: #{e.message}" })
+              ensure
+                # Clean up temporary session if created
+                session_service.delete_session(session_id: session_id) if session_service && session_id
+              end
+            end
+
+            # --- Add Your Application Routes Here ---
+            # Example:
+            # get \'/\' do
+            #   \'Hello from ADK Web App!\'
+            # end
           end
 
-          ADK.logger.info("Sample ADK Web Entrypoint starting...")
-          ADK.logger.info("Log Level: #{ADK.config.log_level}")
+          # --- NOTE ---
+          # This script NO LONGER starts the web server directly.
+          # The Docker container\'s CMD should use \'rackup\' (referencing config.ru)
+          # to start a web server (like Puma) which will load this environment
+          # and run the AdkWebApp.
 
-          # --- ADK Agent/Application Logic Integration ---#{' '}
-          # OPTION 1: Run agents or tasks in background threads (if needed)
-          # Thread.new do
-          #   begin
-          #     ADK.logger.info("Starting background ADK agent...")
-          #     # Example: agent = ADK::Agent::YourAgent.new
-          #     # agent.run_loop
-          #     sleep
-          #   rescue => e
-          #     ADK.logger.error("Error in background agent thread: #{e.message}\n#{e.backtrace.join("\n")}")
-          #   end
-          # end
+          # Example config.ru content:
+          #   require_relative \'./bin/adk_web_entrypoint\' # Load this script\'s environment
+          #   run AdkWebApp # Tell rackup to run your Sinatra app
 
-          # OPTION 2: Add other Rack applications to be mounted by the web server
-          # class MyApp < Sinatra::Base
-          #   get '/' do
-          #     'Hello from MyApp!'
-          #   end
-          # end
-          # ADK::Web::Server.mount('/', MyApp)
-
-          # --- Mount Health Check and Start Server ---
-          # Ensure the ADK::Web::Server implementation supports mounting apps.
-          # This assumes it uses something like Rack::Builder.
-          ADK::Web::Server.mount('/healthz', HealthCheckApp.new)
-
-          # The ADK Web Server should respect the PORT environment variable (default 8080 for Cloud Run).
-          # This is typically a blocking call that starts the web server.
-          begin
-            ADK::Web::Server.run!
-          rescue => e
-            ADK.logger.fatal("ADK Web Server failed to start: #{e.message}")
-            ADK.logger.fatal(e.backtrace.join("\n"))
-            exit 1 # Exit if server fails to start
-          end
-
-          ADK.logger.info('ADK Web Server stopped.')
-
-        RUBY
+        RUBYCONTENT
 
         File.write(sample_path, content)
         # Make the script executable
@@ -363,7 +558,7 @@ module ADK
         region = options[:gcp_region] # Use the class_option value
 
         # 1. Attempt to create gcloud configuration
-        gcp_config_name = create_gcloud_config(options[:name], project_id, region)
+        #gcp_config_name = create_gcloud_config(options[:name], project_id, region)
 
         # 2. Generate GCP specific config files (optional for now, script preferred)
         # generate_gcp_redis_config(directory)
@@ -372,7 +567,10 @@ module ADK
         # 3. Generate GCP deploy script
         generate_gcp_deploy_script(directory)
 
-        # 4. Generate/Copy GCP docs
+        # 4. Generate Cloud Build Config
+        generate_gcp_cloudbuild_yaml(directory)
+
+        # 5. Generate/Copy GCP docs
         generate_gcp_deployment_docs(directory)
 
         return gcp_config_name # Return the generated name for the final message
@@ -380,7 +578,7 @@ module ADK
 
       # Helper to execute shell commands and check status
       def run_gcloud_command(command, error_message)
-        say "Executing: gcloud #{command}", :detail # Use detail or another level
+        say "Executing: gcloud #{command}"
         output = `gcloud #{command} 2>&1` # Capture stderr too
         unless $?.success?
           say "Error: #{error_message}", :red
@@ -476,12 +674,20 @@ module ADK
         main_memory = options[:gcp_memory]
         main_cpu = options[:gcp_cpu]
         base_name = options[:name] # Used for image naming
+        deployment_dir_basename = File.basename(directory) # Get basename
 
         # Image names
         main_image_name = "#{base_name}-web" # Assume main entry point is web
         main_image_tag = "latest"
-        main_image_uri = "#{region}-docker.pkg.dev/#{project_id}/adk-images/#{main_image_name}:#{main_image_tag}"
-        # Note: Repo 'adk-images' is assumed; could be made configurable
+        # Derive Artifact Registry location from region for image URI
+        ar_location = region # Typically the same, but made explicit
+        ar_repo_name = "adk-images" # Keep consistent with script template
+        main_image_uri = "#{ar_location}-docker.pkg.dev/#{project_id}/#{ar_repo_name}/#{main_image_name}:#{main_image_tag}"
+
+        # Cloud Build config file path (relative to project root)
+        cloudbuild_config_file = File.join(deployment_dir_basename, "cloudbuild.yaml")
+        # Dockerfile path relative to deployment dir
+        main_dockerfile_path_relative = "Dockerfile" # Dockerfile is inside the deploy dir context for the script
 
         # --- Script Content ---
         # This script is more comprehensive than before, includes setup
@@ -495,7 +701,7 @@ module ADK
           REGION="#{region}"
           REDIS_INSTANCE_NAME="#{redis_name}"
           MAIN_SERVICE_NAME="#{main_service_name}"
-          MAIN_DOCKERFILE="Dockerfile"
+          MAIN_DOCKERFILE="#{main_dockerfile_path_relative}" # Relative path within deployment dir
           MAIN_IMAGE_NAME="#{main_image_name}"
           MAIN_IMAGE_TAG="#{main_image_tag}"
           MAIN_MEMORY="#{main_memory}"
@@ -506,8 +712,8 @@ module ADK
           SECRET_ENV_VAR="GOOGLE_API_KEY" # Env var name in Cloud Run
 
           # Artifact Registry Repository
-          AR_REPO_NAME="adk-images" # Artifact Registry repo name
-          AR_LOCATION="#{region}" # Often same as REGION, but can differ
+          AR_REPO_NAME="#{ar_repo_name}" # Artifact Registry repo name
+          AR_LOCATION="#{ar_location}" # Often same as REGION, but can differ
 
           # VPC Access Connector (Required for Redis)
           CONNECTOR_NAME="adk-vpc-connector" # Name for the VPC Access Connector
@@ -537,7 +743,7 @@ module ADK
           # --- Prerequisites Check ---
           info "Checking prerequisites..."
           check_command gcloud
-          check_command docker
+          #check_command docker # Often not needed if using Cloud Build
 
           # --- Set GCP Project ---
           info "Setting GCP project to ${PROJECT_ID}"
@@ -555,8 +761,8 @@ module ADK
               compute.googleapis.com || error "Failed to enable APIs"
 
           # --- Configure Docker for Artifact Registry ---
-          info "Configuring Docker authentication for ${AR_LOCATION}..."
-          gcloud auth configure-docker "${AR_LOCATION}-docker.pkg.dev" || error "Docker auth configuration failed"
+          #info "Configuring Docker authentication for ${AR_LOCATION}..."
+          #gcloud auth configure-docker "${AR_LOCATION}-docker.pkg.dev" || error "Docker auth configuration failed"
 
           # --- Create Artifact Registry Repository (if it doesn't exist) ---
           info "Ensuring Artifact Registry repository '${AR_REPO_NAME}' exists in ${AR_LOCATION}..."
@@ -617,24 +823,50 @@ module ADK
               --replication-policy="automatic" \
               --project="${PROJECT_ID}" || error "Failed to create secret '${SECRET_NAME}'"
             # Grant default compute service account access (adjust if using dedicated SA)
-            # info "Granting default compute SA access to secret..."
-            # PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')
-            # DEFAULT_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-            # gcloud secrets add-iam-policy-binding ${SECRET_NAME} \
-            #    --member="serviceAccount:${DEFAULT_SA}" \
-            #    --role="roles/secretmanager.secretAccessor" \
-            #    --project="${PROJECT_ID}" || echo "Warning: Failed to grant default SA access to secret. Ensure the running service account has access."
+            info "Granting default compute SA access to secret..."
+            PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')
+            DEFAULT_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+            gcloud secrets add-iam-policy-binding ${SECRET_NAME} \
+               --member="serviceAccount:${DEFAULT_SA}" \
+               --role="roles/secretmanager.secretAccessor" \
+               --project="${PROJECT_ID}" || echo "Warning: Failed to grant default SA access to secret. Ensure the running service account has access."
           else
             info "Secret '${SECRET_NAME}' already exists."
           fi
-          SECRET_RESOURCE="projects/${PROJECT_ID}/secrets/${SECRET_NAME}/versions/latest"
+          # Use name:version format for Cloud Run secret injection
+          SECRET_RESOURCE_FOR_RUN="${SECRET_NAME}:latest"
+
+          # --- Grant Service Account Access to Secret ---
+          info "Ensuring Cloud Run service account can access secret '${SECRET_NAME}'..."
+          TARGET_SERVICE_ACCOUNT="${RUN_SERVICE_ACCOUNT}"
+          if [[ -z "${TARGET_SERVICE_ACCOUNT}" ]]; then
+            info "Using default Compute Engine service account."
+            PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)') || error "Failed to get project number."
+            TARGET_SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+          else
+            info "Using specified service account: ${TARGET_SERVICE_ACCOUNT}"
+          fi
+
+          # Attempt to grant the role. Might fail if runner lacks permissions.
+          gcloud secrets add-iam-policy-binding "${SECRET_NAME}" \
+            --member="serviceAccount:${TARGET_SERVICE_ACCOUNT}" \
+            --role="roles/secretmanager.secretAccessor" \
+            --project="${PROJECT_ID}" \
+            --condition=None \
+            >/dev/null || echo "[WARNING] Failed to automatically grant Secret Accessor role to ${TARGET_SERVICE_ACCOUNT}. Please ensure it has permission manually."
 
           # --- Build and Push Main Docker Image ---
           info "Building main application image: ${MAIN_IMAGE_URI}..."
-          # Using Cloud Build is generally recommended for CI/CD
-          gcloud builds submit --tag "${MAIN_IMAGE_URI}" --project="${PROJECT_ID}" --dockerfile="${MAIN_DOCKERFILE}" . || error "Failed to build main image"
-          # Alternatively, build locally:
-          # docker build -t "${MAIN_IMAGE_URI}" -f "${MAIN_DOCKERFILE}" . || error "Failed to build main image"
+          # Using Cloud Build with an explicit config file
+          CONFIG_FILE="#{cloudbuild_config_file}"
+          gcloud builds submit --config "${CONFIG_FILE}" --project="${PROJECT_ID}" --substitutions=_IMAGE_URI="${MAIN_IMAGE_URI}" .
+          if [[ $? -ne 0 ]]; then
+            error "Failed to build main image using ${CONFIG_FILE}"
+          fi
+          # Alternatively, build locally (Requires Docker):
+          # info "Configuring Docker authentication for ${AR_LOCATION}..."
+          # gcloud auth configure-docker "${AR_LOCATION}-docker.pkg.dev" || error "Docker auth configuration failed"
+          # docker build -t "${MAIN_IMAGE_URI}" -f "#{File.join(deployment_dir_basename, main_dockerfile_path_relative)}" . || error "Failed to build main image locally"
           # docker push "${MAIN_IMAGE_URI}" || error "Failed to push main image"
 
           # --- Build and Push Agent Docker Images (if configured) ---
@@ -644,53 +876,55 @@ module ADK
           # AGENT_DOCKERFILE="Dockerfile.agent.processor"
           # AGENT_IMAGE_NAME="adk-agent-processor"
           # AGENT_IMAGE_URI="${AR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${AGENT_IMAGE_NAME}:${MAIN_IMAGE_TAG}"
+          # AGENT_CLOUDBUILD_CONFIG="path/to/agent/cloudbuild.yaml" # Example path
           # info "Building agent image: ${AGENT_IMAGE_URI}..."
-          # gcloud builds submit --tag "${AGENT_IMAGE_URI}" --project="${PROJECT_ID}" --dockerfile="${AGENT_DOCKERFILE}" . || error "Failed to build agent image"
+          # gcloud builds submit --config "${AGENT_CLOUDBUILD_CONFIG}" --project="${PROJECT_ID}" --substitutions=_IMAGE_URI="${AGENT_IMAGE_URI}" . || error "Failed to build agent image"
 
           # --- Deploy Main Service to Cloud Run ---
           info "Deploying main service '${MAIN_SERVICE_NAME}' to Cloud Run in ${REGION}..."
-          DEPLOY_ARGS=(
-            "${MAIN_SERVICE_NAME}" \
-            --project="${PROJECT_ID}" \
-            --region="${REGION}" \
-            --image="${MAIN_IMAGE_URI}" \
-            --platform="managed" \
-            --memory="${MAIN_MEMORY}" \
-            --cpu="${MAIN_CPU}" \
-            --port="8080" \
-            --set-env-vars="REDIS_URL=${REDIS_URL},ADK_SESSION_SERVICE=redis,RACK_ENV=production" \
-            --set-secrets="${SECRET_ENV_VAR}=${SECRET_RESOURCE}" \
-            --vpc-connector="${VPC_CONNECTOR_FULL_NAME}" \
-            --vpc-egress="all-traffic" \
+
+          # Base command arguments
+          CMD_ARGS=(
+            gcloud run deploy "${MAIN_SERVICE_NAME}"
+            --project="${PROJECT_ID}"
+            --region="${REGION}"
+            --image="${MAIN_IMAGE_URI}"
+            --platform="managed"
+            --memory="${MAIN_MEMORY}"
+            --cpu="${MAIN_CPU}"
+            --port="8080"
+            --set-env-vars="REDIS_URL=${REDIS_URL},ADK_SESSION_SERVICE=redis,RACK_ENV=production"
+            # Use name:version format for secrets
+            --set-secrets="${SECRET_ENV_VAR}=${SECRET_RESOURCE_FOR_RUN}"
+            --vpc-connector="${VPC_CONNECTOR_FULL_NAME}"
+            --vpc-egress="all-traffic"
             --allow-unauthenticated # Remove if service should not be public
           )
+
+          # Conditionally add service account
           if [[ -n "${RUN_SERVICE_ACCOUNT}" ]]; then
-            DEPLOY_ARGS+=(--service-account="${RUN_SERVICE_ACCOUNT}")
             info "Using service account: ${RUN_SERVICE_ACCOUNT}"
             # Ensure this SA has roles/secretmanager.secretAccessor for the secret!
+            CMD_ARGS+=(--service-account="${RUN_SERVICE_ACCOUNT}")
           else
              info "Using default Compute Engine service account. Ensure it has Secret Accessor role."
           fi
 
-          gcloud run deploy "${DEPLOY_ARGS[@]}" || error "Failed to deploy main service '${MAIN_SERVICE_NAME}'"
+          # Debug: Print the command arguments
+          echo "DEBUG: Executing: ${CMD_ARGS[@]}"
+
+          # Execute the command
+          "${CMD_ARGS[@]}"
+          if [[ $? -ne 0 ]]; then
+              error "Failed to deploy main service '${MAIN_SERVICE_NAME}'"
+          fi
 
           # --- Deploy Agent Services to Cloud Run (if configured) ---
           # <<< Add logic here to loop through agents and deploy them >>>
           # Example for one agent:
           # info "Deploying agent service '${AGENT_SERVICE_NAME}'..."
-          # gcloud run deploy "${AGENT_SERVICE_NAME}" \
-          #   --project="${PROJECT_ID}" \
-          #   --region="${REGION}" \
-          #   --image="${AGENT_IMAGE_URI}" \
-          #   --platform="managed" \
-          #   --memory="512Mi" # Agent specific memory
-          #   --cpu="1" # Agent specific CPU
-          #   --no-traffic # Agents often don't need external traffic
-          #   --set-env-vars="REDIS_URL=${REDIS_URL},ADK_SESSION_SERVICE=redis,RACK_ENV=production" \
-          #   --set-secrets="${SECRET_ENV_VAR}=${SECRET_RESOURCE}" \
-          #   --vpc-connector="${VPC_CONNECTOR_FULL_NAME}" \
-          #   --vpc-egress="all-traffic" \
-          #   ${RUN_SERVICE_ACCOUNT:+--service-account="${RUN_SERVICE_ACCOUNT"} || error "Failed to deploy agent service '${AGENT_SERVICE_NAME}'"}
+          # AGENT_DEPLOY_ARGS=( ...) # Construct agent deployment args similarly
+          # gcloud run deploy "${AGENT_DEPLOY_ARGS[@]}" || error "Failed to deploy agent service '${AGENT_SERVICE_NAME}'"
 
           # --- Deployment Complete ---
           info "Deployment successful!"
@@ -703,7 +937,7 @@ module ADK
 
         BASH
 
-        File.write(deploy_script_path, content)
+        File.write(deploy_script_path, script_content)
         FileUtils.chmod(0755, deploy_script_path)
         say "Created GCP deployment script at #{deploy_script_path}", :cyan
         say "Please review and customize the script, especially the Configuration section, before running.", :yellow
@@ -723,6 +957,30 @@ module ADK
           # Optionally generate a placeholder
           File.write(target_doc_path, "# GCP Deployment Guide\n\nSee online documentation for deployment steps.\n")
         end
+      end
+
+      # New method to generate cloudbuild.yaml
+      def generate_gcp_cloudbuild_yaml(directory)
+        cloudbuild_path = File.join(directory, "cloudbuild.yaml")
+        deployment_dir_basename = File.basename(directory)
+        main_dockerfile_path_relative = File.join(deployment_dir_basename, "Dockerfile")
+
+        content = <<~YAML
+          steps:
+          # Build the container image
+          - name: 'gcr.io/cloud-builders/docker'
+            args: ['build', '-t', '${_IMAGE_URI}', '-f', '#{main_dockerfile_path_relative}', '.']
+
+          # Push the container image to Artifact Registry
+          images: ['${_IMAGE_URI}']
+
+          # Define substitutions that can be passed in via --substitutions flag
+          substitutions:
+            _IMAGE_URI: 'gcr.io/cloud-build/image' # Default value, will be overridden
+        YAML
+
+        File.write(cloudbuild_path, content)
+        say "Created GCP Cloud Build config at #{cloudbuild_path}", :cyan
       end
 
       # --- AWS Asset Generation (Placeholder) ---

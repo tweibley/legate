@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |spec|
   spec.name          = 'adk-ruby'
-  spec.version       = '0.5.8'
+  spec.version       = '0.5.9'
   spec.authors       = ['Taylor Weibley']
   spec.email         = ['spam@taylorw.com']
 
@@ -17,7 +17,7 @@ Gem::Specification.new do |spec|
   spec.metadata['changelog_uri'] = "#{spec.homepage}/blob/main/CHANGELOG.md"
 
   # Specify which files should be added to the gem when it is released.
-  spec.files = Dir.glob('{bin,lib,views,public}/**/*') + %w[README.md Gemfile Gemfile.lock]
+  spec.files = Dir.glob('{bin,lib,views,public,examples}/**/*') + %w[README.md Gemfile Gemfile.lock]
   spec.bindir        = 'bin'
   spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
   spec.require_paths = ['lib']
