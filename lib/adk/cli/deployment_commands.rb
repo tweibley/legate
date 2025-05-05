@@ -6,6 +6,7 @@ require 'fileutils'
 require 'json'
 require 'yaml'
 require 'logger' # Needed for sample entrypoint
+require 'securerandom' # Needed for suggested project ID
 
 module ADK
   module CLI
@@ -18,17 +19,14 @@ module ADK
       # Default sample entrypoint path
       DEFAULT_SAMPLE_ENTRYPOINT_PATH = 'bin/adk_web_entrypoint.rb'
 
-      desc 'generate [DIRECTORY]', 'Generate deployment assets for GCP Cloud Run'
-      method_option :entry_point, type: :string, aliases: "-e", desc: 'Entry point for the main agent application'
+      # --- Generic Options ---
+      desc 'generate', 'Generate deployment assets (Dockerfile, .dockerignore, cloud-specific configs)'
+      method_option :cloud, type: :string, aliases: "-c", default: 'none', required: true,
+                            enum: %w[gcp aws azure none], desc: 'Target cloud provider (gcp, aws, azure, none)'
+      method_option :entry_point, type: :string, aliases: "-e", required: true,
+                                  desc: 'Entry point script for the main application/web process (e.g., bin/web)'
       method_option :agent_entry_points, type: :array, aliases: "-a",
                                          desc: 'Entry points for user agents (comma separated)'
-      method_option :redis_instance_name, type: :string, aliases: "-r", default: 'adk-redis',
-                                          desc: 'Name for the MemoryStore Redis instance'
-      method_option :project_id, type: :string, aliases: "-p", desc: 'Google Cloud project ID'
-      method_option :region, type: :string, default: 'us-central1', desc: 'Google Cloud region'
-      method_option :memory, type: :string, default: '2Gi', desc: 'Memory allocation for Cloud Run service'
-      method_option :cpu, type: :string, default: '1', desc: 'CPU allocation for Cloud Run service'
-      method_option :service_name, type: :string, default: 'adk-agent-service', desc: 'Name for the Cloud Run service'
       method_option :name, type: :string, aliases: "-n", default: DEFAULT_DEPLOYMENT_DIR_NAME,
                            desc: 'Base name for the output directory and potentially generated resources'
       method_option :base_image, type: :string, default: DEFAULT_RUBY_IMAGE, desc: 'Base Ruby Docker image to use'
@@ -36,8 +34,6 @@ module ADK
                                                  desc: "Generate a sample web entrypoint script (#{DEFAULT_SAMPLE_ENTRYPOINT_PATH}) with a /healthz check."
 
       # --- GCP Specific Options (Only relevant if --cloud gcp) ---
-      # We access these directly from `options` hash within GCP-specific methods for now.
-      # A more robust approach might involve subcommands or conditional option parsing.
       class_option :gcp_project_id, type: :string, group: 'GCP', desc: 'GCP Project ID (required for GCP deployment)'
       class_option :gcp_region, type: :string, default: 'us-central1', group: 'GCP', desc: 'GCP Region'
       class_option :gcp_redis_instance_name, type: :string, default: 'adk-redis', group: 'GCP',
@@ -51,6 +47,7 @@ module ADK
 
       def generate(directory = ".")
         deployment_dir = File.expand_path(options[:name])
+        gcp_config_name = nil # Store generated config name for final message
         FileUtils.mkdir_p(deployment_dir)
 
         say "Generating deployment assets in #{deployment_dir}...", :green
@@ -60,420 +57,173 @@ module ADK
           generate_sample_entrypoint_script
         end
 
-        # Generate Docker files
-        generate_main_dockerfile(deployment_dir)
-        generate_agent_dockerfiles(deployment_dir, options[:agent_entry_points]) if options[:agent_entry_points]
+        # 1. Generate Generic Assets (Dockerfile(s), .dockerignore)
+        generate_dockerfiles(deployment_dir)
+        generate_dockerignore(deployment_dir)
 
-        # Generate Redis MemoryStore configuration
-        generate_redis_config(deployment_dir, options[:redis_instance_name])
+        # 2. Generate Cloud-Specific Assets
+        case options[:cloud]
+        when 'gcp'
+          gcp_config_name = generate_gcp_assets(deployment_dir)
+        when 'aws'
+          generate_aws_assets(deployment_dir)
+        when 'azure'
+          generate_azure_assets(deployment_dir)
+        when 'none'
+          say "Generated generic Docker assets only.", :yellow
+        else
+          # Should not happen due to Thor's enum check, but good practice
+          say "Unsupported cloud provider: #{options[:cloud]}", :red
+          exit 1
+        end
 
-        # Generate deployment scripts and configurations
-        generate_cloud_run_config(deployment_dir, options)
-
-        # Generate documentation
-        generate_deployment_docs(File.join(directory, "docs"))
-
-        say "Deployment assets generated successfully!", :green
-        say "See the documentation at docs/go-to-gcp-production-claude.md for deployment instructions.", :green
+        say "Deployment asset generation complete!", :green
+        if options[:generate_sample_entrypoint]
+          say "NOTE: Sample entrypoint generated at '#{DEFAULT_SAMPLE_ENTRYPOINT_PATH}'.", :yellow
+          say "      Ensure your --entrypoint option matches this path ('#{options[:entry_point]}).", :yellow
+        end
+        if gcp_config_name
+          say "NOTE: A gcloud configuration named '#{gcp_config_name}' was created/updated.", :yellow
+          say "      Activate it using:", :yellow
+          say "        gcloud config configurations activate #{gcp_config_name}", :cyan
+          say "      Before running the deployment script.", :yellow
+        end
+        if options[:cloud] == 'gcp'
+          say "Review the generated files in #{deployment_dir} and the deployment guide:"
+          say "  #{File.join(deployment_dir, 'README-GCP-DEPLOYMENT.md')}", :cyan
+        end
       end
 
       private
 
-      def generate_main_dockerfile(directory)
-        dockerfile_path = File.join(directory, "Dockerfile")
+      def generate_dockerfiles(directory)
+        # Main Dockerfile
+        main_dockerfile_path = File.join(directory, "Dockerfile")
+        generate_dockerfile_content(main_dockerfile_path, options[:entry_point], options[:base_image])
+        say "Created main Dockerfile at #{main_dockerfile_path}", :cyan
 
-        content = <<~DOCKERFILE
-          FROM ruby:3.2-slim
-
-          WORKDIR /app
-
-          # Install system dependencies
-          RUN apt-get update && apt-get install -y \\
-              build-essential \\
-              git \\
-              && rm -rf /var/lib/apt/lists/*
-
-          # Copy Gemfile and install gems
-          COPY Gemfile Gemfile.lock ./
-          RUN bundle install
-
-          # Copy the application code
-          COPY . .
-
-          # Environment variables
-          ENV REDIS_URL="redis://localhost:6379"
-          ENV RACK_ENV="production"
-          ENV PORT="8080"
-
-          # You can override these with your own values at runtime
-          ENV GOOGLE_API_KEY=""
-          ENV ADK_SESSION_SERVICE="redis"
-
-          # Start the application
-          CMD ["bundle", "exec", "bin/adk", "web", "start"]
-
-          # The default is to start the web interface
-          # To use a custom entry point, override this with your own command
-          # Example: CMD ["bundle", "exec", "bin/adk", "agent", "start", "your_agent_name"]
-        DOCKERFILE
-
-        File.write(dockerfile_path, content)
-        say "Created main Dockerfile at #{dockerfile_path}", :cyan
-      end
-
-      def generate_agent_dockerfiles(directory, agent_entry_points)
-        agent_entry_points&.each_with_index do |entry_point, index|
-          dockerfile_path = File.join(directory, "Dockerfile.agent.#{index + 1}")
-
-          content = <<~DOCKERFILE
-            FROM ruby:3.2-slim
-
-            WORKDIR /app
-
-            # Install system dependencies
-            RUN apt-get update && apt-get install -y \\
-                build-essential \\
-                git \\
-                && rm -rf /var/lib/apt/lists/*
-
-            # Copy Gemfile and install gems
-            COPY Gemfile Gemfile.lock ./
-            RUN bundle install
-
-            # Copy the application code
-            COPY . .
-
-            # Environment variables
-            ENV REDIS_URL="redis://localhost:6379"
-            ENV RACK_ENV="production"
-
-            # You can override these with your own values at runtime
-            ENV GOOGLE_API_KEY=""
-            ENV ADK_SESSION_SERVICE="redis"
-
-            # Start the specific agent
-            CMD ["bundle", "exec", "bin/adk", "agent", "start", "#{entry_point}"]
-          DOCKERFILE
-
-          File.write(dockerfile_path, content)
-          say "Created agent Dockerfile at #{dockerfile_path}", :cyan
+        # Agent Dockerfiles (if specified)
+        options[:agent_entry_points]&.each_with_index do |agent_entry, index|
+          agent_name = File.basename(agent_entry, ".rb").gsub(/[^0-9a-z_.-]/i, '_')
+          agent_dockerfile_path = File.join(directory, "Dockerfile.agent.#{agent_name}.#{index}")
+          generate_dockerfile_content(agent_dockerfile_path, agent_entry, options[:base_image])
+          say "Created agent Dockerfile for '#{agent_entry}' at #{agent_dockerfile_path}", :cyan
         end
       end
 
-      def generate_redis_config(directory, instance_name)
-        redis_config_path = File.join(directory, "redis-memorystore.yaml")
+      def generate_dockerfile_content(path, entry_point, base_image)
+        # Basic validation for entry point format (crude check)
+        unless entry_point && entry_point.include?('/') || entry_point.start_with?('bin/')
+          say "Warning: Entry point '#{entry_point}' does not look like a path. Ensure it's correct.", :yellow
+        end
 
-        content = <<~YAML
-          apiVersion: redis.cnrm.cloud.google.com/v1beta1
-          kind: RedisInstance
-          metadata:
-            name: #{instance_name}
-          spec:
-            region: ${REGION}
-            tier: BASIC
-            memorySizeGb: 1
-            redisVersion: REDIS_6_X
-            authorizedNetwork: default
-            # You can adjust memory size, version and other parameters as needed
-        YAML
+        content = <<~DOCKERFILE
+          # Dockerfile generated by ADK CLI
+          ARG RUBY_VERSION=#{base_image.split(':').last || '3.2-slim'} # Extract tag if possible
+          FROM #{base_image}
 
-        File.write(redis_config_path, content)
-        say "Created Redis MemoryStore configuration at #{redis_config_path}", :cyan
+          WORKDIR /app
+
+          # Install essential dependencies
+          # You may need to add more depending on your Gemfile (e.g., libpq-dev for pg gem)
+          RUN apt-get update -qq && \
+              apt-get install -y --no-install-recommends \
+                build-essential \
+                git \
+              && apt-get clean && \
+              rm -rf /var/lib/apt/lists/*
+
+          # Install Bundler
+          RUN gem install bundler --no-document
+
+          # Copy dependency definition files
+          COPY Gemfile Gemfile.lock ./
+
+          # Install gems
+          RUN bundle install --jobs $(nproc) --retry 3 --without development test
+
+          # Copy the rest of the application code
+          # Ensure .dockerignore is properly configured
+          COPY . .
+
+          # --- Runtime Environment Variables ---
+          # Set sensible defaults, overrideable at runtime (e.g., via Cloud Run)
+          ENV RACK_ENV="production"
+          ENV PORT="8080" # Required by Cloud Run unless overridden
+          ENV ADK_LOG_LEVEL="INFO"
+
+          # Required for ADK session state, override with actual Redis URL
+          ENV REDIS_URL="redis://localhost:6379"
+          ENV ADK_SESSION_SERVICE="redis"
+
+          # Required by ADK for Gemini access, override with secret injection
+          ENV GOOGLE_API_KEY=""
+
+          # Expose the port the application listens on
+          EXPOSE ${PORT}
+
+          # --- Entry Point ---
+          # Runs the specified application or agent script
+          CMD ["bundle", "exec", "ruby", "#{entry_point}"]
+        DOCKERFILE
+
+        File.write(path, content)
       end
 
-      def generate_cloud_run_config(directory, options)
-        service_name = options[:service_name] || "adk-agent-service"
-        region = options[:region] || "us-central1"
-        memory = options[:memory] || "2Gi"
-        cpu = options[:cpu] || "1"
+      def generate_dockerignore(directory)
+        dockerignore_path = File.join(directory, ".dockerignore")
+        # Avoid overwriting if it exists, maybe merge or warn later?
+        if File.exist?(dockerignore_path)
+          say "Skipping .dockerignore generation, file already exists: #{dockerignore_path}", :yellow
+          return
+        end
 
-        cloud_run_config_path = File.join(directory, "cloud-run-service.yaml")
+        content = <<~IGNORE
+          # Dockerignore generated by ADK CLI
+          # Add files/directories here that are not needed in the final image
 
-        content = <<~YAML
-          apiVersion: serving.knative.dev/v1
-          kind: Service
-          metadata:
-            name: #{service_name}
-          spec:
-            template:
-              metadata:
-                annotations:
-                  autoscaling.knative.dev/minScale: "1"
-                  autoscaling.knative.dev/maxScale: "5"
-              spec:
-                containers:
-                - image: ${PROJECT_ID}/#{service_name}:latest
-                  resources:
-                    limits:
-                      memory: "#{memory}"
-                      cpu: "#{cpu}"
-                  env:
-                  - name: REDIS_URL
-                    value: "redis://${REDIS_IP}:6379"
-                  - name: GOOGLE_API_KEY
-                    valueFrom:
-                      secretKeyRef:
-                        name: google-api-key
-                        key: api-key
-                  - name: ADK_SESSION_SERVICE
-                    value: "redis"
-        YAML
+          # Git files
+          .git
+          .gitignore
 
-        File.write(cloud_run_config_path, content)
-        say "Created Cloud Run configuration at #{cloud_run_config_path}", :cyan
+          # Docker artifacts
+          .dockerignore
+          Dockerfile*
 
-        # Generate deployment script
-        deploy_script_path = File.join(directory, "deploy.sh")
+          # ADK / Ruby specific
+          *.gem
+          .bundle/
+          vendor/bundle/
+          coverage/
+          spec/
+          tmp/
+          logs/
+          *.log
 
-        script_content = <<~BASH
-          #!/bin/bash
-          set -e
+          # Local config / secrets
+          .env*
 
-          # Check if gcloud is installed
-          if ! command -v gcloud &> /dev/null; then
-            echo "gcloud CLI is not installed. Please install it first."
-            exit 1
-          fi
+          # IDE / Editor specific
+          .vscode/
+          .idea/
+          .ruby-mine/
+          .project
+          *~ # Backup files
 
-          # Set default values
-          PROJECT_ID="${1:-\$(gcloud config get-value project)}"
-          REGION="${2:-us-central1}"
-          SERVICE_NAME="${3:-adk-agent-service}"
-          REDIS_NAME="${4:-adk-redis}"
+          # OS specific
+          .DS_Store
+          Thumbs.db
 
-          echo "Deploying ADK to Google Cloud..."
-          echo "Project ID: $PROJECT_ID"
-          echo "Region: $REGION"
-          echo "Service Name: $SERVICE_NAME"
-          echo "Redis Instance Name: $REDIS_NAME"
+          # Deployment directory itself (if it's inside the project)
+          #{File.basename(directory)}/
 
-          # Create Redis MemoryStore instance if it doesn't exist
-          if ! gcloud redis instances describe $REDIS_NAME --region=$REGION &> /dev/null; then
-            echo "Creating Redis MemoryStore instance..."
-            gcloud redis instances create $REDIS_NAME \\
-              --size=1 \\
-              --region=$REGION \\
-              --redis-version=redis_6_x
-          fi
+        IGNORE
 
-          # Get Redis IP address
-          REDIS_IP=$(gcloud redis instances describe $REDIS_NAME --region=$REGION --format="get(host)")
-          echo "Redis IP: $REDIS_IP"
-
-          # Build and push Docker image
-          echo "Building and pushing Docker image..."
-          gcloud builds submit --tag gcr.io/$PROJECT_ID/$SERVICE_NAME .
-
-          # Create API key secret if it doesn't exist
-          if ! gcloud secrets describe google-api-key &> /dev/null; then
-            echo "Creating Google API key secret..."
-            read -p "Enter your Google API key: " API_KEY
-            echo -n "$API_KEY" | gcloud secrets create google-api-key --data-file=-
-          fi
-
-          # Deploy to Cloud Run
-          echo "Deploying to Cloud Run..."
-          gcloud run deploy $SERVICE_NAME \\
-            --image gcr.io/$PROJECT_ID/$SERVICE_NAME \\
-            --platform managed \\
-            --region $REGION \\
-            --memory ${5:-2Gi} \\
-            --cpu ${6:-1} \\
-            --set-env-vars="REDIS_URL=redis://$REDIS_IP:6379,ADK_SESSION_SERVICE=redis,RACK_ENV=production" \\
-            --set-secrets="GOOGLE_API_KEY=google-api-key:latest" \\
-            --allow-unauthenticated
-
-          echo "Deployment completed successfully!"
-          echo "Your ADK service is available at: $(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')"
-        BASH
-
-        File.write(deploy_script_path, script_content)
-        FileUtils.chmod(0755, deploy_script_path)
-        say "Created deployment script at #{deploy_script_path}", :cyan
+        File.write(dockerignore_path, content)
+        say "Created .dockerignore at #{dockerignore_path}", :cyan
       end
 
-      def generate_deployment_docs(directory)
-        FileUtils.mkdir_p(directory) unless File.directory?(directory)
-
-        docs_path = File.join(directory, "go-to-gcp-production-claude.md")
-
-        content = <<~MARKDOWN
-          # Deploying ADK to Google Cloud Platform
-
-          This guide will help you deploy your ADK application to Google Cloud Platform (GCP) using Cloud Run and Redis MemoryStore.
-
-          ## Prerequisites
-
-          1. [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) installed and configured
-          2. A Google Cloud Platform account with billing enabled
-          3. Your ADK application code ready for deployment
-          4. Google API key
-
-          ## Overview
-
-          The deployment process consists of the following steps:
-
-          1. Generate deployment assets using ADK CLI
-          2. Create a Redis MemoryStore instance for session storage
-          3. Build and deploy Docker containers to Cloud Run
-          4. Configure environment variables and secrets
-
-          ## Step 1: Generate Deployment Assets
-
-          Use the ADK CLI to generate all necessary deployment assets:
-
-          ```bash
-          # Basic deployment generation
-          adk deployment generate
-
-          # With agent entry points
-          adk deployment generate --agent-entry-points agent1,agent2
-
-          # With custom project and region
-          adk deployment generate --project-id your-project-id --region us-west1
-          ```
-
-          This command creates a `deployment` directory containing:
-          - Dockerfile for the main ADK application
-          - Dockerfiles for agent processes (if specified)
-          - Redis MemoryStore configuration
-          - Cloud Run service configuration
-          - Deployment script
-
-          ## Step 2: Review and Customize
-
-          Review the generated files and customize them as needed:
-
-          - `deployment/Dockerfile`: Main application container
-          - `deployment/Dockerfile.agent.*`: Agent-specific containers (if applicable)
-          - `deployment/redis-memorystore.yaml`: Redis configuration
-          - `deployment/cloud-run-service.yaml`: Cloud Run service configuration
-          - `deployment/deploy.sh`: Deployment script
-
-          You may need to adjust memory allocations, CPU resources, or environment variables.
-
-          ## Step 3: Deploy to GCP
-
-          You can deploy to GCP using the provided deployment script:
-
-          ```bash
-          cd deployment
-          ./deploy.sh [PROJECT_ID] [REGION] [SERVICE_NAME] [REDIS_NAME] [MEMORY] [CPU]
-          ```
-
-          Or you can deploy manually with these steps:
-
-          ### 3.1 Create Redis MemoryStore Instance
-
-          ```bash
-          gcloud redis instances create adk-redis \\
-            --size=1 \\
-            --region=us-central1 \\
-            --redis-version=redis_6_x
-          ```
-
-          Note the IP address of your Redis instance:
-
-          ```bash
-          gcloud redis instances describe adk-redis --region=us-central1 --format="get(host)"
-          ```
-
-          ### 3.2 Create Secret for API Key
-
-          ```bash
-          echo -n "your-api-key" | gcloud secrets create google-api-key --data-file=-
-          ```
-
-          ### 3.3 Build and Push Docker Image
-
-          ```bash
-          gcloud builds submit --tag gcr.io/your-project-id/adk-agent-service .
-          ```
-
-          ### 3.4 Deploy to Cloud Run
-
-          ```bash
-          gcloud run deploy adk-agent-service \\
-            --image gcr.io/your-project-id/adk-agent-service \\
-            --platform managed \\
-            --region us-central1 \\
-            --memory 2Gi \\
-            --cpu 1 \\
-            --set-env-vars="REDIS_URL=redis://$REDIS_IP:6379,ADK_SESSION_SERVICE=redis,RACK_ENV=production" \\
-            --set-secrets="GOOGLE_API_KEY=google-api-key:latest" \\
-            --allow-unauthenticated
-          ```
-
-          ## Architecture
-
-          The deployment architecture consists of:
-
-          1. **Cloud Run Services**:
-             - Main ADK service running the web interface
-             - Optional separate services for long-running agents
-
-          2. **Redis MemoryStore**:
-             - Session storage for ADK
-             - Shared state between services
-
-          3. **Container Registry**:
-             - Stores Docker images for all services
-
-          ## Environment Variables
-
-          The following environment variables are set in the deployment:
-
-          - `REDIS_URL`: Connection string for Redis MemoryStore
-          - `GOOGLE_API_KEY`: API key for your chosen model provider
-          - `ADK_SESSION_SERVICE`: Set to "redis" to enable Redis session storage
-          - `RACK_ENV`: Set to "production" for production environment
-          - `PORT`: Set to 8080 for Cloud Run
-
-          ## Multi-Container Deployment
-
-          If you're using multiple agents that need to run independently, you can:
-
-          1. Deploy the main ADK web interface as one service
-          2. Deploy each agent as a separate Cloud Run service
-          3. Ensure all services connect to the same Redis instance
-
-          This allows agents to run continuously without being tied to the web interface.
-
-          ## Scaling Considerations
-
-          Cloud Run will automatically scale your services based on traffic. Configure the min/max instances based on your needs:
-
-          ```yaml
-          autoscaling.knative.dev/minScale: "1"
-          autoscaling.knative.dev/maxScale: "5"
-          ```
-
-          For Redis MemoryStore, monitor your usage and upgrade the instance size if needed.
-
-          ## Troubleshooting
-
-          ### Connection Issues with Redis
-
-          Ensure the REDIS_URL environment variable is correctly set and that your Cloud Run service has network access to your Redis instance.
-
-          ### Container Crashes
-
-          Check the Cloud Run logs for details on any crashes or errors:
-
-          ```bash
-          gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=adk-agent-service"
-          ```
-
-          ### API Key Issues
-
-          Verify that your secret was created correctly and is being properly mounted in your service.
-        MARKDOWN
-
-        File.write(docs_path, content)
-        say "Created deployment documentation at #{docs_path}", :cyan
-      end
-
-      # --- Sample Entrypoint Generation ---
+      # --- Sample Entrypoint Generation (Optional, generic) ---
       def generate_sample_entrypoint_script
         sample_path = File.expand_path(DEFAULT_SAMPLE_ENTRYPOINT_PATH)
         sample_dir = File.dirname(sample_path)
@@ -580,6 +330,411 @@ module ADK
         File.write(sample_path, content)
         # Make the script executable
         FileUtils.chmod(0755, sample_path)
+      end
+
+      # --- GCP Asset Generation (Only called if --cloud gcp) ---
+      def generate_gcp_assets(directory)
+        say "Generating GCP specific assets...", :magenta
+        gcp_config_name = nil # Initialize
+
+        # Validate required GCP options
+        project_id = options[:gcp_project_id]
+
+        unless project_id
+          # Project ID is missing, generate a suggestion and exit
+          random_hex = SecureRandom.hex(3) # Generate 6 hex characters
+          # Ensure name is valid for project ID (lowercase, digits, hyphens, 6-30 chars)
+          sanitized_base_name = options[:name].downcase.gsub(/[^a-z0-9-]/, '-').gsub(/^-+|-+$/, '')
+          suggested_project_id = "adk-deploy-#{sanitized_base_name}-#{random_hex}".slice(0, 30).gsub(/-+$/, '') # Ensure max 30 chars, no trailing hyphen
+          # Ensure it starts with a letter (though our pattern should ensure this)
+          suggested_project_id = "a#{suggested_project_id}" unless suggested_project_id[/^[a-z]/]
+          suggested_project_id = suggested_project_id.slice(0, 30) # Re-slice if prepended 'a' pushed length
+          say "Error: --gcp-project-id is required for GCP deployment.", :red
+          say "You must provide an existing GCP project ID where you have appropriate permissions.", :yellow
+          say "If you need to create a new project first, you could use a command like this ", :yellow
+          say "After ensuring billing is configured for your account):", :yellow
+          say "  gcloud projects create #{suggested_project_id}", :cyan
+          say "Then, re-run this command adding the flag:", :yellow
+          say "  --gcp-project-id #{suggested_project_id}", :cyan
+          exit 1 # Stop execution, user needs to provide a valid project ID
+        end
+
+        # --- Project ID is present, proceed ---
+        region = options[:gcp_region] # Use the class_option value
+
+        # 1. Attempt to create gcloud configuration
+        gcp_config_name = create_gcloud_config(options[:name], project_id, region)
+
+        # 2. Generate GCP specific config files (optional for now, script preferred)
+        # generate_gcp_redis_config(directory)
+        # generate_gcp_cloud_run_config(directory)
+
+        # 3. Generate GCP deploy script
+        generate_gcp_deploy_script(directory)
+
+        # 4. Generate/Copy GCP docs
+        generate_gcp_deployment_docs(directory)
+
+        return gcp_config_name # Return the generated name for the final message
+      end
+
+      # Helper to execute shell commands and check status
+      def run_gcloud_command(command, error_message)
+        say "Executing: gcloud #{command}", :detail # Use detail or another level
+        output = `gcloud #{command} 2>&1` # Capture stderr too
+        unless $?.success?
+          say "Error: #{error_message}", :red
+          say "gcloud output:\n#{output}", :red
+          # Decide if we should exit or just warn
+          # For config commands, maybe warn and continue?
+          # For critical commands in deploy script, exit is better.
+          # Let's warn for config issues but allow script generation.
+          say "Warning: Failed to automatically configure gcloud. Please ensure configuration is correct manually.",
+              :yellow
+          return false # Indicate failure
+        end
+        true # Indicate success
+      end
+
+      def create_gcloud_config(base_name, project_id, region)
+        # Sanitize base_name for config name
+        config_name = "adk-deploy-#{base_name.gsub(/[^0-9a-zA-Z_-]/, '-')}"
+        say "Attempting to create/update gcloud configuration: #{config_name}"
+
+        # Check if gcloud command exists first
+        unless system('command -v gcloud > /dev/null 2>&1')
+          say "Error: 'gcloud' command not found in PATH. Cannot create gcloud configuration.", :red
+          say "Please install the Google Cloud SDK.", :yellow
+          return nil # Cannot proceed
+        end
+
+        # 1. Create or check configuration
+        # Use describe to check existence non-destructively
+        `gcloud config configurations describe #{config_name} > /dev/null 2>&1`
+        if $?.success?
+          say "Configuration '#{config_name}' already exists. Settings will be updated.", :yellow
+        else
+          # Try to create (use --no-activate)
+          unless run_gcloud_command("config configurations create #{config_name} --no-activate",
+                                    "Failed to create gcloud configuration '#{config_name}'.")
+            return nil # Failed, can't set properties
+          end
+
+          say "Created gcloud configuration: #{config_name}"
+        end
+
+        # 2. Set properties
+        run_gcloud_command("config set project #{project_id} --configuration=#{config_name}",
+                           "Failed to set project in gcloud config.")
+        run_gcloud_command("config set compute/region #{region} --configuration=#{config_name}",
+                           "Failed to set region in gcloud config.")
+        # Add other relevant defaults? e.g., run/region?
+        # run_gcloud_command("config set run/region #{region} --configuration=#{config_name}", "Failed to set run/region in gcloud config.")
+
+        config_name # Return the name used
+      end
+
+      # --- GCP Specific Helper Methods ---
+      def generate_gcp_redis_config(directory)
+        instance_name = options[:gcp_redis_instance_name]
+        redis_config_path = File.join(directory, "redis-memorystore.yaml")
+
+        content = <<~YAML
+          apiVersion: redis.cnrm.cloud.google.com/v1beta1
+          kind: RedisInstance
+          metadata:
+            name: #{instance_name}
+          spec:
+            region: ${REGION}
+            tier: BASIC
+            memorySizeGb: 1
+            redisVersion: REDIS_6_X
+            # network field is usually set automatically or handled by deploy script
+            # authorizedNetwork: default
+            # You can adjust memory size, version and other parameters as needed
+        YAML
+
+        File.write(redis_config_path, content)
+        say "Created GCP Redis MemoryStore YAML template at #{redis_config_path}", :cyan
+      end
+
+      def generate_gcp_cloud_run_config(directory)
+        # Note: Generating a static YAML is less flexible than the deploy script.
+        # The script can dynamically fetch Redis IP etc. Keeping this commented out
+        # as generating the script is generally preferred.
+        say "Skipping generation of static cloud-run-service.yaml, deploy script is preferred.", :yellow
+      end
+
+      def generate_gcp_deploy_script(directory)
+        deploy_script_path = File.join(directory, "deploy-gcp.sh")
+
+        # Extract GCP options with defaults from class_options
+        project_id = options[:gcp_project_id] # Already validated in generate_gcp_assets
+        region = options[:gcp_region]
+        redis_name = options[:gcp_redis_instance_name]
+        main_service_name = options[:gcp_service_name]
+        main_memory = options[:gcp_memory]
+        main_cpu = options[:gcp_cpu]
+        base_name = options[:name] # Used for image naming
+
+        # Image names
+        main_image_name = "#{base_name}-web" # Assume main entry point is web
+        main_image_tag = "latest"
+        main_image_uri = "#{region}-docker.pkg.dev/#{project_id}/adk-images/#{main_image_name}:#{main_image_tag}"
+        # Note: Repo 'adk-images' is assumed; could be made configurable
+
+        # --- Script Content ---
+        # This script is more comprehensive than before, includes setup
+        script_content = <<~BASH
+          #!/bin/bash
+          # Generated by ADK CLI for GCP Cloud Run deployment
+          set -euo pipefail # Enable strict mode
+
+          # --- Configuration (Edit these if needed) ---
+          PROJECT_ID="#{project_id}"
+          REGION="#{region}"
+          REDIS_INSTANCE_NAME="#{redis_name}"
+          MAIN_SERVICE_NAME="#{main_service_name}"
+          MAIN_DOCKERFILE="Dockerfile"
+          MAIN_IMAGE_NAME="#{main_image_name}"
+          MAIN_IMAGE_TAG="#{main_image_tag}"
+          MAIN_MEMORY="#{main_memory}"
+          MAIN_CPU="#{main_cpu}"
+
+          # Secrets Configuration
+          SECRET_NAME="google-api-key" # Name of the secret in Secret Manager
+          SECRET_ENV_VAR="GOOGLE_API_KEY" # Env var name in Cloud Run
+
+          # Artifact Registry Repository
+          AR_REPO_NAME="adk-images" # Artifact Registry repo name
+          AR_LOCATION="#{region}" # Often same as REGION, but can differ
+
+          # VPC Access Connector (Required for Redis)
+          CONNECTOR_NAME="adk-vpc-connector" # Name for the VPC Access Connector
+          # Important: Ensure this range does not overlap with other subnets!
+          CONNECTOR_IP_RANGE="10.8.0.0/28"
+          VPC_NETWORK_NAME="default" # Use 'default' or your specific VPC network
+
+          # Service Account for Cloud Run (Recommended: Create a dedicated one)
+          # Leave empty to use the default Compute Engine service account (less secure)
+          RUN_SERVICE_ACCOUNT=""
+          # Example: RUN_SERVICE_ACCOUNT="adk-runner@${PROJECT_ID}.iam.gserviceaccount.com"
+
+          # --- Helper Functions ---
+          info() {
+            echo "[INFO] $1"
+          }
+
+          error() {
+            echo "[ERROR] $1" >&2
+            exit 1
+          }
+
+          check_command() {
+            command -v "$1" >/dev/null 2>&1 || error "$1' command not found. Please install it."
+          }
+
+          # --- Prerequisites Check ---
+          info "Checking prerequisites..."
+          check_command gcloud
+          check_command docker
+
+          # --- Set GCP Project ---
+          info "Setting GCP project to ${PROJECT_ID}"
+          gcloud config set project "${PROJECT_ID}"
+
+          # --- Enable Required APIs ---
+          info "Enabling necessary GCP APIs..."
+          gcloud services enable \
+              run.googleapis.com \
+              artifactregistry.googleapis.com \
+              redis.googleapis.com \
+              secretmanager.googleapis.com \
+              cloudbuild.googleapis.com \
+              vpcaccess.googleapis.com \
+              compute.googleapis.com || error "Failed to enable APIs"
+
+          # --- Configure Docker for Artifact Registry ---
+          info "Configuring Docker authentication for ${AR_LOCATION}..."
+          gcloud auth configure-docker "${AR_LOCATION}-docker.pkg.dev" || error "Docker auth configuration failed"
+
+          # --- Create Artifact Registry Repository (if it doesn't exist) ---
+          info "Ensuring Artifact Registry repository '${AR_REPO_NAME}' exists in ${AR_LOCATION}..."
+          if ! gcloud artifacts repositories describe "${AR_REPO_NAME}" --location="${AR_LOCATION}" --project="${PROJECT_ID}" &>/dev/null; then
+            info "Creating Artifact Registry repository '${AR_REPO_NAME}'..."
+            gcloud artifacts repositories create "${AR_REPO_NAME}" \
+              --repository-format=docker \
+              --location="${AR_LOCATION}" \
+              --description="ADK Application Images" \
+              --project="${PROJECT_ID}" || error "Failed to create Artifact Registry repository"
+          else
+            info "Artifact Registry repository '${AR_REPO_NAME}' already exists."
+          fi
+          MAIN_IMAGE_URI="${AR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${MAIN_IMAGE_NAME}:${MAIN_IMAGE_TAG}"
+
+          # --- Create Memorystore Redis Instance (if it doesn't exist) ---
+          info "Ensuring Memorystore Redis instance '${REDIS_INSTANCE_NAME}' exists in ${REGION}..."
+          if ! gcloud redis instances describe "${REDIS_INSTANCE_NAME}" --region="${REGION}" --project="${PROJECT_ID}" &>/dev/null; then
+            info "Creating Memorystore Redis instance '${REDIS_INSTANCE_NAME}' (this may take a few minutes)..."
+            gcloud redis instances create "${REDIS_INSTANCE_NAME}" \
+              --size=1 \
+              --tier=BASIC \
+              --redis-version=redis_6_x \
+              --region="${REGION}" \
+              --project="${PROJECT_ID}" \
+              --network="projects/${PROJECT_ID}/global/networks/${VPC_NETWORK_NAME}" || error "Failed to create Redis instance"
+          else
+            info "Memorystore Redis instance '${REDIS_INSTANCE_NAME}' already exists."
+          fi
+          REDIS_IP=$(gcloud redis instances describe "${REDIS_INSTANCE_NAME}" --region="${REGION}" --project="${PROJECT_ID}" --format="value(host)")
+          REDIS_URL="redis://${REDIS_IP}:6379"
+          info "Redis instance IP: ${REDIS_IP}"
+
+          # --- Create VPC Access Connector (if it doesn't exist) ---
+          info "Ensuring Serverless VPC Access connector '${CONNECTOR_NAME}' exists in ${REGION}..."
+          if ! gcloud compute networks vpc-access connectors describe "${CONNECTOR_NAME}" --region="${REGION}" --project="${PROJECT_ID}" &>/dev/null; then
+            info "Creating Serverless VPC Access connector '${CONNECTOR_NAME}'..."
+            gcloud compute networks vpc-access connectors create "${CONNECTOR_NAME}" \
+              --region="${REGION}" \
+              --range="${CONNECTOR_IP_RANGE}" \
+              --network="${VPC_NETWORK_NAME}" \
+              --project="${PROJECT_ID}" || error "Failed to create VPC Access connector"
+          else
+            info "Serverless VPC Access connector '${CONNECTOR_NAME}' already exists."
+          fi
+          VPC_CONNECTOR_FULL_NAME="projects/${PROJECT_ID}/locations/${REGION}/connectors/${CONNECTOR_NAME}"
+
+          # --- Create Secret for API Key (if it doesn't exist) ---
+          info "Ensuring Secret Manager secret '${SECRET_NAME}' exists..."
+          if ! gcloud secrets describe "${SECRET_NAME}" --project="${PROJECT_ID}" &>/dev/null; then
+            info "Secret '${SECRET_NAME}' not found. Please create it manually or enter the value now."
+            read -sp "Enter value for ${SECRET_NAME}: " SECRET_VALUE
+            echo # Newline after password prompt
+            if [[ -z "$SECRET_VALUE" ]]; then
+              error "Secret value cannot be empty."
+            fi
+            echo -n "$SECRET_VALUE" | gcloud secrets create "${SECRET_NAME}" --data-file=- \
+              --replication-policy="automatic" \
+              --project="${PROJECT_ID}" || error "Failed to create secret '${SECRET_NAME}'"
+            # Grant default compute service account access (adjust if using dedicated SA)
+            # info "Granting default compute SA access to secret..."
+            # PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')
+            # DEFAULT_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+            # gcloud secrets add-iam-policy-binding ${SECRET_NAME} \
+            #    --member="serviceAccount:${DEFAULT_SA}" \
+            #    --role="roles/secretmanager.secretAccessor" \
+            #    --project="${PROJECT_ID}" || echo "Warning: Failed to grant default SA access to secret. Ensure the running service account has access."
+          else
+            info "Secret '${SECRET_NAME}' already exists."
+          fi
+          SECRET_RESOURCE="projects/${PROJECT_ID}/secrets/${SECRET_NAME}/versions/latest"
+
+          # --- Build and Push Main Docker Image ---
+          info "Building main application image: ${MAIN_IMAGE_URI}..."
+          # Using Cloud Build is generally recommended for CI/CD
+          gcloud builds submit --tag "${MAIN_IMAGE_URI}" --project="${PROJECT_ID}" --dockerfile="${MAIN_DOCKERFILE}" . || error "Failed to build main image"
+          # Alternatively, build locally:
+          # docker build -t "${MAIN_IMAGE_URI}" -f "${MAIN_DOCKERFILE}" . || error "Failed to build main image"
+          # docker push "${MAIN_IMAGE_URI}" || error "Failed to push main image"
+
+          # --- Build and Push Agent Docker Images (if configured) ---
+          # <<< Add logic here to loop through agent entry points, build and push their images >>>
+          # Example for one agent:
+          # AGENT_SERVICE_NAME="adk-agent-processor"
+          # AGENT_DOCKERFILE="Dockerfile.agent.processor"
+          # AGENT_IMAGE_NAME="adk-agent-processor"
+          # AGENT_IMAGE_URI="${AR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/${AGENT_IMAGE_NAME}:${MAIN_IMAGE_TAG}"
+          # info "Building agent image: ${AGENT_IMAGE_URI}..."
+          # gcloud builds submit --tag "${AGENT_IMAGE_URI}" --project="${PROJECT_ID}" --dockerfile="${AGENT_DOCKERFILE}" . || error "Failed to build agent image"
+
+          # --- Deploy Main Service to Cloud Run ---
+          info "Deploying main service '${MAIN_SERVICE_NAME}' to Cloud Run in ${REGION}..."
+          DEPLOY_ARGS=(
+            "${MAIN_SERVICE_NAME}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --image="${MAIN_IMAGE_URI}" \
+            --platform="managed" \
+            --memory="${MAIN_MEMORY}" \
+            --cpu="${MAIN_CPU}" \
+            --port="8080" \
+            --set-env-vars="REDIS_URL=${REDIS_URL},ADK_SESSION_SERVICE=redis,RACK_ENV=production" \
+            --set-secrets="${SECRET_ENV_VAR}=${SECRET_RESOURCE}" \
+            --vpc-connector="${VPC_CONNECTOR_FULL_NAME}" \
+            --vpc-egress="all-traffic" \
+            --allow-unauthenticated # Remove if service should not be public
+          )
+          if [[ -n "${RUN_SERVICE_ACCOUNT}" ]]; then
+            DEPLOY_ARGS+=(--service-account="${RUN_SERVICE_ACCOUNT}")
+            info "Using service account: ${RUN_SERVICE_ACCOUNT}"
+            # Ensure this SA has roles/secretmanager.secretAccessor for the secret!
+          else
+             info "Using default Compute Engine service account. Ensure it has Secret Accessor role."
+          fi
+
+          gcloud run deploy "${DEPLOY_ARGS[@]}" || error "Failed to deploy main service '${MAIN_SERVICE_NAME}'"
+
+          # --- Deploy Agent Services to Cloud Run (if configured) ---
+          # <<< Add logic here to loop through agents and deploy them >>>
+          # Example for one agent:
+          # info "Deploying agent service '${AGENT_SERVICE_NAME}'..."
+          # gcloud run deploy "${AGENT_SERVICE_NAME}" \
+          #   --project="${PROJECT_ID}" \
+          #   --region="${REGION}" \
+          #   --image="${AGENT_IMAGE_URI}" \
+          #   --platform="managed" \
+          #   --memory="512Mi" # Agent specific memory
+          #   --cpu="1" # Agent specific CPU
+          #   --no-traffic # Agents often don't need external traffic
+          #   --set-env-vars="REDIS_URL=${REDIS_URL},ADK_SESSION_SERVICE=redis,RACK_ENV=production" \
+          #   --set-secrets="${SECRET_ENV_VAR}=${SECRET_RESOURCE}" \
+          #   --vpc-connector="${VPC_CONNECTOR_FULL_NAME}" \
+          #   --vpc-egress="all-traffic" \
+          #   ${RUN_SERVICE_ACCOUNT:+--service-account="${RUN_SERVICE_ACCOUNT"} || error "Failed to deploy agent service '${AGENT_SERVICE_NAME}'"}
+
+          # --- Deployment Complete ---
+          info "Deployment successful!"
+          MAIN_SERVICE_URL=$(gcloud run services describe "${MAIN_SERVICE_NAME}" --region="${REGION}" --project="${PROJECT_ID}" --platform="managed" --format="value(status.url)")
+          if [[ -n "${MAIN_SERVICE_URL}" ]]; then
+            info "Main service '${MAIN_SERVICE_NAME}' URL: ${MAIN_SERVICE_URL}"
+          else
+            info "Main service '${MAIN_SERVICE_NAME}' deployed, but URL not available yet."
+          fi
+
+        BASH
+
+        File.write(deploy_script_path, content)
+        FileUtils.chmod(0755, deploy_script_path)
+        say "Created GCP deployment script at #{deploy_script_path}", :cyan
+        say "Please review and customize the script, especially the Configuration section, before running.", :yellow
+      end
+
+      def generate_gcp_deployment_docs(directory)
+        # Instead of hardcoding, copy the canonical doc we maintain
+        # Use __dir__ to get the directory of the current file (deployment_commands.rb)
+        source_doc_path = File.expand_path('../../../../docs/go-to-gcp-production-gemini.md', __dir__)
+        target_doc_path = File.join(directory, 'README-GCP-DEPLOYMENT.md')
+
+        if File.exist?(source_doc_path)
+          FileUtils.cp(source_doc_path, target_doc_path)
+          say "Copied GCP deployment guide to #{target_doc_path}", :cyan
+        else
+          say "Warning: Source deployment document not found at #{source_doc_path}", :yellow
+          # Optionally generate a placeholder
+          File.write(target_doc_path, "# GCP Deployment Guide\n\nSee online documentation for deployment steps.\n")
+        end
+      end
+
+      # --- AWS Asset Generation (Placeholder) ---
+      def generate_aws_assets(directory)
+        say "AWS deployment asset generation is not yet implemented.", :yellow
+        # Placeholder for future: generate CloudFormation/CDK/Terraform, deploy scripts etc.
+      end
+
+      # --- Azure Asset Generation (Placeholder) ---
+      def generate_azure_assets(directory)
+        say "Azure deployment asset generation is not yet implemented.", :yellow
+        # Placeholder for future: generate ARM templates/Bicep, deploy scripts etc.
       end
     end
   end

@@ -55,7 +55,7 @@ This command would create a `deployment/` directory (or similar) containing:
     *   `--cloud none` or omitted: Generate only the generic Dockerfile(s) and `.dockerignore`.
 4.  **Generate `.dockerignore`:** A `.dockerignore` file.
 5.  **Generate Sample Entrypoint (Optional):** If `--generate-sample-entrypoint` is specified, create `bin/adk_web_entrypoint.rb`. This script provides a basic web server setup with a `/healthz` endpoint, suitable for initial deployment testing.
-6.  **Generate `deploy.sh` Stub (Cloud Specific):** A shell script template (e.g., `deploy-gcp.sh`) with placeholders and logic for deploying the service(s) to the chosen cloud provider.
+6.  **Generate Cloud-Specific Deploy Script:** A shell script template named according to the cloud provider (e.g., `deploy-gcp.sh`, `deploy-aws.sh`) with placeholders and logic for deploying the service(s) to that provider.
 7.  **Provide Instructions:** Output guidance on the next steps relevant to the chosen cloud provider.
 
 **Parameters:**
