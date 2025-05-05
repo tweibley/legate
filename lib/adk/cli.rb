@@ -8,6 +8,7 @@ require_relative 'cli/tool_commands'
 require_relative 'cli/web_commands'
 require_relative 'cli/session_commands'
 require_relative 'cli/sidekiq_commands'
+require_relative 'cli/deployment_commands'
 
 module ADK
   module CLI
@@ -26,6 +27,7 @@ module ADK
       register(WebCommands, 'web', 'web <command>', 'Manage ADK web interface')
       register(SessionCommands, 'session', 'session <command>', 'Manage ADK sessions')
       register(SidekiqCommands, 'sidekiq', 'sidekiq <command>', 'Manage Sidekiq workers and jobs')
+      register(DeploymentCommands, 'deployment', 'deployment <command>', 'Generate deployment assets for cloud platforms')
     end
     # --- End Main class definition ---
   end # End CLI module
