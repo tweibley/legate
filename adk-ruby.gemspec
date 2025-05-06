@@ -29,7 +29,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'logger', '~> 1.5'
   spec.add_dependency 'prometheus-client', '~> 2.1'
   spec.add_dependency 'sidekiq'
-  spec.add_dependency 'activesupport', '>= 5.0'
   spec.add_dependency 'dry-configurable', '~> 1.0'
   #spec.add_dependency 'dry-container', '~> 0.8.0'
   spec.add_dependency 'dry-struct', '~> 1.6'

@@ -9,7 +9,6 @@ require 'adk/definition_store/redis_store' # Use Redis store
 require 'adk/session_service/redis'     # Need redis service for worker
 require_relative 'webhook_receiver_agent' # Ensure agent definition is loaded
 require 'openssl'
-require 'active_support/security_utils' # For secure_compare
 require 'json'
 
 # --- Configuration ---

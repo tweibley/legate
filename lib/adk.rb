@@ -7,7 +7,6 @@ require 'sidekiq'
 require_relative 'adk/version'
 require 'redis'
 require 'forwardable'
-require 'active_support/security_utils' # For secure_compare in validator
 require 'openssl' # For HMAC in validator
 
 # --- Eager Logger Initialization (Moved BEFORE other ADK requires) ---
@@ -126,7 +125,7 @@ module ADK
     payload_body = request.body.read
     request.body.rewind
     calculated_signature = OpenSSL::HMAC.hexdigest('sha256', secret, payload_body)
-    ActiveSupport::SecurityUtils.secure_compare(calculated_signature, expected_signature)
+    calculated_signature.bytesize == expected_signature.bytesize && OpenSSL.fixed_length_secure_compare(calculated_signature, expected_signature)
   end
   # --- END NEW --- #
 
