@@ -45,6 +45,9 @@ require_relative '../tools/sleepy_tool' # Example async tool
 # --- NEW: Require Definition Store ---
 require_relative '../definition_store'
 
+# --- Route Modules ---
+require_relative 'routes/core_routes'
+
 # Load dotenv for development environment variables
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
   begin; require 'dotenv/load'; rescue LoadError; end
@@ -87,6 +90,9 @@ module ADK
       REDIS_AGENTS_SET_KEY = "adk:agents:all_names"
       # List of available Gemini models selectable in the UI.
       AVAILABLE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro'].freeze
+
+      # --- Register Route Modules ---
+      register ADK::Web::CoreRoutes
 
       # --- Instance Variables ---
       # Initializes application state, including connections and services.
@@ -434,12 +440,6 @@ module ADK
 
       # --- Routes ---
       # Defines the HTTP endpoints for the web application.
-
-      # GET / - Main welcome page.
-      get '/' do
-        logger.debug("GET / route handler entered")
-        slim :index
-      end
 
       # --- Agent Definition Management Routes (Redis Persistence) ---
       # These routes handle CRUD operations for agent *definitions*, which are stored in Redis.
@@ -1144,42 +1144,6 @@ module ADK
       # Does not include MCP tools.
       # Returns JSON: `{"tools": [{"name": ..., "description": ..., "parameters": [...]}, ...]}`
       get('/api/tools') { content_type :json; json tools: ADK::GlobalToolManager.list_all_tools }
-
-      # --- Health Check Endpoint ---
-      # Standard endpoint for monitoring systems.
-      get '/healthz' do
-        begin
-          # --- MODIFIED: Check Definition Store Connection ---
-          # Check connectivity to essential services (currently only Redis if available).
-          store_ok = if @definition_store
-                       @definition_store.check_connection
-                     else
-                       # If store didn't initialize, maybe that's acceptable for basic health?
-                       # Or should we return 503? Let's return 503 if store failed init.
-                       false
-                     end
-
-          unless store_ok
-            logger.error("Health check failed: Definition Store unavailable or connection failed.")
-            status 503
-            body 'Service Unavailable (Persistence)' # More generic message
-            return # Explicitly return to avoid falling through
-          end
-          # --- END MODIFICATION ---
-
-          status 200
-          body 'OK'
-        rescue ADK::DefinitionStore::StoreError => e
-          logger.error("Health check failed: Store error - #{e.message}")
-          status 503
-          body 'Service Unavailable (Persistence Error)'
-        rescue => e # Keep generic catch-all
-          # Handle other unexpected errors.
-          logger.error("Health check failed: Unexpected error - #{e.class}: #{e.message}")
-          status 503
-          body 'Service Unavailable (Internal)'
-        end
-      end
 
       # --- NEW: Tools Page Route ---
       # GET /tools - Display available native tools

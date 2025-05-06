@@ -14,6 +14,8 @@ We will use Sinatra's extension mechanism, which involves:
 *   The main `ADK::Web::App` class will then `require` these modules and `register` them.
 *   Helper methods and instance variables defined in the main `ADK::Web::App` will remain accessible to the routes within these registered modules.
 
+*(Note: This strategy aligns with the recommended practices for extending modular Sinatra applications as per the official Sinatra documentation. The use of `register YourModule` within the `Sinatra::Base` subclass and defining routes within the `self.registered(app)` method is the standard approach.)*
+
 ## 3. Detailed Steps
 
 ### Step 3.1: Create Directory Structure
@@ -25,7 +27,7 @@ Create a new directory to house the route modules:
 
 We will create the following module files within `lib/adk/web/routes/`. Each file will define a module (e.g., `ADK::Web::CoreRoutes`) containing the `self.registered(app)` method, into which the corresponding routes from `app.rb` will be moved.
 
-1.  **`core_routes.rb`**: For basic application routes.
+1.  **`core_routes.rb`**: For basic application routes. **[DONE]**
     *   Module: `ADK::Web::CoreRoutes`
     *   Routes:
         *   `GET /`
@@ -108,11 +110,12 @@ end
 ### Step 3.4: Modify `lib/adk/web/app.rb`
 
 1.  **Remove Moved Routes**: Delete all the route definitions that have been moved to the new module files from `app.rb`.
+    *   `GET /` and `GET /healthz` removed. **[DONE for CoreRoutes]**
 2.  **Keep Core Configuration**: Retain Sinatra settings (`set :root`, etc.), `configure` blocks, `helpers do ... end` block, `initialize` method, and private helper methods (`_start_agent`, `_stop_agent`) in `app.rb`.
 3.  **Require Route Modules**: Add `require_relative` statements for each new route module file near the top of `app.rb`, after other primary requires.
     ```ruby
     # ... other requires ...
-    require_relative 'routes/core_routes'
+    require_relative 'routes/core_routes' # [DONE]
     require_relative 'routes/agent_definition_routes'
     # ... etc. for all route modules
     ```
@@ -121,7 +124,7 @@ end
     class App < Sinatra::Base
       # ... existing configure blocks, helpers, initialize ...
 
-      register ADK::Web::CoreRoutes
+      register ADK::Web::CoreRoutes # [DONE]
       register ADK::Web::AgentDefinitionRoutes
       register ADK::Web::AgentRuntimeRoutes
       register ADK::Web::AgentInteractionRoutes
@@ -135,7 +138,7 @@ end
 ## 4. Order of Refactoring (Recommended)
 
 It's advisable to refactor one module at a time to isolate potential issues:
-1.  Start with a small, less complex module (e.g., `CoreRoutes` or `ApiRoutes`).
+1.  Start with a small, less complex module (e.g., `CoreRoutes` or `ApiRoutes`). **[CoreRoutes implemented and tested successfully]**
 2.  Create the module file, move the routes.
 3.  Update `app.rb` to require and register this module.
 4.  Thoroughly test the moved routes.
