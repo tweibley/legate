@@ -50,6 +50,7 @@ require_relative 'routes/core_routes'
 require_relative 'routes/api_routes'
 require_relative 'routes/tools_ui_routes'
 require_relative 'routes/agent_runtime_routes'
+require_relative 'routes/agent_definition_routes' # Ensure this is present
 
 # Load dotenv for development environment variables
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
@@ -99,6 +100,7 @@ module ADK
       register ADK::Web::ApiRoutes
       register ADK::Web::ToolsUIRoutes
       register ADK::Web::AgentRuntimeRoutes
+      register ADK::Web::AgentDefinitionRoutes # Ensure this is present
 
       # --- Instance Variables ---
       # Initializes application state, including connections and services.
@@ -447,273 +449,19 @@ module ADK
       # --- Routes ---
       # Defines the HTTP endpoints for the web application.
 
-      # --- Agent Definition Management Routes (Redis Persistence) ---
-      # These routes handle CRUD operations for agent *definitions*, which are stored in Redis.
+      # --- Agent Definition Management Routes (Redis Persistence) --- MOVED
+      # All routes previously under this heading have been moved to agent_definition_routes.rb
+      # This includes:
+      # GET /agents
+      # POST /agents
+      # DELETE /agents/:name
+      # GET /agents/:name
+      # GET /agents/:name/edit/:field
+      # PUT /agents/:name/update/:field
+      # GET /agents/:name/display/:field
+      # GET /agents/:name/display/tool_table
 
-      # GET /agents - Display the main agent management page.
-      # Lists all agents defined in Redis, showing their status (Running/Stopped)
-      # and providing controls to create, manage, and start/stop agents.
-      get '/agents' do
-        @view_agents = []
-        if @definition_store
-          begin
-            agent_summaries = @definition_store.list_definitions
-            # @logger.debug("[GET /agents] Summaries from store: #{agent_summaries.inspect}") # <<< REMOVE LOGGING
-
-            @view_agents = agent_summaries.map do |summary|
-              agent_name = summary[:name]
-              is_running = @agents.key?(agent_name)
-              # @logger.debug("[GET /agents] Processing summary for '#{agent_name}' BEFORE rename: #{summary.inspect}") # <<< REMOVE LOGGING
-              summary[:configured_tools] = summary.delete(:tools)
-              # @logger.debug("[GET /agents] Processing summary for '#{agent_name}' AFTER rename: #{summary.inspect}") # <<< REMOVE LOGGING
-              summary.merge(running: is_running)
-            end
-          rescue ADK::DefinitionStore::StoreError => e
-            logger.error("Store error fetching agent list: #{e.message}")
-          end
-        else
-          logger.error("Definition Store unavailable during GET /agents")
-        end
-        # @logger.debug("[GET /agents] Final @view_agents: #{@view_agents.inspect}") # <<< REMOVE LOGGING
-        @available_tools = ADK::GlobalToolManager.list_all_tools
-        @available_models = AVAILABLE_MODELS
-        slim :agents
-      end
-
-      # POST /agents - Create a new agent definition in Redis.
-      # Receives form data (name, description, tools, model, fallback, MCP config),
-      # validates input, and saves the definition as a hash in Redis.
-      # Also adds the agent name to the central set of agent names.
-      # Returns HTML fragments for the new agent row and potentially removes the
-      # "no agents" message via HTMX OOB swap.
-      post '/agents' do
-        halt 503, "Redis unavailable." unless @definition_store
-        agent_name = params['name']&.strip; agent_description = params['description']&.strip
-        selected_tools = params['tools'] || []; selected_model = params['model']&.strip
-        selected_fallback = params['fallback_mode'] || 'error'
-        mcp_servers_json = params['mcp_servers_json']&.strip
-        instruction = params['instruction']&.strip # <<< Get instruction
-
-        mcp_servers_json_to_save = (mcp_servers_json.nil? || mcp_servers_json.empty?) ? '[]' : mcp_servers_json
-        model_to_save = selected_model && !selected_model.empty? ? selected_model : ADK::Agent::DEFAULT_MODEL
-
-        if agent_name.nil? || agent_name.empty? || agent_description.nil? || agent_description.empty?
-          status 400; halt "<div class='notification is-danger'>Name and description required.</div>"; end
-
-        begin
-          @definition_store.save_definition(
-            name: agent_name,
-            description: agent_description,
-            tools: selected_tools,
-            model: model_to_save,
-            fallback_mode: selected_fallback,
-            mcp_servers_json: mcp_servers_json_to_save,
-            instruction: instruction # <<< Pass instruction
-          )
-          logger.info("Agent '#{agent_name}' definition saved (Model: #{model_to_save}, Tools: #{selected_tools}, Fallback: #{selected_fallback}, MCP: #{!mcp_servers_json_to_save.empty? && mcp_servers_json_to_save != '[]'}, Instruction: #{!instruction.nil? && !instruction.empty?})") # Log instruction status
-        rescue ADK::DefinitionStore::StoreError => e
-          logger.error("Store error saving agent definition: #{e.message}")
-          halt 500, "Error saving agent definition."
-        end
-        content_type :html
-        # <<< Add instruction to data passed to partial if needed by _agent_row >>>
-        agent_data = { name: agent_name, description: agent_description, running: false,
-                       configured_tools: selected_tools, model: model_to_save, fallback_mode: selected_fallback, instruction: instruction,
-                       is_new: true } # <<< ADDED is_new flag
-        available_tools = ADK::GlobalToolManager.list_all_tools
-        agent_row_html = slim(:_agent_row, layout: false,
-                                           locals: { agent_info: agent_data, available_tools: available_tools })
-        oob_remove_message_html = "<tr id='no-agents-row' hx-swap-oob='true'></tr>"
-
-        # Trigger event to close the details section on the client
-        headers 'HX-Trigger' => 'closeCreateAgentForm'
-
-        agent_row_html + oob_remove_message_html
-      end
-
-      # DELETE /agents/:name - Delete an agent definition from Redis.
-      # Stops the agent runtime instance if it's currently running.
-      # Removes the agent's definition hash and its name from the set in Redis.
-      # Returns an empty 200 OK response, triggering HTMX to remove the corresponding row.
-      delete '/agents/:name' do |name|
-        logger.info("Received request to delete agent '#{name}'")
-        halt 503, "Definition Store unavailable." unless @definition_store
-        if @agents.key?(name)
-          logger.info("Stopping running agent '#{name}' before deletion...")
-          begin @agents[name].stop;
-                @agents.delete(name);
-                logger.info("Agent '#{name}' stopped.");
-          rescue => e; logger.error("Error stopping agent: #{e.message}"); end
-        end
-        begin
-          @definition_store.delete_definition(name)
-          logger.info("Agent '#{name}' definition deleted from Redis.")
-          status 200; body ''
-        rescue ADK::DefinitionStore::StoreError => e
-          logger.error("Store error deleting agent '#{name}': #{e.message}");
-          halt 500, "Database error during deletion."; end
-      end
-
-      # GET /agents/:name - Display the detail page for a specific agent.
-      # Fetches the agent's definition from Redis.
-      # Fetches metadata for available native tools (from GlobalToolManager) and
-      # remote MCP tools (using fetch_mcp_tools helper based on agent's MCP config).
-      # Displays the combined list of tools *configured* for this agent.
-      # Shows agent details, runtime status, chat link, and task execution controls.
-      # Implicitly adds 'check_job_status' tool to the view if any configured tool is async.
-      get '/agents/:name' do |name|
-        # --- MODIFIED: Use Definition Store ---
-        halt 503, "Definition Store unavailable." unless @definition_store
-        agent_definition = nil
-        begin
-          agent_definition = @definition_store.get_definition(name)
-        rescue ADK::DefinitionStore::StoreError => e
-          logger.error("Store error fetching definition for '#{name}': #{e.message}")
-          halt 500, "Error retrieving agent definition."
-        end
-
-        unless agent_definition
-          logger.warn("Agent definition not found for '#{name}' in store.")
-          halt 404,
-               slim(:error_404, locals: { title: "Agent Not Found", message: "Definition for '#{name}' not found." })
-        end
-
-        # Extract data from the definition hash (store returns symbol keys)
-        description = agent_definition[:description]
-        configured_tool_names = agent_definition[:tools] # Array of strings
-        loaded_model = agent_definition[:model]
-        fallback_mode = agent_definition[:fallback_mode] # Symbol
-        mcp_servers_json = agent_definition[:mcp_servers_json] # String
-        instruction = agent_definition[:instruction]
-
-        # --- NEW: Pre-process MCP JSON for display ---
-        mcp_display_string = begin
-          parsed = JSON.parse(mcp_servers_json)
-          if parsed.is_a?(Array) && parsed.empty?
-            "No MCP Server(s) Configured."
-          else
-            pretty_json(parsed) # Assumes pretty_json helper is available
-          end
-        rescue JSON::ParserError
-          mcp_servers_json # Fallback to raw string on error
-        end
-        # --- END Pre-processing ---
-
-        is_running = @agents.key?(name)
-
-        # --- START: Refactored Tool Metadata Fetching (Copied from GET /display/tool_table) ---
-
-        # 1. Get NATIVE tool info from registry and format parameters/source
-        all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map do |tm|
-          parameters_array = []
-          # Convert native params hash to array format
-          if tm[:parameters].is_a?(Hash) && !tm[:parameters].empty?
-            tm[:parameters].each do |param_name, details|
-              parameters_array << {
-                name: param_name,
-                type: details[:type],
-                description: details[:description],
-                required: details[:required]
-              }
-            end
-          end
-          tm.merge(parameters: parameters_array, source: :native, source_detail: "Native")
-        end
-
-        # 2. Fetch MCP tool results and convert parameters/mark source
-        # mcp_servers_json is already fetched above
-        mcp_configs = []
-        begin
-          mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
-        rescue JSON::ParserError => e
-          logger.error("Invalid JSON in mcp_servers_json for agent '#{name}' (GET /agents/:name): #{e.message}")
-          mcp_configs = [] # Continue without MCP if JSON is invalid
-        end
-        mcp_tool_results = fetch_mcp_tools(mcp_configs) # Contains raw results and status
-
-        fetched_mcp_tools_metadata = []
-        mcp_tool_results.each do |result|
-          if result[:status] == :success && result[:tools]
-            result[:tools].each do |mcp_tool_schema|
-              parameters = []
-              begin
-                input_schema = mcp_tool_schema[:inputSchema]
-                if input_schema && input_schema.is_a?(Hash)
-                  properties = input_schema['properties'] || {}
-                  required = input_schema['required'] || []
-                  # Use SchemaConverter here
-                  parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required)
-                end
-              rescue => e
-                logger.error("Error converting MCP schema for tool '#{mcp_tool_schema[:name]}' (GET /agents/:name): #{e.message}")
-              end
-              fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
-                                              description: mcp_tool_schema[:description] || "",
-                                              parameters: parameters, # Use converted params
-                                              source: :mcp,
-                                              source_detail: "MCP (#{result[:server]})" } # Include server source
-            end
-          end
-        end
-
-        # 3. Merge native and processed MCP metadata into a single map
-        all_available_tools_metadata_map = {}
-        (all_native_tools_metadata + fetched_mcp_tools_metadata).each do |tm|
-          all_available_tools_metadata_map[tm[:name]] ||= tm # Prioritize native if name collision
-        end
-
-        # 4. Filter map by configured symbols
-        configured_tool_syms = configured_tool_names.map(&:to_sym) # Convert strings to symbols
-        view_configured_tools = configured_tool_syms.map do |tool_sym|
-          all_available_tools_metadata_map[tool_sym]
-        end.compact # Remove nil entries if a configured tool wasn't found in the merged map
-
-        # 5. Handle Implicit Tool Addition
-        # Check if *any* of the *configured* tools (using the filtered list) might require check_job_status
-        # (Simplified check: Look for async flag in metadata if available, or class check if needed)
-        needs_check_job_status = view_configured_tools.any? do |tm|
-          tm[:async] == true || ADK::GlobalToolManager.find_class(tm[:name])&.ancestors&.include?(ADK::Tools::BaseAsyncJobTool)
-        end
-
-        if needs_check_job_status && !view_configured_tools.any? { |t| t[:name] == :check_job_status }
-          status_tool_meta = all_available_tools_metadata_map[:check_job_status]
-          if status_tool_meta
-            # Add note that it was implicitly added
-            status_tool_meta_clone = status_tool_meta.dup
-            status_tool_meta_clone[:description] = "(Implicitly added) #{status_tool_meta_clone[:description]}"
-            status_tool_meta_clone[:source_detail] = "Native (Implicit)" # Clarify source
-            view_configured_tools << status_tool_meta_clone
-            logger.debug("Implicitly added check_job_status tool to view for agent '#{name}'")
-          end
-        end
-        # Sort the final list for consistent display
-        view_configured_tools.sort_by! { |t| t[:name].to_s }
-
-        # --- END: Refactored Tool Metadata Fetching ---
-
-        # --- Assemble data for the view ---
-        @view_agent_data = {
-          name: name,
-          description: description,
-          running: is_running,
-          model: loaded_model,
-          fallback_mode: fallback_mode,
-          instruction: instruction,
-          mcp_servers_json: mcp_servers_json,
-          mcp_display_string: mcp_display_string,
-          configured_tool_names: configured_tool_names # Needed for edit forms
-        }
-
-        # --- Render the main agent view ---
-        slim :agent, locals: {
-          view_configured_tools: view_configured_tools,
-          mcp_tool_results: mcp_tool_results # Pass MCP results hash for potential errors
-          # @session_id and @chat_history_events are now available as instance vars
-        }
-      end
-
-      # GET /agents/:name/chat - Display the chat interface for an agent.
-      # Establishes a user session and loads existing chat history.
+      # --- Agent Interaction Routes ---
       get '/agents/:name/chat' do |name|
         # 1. Ensure Definition Store is available
         halt 503, "Definition Store unavailable." unless @definition_store
@@ -778,14 +526,7 @@ module ADK
         # --- END MODIFICATION ---
       end
 
-      # POST /agents/:name/chat - Process a user message from the chat interface.
-      # Requires the agent to be running and a valid ADK session ID in the Sinatra session.
-      # Retrieves the message from the form data.
-      # Calls the agent's `run_task` method, passing the user input and session ID.
-      # The `run_task` method handles planning, tool execution, and updating the session history.
-      # Returns an HTML fragment (`_chat_message.slim`) containing the user message
-      # and the agent's processed response, intended for HTMX append swap into the chat log.
-      post '/agents/:name/chat' do |name| # <<< ENSURE THIS LINE EXISTS AND IS CORRECT
+      post '/agents/:name/chat' do |name|
         content_type :html
         @agent = @agents[name] # Agent must be running
         user_message = params['message']&.strip
@@ -836,19 +577,6 @@ module ADK
         end
       end
 
-      # POST /agents/:name/execute - Execute a task directly via JSON input.
-      # Requires the agent to be running. Bypasses the chat UI and session history persistence.
-      # Accepts a JSON payload in the `task_json` form field. Supports two formats:
-      # 1. Planner execution: `{"task": "User's natural language task description"}`
-      # 2. Direct tool execution: `{"tool_name": "tool_symbol", "task": "Optional task description", "parameters": {"param1": "value1", ...}}`
-      # Creates a temporary ADK session for the execution context.
-      # If direct execution: Finds the specified tool, creates a ToolContext, and calls `tool.execute`.
-      # If planner execution: Calls `agent.run_task` with the task description.
-      # Returns:
-      #   - Success (200 OK): HTML body containing the formatted result (using `format_execution_result_html`). Target element updated via HTMX.
-      #   - Input Error (200 OK + JSON): `{"error": "..."}`. Triggers `showTaskError` JS event via `HX-Trigger-After-Swap`.
-      #   - Server Error (200 OK + JSON): `{"error": "..."}`. Triggers `showTaskServerError` JS event via `HX-Trigger-After-Swap`.
-      # Note: Returning 200 OK even for errors allows HTMX to process the response and trigger events.
       post '/agents/:name/execute' do
         name = params[:name]; content_type :json # <--- Change default content_type to json for this route
         agent = @agents[name]
@@ -954,709 +682,7 @@ module ADK
           @session_service.delete_session(session_id: temp_session.id) if temp_session
         end
       end
-
-      # --- ADDED START: Missing stop/detail route ---
-      # POST /agents/:name/stop/detail - Stop a runtime instance (from agent detail view).
-      # Calls the `_stop_agent` helper method.
-      # Returns the `_agent_status_controls.slim` partial for the detail view's status section,
-      # plus OOB swap fragments to disable/update the "Execute Task" button, chat input/button, and chat help text.
-      post '/agents/:name/stop/detail' do |name|
-        content_type :html
-        stop_success = _stop_agent(name) # <<< Use helper
-
-        # Fetch definition to render the status controls correctly
-        agent_definition = nil
-        agent_data_for_view = nil
-        if @definition_store
-          begin
-            agent_definition = @definition_store.get_definition(name)
-            if agent_definition
-              # Construct hash expected by the partial
-              agent_data_for_view = {
-                name: name,
-                description: agent_definition[:description],
-                running: false, # Always show as stopped
-                model: agent_definition[:model]
-                # Add other fields if the partial needs them, e.g., :fallback_mode, :mcp_servers_json
-              }
-            else
-              agent_data_for_view = { name: name, description: "Error: Definition not found", running: false,
-                                      model: "N/A" }
-            end
-          rescue ADK::DefinitionStore::StoreError => e
-            logger.error("Store error fetching definition after stop detail for '#{name}': #{e.message}")
-            agent_data_for_view = { name: name, description: "Error retrieving definition", running: false,
-                                    model: "N/A" }
-          end
-        else
-          agent_data_for_view = { name: name, description: "Error: Store unavailable", running: false, model: "N/A" }
-        end
-
-        # Render the status controls partial
-        status_controls_html = slim(:_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view })
-
-        # Construct the OOB button HTML (always disabled after stop)
-        execute_button_oob_html = %(
-          <button class="button is-primary" id="execute-task-button" type="submit" disabled hx-swap-oob="true">
-            <span class="icon is-small"><i class="fas fa-play-circle"></i></span>
-            <span>Execute (Requires Start)</span>
-          </button>
-        )
-
-        # --- NEW: Add OOB swaps for chat elements (always disabled) ---
-        chat_input_oob_html = %(
-          <input class="input" id="chat-input" type="text" name="message" placeholder="Enter your message..." required="true" autofocus disabled hx-swap-oob="true">
-        )
-        chat_button_oob_html = %(
-          <button class="button is-info" id="send-button" type="submit" disabled hx-swap-oob="true">
-            <span>Send</span>
-            <span class="icon is-small htmx-indicator ml-2" id="send-button-indicator"><i class="fas fa-spinner fa-pulse"></i></span>
-          </button>
-        )
-        # --- END NEW OOB swaps ---
-
-        # --- NEW: OOB swap for chat help text (show on stop by replacing p tag) ---
-        chat_help_oob_html = %(<p id="chat-status-help" hx-swap-oob="outerHTML" class="help is-danger">Agent must be running to chat.</p>)
-        # --- END NEW OOB swap ---
-
-        # Return combined HTML
-        status 200
-        status_controls_html + execute_button_oob_html + chat_input_oob_html + chat_button_oob_html + chat_help_oob_html
-      end
-      # --- ADDED END ---
-
-      # --- API Endpoints (JSON) ---
-      # Provide simple JSON data about the system state.
-
-      # GET /api/agents - MOVED to api_routes.rb
-
-      # GET /api/tools - MOVED to api_routes.rb
-
-      # --- NEW: Tools Page Route ---
-      # GET /tools - MOVED to tools_ui_routes.rb
-
-      # --- NEW: Tool Detail Page Route ---
-      # GET /tools/:name - MOVED to tools_ui_routes.rb
-
-      # --- Private Helper Methods ---
-      private
-
-      # Stops a running agent instance and removes it from the in-memory @agents hash.
-      # @param name [String] The name of the agent to stop.
-      # @return [Boolean] True if the agent was stopped successfully or was already stopped, false if an error occurred during stopping.
-      def _stop_agent(name)
-        agent = @agents[name]
-        if agent
-          logger.info("Stopping agent '#{name}'...")
-          begin
-            agent.stop
-            @agents.delete(name)
-            logger.info("Agent '#{name}' stopped.")
-            true
-          rescue => e
-            logger.error("Error stopping agent '#{name}': #{e.message}")
-            false # Indicate error
-          end
-        else
-          logger.warn("Attempted to stop non-running agent: '#{name}'.")
-          true # Considered success as it's already stopped
-        end
-      end
-
-      # Starts an agent instance based on its definition stored in Redis.
-      # If the agent is already running, returns the existing instance.
-      # Fetches configuration (description, tools, model, fallback, MCP) from Redis.
-      # Instantiates `ADK::Agent`, adds configured native tools, calls `agent.start`
-      # (which handles MCP tool registration), and stores the instance in @agents.
-      # @param name [String] The name of the agent to start.
-      # @return [ADK::Agent, nil] The started (or already running) agent instance, or nil if starting failed (e.g., definition not found, error during initialization).
-      def _start_agent(name)
-        return @agents[name] if @agents.key?(name) # Already running
-
-        # --- MODIFIED: Use Definition Store ---
-        halt 503, "Definition Store unavailable." unless @definition_store
-        agent_definition = nil
-        begin
-          agent_definition = @definition_store.get_definition(name)
-        rescue ADK::DefinitionStore::StoreError => e
-          logger.error("Store error fetching definition for starting agent '#{name}': #{e.message}")
-          return nil # Failed to start
-        end
-
-        unless agent_definition
-          logger.error("Agent definition not found for '#{name}', cannot start.")
-          return nil # Failed to start
-        end
-
-        # Extract data from definition hash (symbol keys)
-        agent_description = agent_definition[:description]
-        selected_tool_names = agent_definition[:tools].map(&:to_sym) # Agent expects symbols
-        model_name = agent_definition[:model]
-        fallback_mode_sym = agent_definition[:fallback_mode] # Already symbol
-        mcp_servers_json = agent_definition[:mcp_servers_json]
-        # --- END MODIFICATION ---
-
-        # --- FIXED: Parse MCP JSON before counting for logging ---
-        mcp_server_count = 0
-        begin
-          parsed_mcp = JSON.parse(mcp_servers_json)
-          mcp_server_count = parsed_mcp.is_a?(Array) ? parsed_mcp.count : 0
-        rescue JSON::ParserError
-          # Keep count 0 if JSON is invalid
-        end
-        logger.info("Attempting to start agent '#{name}' (Model: #{model_name}, Fallback: #{fallback_mode_sym}, MCP: #{mcp_server_count} servers)... Selected Tools: #{selected_tool_names.inspect}")
-        # --- END FIX ---
-        agent = ADK::Agent.new(
-          name: name, description: agent_description, model_name: model_name,
-          fallback_mode: fallback_mode_sym,
-          mcp_servers: mcp_servers_json,
-          selected_tool_names: selected_tool_names
-        )
-
-        # --- Add explicitly configured NATIVE tools ---
-        # MCP tools are registered during agent.start -> discover_and_register_mcp_tools
-        selected_tool_names.each do |tn|
-          # Check if this selected tool is a known NATIVE tool
-          inst = ADK::GlobalToolManager.create_instance(tn)
-          if inst
-            logger.debug("Adding selected native tool: #{tn}")
-            agent.add_tool(inst)
-          else
-            # Assuming it's an intended MCP tool, do nothing here.
-            # It will be registered later if available on the server and selected.
-            logger.debug("Tool '#{tn}' selected but not found in GlobalToolManager (assuming MCP tool).")
-          end
-        end
-
-        agent.start
-        @agents[name] = agent
-        logger.info("Agent '#{name}' started successfully.")
-        agent # Return the agent instance
-      rescue StandardError => e
-        logger.error("Failed to start agent '#{name}': #{e.class} - #{e.message}")
-        logger.error(e.backtrace.join("\n"))
-        @agents.delete(name) # Clean up if partially added
-        nil # Failed to start
-      end
-
-      # For 'tools', it fetches all available native and MCP tools to populate the selector.
-      get '/agents/:name/edit/:field' do |name, field|
-        supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp', 'instruction'] # <<< Added instruction
-        halt 404, "Editing field '#{field}' not supported." unless supported_fields.include?(field)
-
-        # --- MODIFIED: Use Definition Store ---
-        halt 503, "Definition Store unavailable." unless @definition_store
-        agent_definition = nil
-        begin
-          agent_definition = @definition_store.get_definition(name)
-        rescue ADK::DefinitionStore::StoreError => e
-          logger.error("Store error fetching definition for '#{name}' edit: #{e.message}")
-          halt 500, "Error retrieving agent definition for edit."
-        end
-
-        unless agent_definition
-          logger.warn("Agent definition not found for '#{name}' in store during edit.")
-          halt 404 # Or render an error partial
-        end
-
-        # Prepare data for the view/locals (uses symbol keys from store)
-        agent_data = {
-          name: name,
-          description: agent_definition[:description],
-          model: agent_definition[:model],
-          fallback_mode: agent_definition[:fallback_mode], # Symbol
-          mcp_servers_json: agent_definition[:mcp_servers_json], # String
-          instruction: agent_definition[:instruction] # <<< Add instruction here
-        }
-        # --- END MODIFICATION ---
-
-        locals = { agent_data: agent_data }
-
-        # Add field-specific data needed by partials
-        if field == 'model'
-          locals[:available_models] = AVAILABLE_MODELS
-        elsif field == 'tools'
-          # Tools are already an array of strings from get_definition
-          configured_tool_names = agent_definition[:tools]
-          locals[:configured_tool_names] = configured_tool_names
-
-          # --- Combine Native and Fetched MCP Tools for display ---
-          # 1. Get Native Tools from Global Manager
-          native_tools = ADK::GlobalToolManager.list_all_tools
-
-          # 2. Fetch tools from this agent's MCP config
-          mcp_servers_json = agent_definition[:mcp_servers_json]
-          mcp_configs = []
-          begin
-            mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
-          rescue JSON::ParserError => e
-            logger.error("Invalid JSON in mcp_servers_json while editing tools for agent '#{name}': #{e.message}")
-            mcp_configs = []
-          end
-          mcp_tool_results = fetch_mcp_tools(mcp_configs)
-
-          # 3. Extract successfully fetched MCP tool metadata
-          #    (SchemaConverter already converts MCP schema to ADK format needed by edit partial)
-          fetched_mcp_tools = []
-          mcp_tool_results.each do |result|
-            if result[:status] == :success && result[:tools]
-              result[:tools].each do |mcp_tool_schema|
-                mcp_props = mcp_tool_schema[:inputSchema]['properties'] || {}
-                mcp_req = mcp_tool_schema[:inputSchema]['required'] || []
-                adk_params = ADK::Mcp::Util::SchemaConverter.json_to_adk(mcp_props, mcp_req)
-                fetched_mcp_tools << {
-                  name: mcp_tool_schema[:name].to_sym, # Use symbol consistent with native tools
-                  description: mcp_tool_schema[:description] || "",
-                  parameters: adk_params # Pass the converted params
-                }
-              end
-            end
-          end
-
-          # 4. Combine and remove duplicates (prefer native if name clash)
-          combined_tools = (native_tools + fetched_mcp_tools).uniq { |tool| tool[:name] }
-
-          # 5. Pass the combined list to the partial
-          locals[:all_available_tools] = combined_tools.sort_by { |t| t[:name].to_s }
-          # --- END MCP/Native Tool Combining Logic ---
-
-        elsif field == 'mcp'
-          # Nothing specific needed for locals for mcp, agent_data has the json
-        end
-
-        # Render the correct partial
-        slim :"_edit_agent_#{field}", layout: false, locals: locals
-      end
-
-      # GET /agents/:name/display/tool_table - Render the tool table display partial.
-      # Used by the "Cancel" button in the 'tools' edit view to revert to the display state.
-      # Fetches agent definition and tool metadata (native+MCP) similar to the GET /agents/:name route
-      # to render the `_agent_tool_table.slim` partial.
-      get '/agents/:name/display/tool_table' do |name|
-        # --- MODIFIED: Use Definition Store ---
-        halt 503, "Definition Store unavailable." unless @definition_store
-        agent_definition = nil
-        begin
-          agent_definition = @definition_store.get_definition(name)
-        rescue ADK::DefinitionStore::StoreError => e
-          logger.error("Store error fetching definition for '#{name}' tool table: #{e.message}")
-          halt 500, "Error retrieving agent definition for tool table."
-        end
-
-        unless agent_definition
-          logger.warn("Agent definition not found for '#{name}' in store during tool table display.")
-          halt 404
-        end
-
-        # Extract data from definition hash (symbol keys)
-        # --- END MODIFICATION ---
-
-        # --- Use the definition hash ---
-        agent_data = {
-          name: name,
-          description: agent_definition[:description],
-          model: agent_definition[:model], # Already has default applied by store
-          fallback_mode: agent_definition[:fallback_mode], # Already symbol
-          mcp_servers_json: agent_definition[:mcp_servers_json] # Already string
-        }
-        agent_data[:running] = @agents.key?(name)
-
-        # Get configured tool names (array of strings)
-        configured_tool_names = agent_definition[:tools]
-
-        # Convert to symbols for internal processing
-        configured_tool_syms = configured_tool_names.map(&:to_sym)
-
-        # --- START: Refactored Tool Metadata Fetching ---
-
-        # 1. Get NATIVE tool info from registry
-        all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map do |tm|
-          tm.merge(source: :native, source_detail: "Native")
-        end
-
-        # 2. Fetch MCP tool results and convert parameters
-        mcp_servers_json = agent_data[:mcp_servers_json] # Use value from agent_data hash
-        mcp_configs = []
-        begin
-          mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
-        rescue JSON::ParserError => e
-          logger.error("Invalid JSON in mcp_servers_json for agent '#{name}' (display table): #{e.message}")
-          mcp_configs = [] # Continue without MCP if JSON is invalid
-        end
-        mcp_tool_results = fetch_mcp_tools(mcp_configs) # Contains raw results and status
-
-        fetched_mcp_tools_metadata = []
-        mcp_tool_results.each do |result|
-          if result[:status] == :success && result[:tools]
-            result[:tools].each do |mcp_tool_schema|
-              parameters = []
-              begin
-                input_schema = mcp_tool_schema[:inputSchema]
-                if input_schema && input_schema.is_a?(Hash)
-                  properties = input_schema['properties'] || {}
-                  required = input_schema['required'] || []
-                  parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required)
-                end
-              rescue => e
-                logger.error("Error converting MCP schema for tool '#{mcp_tool_schema[:name]}' (display table): #{e.message}")
-              end
-              fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
-                                              description: mcp_tool_schema[:description] || "",
-                                              parameters: parameters,
-                                              source: :mcp,
-                                              source_detail: "MCP (#{result[:server]})" }
-            end
-          end
-        end
-
-        # 3. Merge native and processed MCP metadata into a single map
-        all_available_tools_metadata_map = {}
-        (all_native_tools_metadata + fetched_mcp_tools_metadata).each do |tm|
-          all_available_tools_metadata_map[tm[:name]] ||= tm # Prioritize native if name collision
-        end
-
-        # 4. Filter map by configured symbols
-        logger.debug("[Display Tool Table] Configured tool names (symbols): #{configured_tool_syms.inspect}")
-        view_configured_tools_list = configured_tool_syms.map do |tool_sym|
-          all_available_tools_metadata_map[tool_sym]
-        end.compact # Remove nil entries if a configured tool wasn't found in the merged map
-
-        logger.debug("[Display Tool Table] Filtered tool list count: #{view_configured_tools_list.length}")
-        # logger.debug("[Display Tool Table] Filtered tool list details: #{view_configured_tools_list.inspect}") # Verbose
-
-        # --- END: Refactored Tool Metadata Fetching ---
-
-        # Implicitly add check_job_status if needed (simplified check as agent not running)
-        # Check if *any* of the *configured* tools are async
-        if view_configured_tools_list.any? { |tm|
-          ADK::GlobalToolManager.find_class(tm[:name])&.ancestors&.include?(ADK::Tools::BaseAsyncJobTool)
-        }
-          status_tool_meta = all_available_tools_metadata_map[:check_job_status]
-          if status_tool_meta && !view_configured_tools_list.any? { |t| t[:name] == :check_job_status }
-            view_configured_tools_list << status_tool_meta
-            logger.debug("Implicitly added check_job_status tool to view for agent '#{name}'")
-          end
-        end
-
-        # logger.debug("[Display Tool Table] Final tool list count: #{view_configured_tools_list.length}")
-
-        slim :_agent_tool_table, layout: false, locals: {
-          agent_data: agent_data,
-          view_configured_tools: view_configured_tools_list,
-          mcp_tool_results: mcp_tool_results # Pass raw results for error display in partial
-        }
-      end
-
-      # to swap the edit form back to the static display view (`_display_agent_*.slim`).
-      get '/agents/:name/display/:field' do |name, field|
-        supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp', 'instruction'] # <<< Added instruction
-        halt 404, "Displaying field '#{field}' not supported." unless supported_fields.include?(field)
-
-        # --- MODIFIED: Use Definition Store ---
-        halt 503, "Definition Store unavailable." unless @definition_store
-        agent_definition = nil
-        begin
-          agent_definition = @definition_store.get_definition(name)
-        rescue ADK::DefinitionStore::StoreError => e
-          logger.error("Store error fetching definition for '#{name}' display: #{e.message}")
-          halt 500, "Error retrieving agent definition for display."
-        end
-
-        unless agent_definition
-          logger.warn("Agent definition not found for '#{name}' in store during display.")
-          halt 404
-        end
-        # --- END MODIFICATION ---
-
-        response_locals = {};
-        response_locals[:agent_data] =
-          { name: name,
-            description: agent_definition[:description],
-            model: agent_definition[:model],
-            fallback_mode: agent_definition[:fallback_mode], # Symbol
-            mcp_servers_json: agent_definition[:mcp_servers_json], # String
-            instruction: agent_definition[:instruction] # <<< Add instruction
-          }
-        # <-------------------------------------------->
-        if field == 'tools'
-          # Tools are already an array of strings
-          configured_tool_names_str = agent_definition[:tools]
-          all_tools = ADK::GlobalToolManager.list_all_tools
-          response_locals[:configured_tools] = configured_tool_names_str.map { |tn|
-            all_tools.find { |t| t[:name].to_s == tn }
-          }
-        end
-
-        # --- Add specific handling for MCP display ---
-        if field == 'mcp'
-          mcp_json = agent_definition[:mcp_servers_json]
-          mcp_display_string = begin
-            parsed = JSON.parse(mcp_json)
-            if parsed.is_a?(Array) && parsed.empty?
-              "No MCP Server(s) Configured."
-            else
-              pretty_json(parsed)
-            end
-          rescue JSON::ParserError
-            mcp_json # Fallback
-          end
-          # <<< Pass the processed string and raw JSON >>>
-          response_locals[:agent_data][:mcp_display_string] = mcp_display_string
-          response_locals[:agent_data][:mcp_servers_json] = mcp_json # Ensure raw is still there if needed
-        elsif field == 'tools'
-          # ... tool logic ...
-        end
-        # --- END MCP Handling ---
-
-        # Explicitly tell the display partial to show the edit button when restoring
-        response_locals[:show_edit_button] = true
-
-        # Render the correct partial
-        slim :"_display_agent_#{field}", layout: false, locals: response_locals
-      end
-
-      # May include an `HX-Trigger-After-Swap` header to show a toast notification
-      # on the frontend about the automatic restart (`showRestartToast` or `showRestartErrorToast`).
-      put '/agents/:name/update/:field' do |name, field|
-        supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp', 'instruction'] # <<< Added instruction
-        halt 404, "Updating field '#{field}' not supported." unless supported_fields.include?(field)
-
-        # --- MODIFIED: Use Definition Store ---
-        halt 503, "Definition Store unavailable." unless @definition_store
-
-        # Field name mapping for store update (uses string keys internally in store)
-        field_to_update = case field
-                          when 'fallback' then 'fallback_mode'
-                          when 'mcp' then 'mcp_servers_json'
-                          else field # Handles description, model, tools, instruction
-                          end
-
-        new_value = nil # Holds the validated value to be saved
-        # --- END MODIFICATION ---
-
-        response_locals = {} # Locals for rendering success partial
-        agent_data_hash = { name: name } # Base hash for success partials
-
-        # --- Handle specific field updates & Validation ---
-        if field == 'tools'
-          # Fetch current MCP config to validate selected MCP tools
-          current_definition = @definition_store.get_definition(name)
-          unless current_definition
-            # Cannot validate tools without current definition if MCP is used
-            logger.error("Cannot update tools for '#{name}', agent definition not found.")
-            halt 404, "Agent definition not found, cannot update tools."
-          end
-          mcp_servers_json = current_definition[:mcp_servers_json]
-
-          # Get all available tool names (Native + MCP based on *current* config)
-          native_tools_metadata = ADK::GlobalToolManager.list_all_tools
-          native_tool_names = native_tools_metadata.map { |t| t[:name].to_s }
-          mcp_configs = []
-          begin
-            mcp_configs = JSON.parse(mcp_servers_json) if mcp_servers_json && !mcp_servers_json.empty? && mcp_servers_json != '[]'
-          rescue JSON::ParserError => e
-            logger.error("Invalid current MCP JSON for '#{name}' during tool update validation: #{e.message}")
-          end
-          mcp_tool_results = fetch_mcp_tools(mcp_configs)
-          mcp_tool_names = []
-          mcp_tool_results.each do |result|
-            if result[:status] == :success && result[:tools]
-              mcp_tool_names.concat(result[:tools].map { |t| t[:name].to_s }) # Assuming name is string
-            end
-          end
-          all_valid_tool_names = (native_tool_names + mcp_tool_names).uniq
-
-          # Validate submitted tools
-          selected_tools = params['tools'] || []
-          validated_tools = selected_tools.select { |st|
-            if all_valid_tool_names.include?(st) then true
-            else
-              logger.warn("Invalid tool '#{st}' submitted for agent '#{name}'. Valid options: #{all_valid_tool_names.join(', ')}")
-              false
-            end
-          }
-          new_value = validated_tools # Store array for update call
-
-          # Prepare data for the _agent_tool_table partial (on success)
-          response_locals[:mcp_tool_results] = mcp_tool_results # Pass fresh results (based on current config)
-          # Rebuild full metadata map based on current config
-          fetched_mcp_tools_metadata = []
-          mcp_tool_results.each do |result|
-            if result[:status] == :success && result[:tools]
-              result[:tools].each do |mcp_tool_schema|
-                parameters = []
-                begin
-                  input_schema = mcp_tool_schema[:inputSchema]
-                  if input_schema && input_schema.is_a?(Hash)
-                    properties = input_schema['properties'] || {}
-                    required = input_schema['required'] || []
-                    parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required)
-                  end
-                rescue => e
-                  logger.error("Error converting MCP schema post-update for tool '#{mcp_tool_schema[:name]}': #{e.message}")
-                end
-                fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
-                                                description: mcp_tool_schema[:description] || "", parameters: parameters, source: :mcp, source_detail: "MCP (#{result[:server]})" }
-              end
-            end
-          end
-          # <<< START CHANGE: Convert native params hash to array >>>
-          all_native_tools_metadata = native_tools_metadata.map do |tm|
-            parameters_array = []
-            if tm[:parameters].is_a?(Hash) && !tm[:parameters].empty?
-              tm[:parameters].each do |param_name, details|
-                parameters_array << {
-                  name: param_name,
-                  type: details[:type],
-                  description: details[:description],
-                  required: details[:required]
-                }
-              end
-            end
-            tm.merge(parameters: parameters_array, source: :native, source_detail: "Native") # Use the converted array
-          end
-          # <<< END CHANGE >>>
-          all_tools_metadata_map = {}
-          (all_native_tools_metadata + fetched_mcp_tools_metadata).each { |tm|
-            all_tools_metadata_map[tm[:name]] ||= tm
-          }
-          # Filter map by *validated* tools
-          response_locals[:view_configured_tools] = validated_tools.map { |tn|
-            all_tools_metadata_map[tn.to_sym]
-          }.compact
-
-        elsif field == 'mcp'
-          submitted_value = params['value']&.strip
-          mcp_json_to_save = (submitted_value.nil? || submitted_value.empty?) ? '[]' : submitted_value
-          # Basic JSON validation (Store also validates, but good to catch early for form re-render)
-          begin
-            parsed = JSON.parse(mcp_json_to_save)
-            unless parsed.is_a?(Array)
-              raise JSON::ParserError, "Input must be a valid JSON array."
-            end
-
-            new_value = mcp_json_to_save # Store validated JSON string
-          rescue JSON::ParserError => e
-            logger.warn("Update failed for '#{name}', field '#{field}': Invalid JSON - #{e.message}. Value: '#{mcp_json_to_save}'")
-            # Fetch current definition to re-render form
-            current_definition = @definition_store.get_definition(name) # Assume it exists if we got here
-            edit_locals = {
-              agent_data: { name: name,
-                            mcp_servers_json: current_definition ? current_definition[:mcp_servers_json] : mcp_json_to_save },
-              error_message: "Invalid JSON format: #{e.message}"
-            }
-            halt 200, slim(:_edit_agent_mcp, layout: false, locals: edit_locals)
-          end
-          agent_data_hash[:mcp_servers_json] = new_value # For display partial if needed
-
-        elsif field == 'fallback'
-          submitted_value = params['value']&.strip
-          unless ['error', 'echo'].include?(submitted_value)
-            logger.warn("Update failed for '#{name}', field '#{field}': Invalid value '#{submitted_value}'.")
-            current_definition = @definition_store.get_definition(name)
-            edit_locals = {
-              agent_data: { name: name,
-                            fallback_mode: current_definition ? current_definition[:fallback_mode] : :error },
-              error_message: "Invalid fallback mode selected."
-            }
-            halt 400, slim(:_edit_agent_fallback, layout: false, locals: edit_locals)
-          end
-          new_value = submitted_value.to_sym # Store as symbol for update
-          agent_data_hash[:fallback_mode] = new_value # For display partial
-
-        elsif field == 'instruction' # <<< Added instruction handling
-          # Instructions can be empty, so no specific validation needed here besides stripping
-          new_value = params['value']&.strip || "" # Default to empty string if nil
-          agent_data_hash[:instruction] = new_value
-        else # description or model
-          submitted_value = params['value']&.strip
-          if submitted_value.nil? || submitted_value.empty?
-            logger.warn("Update failed for '#{name}', field '#{field}': Value empty.")
-            current_definition = @definition_store.get_definition(name)
-            edit_locals = {
-              agent_data: { name: name,
-                            description: current_definition ? current_definition[:description] : '',
-                            model: current_definition ? current_definition[:model] : '' },
-              error_message: "#{field.capitalize} cannot be empty."
-            }
-            halt 400, slim(:'_edit_agent_#{field}', layout: false, locals: edit_locals)
-          end
-          new_value = submitted_value
-          agent_data_hash[field.to_sym] = new_value # Update the field in the hash for display partial
-        end
-
-        # --- Update Definition Store ---
-        begin
-          update_success = @definition_store.update_definition(name, { field_to_update => new_value })
-
-          unless update_success
-            logger.error("Definition store failed to update field '#{field_to_update}' for agent '#{name}'. Agent might not exist.")
-            halt 404, "Agent definition not found, cannot update." unless @definition_store.definition_exists?(name)
-            halt 500, "Error updating agent definition."
-          end
-
-          logger.info("Agent '#{name}' field '#{field_to_update}' updated successfully via store.")
-
-          # --- Automatic Restart Logic ---
-          was_running = @agents.key?(name)
-          if was_running
-            logger.info("Agent '#{name}' config updated while running. Triggering automatic restart.")
-            stop_success = _stop_agent(name)
-            if stop_success
-              newly_started_agent = _start_agent(name)
-              agent_data_hash[:running] = !newly_started_agent.nil?
-              logger.info("Automatic restart for '#{name}' completed. Running: #{agent_data_hash[:running]}")
-              headers 'HX-Trigger-After-Swap' => 'showRestartToast'
-            else
-              logger.error("Failed to stop running agent '#{name}' during automatic restart. State might be inconsistent.")
-              agent_data_hash[:running] = true # Best guess
-              headers 'HX-Trigger-After-Swap' => 'showRestartErrorToast'
-            end
-          else
-            logger.info("Agent '#{name}' config updated while stopped.")
-            agent_data_hash[:running] = false # Ensure status reflects stopped state
-          end
-
-          # --- Prepare Final Response ---
-          # Fetch the complete updated definition for rendering display partials
-          updated_definition = @definition_store.get_definition(name)
-          if updated_definition
-            agent_data_hash[:description] = updated_definition[:description]
-            agent_data_hash[:model] = updated_definition[:model]
-            agent_data_hash[:fallback_mode] = updated_definition[:fallback_mode]
-            agent_data_hash[:mcp_servers_json] = updated_definition[:mcp_servers_json]
-          else
-            logger.error("Failed to retrieve definition for '#{name}' immediately after successful update.")
-            # Use the values we prepared earlier in agent_data_hash if re-fetch fails
-          end
-
-          response_locals[:agent_data] = agent_data_hash
-
-          # --- Determine response partial based on updated field ---
-          main_response_html = if field == 'tools'
-                                 slim(:_agent_tool_table, layout: false, locals: response_locals)
-                               else
-                                 # --- FIXED: Use double quotes for symbol interpolation ---
-                                 slim(:"_display_agent_#{field}", layout: false, locals: response_locals)
-                               end
-
-          main_response_html # HX headers are set automatically by Sinatra's `headers` call
-
-        # --- MODIFIED: Catch Store Errors ---
-        rescue ArgumentError => e # Catch validation errors from store/this route
-          logger.warn("Update failed for '#{name}', field '#{field_to_update}': #{e.message}")
-          halt 400, "Invalid input: #{e.message}" unless response.status == 400 # Avoid double halt if form re-rendered
-        rescue ADK::DefinitionStore::StoreError => e
-          logger.error("Store error updating agent '#{name}': #{e.message}")
-          halt 500, "Error updating agent definition."
-        rescue => e # Catch other unexpected errors
-          logger.error("Unexpected error updating agent '#{name}': #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
-          halt 500, "Internal server error during update."
-        end
-        # --- END MODIFICATION ---
-      end
-
-      #   - Error (various codes): JSON body `{"error": "..."}`.
+      
       get '/agents/:name/generate_example_task' do |name|
         content_type :json # Default response type
         logger.info("Received request to generate example task for agent: #{name}")
@@ -1864,6 +890,110 @@ module ADK
         end
       end
       # --- END generate_example_task Route ---
+
+      # --- Agent Runtime Control Routes --- MOVED 
+      # POST /agents/:name/start/detail - MOVED to agent_runtime_routes.rb
+      # POST /agents/:name/stop/detail - MOVED to agent_runtime_routes.rb
+      # (The /agents/:name/start and /agents/:name/stop routes for main list are also in agent_runtime_routes.rb)
+
+      # --- API Endpoints (JSON) --- MOVED
+      # GET /api/agents - MOVED to api_routes.rb
+      # GET /api/tools - MOVED to api_routes.rb
+
+      # --- Tools Page Routes --- MOVED
+      # GET /tools - MOVED to tools_ui_routes.rb
+      # GET /tools/:name - MOVED to tools_ui_routes.rb
+
+      # --- Private Helper Methods ---
+      private
+
+      def _stop_agent(name)
+        agent = @agents[name]
+        if agent
+          logger.info("Stopping agent '#{name}'...")
+          begin
+            agent.stop
+            @agents.delete(name)
+            logger.info("Agent '#{name}' stopped.")
+            true
+          rescue => e
+            logger.error("Error stopping agent '#{name}': #{e.message}")
+            false # Indicate error
+          end
+        else
+          logger.warn("Attempted to stop non-running agent: '#{name}'.")
+          true # Considered success as it's already stopped
+        end
+      end
+
+      def _start_agent(name)
+        return @agents[name] if @agents.key?(name) # Already running
+
+        # --- MODIFIED: Use Definition Store ---
+        halt 503, "Definition Store unavailable." unless @definition_store
+        agent_definition = nil
+        begin
+          agent_definition = @definition_store.get_definition(name)
+        rescue ADK::DefinitionStore::StoreError => e
+          logger.error("Store error fetching definition for starting agent '#{name}': #{e.message}")
+          return nil # Failed to start
+        end
+
+        unless agent_definition
+          logger.error("Agent definition not found for '#{name}', cannot start.")
+          return nil # Failed to start
+        end
+
+        # Extract data from definition hash (symbol keys)
+        agent_description = agent_definition[:description]
+        selected_tool_names = agent_definition[:tools].map(&:to_sym) # Agent expects symbols
+        model_name = agent_definition[:model]
+        fallback_mode_sym = agent_definition[:fallback_mode] # Already symbol
+        mcp_servers_json = agent_definition[:mcp_servers_json]
+        # --- END MODIFICATION ---
+
+        # --- FIXED: Parse MCP JSON before counting for logging ---
+        mcp_server_count = 0
+        begin
+          parsed_mcp = JSON.parse(mcp_servers_json)
+          mcp_server_count = parsed_mcp.is_a?(Array) ? parsed_mcp.count : 0
+        rescue JSON::ParserError
+          # Keep count 0 if JSON is invalid
+        end
+        logger.info("Attempting to start agent '#{name}' (Model: #{model_name}, Fallback: #{fallback_mode_sym}, MCP: #{mcp_server_count} servers)... Selected Tools: #{selected_tool_names.inspect}")
+        # --- END FIX ---
+        agent = ADK::Agent.new(
+          name: name, description: agent_description, model_name: model_name,
+          fallback_mode: fallback_mode_sym,
+          mcp_servers: mcp_servers_json,
+          selected_tool_names: selected_tool_names
+        )
+
+        # --- Add explicitly configured NATIVE tools ---
+        # MCP tools are registered during agent.start -> discover_and_register_mcp_tools
+        selected_tool_names.each do |tn|
+          # Check if this selected tool is a known NATIVE tool
+          inst = ADK::GlobalToolManager.create_instance(tn)
+          if inst
+            logger.debug("Adding selected native tool: #{tn}")
+            agent.add_tool(inst)
+          else
+            # Assuming it's an intended MCP tool, do nothing here.
+            # It will be registered later if available on the server and selected.
+            logger.debug("Tool '#{tn}' selected but not found in GlobalToolManager (assuming MCP tool).")
+          end
+        end
+
+        agent.start
+        @agents[name] = agent
+        logger.info("Agent '#{name}' started successfully.")
+        agent # Return the agent instance
+      rescue StandardError => e
+        logger.error("Failed to start agent '#{name}': #{e.class} - #{e.message}")
+        logger.error(e.backtrace.join("\n"))
+        @agents.delete(name) # Clean up if partially added
+        nil # Failed to start
+      end
     end # End App class
   end # End Web module
 end # End ADK module

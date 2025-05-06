@@ -33,7 +33,7 @@ We will create the following module files within `lib/adk/web/routes/`. Each fil
         *   `GET /`
         *   `GET /healthz`
 
-2.  **`agent_definition_routes.rb`**: For routes related to agent definition management (CRUD, display, edit forms).
+2.  **`agent_definition_routes.rb`**: For routes related to agent definition management (CRUD, display, edit forms). **[DONE]**
     *   Module: `ADK::Web::AgentDefinitionRoutes`
     *   Routes:
         *   `GET /agents` (main agent management page)
@@ -116,15 +116,17 @@ end
     *   `GET /api/agents` and `GET /api/tools` removed. **[DONE for ApiRoutes]**
     *   `GET /tools` and `GET /tools/:name` removed. **[DONE for ToolsUIRoutes]**
     *   `POST /agents/:name/start/detail`, `POST /agents/:name/stop/detail`, `POST /agents/:name/start`, `POST /agents/:name/stop` removed. **[DONE for AgentRuntimeRoutes]**
+    *   All 8 agent definition routes (CRUD, edit, display) removed. **[DONE for AgentDefinitionRoutes]**
 2.  **Keep Core Configuration**: Retain Sinatra settings (`set :root`, etc.), `configure` blocks, `helpers do ... end` block, `initialize` method, and private helper methods (`_start_agent`, `_stop_agent`) in `app.rb`.
 3.  **Require Route Modules**: Add `require_relative` statements for each new route module file near the top of `app.rb`, after other primary requires.
     ```ruby
     # ... other requires ...
     require_relative 'routes/core_routes' # [DONE]
-    require_relative 'routes/agent_definition_routes'
+    require_relative 'routes/agent_definition_routes' # [DONE]
     require_relative 'routes/api_routes' # [DONE]
     require_relative 'routes/tools_ui_routes' # [DONE]
     require_relative 'routes/agent_runtime_routes' # [DONE]
+    require_relative 'routes/agent_interaction_routes'
     # ... etc. for all route modules
     ```
 4.  **Register Modules**: Inside the `ADK::Web::App` class definition, register each module:
@@ -133,7 +135,7 @@ end
       # ... existing configure blocks, helpers, initialize ...
 
       register ADK::Web::CoreRoutes # [DONE]
-      register ADK::Web::AgentDefinitionRoutes
+      register ADK::Web::AgentDefinitionRoutes # [DONE]
       register ADK::Web::AgentRuntimeRoutes # [DONE]
       register ADK::Web::AgentInteractionRoutes
       register ADK::Web::ToolsUIRoutes # [DONE]
@@ -150,7 +152,7 @@ It's advisable to refactor one module at a time to isolate potential issues:
 2.  Create the module file, move the routes. **[ApiRoutes implemented and tested successfully]**
 3.  Update `app.rb` to require and register this module. **[ToolsUIRoutes implemented and tested successfully]**
 4.  Thoroughly test the moved routes. **[AgentRuntimeRoutes implemented and tested successfully]**
-5.  Repeat for each subsequent module.
+5.  Repeat for each subsequent module. **[AgentDefinitionRoutes implemented - PENDING TESTING]**
 
 ## 5. Testing Strategy
 
