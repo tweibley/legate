@@ -7,8 +7,6 @@ require 'json'
 require 'yaml'
 require 'logger' # Needed for sample entrypoint
 require 'securerandom' # Needed for suggested project ID
-require 'redis'
-
 
 module ADK
   module CLI
@@ -323,14 +321,12 @@ module ADK
           # This script provides a basic starting point for running ADK with a web server
           # and includes a /healthz endpoint suitable for Cloud Run health checks.
 
+          require 'sinatra/base'
+          require 'sinatra/json'
           require 'adk'
-          require 'adk/web'
           require 'adk/agent'
           require 'adk/session_service/base'
           require 'adk/tools/echo'
-          require 'sinatra/base'
-          require 'sinatra/json'
-          require 'logger'
 
           # --- Configuration ---
           # ADK components will often rely on environment variables for configuration
