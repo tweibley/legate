@@ -45,11 +45,13 @@ We will create the following module files within `lib/adk/web/routes/`. Each fil
         *   `GET /agents/:name/display/:field` (show display partial for a field)
         *   `GET /agents/:name/display/tool_table` (show tool table display partial)
 
-3.  **`agent_runtime_routes.rb`**: For routes controlling the runtime state of agents.
+3.  **`agent_runtime_routes.rb`**: For routes controlling the runtime state of agents. **[DONE]**
     *   Module: `ADK::Web::AgentRuntimeRoutes`
     *   Routes:
         *   `POST /agents/:name/start/detail` (start agent from detail view)
         *   `POST /agents/:name/stop/detail` (stop agent from detail view)
+        *   `POST /agents/:name/start` (start agent from main list view)
+        *   `POST /agents/:name/stop` (stop agent from main list view)
         *   *(Note: The existing `_start_agent` and `_stop_agent` private methods in `app.rb` will be called by these routes. They can be called using `app.send(:_start_agent, name)` from within the module's route block.)*
 
 4.  **`agent_interaction_routes.rb`**: For routes handling user interaction with agents (chat, direct execution).
@@ -113,6 +115,7 @@ end
     *   `GET /` and `GET /healthz` removed. **[DONE for CoreRoutes]**
     *   `GET /api/agents` and `GET /api/tools` removed. **[DONE for ApiRoutes]**
     *   `GET /tools` and `GET /tools/:name` removed. **[DONE for ToolsUIRoutes]**
+    *   `POST /agents/:name/start/detail`, `POST /agents/:name/stop/detail`, `POST /agents/:name/start`, `POST /agents/:name/stop` removed. **[DONE for AgentRuntimeRoutes]**
 2.  **Keep Core Configuration**: Retain Sinatra settings (`set :root`, etc.), `configure` blocks, `helpers do ... end` block, `initialize` method, and private helper methods (`_start_agent`, `_stop_agent`) in `app.rb`.
 3.  **Require Route Modules**: Add `require_relative` statements for each new route module file near the top of `app.rb`, after other primary requires.
     ```ruby
@@ -121,6 +124,7 @@ end
     require_relative 'routes/agent_definition_routes'
     require_relative 'routes/api_routes' # [DONE]
     require_relative 'routes/tools_ui_routes' # [DONE]
+    require_relative 'routes/agent_runtime_routes' # [DONE]
     # ... etc. for all route modules
     ```
 4.  **Register Modules**: Inside the `ADK::Web::App` class definition, register each module:
@@ -130,7 +134,7 @@ end
 
       register ADK::Web::CoreRoutes # [DONE]
       register ADK::Web::AgentDefinitionRoutes
-      register ADK::Web::AgentRuntimeRoutes
+      register ADK::Web::AgentRuntimeRoutes # [DONE]
       register ADK::Web::AgentInteractionRoutes
       register ADK::Web::ToolsUIRoutes # [DONE]
       register ADK::Web::ApiRoutes # [DONE]
@@ -145,7 +149,7 @@ It's advisable to refactor one module at a time to isolate potential issues:
 1.  Start with a small, less complex module (e.g., `CoreRoutes` or `ApiRoutes`). **[CoreRoutes implemented and tested successfully]**
 2.  Create the module file, move the routes. **[ApiRoutes implemented and tested successfully]**
 3.  Update `app.rb` to require and register this module. **[ToolsUIRoutes implemented and tested successfully]**
-4.  Thoroughly test the moved routes.
+4.  Thoroughly test the moved routes. **[AgentRuntimeRoutes implemented and tested successfully]**
 5.  Repeat for each subsequent module.
 
 ## 5. Testing Strategy

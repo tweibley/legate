@@ -49,6 +49,7 @@ require_relative '../definition_store'
 require_relative 'routes/core_routes'
 require_relative 'routes/api_routes'
 require_relative 'routes/tools_ui_routes'
+require_relative 'routes/agent_runtime_routes'
 
 # Load dotenv for development environment variables
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
@@ -97,6 +98,7 @@ module ADK
       register ADK::Web::CoreRoutes
       register ADK::Web::ApiRoutes
       register ADK::Web::ToolsUIRoutes
+      register ADK::Web::AgentRuntimeRoutes
 
       # --- Instance Variables ---
       # Initializes application state, including connections and services.
@@ -951,84 +953,6 @@ module ADK
         ensure
           @session_service.delete_session(session_id: temp_session.id) if temp_session
         end
-      end
-      # POST /agents/:name/start/detail - Start a runtime instance (from agent detail view).
-      # Calls the `_start_agent` helper method.
-      # Returns the `_agent_status_controls.slim` partial for the detail view's status section,
-      # plus an OOB swap fragment to enable/update the "Execute Task" button.
-      post '/agents/:name/start/detail' do |name|
-        content_type :html
-        agent = _start_agent(name) # <<< Use helper
-
-        # Prepare data for view
-        is_running = !agent.nil?
-        agent_data_for_view = nil
-        if agent # Agent started successfully
-          # If agent object has the necessary attributes/methods for the partial:
-          agent_data_for_view = agent
-          # If not, construct a hash like below:
-          # agent_data_for_view = { name: agent.name, running: agent.running?, ... }
-        else # Agent failed to start, fetch definition for display
-          if @definition_store
-            begin
-              definition = @definition_store.get_definition(name)
-              if definition
-                # Construct hash expected by the partial
-                agent_data_for_view = {
-                  name: name,
-                  description: definition[:description],
-                  running: false,
-                  model: definition[:model]
-                  # Add other fields if the partial needs them, e.g., :configured_tools
-                }
-              else
-                # Handle case where definition disappeared?
-                agent_data_for_view = { name: name, description: "Error: Definition not found", running: false,
-                                        model: "N/A" }
-              end
-            rescue ADK::DefinitionStore::StoreError => e
-              logger.error("Store error fetching definition after failed start for '#{name}': #{e.message}")
-              agent_data_for_view = { name: name, description: "Error retrieving definition", running: false,
-                                      model: "N/A" }
-            end
-          else
-            # Store unavailable
-            agent_data_for_view = { name: name, description: "Error: Store unavailable", running: false, model: "N/A" }
-          end
-        end
-
-        # Render the status controls partial
-        status_controls_html = slim(:_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view })
-
-        # --- Manually construct the OOB button HTML ---
-        execute_button_text = is_running ? 'Execute' : 'Execute (Requires Start)'
-        disabled_attr_string = is_running ? '' : 'disabled' # Use standard boolean attribute presence
-        execute_button_oob_html = %(
-          <button class="button is-primary" id="execute-task-button" type="submit" #{disabled_attr_string} hx-swap-oob="true">
-            <span class="icon is-small"><i class="fas fa-play-circle"></i></span>
-            <span>#{execute_button_text}</span>
-          </button>
-        )
-
-        # --- NEW: Add OOB swaps for chat elements ---
-        chat_input_oob_html = %(
-          <input class="input" id="chat-input" type="text" name="message" placeholder="Enter your message..." required="true" autofocus #{disabled_attr_string} hx-swap-oob="true">
-        )
-        chat_button_oob_html = %(
-          <button class="button is-info" id="send-button" type="submit" #{disabled_attr_string} hx-swap-oob="true">
-            <span>Send</span>
-            <span class="icon is-small htmx-indicator ml-2" id="send-button-indicator"><i class="fas fa-spinner fa-pulse"></i></span>
-          </button>
-        )
-        # --- END NEW OOB swaps ---
-
-        # --- NEW: OOB swap for chat help text (hide on start by replacing p tag) ---
-        chat_help_oob_html = %(<p id="chat-status-help" hx-swap-oob="outerHTML" class="help is-danger is-hidden">Agent must be running to chat.</p>)
-        # --- END NEW OOB swap ---
-
-        # --- Return combined HTML ---
-        status 200 # Explicitly set 200 OK
-        status_controls_html + execute_button_oob_html + chat_input_oob_html + chat_button_oob_html + chat_help_oob_html
       end
 
       # --- ADDED START: Missing stop/detail route ---
