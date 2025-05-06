@@ -52,6 +52,7 @@ require_relative 'routes/tools_ui_routes'
 require_relative 'routes/agent_runtime_routes'
 require_relative 'routes/agent_definition_routes'
 require_relative 'routes/agent_interaction_routes'
+require_relative 'routes/documentation_routes'
 
 # Load dotenv for development environment variables
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
@@ -103,6 +104,7 @@ module ADK
       register ADK::Web::AgentRuntimeRoutes
       register ADK::Web::AgentDefinitionRoutes
       register ADK::Web::AgentInteractionRoutes
+      register ADK::Web::DocumentationRoutes
 
       # --- Instance Variables ---
       # Initializes application state, including connections and services.

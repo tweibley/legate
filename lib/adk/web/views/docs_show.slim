@@ -1,0 +1,19 @@
+/ File: lib/adk/web/views/docs_show.slim
+
+.content.mb-5
+  nav.breadcrumb aria-label="breadcrumbs"
+    ul
+      li
+        a href="/docs" Documentation
+      li.is-active
+        a href="#" aria-current="page" = @doc_title || "Document"
+
+  h1.title.is-2 = @doc_title || "Document"
+
+.box
+  .content
+    - if @doc_html_content && !@doc_html_content.empty?
+      == @doc_html_content
+    - else
+      .notification.is-danger
+        p Error: Document content could not be loaded or rendered. 

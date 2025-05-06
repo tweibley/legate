@@ -45,3 +45,5 @@ gem 'mustermann', '~> 3.0'
 
 # Async job processing (Consider making optional?)
 # gem "temporalio"
+
+gem 'kramdown' # For Markdown rendering in Web UI Docs

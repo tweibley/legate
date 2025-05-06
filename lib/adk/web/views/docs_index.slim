@@ -1,0 +1,24 @@
+/ File: lib/adk/web/views/docs_index.slim
+
+.content.mb-5
+  h1.title.is-2 ADK Documentation
+  p.subtitle Browse available documentation for the Agent Development Kit.
+
+- if @document_list_for_view.nil? || @document_list_for_view.empty?
+  .notification.is-warning
+    p No documentation files found in 
+    code public/docs
+    p  or an error occurred while listing them.
+- else
+  - @document_list_for_view.each do |doc|
+    .card.mb-4
+      header.card-header
+        p.card-header-title
+          a href="/docs/#{doc[:filename]}" = doc[:title]
+      .card-content
+        .content
+          = doc[:summary]
+          - if doc[:summary].empty?
+            em [No summary available]
+      footer.card-footer
+        a.card-footer-item href="/docs/#{doc[:filename]}" Read More 
