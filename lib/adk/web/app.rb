@@ -47,6 +47,7 @@ require_relative '../definition_store'
 
 # --- Route Modules ---
 require_relative 'routes/core_routes'
+require_relative 'routes/api_routes'
 
 # Load dotenv for development environment variables
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
@@ -93,6 +94,7 @@ module ADK
 
       # --- Register Route Modules ---
       register ADK::Web::CoreRoutes
+      register ADK::Web::ApiRoutes
 
       # --- Instance Variables ---
       # Initializes application state, including connections and services.
@@ -1100,50 +1102,9 @@ module ADK
       # --- API Endpoints (JSON) ---
       # Provide simple JSON data about the system state.
 
-      # GET /api/agents - List all defined agents and their status.
-      # Returns JSON: `{"agents": [{"name": ..., "description": ..., "running": ..., "model": ...}, ...]}`
-      get('/api/agents') {
-        content_type :json;
-        # --- MODIFIED: Use Definition Store ---
-        agents_data = []
-        if @definition_store
-          begin
-            # list_definitions returns array of hashes [{name:, description:, model:}, ...]
-            agent_summaries = @definition_store.list_definitions
-            agents_data = agent_summaries.map do |summary|
-              agent_name = summary[:name]
-              is_running = @agents.key?(agent_name)
-              # Get running agent's potentially updated model name if it differs from definition
-              current_model = if is_running && @agents[agent_name]
-                                @agents[agent_name].model_name
-                              else
-                                summary[:model] # Use model from definition store summary
-                              end
-              {
-                name: agent_name,
-                description: summary[:description] || "N/A", # Use summary description
-                running: is_running,
-                model: current_model
-              }
-            end
-          rescue ADK::DefinitionStore::StoreError => e
-            logger.error("Store error fetching agent list for API: #{e.message}")
-            # Return empty list or error? Returning empty seems reasonable.
-            agents_data = []
-          end
-        else
-          logger.error("Definition Store unavailable during GET /api/agents")
-        end
-        json agents: agents_data.sort_by { |a|
-          a[:name]
-        }
-        # --- END MODIFICATION ---
-      }
+      # GET /api/agents - MOVED to api_routes.rb
 
-      # GET /api/tools - List all available *native* tools known to the GlobalToolManager.
-      # Does not include MCP tools.
-      # Returns JSON: `{"tools": [{"name": ..., "description": ..., "parameters": [...]}, ...]}`
-      get('/api/tools') { content_type :json; json tools: ADK::GlobalToolManager.list_all_tools }
+      # GET /api/tools - MOVED to api_routes.rb
 
       # --- NEW: Tools Page Route ---
       # GET /tools - Display available native tools
