@@ -60,7 +60,7 @@ We will create the following module files within `lib/adk/web/routes/`. Each fil
         *   `POST /agents/:name/execute` (direct task execution)
         *   `GET /agents/:name/generate_example_task` (generate example task JSON)
 
-5.  **`tools_ui_routes.rb`**: For routes related to displaying tool information.
+5.  **`tools_ui_routes.rb`**: For routes related to displaying tool information. **[DONE]**
     *   Module: `ADK::Web::ToolsUIRoutes`
     *   Routes:
         *   `GET /tools` (display available native tools page)
@@ -112,6 +112,7 @@ end
 1.  **Remove Moved Routes**: Delete all the route definitions that have been moved to the new module files from `app.rb`.
     *   `GET /` and `GET /healthz` removed. **[DONE for CoreRoutes]**
     *   `GET /api/agents` and `GET /api/tools` removed. **[DONE for ApiRoutes]**
+    *   `GET /tools` and `GET /tools/:name` removed. **[DONE for ToolsUIRoutes]**
 2.  **Keep Core Configuration**: Retain Sinatra settings (`set :root`, etc.), `configure` blocks, `helpers do ... end` block, `initialize` method, and private helper methods (`_start_agent`, `_stop_agent`) in `app.rb`.
 3.  **Require Route Modules**: Add `require_relative` statements for each new route module file near the top of `app.rb`, after other primary requires.
     ```ruby
@@ -119,6 +120,7 @@ end
     require_relative 'routes/core_routes' # [DONE]
     require_relative 'routes/agent_definition_routes'
     require_relative 'routes/api_routes' # [DONE]
+    require_relative 'routes/tools_ui_routes' # [DONE]
     # ... etc. for all route modules
     ```
 4.  **Register Modules**: Inside the `ADK::Web::App` class definition, register each module:
@@ -130,7 +132,7 @@ end
       register ADK::Web::AgentDefinitionRoutes
       register ADK::Web::AgentRuntimeRoutes
       register ADK::Web::AgentInteractionRoutes
-      register ADK::Web::ToolsUIRoutes
+      register ADK::Web::ToolsUIRoutes # [DONE]
       register ADK::Web::ApiRoutes # [DONE]
 
       # ... private methods like _start_agent, _stop_agent ...
@@ -142,7 +144,7 @@ end
 It's advisable to refactor one module at a time to isolate potential issues:
 1.  Start with a small, less complex module (e.g., `CoreRoutes` or `ApiRoutes`). **[CoreRoutes implemented and tested successfully]**
 2.  Create the module file, move the routes. **[ApiRoutes implemented and tested successfully]**
-3.  Update `app.rb` to require and register this module.
+3.  Update `app.rb` to require and register this module. **[ToolsUIRoutes implemented and tested successfully]**
 4.  Thoroughly test the moved routes.
 5.  Repeat for each subsequent module.
 

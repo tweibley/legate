@@ -1,0 +1,82 @@
+/ File: lib/adk/web/views/tool_detail.slim
+- if @tool
+
+  .content.mb-5
+    h1.title.is-2 
+      = @tool[:name]
+      - if @tool_source
+        span.tag.is-info.is-light.ml-3 = @tool_source
+
+    - if @tool[:description]
+      p.subtitle 
+        = @tool[:description]
+    - else
+      p.subtitle.has-text-grey
+        em No description provided.
+
+  .box.mb-5
+    h2.title.is-4 Parameters
+    p.subtitle.is-6 Input parameters this tool accepts.
+
+    - if @tool[:parameters].nil? || @tool[:parameters].empty?
+      .notification.is-light
+        | This tool doesn't require any parameters.
+    - else
+      .table-container
+        table.table.is-striped.is-hoverable.is-fullwidth
+          thead
+            tr
+              th Name
+              th Type
+              th Required
+              th Description
+          tbody
+            - @tool[:parameters].each do |param|
+              tr
+                td style="vertical-align: top;"
+                  code = param[:name]
+                td style="vertical-align: top;"
+                  span.tag.is-family-code = param[:type]
+                td style="vertical-align: top;"
+                  - if param[:required]
+                    span.tag.is-danger.is-light Required
+                  - else
+                    span.tag.is-light Optional
+                td = param[:description]
+
+  .box.mb-5
+    h2.title.is-4 Tool Execution Example
+    p.subtitle.is-6 Example of how to call this tool.
+
+    .columns
+      .column
+        h3.title.is-5 Input
+        pre.has-background-dark.has-text-light.p-3.is-family-code style="border-radius: 6px;"
+          | {
+          |   "tool": "#{@tool[:name]}",
+          - if @tool[:parameters] && !@tool[:parameters].empty?
+            |   "parameters": {
+            - @tool[:parameters].each_with_index do |param, index|
+              |     "#{param[:name]}": #{param[:type] == 'string' ? '"example-value"' : param[:type] == 'number' ? '42' : param[:type] == 'boolean' ? 'true' : '{}'}#{index < @tool[:parameters].length - 1 ? ',' : ''}
+            |   }
+          - else
+            |   "parameters": {}
+          | }
+
+      - if @tool[:outputSchema]
+        .column
+          h3.title.is-5 Output Schema
+          pre.has-background-dark.has-text-light.p-3.is-family-code style="border-radius: 6px;"
+            = JSON.pretty_generate(@tool[:outputSchema])
+
+  .buttons.mt-5
+    a.button.is-light href="/tools"
+      span.icon
+        i.fas.fa-arrow-left
+      span Back to Tools List
+
+- else
+  .notification.is-danger
+    | Tool not found. It may have been removed or renamed.
+    br
+    a href="/tools" Return to tool list 

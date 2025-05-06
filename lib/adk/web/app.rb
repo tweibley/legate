@@ -48,6 +48,7 @@ require_relative '../definition_store'
 # --- Route Modules ---
 require_relative 'routes/core_routes'
 require_relative 'routes/api_routes'
+require_relative 'routes/tools_ui_routes'
 
 # Load dotenv for development environment variables
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
@@ -95,6 +96,7 @@ module ADK
       # --- Register Route Modules ---
       register ADK::Web::CoreRoutes
       register ADK::Web::ApiRoutes
+      register ADK::Web::ToolsUIRoutes
 
       # --- Instance Variables ---
       # Initializes application state, including connections and services.
@@ -1107,47 +1109,10 @@ module ADK
       # GET /api/tools - MOVED to api_routes.rb
 
       # --- NEW: Tools Page Route ---
-      # GET /tools - Display available native tools
-      get '/tools' do
-        logger.info("GET /tools route handler entered")
-        @native_tools = ADK::GlobalToolManager.list_all_tools.map do |tool_meta|
-          # Convert parameter hash to array format for consistency (like in agent detail view)
-          parameters_array = []
-          if tool_meta[:parameters].is_a?(Hash) && !tool_meta[:parameters].empty?
-            tool_meta[:parameters].each do |param_name, details|
-              parameters_array << {
-                name: param_name,
-                type: details[:type],
-                description: details[:description],
-                required: details[:required]
-              }
-            end
-          end
-          tool_meta.merge(parameters: parameters_array) # Use the converted array
-        end
-        slim :tools # Render the new tools view
-      end
-      # --- END Tools Page Route ---
+      # GET /tools - MOVED to tools_ui_routes.rb
 
       # --- NEW: Tool Detail Page Route ---
-      get '/tools/:name' do |name|
-        logger.info("GET /tools/#{name} route handler entered")
-        tool_name_sym = name.to_sym
-        # Fetch all tools and find the one we need
-        all_tools = ADK::GlobalToolManager.list_all_tools
-        @tool = all_tools.find { |t| t[:name] == tool_name_sym }
-
-        if @tool
-          logger.debug("Found tool metadata for '#{name}': #{@tool.inspect}")
-          slim :tool
-        else
-          logger.warn("Tool '#{name}' not found.")
-          halt 404,
-               slim(:error_404,
-                    locals: { title: "Tool Not Found", message: "Tool definition for '#{name}' not found." })
-        end
-      end
-      # --- END Tool Detail Page Route ---
+      # GET /tools/:name - MOVED to tools_ui_routes.rb
 
       # --- Private Helper Methods ---
       private
