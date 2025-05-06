@@ -68,6 +68,7 @@ Key technologies used:
 ## Routes
 
 *(Note: Routes often return HTML fragments intended for HTMX swaps rather than full pages.)*
+*(Internally, these routes are organized into distinct modules within `lib/adk/web/routes/` and registered with the main Sinatra application in `lib/adk/web/app.rb` for better maintainability.)*
 
 ### General
 
