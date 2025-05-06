@@ -54,7 +54,7 @@ We will create the following module files within `lib/adk/web/routes/`. Each fil
         *   `POST /agents/:name/stop` (stop agent from main list view)
         *   *(Note: The existing `_start_agent` and `_stop_agent` private methods in `app.rb` will be called by these routes. They can be called using `app.send(:_start_agent, name)` from within the module's route block.)*
 
-4.  **`agent_interaction_routes.rb`**: For routes handling user interaction with agents (chat, direct execution).
+4.  **`agent_interaction_routes.rb`**: For routes handling user interaction with agents (chat, direct execution). **[DONE]**
     *   Module: `ADK::Web::AgentInteractionRoutes`
     *   Routes:
         *   `GET /agents/:name/chat` (display chat interface)
@@ -117,7 +117,8 @@ end
     *   `GET /tools` and `GET /tools/:name` removed. **[DONE for ToolsUIRoutes]**
     *   `POST /agents/:name/start/detail`, `POST /agents/:name/stop/detail`, `POST /agents/:name/start`, `POST /agents/:name/stop` removed. **[DONE for AgentRuntimeRoutes]**
     *   All 8 agent definition routes (CRUD, edit, display) removed. **[DONE for AgentDefinitionRoutes]**
-2.  **Keep Core Configuration**: Retain Sinatra settings (`set :root`, etc.), `configure` blocks, `helpers do ... end` block, `initialize` method, and private helper methods (`_start_agent`, `_stop_agent`) in `app.rb`.
+    *   All 4 agent interaction routes (chat, execute, generate_example_task) removed. **[DONE for AgentInteractionRoutes]**
+2.  **Keep Core Configuration**: Retain Sinatra settings (`set :root`, etc.), `configure` blocks, `helpers do ... end` block, `initialize` method, and private helper methods (`_start_agent`, `_stop_agent`) in `app.rb`. **[VERIFIED - All core config remains]**
 3.  **Require Route Modules**: Add `require_relative` statements for each new route module file near the top of `app.rb`, after other primary requires.
     ```ruby
     # ... other requires ...
@@ -126,7 +127,7 @@ end
     require_relative 'routes/api_routes' # [DONE]
     require_relative 'routes/tools_ui_routes' # [DONE]
     require_relative 'routes/agent_runtime_routes' # [DONE]
-    require_relative 'routes/agent_interaction_routes'
+    require_relative 'routes/agent_interaction_routes' # [DONE]
     # ... etc. for all route modules
     ```
 4.  **Register Modules**: Inside the `ADK::Web::App` class definition, register each module:
@@ -137,7 +138,7 @@ end
       register ADK::Web::CoreRoutes # [DONE]
       register ADK::Web::AgentDefinitionRoutes # [DONE]
       register ADK::Web::AgentRuntimeRoutes # [DONE]
-      register ADK::Web::AgentInteractionRoutes
+      register ADK::Web::AgentInteractionRoutes # [DONE]
       register ADK::Web::ToolsUIRoutes # [DONE]
       register ADK::Web::ApiRoutes # [DONE]
 
@@ -152,7 +153,8 @@ It's advisable to refactor one module at a time to isolate potential issues:
 2.  Create the module file, move the routes. **[ApiRoutes implemented and tested successfully]**
 3.  Update `app.rb` to require and register this module. **[ToolsUIRoutes implemented and tested successfully]**
 4.  Thoroughly test the moved routes. **[AgentRuntimeRoutes implemented and tested successfully]**
-5.  Repeat for each subsequent module. **[AgentDefinitionRoutes implemented - PENDING TESTING]**
+5.  Repeat for each subsequent module. **[AgentDefinitionRoutes implemented and tested successfully]**
+    **[AgentInteractionRoutes implemented and tested successfully]**
 
 ## 5. Testing Strategy
 
@@ -161,7 +163,7 @@ It's advisable to refactor one module at a time to isolate potential issues:
     *   Check for any broken functionality, incorrect responses, or errors in the server logs.
     *   Verify that pages render correctly and HTMX interactions still work as expected.
 *   **After all modules are refactored**:
-    *   Perform a full regression test of the entire web application.
+    *   Perform a full regression test of the entire web application. **[ALL MODULES REFACTORED - FULL REGRESSION TEST PENDING]**
 
 ## 6. Potential Challenges & Considerations
 
@@ -170,4 +172,4 @@ It's advisable to refactor one module at a time to isolate potential issues:
 *   **Dependencies Between Routes**: If routes in one module redirect to or trigger HTMX swaps that are handled by routes in another module, ensure these interactions remain seamless. This is generally handled well by Sinatra.
 *   **Private Method Access**: Confirm that private methods like `_start_agent` and `_stop_agent` can be successfully called from the modules using `app.send(:method_name, args)`.
 
-This refactoring will set a solid foundation for future development and make the codebase easier to manage. 
+This refactoring will set a solid foundation for future development and make the codebase easier to manage. **[Refactoring Complete]** 
