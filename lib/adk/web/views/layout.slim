@@ -54,9 +54,9 @@ html(class="has-navbar-fixed-top")
             span(aria-hidden="true")
         #navbarBasicMenu.navbar-menu
           .navbar-start
-            a.navbar-item(href="/agents" class=is_agents_section ? "is-active" : nil) Agents
-            a.navbar-item(href="/tools" class=is_tools_section ? "is-active" : nil) Tools
-            a.navbar-item(href="/docs" class=is_docs_section ? "is-active" : nil) Documentation
+            a.navbar-item class=("is-active" if is_agents_section) href="/agents" Agents
+            a.navbar-item class=("is-active" if is_tools_section) href="/tools" Tools
+            a.navbar-item class=("is-active" if is_docs_section) href="/docs" Documentation
 
     main role="main"
       section.section
