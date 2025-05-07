@@ -136,4 +136,4 @@ It's common practice to use environment variables for settings that differ betwe
 
 *   [`adk_architecture_overview`](./adk_architecture_overview)
 *   [`adk_session_service`](./adk_session_service)
-*   [`webhooks`](./webhooks)
+*   [`webhooks`](../guides/webhooks)

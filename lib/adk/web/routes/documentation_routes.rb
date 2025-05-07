@@ -95,99 +95,128 @@ module ADK
         # Route for Documentation Index (GET /docs)
         app.get '/docs' do
           logger.debug("--- GET /docs --- (DocumentationRoutes)")
-          docs_root = File.join(settings.root, 'public', 'docs')
-          logger.debug("Docs root resolved to: #{docs_root}")
+          docs_root_path = Pathname.new(File.join(settings.root, 'public', 'docs'))
+          logger.debug("Docs root resolved to: #{docs_root_path}")
 
-          documents = []
+          categorized_documents = {}
+
           begin
-            markdown_files = Dir.glob(File.join(docs_root, '*.md')).sort
-            logger.debug("Found markdown files: #{markdown_files.inspect}")
+            # Process files directly in docs_root_path first (General category)
+            general_docs = []
+            Dir.glob(File.join(docs_root_path, '*.md')).sort.each do |md_file_path|
+              pathname = Pathname.new(md_file_path)
+              next if pathname.directory? # Skip directories if any found by glob
 
-            if markdown_files.empty?
-              logger.warn("No markdown files found in #{docs_root}")
-            end
-
-            markdown_files.each do |md_file_path|
-              logger.debug("Processing file: #{md_file_path}")
-              filename_md = File.basename(md_file_path)
-              filename_no_ext = File.basename(filename_md, '.md')
+              filename_md = pathname.basename.to_s
+              filename_no_ext = pathname.basename('.md').to_s
               title = filename_no_ext.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ')
-
-              file_content = ""
-              begin
-                file_content = File.read(md_file_path)
-                logger.debug("Successfully read file: #{md_file_path}")
-              rescue => read_err
-                logger.error("Error reading file #{md_file_path}: #{read_err.message}")
-                next # Skip this file
-              end
-
+              file_content = File.read(md_file_path)
               first_h1_match = file_content.match(/^#\s+(.+)$/)
               title = first_h1_match[1].strip if first_h1_match
               summary = generate_summary(file_content)
 
-              documents << {
+              general_docs << {
                 title: title,
-                filename: filename_no_ext,
+                path: filename_no_ext, # Path relative to docs_root for linking
                 summary: summary
               }
-              logger.debug("Added document: #{title}")
+            end
+            categorized_documents['General'] = general_docs if general_docs.any?
+
+            # Process subdirectories for categories
+            Dir.glob(File.join(docs_root_path, '*/')).sort.each do |dir_path|
+              category_pathname = Pathname.new(dir_path)
+              category_name = category_pathname.basename.to_s.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ')
+              category_docs = []
+
+              Dir.glob(File.join(category_pathname, '*.md')).sort.each do |md_file_path|
+                pathname = Pathname.new(md_file_path)
+                filename_md = pathname.basename.to_s
+                filename_no_ext = pathname.basename('.md').to_s
+                full_relative_path = "#{category_pathname.basename}/#{filename_no_ext}"
+
+                title = filename_no_ext.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ')
+                file_content = File.read(md_file_path)
+                first_h1_match = file_content.match(/^#\s+(.+)$/)
+                title = first_h1_match[1].strip if first_h1_match
+                summary = generate_summary(file_content)
+
+                category_docs << {
+                  title: title,
+                  path: full_relative_path, # Path includes category dir
+                  summary: summary
+                }
+              end
+              categorized_documents[category_name] = category_docs if category_docs.any?
+            end
+
+            if categorized_documents.empty?
+              logger.warn("No markdown files or categories found in #{docs_root_path}")
             end
           rescue => e
-            logger.error("Error during Dir.glob or file processing: #{e.message}")
+            logger.error("Error scanning documentation directory: #{e.message}")
             logger.error(e.backtrace.first(5).join("\n"))
           end
 
-          self.instance_variable_set(:@document_list_for_view, documents)
-          logger.debug("Setting @document_list_for_view with #{documents.count} items.")
-          logger.debug("Content of @document_list_for_view: #{@document_list_for_view.inspect}")
+          self.instance_variable_set(:@categorized_documents, categorized_documents)
+          logger.debug("Setting @categorized_documents with #{categorized_documents.keys.count} categories.")
+          logger.debug("Content of @categorized_documents: #{@categorized_documents.inspect}")
 
           slim :docs_index
         end
 
-        # Route for Displaying a Single Document (GET /docs/:filename)
-        app.get '/docs/:filename' do |filename|
-          logger.debug("GET /docs/#{filename} - Entered (from DocumentationRoutes)")
+        # Route for Displaying a Single Document (GET /docs/*)
+        # The splat parameter will capture the category/filename path
+        app.get '/docs/*' do |path_splat|
+          logger.debug("GET /docs/#{path_splat} - Entered (from DocumentationRoutes)")
 
-          # Sanitize filename: allow alphanumeric, underscore, hyphen
-          sane_filename = filename.gsub(/[^0-9a-zA-Z_-]/, '')
-          if sane_filename.empty?
-            logger.warn("Attempt to access doc with invalid filename: '#{filename}'")
-            halt 404, slim(:error_404, locals: { title: "Document Not Found", message: "Invalid document name." })
+          # Sanitize path_splat: allow alphanumeric, underscore, hyphen, and forward slash for path
+          # Remove leading/trailing slashes and protect against directory traversal
+          sane_path = path_splat.gsub(%r{^/+|/+$}, '').gsub(%r{\.{2}/}, '')
+          sane_path.gsub!(/[^0-9a-zA-Z_\-\/]/, '') # Allow alphanumeric, _, -, /
+
+          if sane_path.empty?
+            logger.warn("Attempt to access doc with invalid path: '#{path_splat}'")
+            halt 404, slim(:error_404, locals: { title: "Document Not Found", message: "Invalid document path." })
           end
 
-          # Correctly point to public/docs from the project root for individual files
-          file_path = File.join(settings.root, 'public', 'docs', "#{sane_filename}.md")
-          logger.debug("Attempting to access document at: #{file_path}")
+          # Construct the full file path
+          # Ensure it's .md, even if not explicitly in splat, for direct access attempts
+          file_path_to_check = sane_path.end_with?('.md') ? sane_path : "#{sane_path}.md"
+          full_file_path = File.join(settings.root, 'public', 'docs', file_path_to_check)
+          logger.debug("Attempting to access document at: #{full_file_path}")
 
-          unless File.exist?(file_path)
-            logger.warn("Documentation file not found: #{file_path}")
-            halt 404,
-                 slim(:error_404,
-                      locals: { title: "Document Not Found", message: "Document '#{sane_filename}.md' not found." })
-          end
+          # The render_markdown helper already performs security checks to ensure the file is within 'public/docs'
+          # and is a .md file.
 
           begin
-            markdown_content = File.read(file_path)
-            # Instance variables for the view are set on `self`
-            self.instance_variable_set(:@doc_html_content, render_markdown(file_path))
+            markdown_html = render_markdown(full_file_path) # render_markdown expects absolute path
 
-            first_h1_match = markdown_content.match(/^#\s+(.+)$/)
-            doc_title_for_view = if first_h1_match
-                                   first_h1_match[1].strip
-                                 else
-                                   sane_filename.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ')
-                                 end
-            self.instance_variable_set(:@doc_title, doc_title_for_view)
-
-            if self.instance_variable_get(:@doc_html_content).nil?
-              logger.error("Markdown rendering failed for: #{file_path}")
-              halt 500, "Error rendering document."
+            if markdown_html.nil?
+              logger.warn("Documentation file not found or rendering failed: #{full_file_path}")
+              halt 404,
+                   slim(:error_404,
+                        locals: { title: "Document Not Found",
+                                  message: "Document '#{sane_path}' not found or could not be rendered." })
             end
+
+            self.instance_variable_set(:@doc_html_content, markdown_html)
+
+            # Try to extract title from H1 in markdown content
+            # This requires reading the file again, or passing content from render_markdown if it returned it
+            # For now, let's re-read for title extraction consistency.
+            doc_title_for_view = sane_path.split('/').last.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ') # Default title
+            if File.exist?(full_file_path)
+              markdown_content_for_title = File.read(full_file_path)
+              first_h1_match = markdown_content_for_title.match(/^#\s+(.+)$/)
+              doc_title_for_view = first_h1_match[1].strip if first_h1_match
+            end
+            self.instance_variable_set(:@doc_title, doc_title_for_view)
 
             slim :docs_show
           rescue => e
-            logger.error("Error processing document #{sane_filename}.md: #{e.message}")
+            logger.error("Error processing document #{sane_path}: #{e.message}")
+            logger.error(e.backtrace.join("\n"))
             halt 500, "Error displaying document."
           end
         end

@@ -89,7 +89,78 @@ This subcommand group manages the built-in development web server, which include
 *   **`adk session list [options]`**: (If implemented) Lists recent or active sessions.
 *   **`adk session delete <session_id>`**: Deletes a specific session.
 
-### 3.5. Help (`adk help`)
+### 3.5. Sidekiq (`adk sidekiq`)
+
+Manages Sidekiq workers and jobs.
+
+*   `adk sidekiq start [options]`: Starts Sidekiq workers.
+    *   Requires a Sidekiq configuration file (e.g., `config/sidekiq.yml`).
+    *   Options:
+        *   `--config <path>`: Path to Sidekiq configuration file.
+        *   `--environment <env>`: Rails environment.
+        *   `--logfile <path>`: Path to logfile.
+        *   `--pidfile <path>`: Path to PID file.
+        *   `--daemon`: Daemonize process.
+*   `adk sidekiq stop [options]`: Stops Sidekiq workers.
+*   `adk sidekiq status`: Checks Sidekiq status.
+
+(More subcommands might exist, refer to `adk sidekiq help`)
+
+### 3.6. Deployment (`adk deployment`)
+
+Helps in generating assets for deploying your ADK application.
+
+#### `adk deployment generate [directory]`
+
+Generates deployment assets such as Dockerfiles, `.dockerignore` files, a `config.ru` for Rack applications, and cloud-specific configuration scripts. These assets are placed into a new directory (default name: `deployment`).
+
+**Arguments:**
+
+*   `[directory]` (Optional): The base path where the deployment assets directory will be created. If not specified, it defaults to the current directory (`.`). The actual assets will be placed in a subdirectory named according to the `--name` option.
+
+**Generic Options:**
+
+*   `--cloud <provider>` / `-c <provider>`: **(Required)** Specifies the target cloud provider for which to generate assets.
+    *   Allowed values: `gcp`, `aws`, `azure`, `none`.
+    *   Default: `none` (generates only generic Docker assets).
+*   `--entry-point <path>` / `-e <path>`: The path to your main application entry point script (e.g., `bin/web_server.rb`, `app.rb`, or a `config.ru`). This is required unless `--generate-sample-entrypoint` is used. The generated `config.ru` will reference this script to run your application.
+*   `--agent-entry-points <path1,path2,...>` / `-a <path1,path2,...>`: A comma-separated list of paths to entry point scripts for any standalone agent processes you want to deploy. A separate Dockerfile may be generated for each.
+*   `--name <name>` / `-n <name>`: The base name for the output directory where assets will be generated (e.g., if `my-app-deploy` is given, assets will be in `./my-app-deploy/`). This name may also be used as a prefix for generated cloud resources.
+    *   Default: `deployment`.
+*   `--base-image <image_name:tag>`: The base Ruby Docker image to use for the generated Dockerfile(s) (e.g., `ruby:3.3-slim`).
+    *   Default: `ruby:3.2-slim`.
+*   `--generate-sample-entrypoint`: If set, a sample web entrypoint script (default: `bin/adk_web_entrypoint.rb`) with a basic `/healthz` endpoint and an example `/echo` agent endpoint will be generated. This is useful if your ADK application doesn't have an existing web server entry point.
+    *   Default: `false`.
+
+**GCP Specific Options (applicable if `--cloud gcp` is used):**
+
+*   `--gcp-project-id <id>`: **(Required for GCP)** Your Google Cloud Project ID.
+*   `--gcp-region <region>`: The GCP region where resources will be deployed (e.g., `us-central1`).
+    *   Default: `us-central1`.
+*   `--gcp-redis-instance-name <name>`: The name for the GCP Memorystore Redis instance that will be created or used.
+    *   Default: `adk-redis`.
+*   `--gcp-service-name <name>`: The name for the main GCP Cloud Run service that will host your application.
+    *   Default: `adk-agent-service`.
+*   `--gcp-memory <size>`: The memory allocation for the main Cloud Run service (e.g., `512Mi`, `1Gi`).
+    *   Default: `512Mi`.
+*   `--gcp-cpu <count>`: The CPU allocation for the main Cloud Run service.
+    *   Default: `1`.
+
+**Example:**
+
+To generate deployment assets for GCP, targeting your project `my-gcp-project-123`, with the main application entry point at `bin/my_app_server.rb`, and outputting to a directory named `my_adk_prod_deployment`:
+
+```bash
+bundle exec adk deployment generate . --cloud gcp \
+  --gcp-project-id "my-gcp-project-123" \
+  --entry-point "bin/my_app_server.rb" \
+  --name "my_adk_prod_deployment" \
+  --gcp-region "us-east1"
+```
+
+This will create a directory `./my_adk_prod_deployment/` containing a `Dockerfile`, `.dockerignore`, `config.ru`, a `deploy-gcp.sh` script, a `cloudbuild.yaml` file, and a `README-GCP-DEPLOYMENT.md` guide.
+
+### 3.7. Help (`adk help`)
 
 *   **`adk help`**: Displays the main help message listing all available subcommands.
 *   **`adk help <subcommand>`**: Displays detailed help for a specific subcommand (e.g., `adk help agent`).
@@ -106,7 +177,7 @@ Ensure your ADK configuration (especially `ADK.config.redis_options` if using Re
 
 ## Further Reading
 
-*   [`adk_configuration`](./adk_configuration)
-*   [`adk_definition_store`](./adk_definition_store)
-*   [`adk_web_ui`](./adk_web_ui) (Coming Soon)
-*   [`adk_tools_and_registry`](./adk_tools_and_registry)
+*   [`adk_configuration`](../core_concepts/adk_configuration)
+*   [`adk_definition_store`](../core_concepts/adk_definition_store)
+*   [`adk_web_ui`](../web_ui/adk_web_ui)
+*   [`adk_tools_and_registry`](../tools/adk_tools_and_registry)
