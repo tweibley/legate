@@ -36,6 +36,12 @@ html(class="has-navbar-fixed-top")
         });
       }
 
+    / Determine current section for nav highlighting
+    - current_path = request.path_info
+    - is_agents_section = current_path.start_with?('/agents')
+    - is_tools_section = current_path.start_with?('/tools')
+    - is_docs_section = current_path.start_with?('/docs')
+
   body
     nav.navbar.is-white.is-fixed-top.has-shadow(role="navigation" aria-label="main navigation")
       .container
@@ -48,9 +54,9 @@ html(class="has-navbar-fixed-top")
             span(aria-hidden="true")
         #navbarBasicMenu.navbar-menu
           .navbar-start
-            a.navbar-item(href="/agents") Agents
-            a.navbar-item(href="/tools") Tools
-            a.navbar-item(href="/docs") Documentation
+            a.navbar-item(href="/agents" class=is_agents_section ? "is-active" : nil) Agents
+            a.navbar-item(href="/tools" class=is_tools_section ? "is-active" : nil) Tools
+            a.navbar-item(href="/docs" class=is_docs_section ? "is-active" : nil) Documentation
 
     main role="main"
       section.section
