@@ -10,15 +10,68 @@
     code public/docs
     p  or an error occurred while listing them.
 - else
-  - @document_list_for_view.each do |doc|
-    .card.mb-4
-      header.card-header
-        p.card-header-title
-          a href="/docs/#{doc[:filename]}" = doc[:title]
-      .card-content
-        .content
-          = doc[:summary]
-          - if doc[:summary].empty?
-            em [No summary available]
-      footer.card-footer
-        a.card-footer-item href="/docs/#{doc[:filename]}" Read More 
+  .field.mb-4
+    .control.has-icons-left
+      input.input#doc-search-input type="text" placeholder="Search documentation..." onkeyup="filterDocs()"
+      span.icon.is-left
+        i.fas.fa-search
+
+  .box.p-0
+    .table-container
+      table.table.is-fullwidth.is-hoverable.documentation-index-table
+        thead
+          tr
+            th Document 
+            th Description
+            th.has-text-centered.action-column
+        tbody#doc-table-body
+          - @document_list_for_view.each do |doc|
+            tr.doc-row data-title=doc[:title].downcase data-summary=doc[:summary].downcase
+              td
+                a.doc-title href="/docs/#{doc[:filename]}" = doc[:title]
+              td
+                .doc-summary
+                  = doc[:summary]
+                  - if doc[:summary].empty?
+                    em.has-text-grey-light [No summary available]
+              td.has-text-centered
+                a.button.is-small.is-link.is-outlined href="/docs/#{doc[:filename]}" 
+                  span.icon.is-small
+                    i.fas.fa-book
+                  span Read
+
+javascript:
+  function filterDocs() {
+    const input = document.getElementById('doc-search-input');
+    const filter = input.value.toLowerCase().trim();
+    const rows = document.querySelectorAll('#doc-table-body .doc-row');
+    
+    if (filter === '') {
+      // Show all rows if search is empty
+      rows.forEach(row => {
+        row.style.display = '';
+      });
+      return;
+    }
+    
+    let foundCount = 0;
+    
+    rows.forEach(row => {
+      const title = row.getAttribute('data-title');
+      const summary = row.getAttribute('data-summary');
+      
+      if (title.includes(filter) || summary.includes(filter)) {
+        row.style.display = '';
+        foundCount++;
+      } else {
+        row.style.display = 'none';
+      }
+    });
+    
+    // Update placeholder text to show number of results
+    if (filter !== '') {
+      input.placeholder = `${foundCount} result${foundCount !== 1 ? 's' : ''} found`;
+    } else {
+      input.placeholder = 'Search documentation...';
+    }
+  } 

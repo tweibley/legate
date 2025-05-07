@@ -615,3 +615,43 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
     color: #0366d6;
   }
 }
+
+/* --- Documentation Index Table --- */
+.documentation-index-table {
+  thead th {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #e9ecef;
+    color: #495057;
+    font-weight: 600;
+    padding: 1rem 0.75rem;
+  }
+  
+  td {
+    padding: 0.9rem 0.75rem;
+    vertical-align: middle;
+  }
+  
+  tr:hover {
+    background-color: #f8f9fa;
+  }
+  
+  .doc-title {
+    font-weight: 500;
+    color: #3273dc;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+  
+  .doc-summary {
+    color: #6c757d;
+    max-width: 50em;
+    white-space: normal;
+    line-height: 1.5;
+  }
+  
+  .action-column {
+    width: 100px;
+  }
+}
