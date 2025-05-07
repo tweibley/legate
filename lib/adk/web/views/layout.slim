@@ -256,6 +256,39 @@ html(class="has-navbar-fixed-top")
       }
       // --- End Mermaid Preparation Function ---
 
+      // Wrap health check initialization in a guard
+      if (!window.healthCheckInitialized) {
+        const healthCheckModal = document.getElementById('health-check-modal');
+        let isServerUnavailable = false;
+        let healthCheckIntervalId = null;
+
+        window.checkServerHealth = function() { // Assign to window to make it globally accessible if needed elsewhere, or keep local
+          fetch('/healthz', { method: 'GET', cache: 'no-cache' })
+            .then(response => {
+              if (!response.ok) {
+                throw new Error(`Server status: ${response.status}`);
+              }
+              if (isServerUnavailable) {
+                if (healthCheckModal) healthCheckModal.classList.remove('is-active');
+                isServerUnavailable = false;
+                showToast("Server connection restored.", "is-success");
+              }
+            })
+            .catch(error => {
+              if (!isServerUnavailable) {
+                if (healthCheckModal) healthCheckModal.classList.add('is-active');
+                isServerUnavailable = true;
+              }
+            });
+        }
+        
+        // Ensure DOM is ready before starting interval if called outside DOMContentLoaded
+        // (though it is currently inside)
+        // Removed the direct call and setInterval from here, moved to DOMContentLoaded
+
+        window.healthCheckInitialized = true;
+      }
+
       document.addEventListener('DOMContentLoaded', () => {
          initializeRelevantEditors(document.body);
          initializeHighlighting(); 
@@ -265,8 +298,11 @@ html(class="has-navbar-fixed-top")
          } catch (e) {
              console.error("Error running mermaid.run() on initial load:", e);
          }
-         checkServerHealth();
-         setInterval(checkServerHealth, 5000);
+         // Start health check only after DOM is ready and initialization guard has run
+         if (window.healthCheckInitialized && typeof window.checkServerHealth === 'function' && !window.healthCheckIntervalId) {
+            window.checkServerHealth(); // Initial check
+            window.healthCheckIntervalId = setInterval(window.checkServerHealth, 5000);
+         }
       });
 
       document.body.addEventListener('htmx:afterSwap', function(event) {
@@ -433,30 +469,6 @@ html(class="has-navbar-fixed-top")
         }
       });
 
-      const healthCheckModal = document.getElementById('health-check-modal');
-      let isServerUnavailable = false;
-      let healthCheckIntervalId = null;
-
-      function checkServerHealth() {
-        fetch('/healthz', { method: 'GET', cache: 'no-cache' })
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`Server status: ${response.status}`);
-            }
-            if (isServerUnavailable) {
-              healthCheckModal.classList.remove('is-active');
-              isServerUnavailable = false;
-              showToast("Server connection restored.", "is-success");
-            }
-          })
-          .catch(error => {
-            if (!isServerUnavailable) {
-              healthCheckModal.classList.add('is-active');
-              isServerUnavailable = true;
-            }
-          });
-      }
-
       function adjustDropdownDirection(dropdownId) {
         // console.log("Adjusting dropdown:" + dropdownId);
         const dropdown = document.getElementById(dropdownId);
@@ -506,20 +518,6 @@ html(class="has-navbar-fixed-top")
             dropdown.classList.remove('is-up');
           }
         });
-      }
-
-      function startHealthCheckPolling() {
-          if (healthCheckIntervalId === null) {
-              checkServerHealth();
-              healthCheckIntervalId = setInterval(checkServerHealth, 5000);
-          }
-      }
-
-       function stopHealthCheckPolling() {
-          if (healthCheckIntervalId !== null) {
-              clearInterval(healthCheckIntervalId);
-              healthCheckIntervalId = null;
-          }
       }
 
     / Add Mermaid.js library from CDN
