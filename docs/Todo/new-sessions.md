@@ -46,11 +46,10 @@ This document outlines the plan to implement a feature allowing users to have mu
 *   **Modify `GET /agents/:name/chat` Route:**
     1.  **Establish `web_user_id`:** Ensure `session[:web_user_id]` is set.
     2.  **Determine Active ADK Session ID:**
-        *   Check for a `?desired_session_id=` query parameter. If present and belongs to the current `web_user_id` and `agent_name` (validated by fetching and checking ownership), make it active.
+        *   Check for a `?desired_session_id=` query parameter. If present, attempt to fetch the session using this ID. If the fetched session belongs to the current `session[:web_user_id]` and `agent_name` (validated by checking ownership), make it active. If the `desired_session_id` is not provided, is invalid (cannot be fetched), or does not belong to the current user/agent, this parameter is ignored, and the system proceeds to the next step to determine the active session. (Optional: if an invalid/unowned `desired_session_id` was provided, a message can be displayed to the user, e.g., "Could not switch to the requested session, loading the latest active session instead.")
         *   Else, check `session[:active_agent_sessions][agent_name]`. If valid (exists and session can be fetched), use it.
         *   Else, fetch all sessions for `web_user_id` and `agent_name` using `@session_service.list_sessions`.
             *   If sessions exist, sort them by `updated_at` descending and make the first one (most recently updated) active.
-            *   If no sessions exist, create a new one using `@session_service.create_session(app_name: name, user_id: session[:web_user_id])`.
         *   Store the determined active ADK session ID in `session[:active_agent_sessions][agent_name]`.
     3.  **Load Active Session History:** Fetch events for the active ADK session ID using `@session_service.get_session`. If the session can't be loaded (e.g., ID is stale), clear `session[:active_agent_sessions][agent_name]` and re-run logic from step 2 (or create new).
     4.  **Load All Previous Sessions for this Agent/User:**
@@ -87,7 +86,7 @@ This document outlines the plan to implement a feature allowing users to have mu
     1.  **Establish `web_user_id`:** (Handled by `before` filter).
     2.  **Validation:** Verify the `adk_session_id_to_delete` belongs to the current `session[:web_user_id]` and `agent_name`. This is a critical security check. If invalid, handle error.
     3.  Call `@session_service.delete_session(session_id: adk_session_id_to_delete)`.
-    4.  If the deleted session was the active one, logic to select a new active session (e.g., latest or none) will be needed in the redirect/reload.
+    4.  If the deleted session was the active one (`session[:active_agent_sessions][agent_name] == adk_session_id_to_delete`), clear `session[:active_agent_sessions][agent_name]`. Then, attempt to set a new active session by finding the most recently updated session for the current user/agent from the remaining sessions. If other sessions exist, its ID is stored in `session[:active_agent_sessions][agent_name]`. If no other sessions exist, this key will remain unset (which would lead to a new session being created on the next `GET /agents/:name/chat` if the user stays on the page or if the redirect leads there).
     5.  Redirect or use HTMX.
 
 ## 3. Frontend Changes (Slim Templates)
@@ -121,7 +120,7 @@ This document outlines the plan to implement a feature allowing users to have mu
 ### 3.2. Helper for Session Summary
 
 *   In `lib/adk/web/app.rb` helpers:
-    *   Create a helper method `summarize_session(session_object)` that takes an `ADK::Session` and returns a string like "Chat from [formatted_created_at] ([N] messages): [first ~10 words of first user message or 'Empty session' or 'Session started [timestamp]']". It should gracefully handle sessions with no user messages or only non-text initial messages. The count `session_object.events.count` can be used for N.
+    *   Create a helper method `summarize_session(session_object)` that takes an `ADK::Session` and returns a string like "Chat from [formatted_created_at] (Last active: [formatted_updated_at]) ([N] messages): [preview text]". The preview text should be the first ~10 words of the first user-initiated text event's message, or 'Empty session' if no such events, or 'Session started [timestamp]' if no events at all. It should gracefully handle sessions with no user messages or only non-text initial messages. The count `session_object.events.count` can be used for N.
 
 ## 4. Implementation Checklist
 
@@ -195,7 +194,7 @@ We'll primarily need request specs for the Sinatra application (`spec/adk/web/ap
         *   The most recently updated session becomes active and its ID is stored.
     *   **`?desired_session_id=` Query Parameter:**
         *   If `desired_session_id` is valid and belongs to the user/agent, it becomes the active session.
-        *   If `desired_session_id` is invalid or doesn't belong to the user/agent, a default behavior occurs (e.g., load latest, or show an error, TBD).
+        *   If `desired_session_id` is invalid or doesn't belong to the user/agent, it is ignored, and the system falls back to the standard logic (load existing active session from Sinatra session, or load latest from all user/agent sessions, or create new). A user-facing message might be optionally displayed to indicate the requested session was not loaded.
     *   `@previous_sessions_list` is correctly populated, sorted, and contains summarized data.
     *   `@chat_history_events` correctly reflects the events of the active session.
 *   **`POST /agents/:name/chat` (Message Sending):**
@@ -218,7 +217,9 @@ We'll primarily need request specs for the Sinatra application (`spec/adk/web/ap
 
 *   **`summarize_session(session_object)` helper:**
     *   Correctly formats `created_at`.
-    *   Extracts the first ~10 words of the first user event's message.
-    *   Handles sessions with no user events (returns "Empty session" or similar).
-    *   Handles sessions with no events at all.
+    *   Correctly formats and includes `updated_at` (if this part of the summary is implemented).
+    *   Correctly displays the event count `N`.
+    *   Extracts the first ~10 words of the first user-initiated text event's message.
+    *   Handles sessions with no user events (returns "Empty session" or similar, based on the defined logic).
+    *   Handles sessions with no events at all (returns "Session started [timestamp]" or similar).
     *   Handles events where the first user message might not have simple text content (if possible). 
