@@ -94,7 +94,12 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
     .level-left
       h2.title.is-4 Defined Agents
     .level-right
-      button.button.is-light#refresh-agent-list-btn(hx-get="/agents/list" hx-target="#agent-list-tbody" hx-swap="innerHTML" hx-indicator="#refresh-agent-list-btn .htmx-indicator")
+      .field.has-addons.mr-2
+        .control.has-icons-left
+          input.input#agent-search-input type="text" placeholder="Search agents..." onkeyup="filterAgents()"
+          span.icon.is-left
+            i.fas.fa-search
+      button.button.is-light#refresh-agent-list-btn(hx-get="/agents/list" hx-target="#agent-list-tbody" hx-swap="innerHTML" hx-indicator="#refresh-agent-list-btn .htmx-indicator" hx-on:after-swap="filterAgents()")
         span.icon.is-small.htmx-indicator
           i.fas.fa-spinner.fa-spin
         span.icon
@@ -120,3 +125,59 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
           tr#no-agents-row
             td(colspan="6" class="has-text-centered has-text-grey-light is-italic")
               | No agent definitions found. Use the 'Create New Agent Definition' section above.
+
+javascript:
+  function filterAgents() {
+    const input = document.getElementById('agent-search-input');
+    const filter = input.value.toLowerCase().trim();
+    const rows = document.querySelectorAll('#agent-list-tbody tr:not(#no-agents-row)');
+    
+    if (filter === '') {
+      // Show all rows if search is empty
+      rows.forEach(row => {
+        row.style.display = '';
+      });
+      
+      // Hide or show the "no agents" row based on whether there are any agent rows
+      const noAgentsRow = document.getElementById('no-agents-row');
+      if (noAgentsRow) {
+        noAgentsRow.style.display = rows.length > 0 ? 'none' : '';
+      }
+      return;
+    }
+    
+    let foundCount = 0;
+    
+    rows.forEach(row => {
+      // Search in name and description cells (2nd and 3rd columns)
+      const nameCell = row.cells[1];
+      const descriptionCell = row.cells[2];
+      const toolsCell = row.cells[4];
+      
+      if (nameCell && descriptionCell) {
+        const name = nameCell.textContent.toLowerCase();
+        const description = descriptionCell.textContent.toLowerCase();
+        const tools = toolsCell ? toolsCell.textContent.toLowerCase() : '';
+        
+        if (name.includes(filter) || description.includes(filter) || tools.includes(filter)) {
+          row.style.display = '';
+          foundCount++;
+        } else {
+          row.style.display = 'none';
+        }
+      }
+    });
+    
+    // Hide "no agents" row if we found any matches
+    const noAgentsRow = document.getElementById('no-agents-row');
+    if (noAgentsRow) {
+      noAgentsRow.style.display = 'none';
+    }
+    
+    // Update placeholder text to show number of results
+    if (filter !== '') {
+      input.placeholder = `${foundCount} result${foundCount !== 1 ? 's' : ''} found`;
+    } else {
+      input.placeholder = 'Search agents...';
+    }
+  }
