@@ -181,7 +181,7 @@ module MyApp
 end
 ```
 
-*(See `http_client_usage.md` for full details on using the `HttpClient` module).*
+*(See [`http_client_usage`](./http_client_usage) for full details on using the `HttpClient` module).*
 
 ### Adding the Custom Tool to your Agent
 

@@ -2,7 +2,7 @@
 
 This guide details how to configure a specific ADK Agent Definition to be triggered by external systems using the ADK's inbound webhook feature.
 
-**Prerequisite:** Ensure the ADK Webhook Listener and the Dynamic Agent Handler are enabled in your global ADK configuration. See the main `webhooks.md` documentation for details on setting up `ADK.configure`:
+**Prerequisite:** Ensure the ADK Webhook Listener and the Dynamic Agent Handler are enabled in your global ADK configuration. See the main [`webhooks`](./webhooks) documentation for details on setting up `ADK.configure`:
 
 ```ruby
 # config/initializers/adk.rb (or similar)
