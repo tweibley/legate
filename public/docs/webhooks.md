@@ -6,6 +6,53 @@ This document explains how to configure and use the inbound webhook feature in t
 
 The primary goal of this feature is to allow external events (e.g., Git pushes, CI/CD notifications, CRM updates, IoT alerts) to initiate specific agent workflows asynchronously without requiring direct code integration or constantly running agent processes.
 
+## Architecture Overview
+
+The following diagram illustrates the flow of an inbound webhook request triggering an agent task:
+
+```mermaid
+graph LR
+    Ext[External System] -- HTTP Request --> Listen[Webhook Listener]
+    Listen -- Raw Request --> Router
+    Router -- Route Match --> Handler[Dynamic Agent Handler]
+    Handler -- Load Definition & Metadata --> Store[(Agent Definition Store)]
+    Handler -- Validation/Transform/Extract --> JobQueue[(Background Job Queue)]
+    JobQueue -- Dequeue Job --> Worker[Webhook Worker]
+    Worker -- Load Definition --> Store
+    Worker -- Get Session --> SessionSvc[(Session Service)]
+    Worker -- Instantiate Agent --> AgentDef[Agent Definition]
+    AgentDef -- Uses --> SessionSvc
+    Worker -- Calls run_task --> AgentInst[Agent Instance]
+    AgentInst -- Logs Events --> SessionSvc
+    AgentInst -- Task Result --> Worker
+    Worker -- Logs Outcome --> Log[(Logs)]
+
+    subgraph "Webhook Listener Process"
+        Listen
+        Router
+        Handler
+    end
+
+    subgraph "Background Worker Process"
+        Worker
+        AgentInst
+        Log
+    end
+
+    style Store fill:#f9f,stroke:#333,stroke-width:2px
+    style SessionSvc fill:#f9f,stroke:#333,stroke-width:2px
+    style JobQueue fill:#ccf,stroke:#333,stroke-width:2px
+```
+
+**Key Components:**
+
+*   **Webhook Listener:** Receives HTTP requests, performs initial routing.
+*   **Dynamic Agent Handler:** Looks up agent definitions, validates, transforms, extracts session IDs based on agent metadata, and enqueues jobs.
+*   **Background Job Queue (Sidekiq):** Holds tasks for asynchronous processing.
+*   **Webhook Worker (Sidekiq Worker):** Dequeues jobs, loads definitions, instantiates agents, interacts with the Session Service, and executes `agent.run_task`.
+*   **Agent Definition Store:** Stores agent configurations, including webhook metadata.
+*   **Session Service:** Manages agent conversation state.
+
 ## Enabling the Webhook Listener
 
 To receive webhooks, you first need to enable the built-in listener application within your ADK configuration (e.g., in `config/initializers/adk.rb` or your main setup file).
