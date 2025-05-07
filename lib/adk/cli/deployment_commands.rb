@@ -113,7 +113,8 @@ module ADK
       def generate_dockerfiles(directory, main_entry_point, deployment_dir_basename)
         # Main Dockerfile
         main_dockerfile_path = File.join(directory, "Dockerfile")
-        generate_dockerfile_content(main_dockerfile_path, main_entry_point, options[:base_image], deployment_dir_basename)
+        generate_dockerfile_content(main_dockerfile_path, main_entry_point, options[:base_image],
+                                    deployment_dir_basename)
         say "Created main Dockerfile at #{main_dockerfile_path}", :cyan
 
         # Agent Dockerfiles (if specified)
@@ -274,7 +275,8 @@ module ADK
 
         # Basic validation
         unless relative_entry_point && relative_entry_point.include?('/')
-           say "Warning: Entry point '#{relative_entry_point}' for config.ru doesn't look like a relative path. Ensure it's correct.", :yellow
+          say "Warning: Entry point '#{relative_entry_point}' for config.ru doesn't look like a relative path. Ensure it's correct.",
+              :yellow
         end
 
         content = <<~RACKUP
@@ -293,7 +295,8 @@ module ADK
 
         File.write(config_ru_path, content)
         say "Created config.ru at #{config_ru_path}", :cyan
-        say "Ensure the entrypoint path in config.ru ('#{relative_entry_point}') is correct for your project structure.", :yellow
+        say "Ensure the entrypoint path in config.ru ('#{relative_entry_point}') is correct for your project structure.",
+            :yellow
       end
 
       # --- Sample Entrypoint Generation (Optional, generic) ---
@@ -554,7 +557,7 @@ module ADK
         region = options[:gcp_region] # Use the class_option value
 
         # 1. Attempt to create gcloud configuration
-        #gcp_config_name = create_gcloud_config(options[:name], project_id, region)
+        # gcp_config_name = create_gcloud_config(options[:name], project_id, region)
 
         # 2. Generate GCP specific config files (optional for now, script preferred)
         # generate_gcp_redis_config(directory)

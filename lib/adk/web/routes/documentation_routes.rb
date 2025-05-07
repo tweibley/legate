@@ -3,12 +3,11 @@
 
 require 'kramdown' # Required for markdown processing
 require 'kramdown-parser-gfm' # Required for GitHub Flavored Markdown
-require 'pathname'   # For robust path operations
+require 'pathname' # For robust path operations
 
 module ADK
   module Web
     module DocumentationRoutes
-      
       module Helpers
         def render_markdown(file_path)
           begin
@@ -32,9 +31,9 @@ module ADK
               logger.warn "Markdown render: Path not valid or file does not exist. Target: '#{target_file_pathname}', Expected base: '#{public_docs_pathname}'"
               return nil
             end
-            
+
             markdown_content = File.read(target_file_pathname.to_s)
-            
+
             # Configure Kramdown with enhanced rendering options - now using GFM
             html = Kramdown::Document.new(
               markdown_content,
@@ -42,10 +41,10 @@ module ADK
               syntax_highlighter: nil,    # We'll apply our custom highlighting via CSS
               hard_wrap: false            # Don't convert newlines to <br>
             ).to_html
-            
+
             # Post-process HTML to add language tags to code blocks
             html = process_code_blocks(html)
-            
+
             return html
           rescue Errno::ENOENT # Should be caught by File.exist? check now, but good fallback
             logger.warn "Markdown file not found (render_markdown): #{target_file_pathname}"
@@ -56,7 +55,7 @@ module ADK
             nil
           end
         end
-        
+
         # Process code blocks to add language classes and data attributes
         def process_code_blocks(html)
           # Find fenced code blocks with language specifications
@@ -70,6 +69,7 @@ module ADK
 
         def generate_summary(markdown_content, max_lines = 5)
           return "" if markdown_content.nil? || markdown_content.empty?
+
           lines = markdown_content.lines
           summary_lines = []
           non_empty_lines_count = 0
@@ -97,7 +97,7 @@ module ADK
           logger.debug("--- GET /docs --- (DocumentationRoutes)")
           docs_root = File.join(settings.root, 'public', 'docs')
           logger.debug("Docs root resolved to: #{docs_root}")
-          
+
           documents = []
           begin
             markdown_files = Dir.glob(File.join(docs_root, '*.md')).sort
@@ -112,7 +112,7 @@ module ADK
               filename_md = File.basename(md_file_path)
               filename_no_ext = File.basename(filename_md, '.md')
               title = filename_no_ext.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ')
-              
+
               file_content = ""
               begin
                 file_content = File.read(md_file_path)
@@ -125,7 +125,7 @@ module ADK
               first_h1_match = file_content.match(/^#\s+(.+)$/)
               title = first_h1_match[1].strip if first_h1_match
               summary = generate_summary(file_content)
-              
+
               documents << {
                 title: title,
                 filename: filename_no_ext,
@@ -137,52 +137,54 @@ module ADK
             logger.error("Error during Dir.glob or file processing: #{e.message}")
             logger.error(e.backtrace.first(5).join("\n"))
           end
-          
+
           self.instance_variable_set(:@document_list_for_view, documents)
           logger.debug("Setting @document_list_for_view with #{documents.count} items.")
           logger.debug("Content of @document_list_for_view: #{@document_list_for_view.inspect}")
-          
+
           slim :docs_index
         end
 
         # Route for Displaying a Single Document (GET /docs/:filename)
         app.get '/docs/:filename' do |filename|
           logger.debug("GET /docs/#{filename} - Entered (from DocumentationRoutes)")
-          
+
           # Sanitize filename: allow alphanumeric, underscore, hyphen
           sane_filename = filename.gsub(/[^0-9a-zA-Z_-]/, '')
           if sane_filename.empty?
             logger.warn("Attempt to access doc with invalid filename: '#{filename}'")
-            halt 404, slim(:error_404, locals: { title: "Document Not Found", message: "Invalid document name."})
+            halt 404, slim(:error_404, locals: { title: "Document Not Found", message: "Invalid document name." })
           end
 
           # Correctly point to public/docs from the project root for individual files
           file_path = File.join(settings.root, 'public', 'docs', "#{sane_filename}.md")
           logger.debug("Attempting to access document at: #{file_path}")
-          
+
           unless File.exist?(file_path)
             logger.warn("Documentation file not found: #{file_path}")
-            halt 404, slim(:error_404, locals: { title: "Document Not Found", message: "Document '#{sane_filename}.md' not found."})
+            halt 404,
+                 slim(:error_404,
+                      locals: { title: "Document Not Found", message: "Document '#{sane_filename}.md' not found." })
           end
 
           begin
             markdown_content = File.read(file_path)
             # Instance variables for the view are set on `self`
             self.instance_variable_set(:@doc_html_content, render_markdown(file_path))
-            
+
             first_h1_match = markdown_content.match(/^#\s+(.+)$/)
             doc_title_for_view = if first_h1_match
-                                     first_h1_match[1].strip
-                                   else
-                                     sane_filename.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ')
-                                   end
+                                   first_h1_match[1].strip
+                                 else
+                                   sane_filename.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ')
+                                 end
             self.instance_variable_set(:@doc_title, doc_title_for_view)
 
             if self.instance_variable_get(:@doc_html_content).nil?
-                logger.error("Markdown rendering failed for: #{file_path}")
-                halt 500, "Error rendering document."
+              logger.error("Markdown rendering failed for: #{file_path}")
+              halt 500, "Error rendering document."
             end
-            
+
             slim :docs_show
           rescue => e
             logger.error("Error processing document #{sane_filename}.md: #{e.message}")
@@ -192,4 +194,4 @@ module ADK
       end
     end
   end
-end 
+end

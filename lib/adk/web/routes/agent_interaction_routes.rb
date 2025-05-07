@@ -23,9 +23,10 @@ module ADK
           end
           unless agent_definition
             logger.warn("Agent definition not found for '#{name}' in store (GET /chat from AgentInteractionRoutes).")
-            halt 404, slim(:error_404, locals: { title: "Agent Not Found", message: "Definition for '#{name}' not found." })
+            halt 404,
+                 slim(:error_404, locals: { title: "Agent Not Found", message: "Definition for '#{name}' not found." })
           end
-          
+
           agent_description_for_view = agent_definition[:description]
           is_running = active_agents_hash.key?(name)
 
@@ -34,7 +35,8 @@ module ADK
 
           unless current_session_id && session_service.get_session(session_id: current_session_id)
             begin
-              new_adk_session = session_service.create_session(app_name: name, user_id: "web_user_#{SecureRandom.hex(4)}")
+              new_adk_session = session_service.create_session(app_name: name,
+                                                               user_id: "web_user_#{SecureRandom.hex(4)}")
               current_session_id = new_adk_session.id
               session[:adk_sessions][name] = current_session_id
               logger.info("Created new ADK session for agent '#{name}': #{current_session_id} (from AgentInteractionRoutes)")
@@ -53,7 +55,8 @@ module ADK
             logger.error("Failed to load chat history for session '#{current_session_id}' (from AgentInteractionRoutes): #{e.message}")
           end
 
-          self.instance_variable_set(:@agent_data, { name: name, description: agent_description_for_view, running: is_running })
+          self.instance_variable_set(:@agent_data,
+                                     { name: name, description: agent_description_for_view, running: is_running })
           self.instance_variable_set(:@session_id, current_session_id)
           self.instance_variable_set(:@chat_history_events, chat_history_events_list)
           slim :chat
@@ -64,10 +67,10 @@ module ADK
           content_type :html
           active_agents_hash = self.instance_variable_get(:@agents)
           session_service = self.instance_variable_get(:@session_service)
-          
+
           current_agent_instance = active_agents_hash[name]
           user_message_text = params['message']&.strip
-          
+
           session[:adk_sessions] ||= {}
           current_session_id = session[:adk_sessions][name]
 
@@ -103,7 +106,8 @@ module ADK
             slim :_chat_message, layout: false, locals: view_locals
           rescue => e
             logger.error("Error processing chat for agent #{name} (from AgentInteractionRoutes): #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
-            view_locals[:agent_result] = { status: :error, error_message: "[Internal Error executing task: #{e.message}]" }
+            view_locals[:agent_result] =
+              { status: :error, error_message: "[Internal Error executing task: #{e.message}]" }
             halt 500, slim(:_chat_message, layout: false, locals: view_locals)
           end
         end
@@ -118,7 +122,7 @@ module ADK
           error_handler = lambda do |message, code = 400|
             trigger_event = (code == 400) ? 'showTaskError' : 'showTaskServerError'
             headers 'HX-Trigger-After-Swap' => trigger_event
-            halt 200, json(error: message) 
+            halt 200, json(error: message)
           end
 
           success_handler = lambda do |result_hash|
@@ -127,7 +131,8 @@ module ADK
 
           error_handler.call("Error: Agent '#{name}' not found or not running.", 400) unless agent_instance
           task_json_string = params['task_json']
-          error_handler.call("Error: Missing 'task_json' data.", 400) unless task_json_string && !task_json_string.empty?
+          error_handler.call("Error: Missing 'task_json' data.",
+                             400) unless task_json_string && !task_json_string.empty?
 
           task_desc = nil; exec_params = nil; tool_to_exec = nil
           begin
@@ -137,11 +142,15 @@ module ADK
                 tool_to_exec = parsed_data['tool_name']&.strip
                 task_desc = parsed_data['task']
                 exec_params = parsed_data['parameters']
-                error_handler.call("Error: Missing 'tool_name' in JSON for direct execution.", 400) if tool_to_exec.nil? || tool_to_exec.empty?
-                error_handler.call("Error: Missing or invalid 'parameters' object in JSON for direct execution.", 400) unless exec_params.is_a?(Hash)
+                error_handler.call("Error: Missing 'tool_name' in JSON for direct execution.",
+                                   400) if tool_to_exec.nil? || tool_to_exec.empty?
+                error_handler.call("Error: Missing or invalid 'parameters' object in JSON for direct execution.",
+                                   400) unless exec_params.is_a?(Hash)
               elsif parsed_data.key?('task')
                 task_desc = parsed_data['task']
-                error_handler.call("Error: Invalid JSON. Use {'task': '...'} or {'tool_name': ..., 'task': ..., 'parameters': {...}}.", 400) unless (parsed_data.keys - ['task']).empty?
+                error_handler.call(
+                  "Error: Invalid JSON. Use {'task': '...'} or {'tool_name': ..., 'task': ..., 'parameters': {...}}.", 400
+                ) unless (parsed_data.keys - ['task']).empty?
               else
                 error_handler.call("Error: Invalid JSON structure. Missing 'task' key.", 400)
               end
@@ -152,22 +161,28 @@ module ADK
             logger.warn("Invalid JSON for /execute (AgentInteractionRoutes): #{e.message}. Input: #{task_json_string}")
             error_handler.call("Error: Invalid JSON format - #{e.message}", 400)
           end
-          error_handler.call("Error: Missing task description.", 400) if tool_to_exec.nil? && (task_desc.nil? || task_desc.empty?)
+          error_handler.call("Error: Missing task description.",
+                             400) if tool_to_exec.nil? && (task_desc.nil? || task_desc.empty?)
 
           temp_adk_session = nil
           begin
             if tool_to_exec
               logger.info("Agent '#{name}' executing DIRECT tool '#{tool_to_exec}' (AgentInteractionRoutes) with params: #{exec_params.inspect}")
               tool_instance_to_run = agent_instance.find_tool(tool_to_exec.to_sym)
-              error_handler.call("Error: Tool '#{tool_to_exec}' not configured for agent '#{name}'.", 400) unless tool_instance_to_run
-              temp_adk_session = session_service.create_session(app_name: name, user_id: "web_direct_#{SecureRandom.hex(4)}")
-              tool_ctx = ADK::ToolContext.new(session_id: temp_adk_session.id, user_id: temp_adk_session.user_id, app_name: temp_adk_session.app_name, tool_registry: agent_instance.tool_registry)
+              error_handler.call("Error: Tool '#{tool_to_exec}' not configured for agent '#{name}'.",
+                                 400) unless tool_instance_to_run
+              temp_adk_session = session_service.create_session(app_name: name,
+                                                                user_id: "web_direct_#{SecureRandom.hex(4)}")
+              tool_ctx = ADK::ToolContext.new(session_id: temp_adk_session.id, user_id: temp_adk_session.user_id,
+                                              app_name: temp_adk_session.app_name, tool_registry: agent_instance.tool_registry)
               result = tool_instance_to_run.execute(exec_params.transform_keys(&:to_sym), tool_ctx)
               success_handler.call(result)
             else
               logger.info("Agent '#{name}' executing task via PLANNER (AgentInteractionRoutes): #{task_desc}")
-              temp_adk_session = session_service.create_session(app_name: name, user_id: "web_direct_#{SecureRandom.hex(4)}")
-              final_result = agent_instance.run_task(session_id: temp_adk_session.id, user_input: task_desc, session_service: session_service)
+              temp_adk_session = session_service.create_session(app_name: name,
+                                                                user_id: "web_direct_#{SecureRandom.hex(4)}")
+              final_result = agent_instance.run_task(session_id: temp_adk_session.id, user_input: task_desc,
+                                                     session_service: session_service)
               content_to_show = final_result.is_a?(ADK::Event) ? final_result.content : final_result
               success_handler.call(content_to_show)
             end
@@ -178,7 +193,7 @@ module ADK
             session_service.delete_session(session_id: temp_adk_session.id) if temp_adk_session
           end
         end
-        
+
         # GET /agents/:name/generate_example_task - Generate example task JSON for an agent.
         app.get '/agents/:name/generate_example_task' do |name|
           content_type :json
@@ -192,7 +207,7 @@ module ADK
           agent_model_name = agent_definition[:model]
           configured_tool_names_str = agent_definition[:tools]
           mcp_servers_config_json = agent_definition[:mcp_servers_json]
-          
+
           configured_tool_syms_list = configured_tool_names_str.map(&:to_sym)
 
           if configured_tool_syms_list.empty? && mcp_servers_config_json == '[]'
@@ -202,20 +217,24 @@ module ADK
           native_tools_meta = ADK::GlobalToolManager.list_all_tools.map do |tm|
             params = []
             if tm[:parameters].is_a?(Hash) && !tm[:parameters].empty?
-              tm[:parameters].each { |pn, d| params << { name: pn, type: d[:type], description: d[:description], required: d[:required] } }
+              tm[:parameters].each { |pn, d|
+                params << { name: pn, type: d[:type], description: d[:description], required: d[:required] }
+              }
             end
             tm.merge(parameters: params, source: :native)
           end
 
           mcp_configs_list = JSON.parse(mcp_servers_config_json) rescue []
           mcp_fetch_results = fetch_mcp_tools(mcp_configs_list) # Helper method from app instance
-          
+
           mcp_tools_meta = []
           mcp_fetch_results.each do |res|
             if res[:status] == :success && res[:tools]
               res[:tools].each do |schema|
-                params = ADK::Mcp::Util::SchemaConverter.json_to_adk(schema.dig(:inputSchema, 'properties') || {}, schema.dig(:inputSchema, 'required') || [])
-                mcp_tools_meta << { name: schema[:name].to_sym, description: schema[:description] || '', parameters: params, source: :mcp }
+                params = ADK::Mcp::Util::SchemaConverter.json_to_adk(schema.dig(:inputSchema, 'properties') || {},
+                                                                     schema.dig(:inputSchema, 'required') || [])
+                mcp_tools_meta << { name: schema[:name].to_sym, description: schema[:description] || '',
+                                    parameters: params, source: :mcp }
               end
             end
           end
@@ -228,7 +247,9 @@ module ADK
           end
 
           tool_details_for_prompt = final_configured_tools_meta.map do |meta|
-            params_str = meta[:parameters].empty? ? 'None' : meta[:parameters].map { |p| "#{p[:name]} (#{p[:type]}, #{p[:required] ? 'required' : 'optional'})" }.join(', ')
+            params_str = meta[:parameters].empty? ? 'None' : meta[:parameters].map { |p|
+              "#{p[:name]} (#{p[:type]}, #{p[:required] ? 'required' : 'optional'})"
+            }.join(', ')
             "- Tool: #{meta[:name]}\n  Description: #{meta[:description]}\n  Parameters: #{params_str}"
           end.join("\n")
 
@@ -263,23 +284,27 @@ module ADK
           begin
             google_api_key = ENV['GOOGLE_API_KEY']
             halt 503, json(error: "GOOGLE_API_KEY not configured.") unless google_api_key && !google_api_key.empty?
-            
+
             logger.info("Using model '#{agent_model_name}' for example task generation (AgentInteractionRoutes).")
             # Ensure Gemini library is available
             # require 'gemini-ai' - this should be at the top of app.rb or here if not already loaded
-            gemini_client = Gemini.new(credentials: { service: 'generative-language-api', api_key: google_api_key }, options: { model: agent_model_name, server_sent_events: false })
+            gemini_client = Gemini.new(credentials: { service: 'generative-language-api', api_key: google_api_key },
+                                       options: { model: agent_model_name,
+                                                  server_sent_events: false })
             response = gemini_client.generate_content({ contents: [{ role: 'user', parts: { text: gemini_prompt } }] })
-            
+
             generated_json_str = response.dig('candidates', 0, 'content', 'parts', 0, 'text')
-            halt 500, json(error: "AI service returned empty response.") unless generated_json_str && !generated_json_str.strip.empty?
-            
+            halt 500,
+                 json(error: "AI service returned empty response.") unless generated_json_str && !generated_json_str.strip.empty?
+
             logger.debug("Raw Gemini Response (AgentInteractionRoutes): #{generated_json_str}")
             clean_json_str = generated_json_str.strip.delete_prefix('```json').delete_suffix('```').strip.delete_prefix('```').delete_suffix('```').strip
-            
+
             parsed_json_output = JSON.parse(clean_json_str)
             unless parsed_json_output.is_a?(Hash) && parsed_json_output.key?('tool_name') && parsed_json_output.key?('task') && parsed_json_output.key?('parameters')
               raise JSON::ParserError, "Generated JSON structure incorrect."
             end
+
             JSON.pretty_generate(parsed_json_output) # Return pretty JSON
           rescue JSON::ParserError => e
             logger.error("Gemini invalid JSON (AgentInteractionRoutes): #{e.message}. Cleaned: #{clean_json_str}")
@@ -292,4 +317,4 @@ module ADK
       end
     end
   end
-end 
+end

@@ -8,7 +8,7 @@ module ADK
         # GET /tools - Display available native and MCP tools
         app.get '/tools' do
           logger.info("GET /tools route handler entered (from ToolsUIRoutes)")
-          
+
           current_app_instance = self
           definition_store = current_app_instance.instance_variable_get(:@definition_store)
 
@@ -49,7 +49,7 @@ module ADK
           else
             logger.warn("Definition store not available for MCP tool discovery in /tools (from ToolsUIRoutes)")
           end
-          
+
           mcp_tool_fetch_results = fetch_mcp_tools(all_mcp_configs || [])
 
           processed_mcp_tools_metadata = []
@@ -67,12 +67,12 @@ module ADK
                 rescue => e
                   logger.error("Error converting MCP schema for tool '#{mcp_tool_schema[:name]}' in /tools (from ToolsUIRoutes): #{e.message}")
                 end
-                processed_mcp_tools_metadata << { 
+                processed_mcp_tools_metadata << {
                   name: mcp_tool_schema[:name].to_sym,
                   description: mcp_tool_schema[:description] || "",
                   parameters: parameters,
                   source: :mcp,
-                  source_detail: "MCP (#{result[:server]})" 
+                  source_detail: "MCP (#{result[:server]})"
                 }
               end
             end
@@ -80,11 +80,11 @@ module ADK
 
           # 3. Set @native_tools for the current view requirements
           self.instance_variable_set(:@native_tools, native_tools_metadata.sort_by { |t| t[:name].to_s })
-          
+
           # For future enhancement of tools.slim to show all tools:
           combined_tools_map = {}
           native_tools_metadata.each { |tool| combined_tools_map[tool[:name]] = tool }
-          processed_mcp_tools_metadata.each { |tool| combined_tools_map[tool[:name]] ||= tool } 
+          processed_mcp_tools_metadata.each { |tool| combined_tools_map[tool[:name]] ||= tool }
           self.instance_variable_set(:@all_tools_list, combined_tools_map.values.sort_by { |t| t[:name].to_s })
           self.instance_variable_set(:@mcp_tool_results_for_view, mcp_tool_fetch_results) # For displaying fetch errors
 
@@ -95,7 +95,7 @@ module ADK
         app.get '/tools/:name' do |name|
           logger.info("GET /tools/#{name} route handler entered (from ToolsUIRoutes)")
           tool_name_sym = name.to_sym
-          
+
           current_app_instance = self
           definition_store = current_app_instance.instance_variable_get(:@definition_store)
 
@@ -115,7 +115,8 @@ module ADK
                 }
               end
             end
-            tool_to_display = native_tool_metadata.merge(parameters: parameters_array, source: :native, source_detail: "Native")
+            tool_to_display = native_tool_metadata.merge(parameters: parameters_array, source: :native,
+                                                         source_detail: "Native")
           else
             # 2. Not native, try to find in MCP tools
             all_mcp_configs = []
@@ -140,7 +141,7 @@ module ADK
             end
 
             mcp_tool_fetch_results = fetch_mcp_tools(all_mcp_configs || [])
-            
+
             mcp_tool_fetch_results.each do |result|
               if result[:status] == :success && result[:tools]
                 tool_data = result[:tools].find { |t| t[:name].to_s == name || t[:name].to_sym == tool_name_sym }
@@ -163,7 +164,7 @@ module ADK
                     source: :mcp,
                     source_detail: "MCP (#{result[:server]})"
                   }
-                  break 
+                  break
                 end
               end
             end
@@ -172,7 +173,7 @@ module ADK
           if tool_to_display
             self.instance_variable_set(:@tool, tool_to_display)
             logger.debug("Found tool metadata for '#{name}': #{tool_to_display.inspect}")
-            slim :tool 
+            slim :tool
           else
             logger.warn("Tool '#{name}' not found anywhere (from ToolsUIRoutes).")
             status 404
@@ -183,4 +184,4 @@ module ADK
       end
     end
   end
-end 
+end

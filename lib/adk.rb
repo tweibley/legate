@@ -125,7 +125,9 @@ module ADK
     payload_body = request.body.read
     request.body.rewind
     calculated_signature = OpenSSL::HMAC.hexdigest('sha256', secret, payload_body)
-    calculated_signature.bytesize == expected_signature.bytesize && OpenSSL.fixed_length_secure_compare(calculated_signature, expected_signature)
+    calculated_signature.bytesize == expected_signature.bytesize && OpenSSL.fixed_length_secure_compare(
+      calculated_signature, expected_signature
+    )
   end
   # --- END NEW --- #
 

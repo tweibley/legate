@@ -16,19 +16,19 @@ RSpec.describe ADK::Web::WebhookListener do
 
   # Create configurations for different HTTP methods
   let(:post_handler) do
-    ->(request) { [200, { 'Content-Type' => 'application/json' }, ['{"method":"POST","status":"success"}'] ] }
+    ->(request) { [200, { 'Content-Type' => 'application/json' }, ['{"method":"POST","status":"success"}']] }
   end
 
   let(:get_handler) do
-    ->(request) { [200, { 'Content-Type' => 'application/json' }, ['{"method":"GET","status":"success"}'] ] }
+    ->(request) { [200, { 'Content-Type' => 'application/json' }, ['{"method":"GET","status":"success"}']] }
   end
 
   let(:put_handler) do
-    ->(request) { [200, { 'Content-Type' => 'application/json' }, ['{"method":"PUT","status":"success"}'] ] }
+    ->(request) { [200, { 'Content-Type' => 'application/json' }, ['{"method":"PUT","status":"success"}']] }
   end
 
   let(:delete_handler) do
-    ->(request) { [200, { 'Content-Type' => 'application/json' }, ['{"method":"DELETE","status":"success"}'] ] }
+    ->(request) { [200, { 'Content-Type' => 'application/json' }, ['{"method":"DELETE","status":"success"}']] }
   end
 
   let(:error_handler) do
@@ -68,7 +68,7 @@ RSpec.describe ADK::Web::WebhookListener do
         webhooks: webhook_config
       )
     )
-    
+
     # Stub logger to reduce noise in tests
     allow(ADK).to receive(:logger).and_return(
       instance_double(
@@ -122,4 +122,4 @@ RSpec.describe ADK::Web::WebhookListener do
       expect(JSON.parse(last_response.body)['error_message']).to include('Internal Server Error')
     end
   end
-end 
+end

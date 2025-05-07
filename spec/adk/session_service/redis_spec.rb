@@ -574,11 +574,11 @@ RSpec.describe ADK::SessionService::Redis do
         allow(session_for_delta).to receive(:add_event).with(event_with_delta).and_return(event_with_delta)
         allow(mock_redis).to receive(:watch).with(session_key).and_yield(mock_redis)
         allow(ADK.logger).to receive(:error)
-        
+
         # Setup broken JSON for the current state
         allow(mock_redis).to receive(:hget).with(session_key, 'state').and_return('not valid json')
         allow(JSON).to receive(:parse).with('not valid json', symbolize_names: true)
-                         .and_raise(JSON::ParserError.new('Invalid JSON'))
+                                      .and_raise(JSON::ParserError.new('Invalid JSON'))
       end
 
       # This test is covered in redis_transaction_spec.rb, so use xit here
@@ -590,7 +590,7 @@ RSpec.describe ADK::SessionService::Redis do
 
     context 'when Redis error occurs during MULTI' do
       let(:event) { ADK::Event.new(role: :user, content: 'test') }
-      
+
       before do
         allow(mock_redis).to receive(:exists?).with(session_key).and_return(true)
         allow(service).to receive(:get_session).with(session_id: session_id).and_return(session_double)

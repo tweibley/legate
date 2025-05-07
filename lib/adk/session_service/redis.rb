@@ -13,7 +13,7 @@ module ADK
     # Stores sessions in Redis for persistence and provides optimistic locking mechanisms for concurrent access.
     #
     # ## Storage Structure
-    # - Uses Redis Hash structures for session metadata and state 
+    # - Uses Redis Hash structures for session metadata and state
     # - Uses Redis Lists for storing events in each session
     # - Uses Redis Sets to index and track all sessions
     #
@@ -55,7 +55,7 @@ module ADK
       end
 
       # Creates a new session and stores it in Redis.
-      # 
+      #
       # This operation is performed as an atomic transaction using Redis MULTI/EXEC to ensure
       # that all related operations succeed or fail together:
       # 1. Store session metadata and state in a hash
@@ -118,7 +118,7 @@ module ADK
       end
 
       # Retrieves a session from Redis by its ID.
-      # 
+      #
       # Uses Redis pipelining to fetch both the session hash and event list in a single
       # network round-trip for improved performance, though note this is not a transaction.
       #
@@ -210,16 +210,16 @@ module ADK
       end
 
       # Appends an event to a session's event list and updates the state and timestamp in Redis.
-      # 
+      #
       # ## Optimistic Locking Implementation
       # This method implements optimistic locking using Redis' WATCH/MULTI/EXEC pattern:
-      # 
+      #
       # 1. WATCH the session key to detect concurrent modifications
       # 2. Fetch the current state if the event has a state_delta
       # 3. Merge the state delta with the current state
       # 4. Execute a transaction (MULTI/EXEC) to update all related data atomically
       # 5. If WATCH detects a conflict (another client modified the data), retry the operation
-      # 
+      #
       # The method will retry up to max_retries times (default: 3) if conflicts are detected,
       # making it resilient to high-concurrency scenarios while avoiding race conditions.
       #
@@ -228,7 +228,7 @@ module ADK
       # 1. Fetch the current state within the WATCH block
       # 2. Merge the state delta with the current state
       # 3. Apply the merged state in the transaction
-      # 
+      #
       # This ensures that concurrent state modifications don't overwrite each other.
       #
       # @param session_id [String] The ID of the session to update.
@@ -325,7 +325,7 @@ module ADK
       end
 
       # Deletes a session and its associated events list from Redis.
-      # 
+      #
       # Executes the deletion as an atomic transaction using Redis MULTI/EXEC to ensure
       # that all related operations succeed or fail together:
       # 1. Delete the session hash
@@ -363,7 +363,7 @@ module ADK
       end
 
       # Lists sessions, optionally filtering by app_name or user_id.
-      # 
+      #
       # Uses Redis pipelining to efficiently fetch all session data in batched network calls
       # to improve performance compared to individual fetches.
       #
@@ -448,7 +448,7 @@ module ADK
       end
 
       # Saves a value in Redis with a scoped key for arbitrary state storage.
-      # 
+      #
       # @param scope [String] The scope for the state (namespace).
       # @param key [String] The key within the scope.
       # @param value [Object] The value to store (must be JSON serializable).
@@ -471,7 +471,7 @@ module ADK
       end
 
       # Loads a value from Redis using a scoped key.
-      # 
+      #
       # @param scope [String] The scope for the state (namespace).
       # @param key [String] The key within the scope.
       # @return [Object, nil] The deserialized value or nil if not found.
@@ -492,7 +492,7 @@ module ADK
       end
 
       # Clears a scoped state value or all values in a scope.
-      # 
+      #
       # @param scope [String] The scope for the state (namespace).
       # @param key [String] The key within the scope, or '*' to clear all keys in the scope.
       # @return [Boolean] True if deletion was successful, false otherwise.
@@ -529,7 +529,7 @@ module ADK
       private
 
       # Establishes a connection to Redis using default configuration.
-      # 
+      #
       # @return [Redis] An initialized Redis client.
       # @raise [ADK::Error] If connection to Redis fails.
       def connect_redis
@@ -542,7 +542,7 @@ module ADK
       end
 
       # Generates the Redis hash key for a session.
-      # 
+      #
       # @param session_id [String] The session ID.
       # @return [String] The Redis key for the session hash.
       def redis_session_key(session_id)
@@ -550,7 +550,7 @@ module ADK
       end
 
       # Generates the Redis list key for a session's events.
-      # 
+      #
       # @param session_id [String] The session ID.
       # @return [String] The Redis key for the session events list.
       def redis_events_key(session_id)
@@ -558,7 +558,7 @@ module ADK
       end
 
       # Generates the Redis key for scoped state.
-      # 
+      #
       # @param scope [String] The scope (namespace).
       # @param key [String] The key within the scope.
       # @return [String] The Redis key for the scoped state.
