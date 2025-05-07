@@ -632,7 +632,16 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
   }
   
   tr:hover {
-    background-color: #f8f9fa;
+    background-color: #f0f4f8 !important;
+    transition: background-color 0.2s ease;
+  }
+  
+  &.is-striped tr:nth-child(even) {
+    background-color: #f9fafb;
+  }
+  
+  &.is-striped tr:nth-child(odd) {
+    background-color: #ffffff;
   }
   
   .doc-title {
