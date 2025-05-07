@@ -9,6 +9,7 @@ html(class="has-navbar-fixed-top")
     link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer"
     link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"
     link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/lint/lint.css"
+    link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"
     link rel="stylesheet" href="/css/main.css"
 
     script src="https://unpkg.com/htmx.org@1.9.10"
@@ -19,6 +20,21 @@ html(class="has-navbar-fixed-top")
     script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/lint/lint.min.js"
     script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/lint/json-lint.min.js"
     script src="https://unpkg.com/jsonlint@1.6.3/web/jsonlint.js"
+    script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
+    script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/ruby.min.js"
+    script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"
+    script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"
+
+    javascript:
+      document.addEventListener('DOMContentLoaded', function() {
+        initializeHighlighting();
+      });
+
+      function initializeHighlighting() {
+        document.querySelectorAll('pre code').forEach(function(block) {
+          hljs.highlightElement(block);
+        });
+      }
 
   body
     nav.navbar.is-white.is-fixed-top.has-shadow(role="navigation" aria-label="main navigation")
@@ -205,9 +221,11 @@ html(class="has-navbar-fixed-top")
         const newElement = event.detail.elt;
 
         if (newElement) {
-            initializeRelevantEditors(newElement);
+          initializeRelevantEditors(newElement);
+          initializeHighlighting();
         } else {
-            initializeRelevantEditors(targetElement);
+          initializeRelevantEditors(targetElement);
+          initializeHighlighting();
         }
 
         const triggerHeader = event.detail.xhr.getResponseHeader('HX-Trigger-After-Swap');

@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'kramdown' # Required for markdown processing
+require 'kramdown-parser-gfm' # Required for GitHub Flavored Markdown
 require 'pathname'   # For robust path operations
 
 module ADK
@@ -33,13 +34,37 @@ module ADK
             end
             
             markdown_content = File.read(target_file_pathname.to_s)
-            Kramdown::Document.new(markdown_content).to_html
+            
+            # Configure Kramdown with enhanced rendering options - now using GFM
+            html = Kramdown::Document.new(
+              markdown_content,
+              input: 'GFM',               # GitHub Flavored Markdown
+              syntax_highlighter: nil,    # We'll apply our custom highlighting via CSS
+              hard_wrap: false            # Don't convert newlines to <br>
+            ).to_html
+            
+            # Post-process HTML to add language tags to code blocks
+            html = process_code_blocks(html)
+            
+            return html
           rescue Errno::ENOENT # Should be caught by File.exist? check now, but good fallback
             logger.warn "Markdown file not found (render_markdown): #{target_file_pathname}"
             nil
           rescue => e
             logger.error "Error rendering markdown for #{target_file_pathname}: #{e.message}"
+            logger.error e.backtrace.join("\n") # Add backtrace to help debugging
             nil
+          end
+        end
+        
+        # Process code blocks to add language classes and data attributes
+        def process_code_blocks(html)
+          # Find fenced code blocks with language specifications
+          html.gsub(/<pre><code\s+class="language-(\w+)">(.*?)<\/code><\/pre>/m) do |match|
+            language = $1
+            code_content = $2
+            # Replace with our enhanced version that adds data-lang attribute
+            %(<pre data-lang="#{language}"><code class="language-#{language}">#{code_content}</code></pre>)
           end
         end
 

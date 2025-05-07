@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    adk-ruby (0.6.0)
+    adk-ruby (0.6.1)
       coffee-script (~> 2.4)
       concurrent-ruby (~> 1.2)
       dry-configurable (~> 1.0)
@@ -154,6 +154,8 @@ GEM
       base64
     kramdown (2.5.1)
       rexml (>= 3.3.9)
+    kramdown-parser-gfm (1.1.0)
+      kramdown (~> 2.0)
     language_server-protocol (3.17.0.4)
     lint_roller (1.1.0)
     little-plugger (1.1.4)
@@ -344,6 +346,7 @@ DEPENDENCIES
   dry-schema (~> 1.13)
   fast-mcp (~> 1.1.0)
   kramdown
+  kramdown-parser-gfm
   mustermann (~> 3.0)
   pry (~> 0.14)
   pry-byebug (~> 3.10)

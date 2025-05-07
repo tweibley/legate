@@ -11,10 +11,95 @@
   .content.mb-5
     h1.title.is-2.mt-4 = @doc_title || "Document"
 
-  .box
-    .content
-      - if @doc_html_content && !@doc_html_content.empty?
-        == @doc_html_content
-      - else
-        .notification.is-danger
-          p Error: Document content could not be loaded or rendered.
+  .box.documentation-content
+    / Add a table of contents for longer documents
+    - if @doc_html_content && !@doc_html_content.empty?
+      .columns
+        .column.is-9.pr-5
+          .content
+            == @doc_html_content
+        .column.is-3.is-hidden-mobile
+          .toc-container.is-sticky style="top: 80px; max-height: calc(100vh - 100px); overflow-y: auto; padding-right: 15px;"
+            .has-text-weight-bold.mb-2 Table of Contents
+            .table-of-contents
+              / This will be populated by JavaScript
+    - else
+      .notification.is-danger
+        p Error: Document content could not be loaded or rendered.
+
+/ Add JavaScript to generate a table of contents from headings
+javascript:
+  document.addEventListener('DOMContentLoaded', function() {
+    // Generate table of contents from headings
+    const content = document.querySelector('.documentation-content .content');
+    const toc = document.querySelector('.table-of-contents');
+    
+    if (content && toc) {
+      const headings = content.querySelectorAll('h2, h3, h4');
+      
+      if (headings.length > 0) {
+        const tocList = document.createElement('ul');
+        tocList.className = 'toc-list';
+        
+        headings.forEach((heading, index) => {
+          // Add ID to heading if it doesn't have one
+          if (!heading.id) {
+            heading.id = 'heading-' + index;
+          }
+          
+          const listItem = document.createElement('li');
+          listItem.className = 'toc-item toc-' + heading.tagName.toLowerCase();
+          
+          const link = document.createElement('a');
+          link.href = '#' + heading.id;
+          link.textContent = heading.textContent;
+          
+          listItem.appendChild(link);
+          tocList.appendChild(listItem);
+        });
+        
+        toc.appendChild(tocList);
+        
+        // Add styles for TOC items
+        const style = document.createElement('style');
+        style.textContent = `
+          .toc-list { 
+            list-style: none; 
+            padding-left: 0; 
+            margin-top: 0.5rem;
+          }
+          .toc-item { 
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+          }
+          .toc-h3 { 
+            padding-left: 1rem;
+            font-size: 0.85rem;
+          }
+          .toc-h4 { 
+            padding-left: 2rem;
+            font-size: 0.8rem;
+          }
+          .toc-item a {
+            color: #4a4a4a;
+            text-decoration: none;
+            display: block;
+            padding: 0.2rem 0;
+            border-left: 2px solid transparent;
+            padding-left: 0.5rem;
+          }
+          .toc-item a:hover {
+            color: #3273dc;
+            border-left: 2px solid #3273dc;
+          }
+          .is-sticky {
+            position: sticky;
+          }
+        `;
+        document.head.appendChild(style);
+      } else {
+        // If no headings, hide the TOC
+        document.querySelector('.toc-container').style.display = 'none';
+      }
+    }
+  });

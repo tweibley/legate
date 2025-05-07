@@ -394,3 +394,224 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
 .htmx-request.htmx-indicator{
   display:inline;
 }
+
+/* --- Documentation Markdown Styling --- */
+.box .content {
+  /* Typography improvements */
+  line-height: 1.6;
+  color: #212529;
+
+  /* Heading styling */
+  h1, h2, h3, h4, h5, h6 {
+    margin-top: 1.5em;
+    margin-bottom: 0.75em;
+    color: #333;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  h1 {
+    font-size: 2em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid #eaecef;
+  }
+
+  h2 {
+    font-size: 1.5em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid #eaecef;
+  }
+
+  h3 {
+    font-size: 1.25em;
+  }
+
+  h4 {
+    font-size: 1em;
+  }
+
+  /* List styling */
+  ul, ol {
+    padding-left: 1.5em;
+    margin-bottom: 1.5em;
+    
+    li {
+      margin-bottom: 0.5em;
+    }
+    
+    ul, ol {
+      margin-top: 0.5em;
+      margin-bottom: 0.5em;
+    }
+  }
+  
+  /* Paragraph spacing */
+  p {
+    margin-bottom: 1.25em;
+    
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+  
+  /* Code blocks with enhanced styling */
+  pre {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 1.25em;
+    margin: 1.5em 0;
+    border: 1px solid #e1e4e8;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    position: relative;
+    overflow-x: auto;
+    
+    /* When using highlight.js */
+    &.hljs {
+      padding: 0;
+      background: transparent;
+    }
+    
+    code {
+      padding: 0;
+      margin: 0;
+      background-color: transparent;
+      border-radius: 0;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.9em;
+      line-height: 1.5;
+      color: #24292e;
+      tab-size: 2;
+    }
+    
+    /* Language label */
+    &[data-lang]::before {
+      content: attr(data-lang);
+      position: absolute;
+      top: 0;
+      right: 0;
+      font-size: 0.75em;
+      font-weight: 600;
+      color: #57606a;
+      background-color: #e1e4e8;
+      padding: 0.25em 0.75em;
+      border-radius: 0 8px 0 6px;
+      text-transform: uppercase;
+    }
+  }
+  
+  /* Inline code with improved contrast */
+  :not(pre) > code {
+    padding: 0.2em 0.4em;
+    margin: 0 0.1em;
+    font-size: 0.9em;
+    background-color: rgba(175, 184, 193, 0.2);
+    border-radius: 4px;
+    color: #0550ae;
+    font-weight: 500;
+  }
+  
+  /* Blockquotes */
+  blockquote {
+    margin-left: 0;
+    padding: 0 1em;
+    color: #6a737d;
+    border-left: 0.25em solid #dfe2e5;
+    
+    p {
+      margin-bottom: 0;
+    }
+    
+    p + p {
+      margin-top: 1em;
+    }
+  }
+  
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1.5em;
+    overflow: auto;
+    display: block;
+    
+    th, td {
+      padding: 0.5em 1em;
+      border: 1px solid #dfe2e5;
+    }
+    
+    th {
+      font-weight: 600;
+      background-color: #f6f8fa;
+    }
+    
+    tr:nth-child(even) {
+      background-color: #f8f9fa;
+    }
+    
+    tr:hover {
+      background-color: #f1f4f8;
+    }
+  }
+  
+  /* Horizontal rule */
+  hr {
+    height: 0.25em;
+    padding: 0;
+    margin: 24px 0;
+    background-color: #e1e4e8;
+    border: 0;
+  }
+  
+  /* Links */
+  a {
+    color: #0366d6;
+    text-decoration: none;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+  
+  /* Images */
+  img {
+    max-width: 100%;
+    box-sizing: border-box;
+    border-radius: 3px;
+  }
+  
+  /* Badges/Labels */
+  .badge, [class^="badge-"] {
+    display: inline-block;
+    padding: 0.25em 0.4em;
+    font-size: 0.75em;
+    font-weight: 600;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: 0.25rem;
+    margin: 0 0.25em;
+  }
+}
+
+/* Specific styling for webhook documentation */
+.box .content {
+  pre {
+    position: relative;
+    
+    &.language-ruby, &[data-lang="ruby"] {
+      &::before {
+        content: "ruby";
+      }
+      code {
+        color: #905;
+      }
+    }
+  }
+  
+  .parameter-name {
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-weight: 600;
+    color: #0366d6;
+  }
+}

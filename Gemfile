@@ -47,3 +47,4 @@ gem 'mustermann', '~> 3.0'
 # gem "temporalio"
 
 gem 'kramdown' # For Markdown rendering in Web UI Docs
+gem 'kramdown-parser-gfm' # For GitHub Flavored Markdown support
