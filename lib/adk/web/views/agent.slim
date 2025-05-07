@@ -28,7 +28,7 @@ section.section
                 i.fas.fa-play-circle aria-hidden="true"
               span Execute
           li data-tab="chat"
-            a href="#chat"
+            a href="#chat" hx-get="/agents/#{agent_name}/chat" hx-target="#chat-tab" hx-trigger="click once, load once" hx-swap="innerHTML" hx-indicator="#chat-tab"
               span.icon.is-small
                 i.fas.fa-comments aria-hidden="true"
               span Chat
@@ -98,83 +98,12 @@ section.section
                         li Use `{"tool_name": "specific_tool", "param1": "value1", ...}` to directly invoke a tool (if known and allowed).
                     p The agent must be running to execute tasks. Task results will appear below the input area.
 
+      / Chat tab content will now be loaded dynamically via HTMX
       div.content-tab.is-hidden#chat-tab
-        .box
-          h3.title.is-5 Agent Chat
-
-          #chat-history.box.chat-history-box( hx-on::after-swap="this.scrollTop = this.scrollHeight"
-                                              _="init set my scrollTop to my scrollHeight end" )
-
-             - if defined?(@chat_history_events) && @chat_history_events && !@chat_history_events.empty?
-               - @chat_history_events.each do |event|
-
-                 - if event.role == :user
-                   .message.is-link.is-small.mb-2.user-message(id="event-#{event.event_id}")
-                     .message-header
-                       p You
-                     .message-body= event.content
-
-                 - elsif event.role == :agent
-                   - agent_result_content = event.content
-                   - response_data = process_agent_response(event)
-
-                   .message class="#{response_data[:msg_class]} is-small mb-4 agent-message" id="event-#{response_data[:event_id]}"
-                     .message-header
-                       p Agent (#{agent_name})
-                       - unless response_data[:raw_json_content].empty?
-                         button.button.is-light.is-small.ml-auto( onclick="var el = document.getElementById('raw-#{response_data[:event_id]}'); el.style.display = (el.style.display == 'none' ? 'block' : 'none');" )
-                           | Raw
-                     .message-body
-                       div style="white-space: pre-wrap; word-break: break-all; margin-bottom: 0.5rem;" = response_data[:display_content]
-
-                       - if event.is_a?(ADK::Event) && event.content.is_a?(Hash) && event.content[:plan_details].is_a?(Array) && !event.content[:plan_details].empty?
-                         details.execution-plan-details
-                           summary.execution-plan-summary
-                             | Execution Plan (#{event.content[:plan_details].size} step#{'s' if event.content[:plan_details].size != 1})
-                           .execution-plan-steps
-                             - event.content[:plan_details].each_with_index do |step_detail, index|
-                               .execution-plan-step
-                                 p.step-title Step #{index + 1}: #{step_detail[:tool_name]}
-                                 p.step-params-label Parameters:
-                                 pre.step-params-pre= pretty_json(step_detail[:params])
-
-                                 - result_status = step_detail[:result][:status]
-                                 - result_class = case result_status when :success then 'has-text-success-dark' when :error then 'has-text-danger-dark' when :pending then 'has-text-warning-dark' else 'has-text-grey' end
-
-                                 p class="step-result-label #{result_class}" Result (#{result_status}):
-                                 pre class="step-result-pre #{result_class}"= pretty_json(step_detail[:result])
-
-                       - unless response_data[:raw_json_content].empty?
-                         div.raw-json-container id="raw-#{response_data[:event_id]}" style="display: none;"
-                           pre.raw-json-pre= response_data[:raw_json_content]
-
-                 - else
-
-
-             - else
-               p.has-text-grey-light.is-italic Start chatting... Messages will appear here.
-
-
-          form#chat-form.chat-input-form( hx-post="/agents/#{agent_name}/chat"
-                       hx-target="#chat-history"
-                       hx-swap="beforeend"
-                       hx-indicator="#send-button-indicator"
-                       _="on htmx:afterRequest this.reset()" )
-             .field.has-addons
-               .control.is-expanded style="position: relative;"
-                 input.input#chat-input(type="text" name="message" placeholder="Enter your message..." required=true autofocus disabled=(!agent_data[:running]))
-                 span.icon.is-small.is-right.htmx-indicator style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;"
-                   i.fas.fa-spinner.fa-spin
-               .control
-                 button.button.is-link#send-button(type="submit" disabled=(!agent_data[:running]))
-                   span Send
-                   span.icon.is-small#send-button-indicator.htmx-indicator.ml-2
-                     i.fas.fa-spinner.fa-pulse
-
-          / Container for help text
-          div#chat-status-help-container
-            / Always render the paragraph, hide conditionally with class
-            p.help.is-danger#chat-status-help class=(agent_data[:running] ? 'is-hidden' : '') Agent must be running to chat.
+        / Content will be loaded here by HTMX
+        p.has-text-grey.is-italic Loading chat interface...
+        span.icon.is-small.ml-2
+          i.fas.fa-spinner.fa-pulse
 
       div.content-tab.is-hidden#config-tab
         div#agent-configuration-content

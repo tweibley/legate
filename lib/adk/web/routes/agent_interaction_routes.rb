@@ -485,7 +485,9 @@ module ADK
               active_agents_hash = self.instance_variable_get(:@agents)
               agent_definition = definition_store.get_definition(name)
               # Minimal data for now, assuming chat.slim can handle it or we refine this.
-              self.instance_variable_set(:@agent_data, { name: name, description: agent_definition[:description], running: active_agents_hash.key?(name) })
+              self.instance_variable_set(:@agent_data,
+                                         { name: name, description: agent_definition[:description],
+                                           running: active_agents_hash.key?(name) })
               self.instance_variable_set(:@active_session_details, new_adk_session)
               self.instance_variable_set(:@chat_history_events, new_adk_session.events || [])
 
@@ -532,7 +534,9 @@ module ADK
                 active_agents_hash = self.instance_variable_get(:@agents)
                 agent_definition = definition_store.get_definition(name)
 
-                self.instance_variable_set(:@agent_data, { name: name, description: agent_definition[:description], running: active_agents_hash.key?(name) })
+                self.instance_variable_set(:@agent_data,
+                                           { name: name, description: agent_definition[:description],
+                                             running: active_agents_hash.key?(name) })
                 self.instance_variable_set(:@active_session_details, potential_session) # This is the session we just switched to
                 self.instance_variable_set(:@chat_history_events, potential_session.events || [])
 
@@ -559,7 +563,8 @@ module ADK
                 # A simple way for HTMX: send a 200 with HX-Retarget to an error div and a small error message.
                 # For now, let's make HTMX reload the chat interface, which shows the *not* switched session.
                 # This implicitly shows the switch failed. A dedicated error message is better (Phase 3).
-                response.headers['HX-Location'] = JSON.dump({path: "/agents/#{name}/chat", target: "#chat_interface_wrapper"})
+                response.headers['HX-Location'] =
+                  JSON.dump({ path: "/agents/#{name}/chat", target: "#chat_interface_wrapper" })
                 halt 200 # Halt to ensure HX-Location is processed
               else
                 # flash[:error] = "Could not switch to the requested session. It may not exist or belong to you."
