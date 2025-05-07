@@ -31,8 +31,17 @@ html(class="has-navbar-fixed-top")
       });
 
       function initializeHighlighting() {
-        document.querySelectorAll('pre code').forEach(function(block) {
-          hljs.highlightElement(block);
+        // Select all 'pre code' blocks that are NOT specifically marked for Mermaid
+        document.querySelectorAll('pre code:not(.language-mermaid):not(.mermaid)').forEach(function(block) {
+          // Check if the block hasn't already been highlighted by hljs
+          // This prevents potential errors if htmx swaps already highlighted content
+          if (!block.classList.contains('hljs')) {
+             try {
+               hljs.highlightElement(block);
+             } catch (e) {
+               console.error("Highlight.js error:", e, "on block:", block);
+             }
+          }
         });
       }
 
@@ -216,8 +225,46 @@ html(class="has-navbar-fixed-top")
         });
       }
 
+      // --- NEW: Mermaid Preparation Function ---
+      function prepareMermaidContainers() {
+        document.querySelectorAll('code.language-mermaid').forEach(block => {
+          const preElement = block.closest('pre');
+          // Check if already processed to avoid infinite loops on swaps
+          if (!preElement || preElement.dataset.mermaidProcessed === 'true') {
+            return;
+          }
+          
+          const diagramCode = block.textContent || block.innerText;
+          if (!diagramCode || diagramCode.trim() === '') {
+            return; // Skip empty blocks
+          }
+          
+          const mermaidContainer = document.createElement('div');
+          mermaidContainer.className = 'mermaid'; // Class mermaid.run() looks for
+          mermaidContainer.textContent = diagramCode;
+          
+          if (preElement.parentNode) {
+            preElement.parentNode.replaceChild(mermaidContainer, preElement);
+            // Mark the new container so we know the original pre was processed
+            // This helps if the container itself is somehow selected again
+            mermaidContainer.dataset.mermaidProcessed = 'true'; 
+          } else {
+            // Fallback or error if preElement has no parent?
+            console.warn('Could not replace pre element for mermaid diagram as it has no parent.', preElement);
+          }
+        });
+      }
+      // --- End Mermaid Preparation Function ---
+
       document.addEventListener('DOMContentLoaded', () => {
          initializeRelevantEditors(document.body);
+         initializeHighlighting(); 
+         prepareMermaidContainers(); // Prepare containers first
+         try {
+             mermaid.run(); // Explicitly run Mermaid on prepared containers
+         } catch (e) {
+             console.error("Error running mermaid.run() on initial load:", e);
+         }
          checkServerHealth();
          setInterval(checkServerHealth, 5000);
       });
@@ -225,13 +272,33 @@ html(class="has-navbar-fixed-top")
       document.body.addEventListener('htmx:afterSwap', function(event) {
         const targetElement = event.detail.target;
         const newElement = event.detail.elt;
-
-        if (newElement) {
-          initializeRelevantEditors(newElement);
-          initializeHighlighting();
+        let elementToScan = newElement || targetElement;
+        
+        if (elementToScan) {
+          initializeRelevantEditors(elementToScan);
+          initializeHighlighting(); // Re-run highlight
+          prepareMermaidContainers(); // Prepare containers in swapped content
+          try {
+             // Run mermaid specifically on nodes within the swapped content if possible
+             // Otherwise, re-run globally (may be less efficient but safer)
+             const mermaidNodes = elementToScan.querySelectorAll ? elementToScan.querySelectorAll('.mermaid') : [];
+             if (mermaidNodes.length > 0) {
+                mermaid.run({ nodes: mermaidNodes });
+             } else {
+                mermaid.run(); // Fallback to global run if needed
+             }
+          } catch (e) {
+             console.error("Error running mermaid.run() after htmx swap:", e);
+          }
         } else {
-          initializeRelevantEditors(targetElement);
-          initializeHighlighting();
+           // Fallback if no specific element found
+           initializeHighlighting(); 
+           prepareMermaidContainers(); 
+           try {
+              mermaid.run();
+           } catch (e) {
+              console.error("Error running mermaid.run() after htmx swap (fallback):", e);
+           }
         }
 
         const triggerHeader = event.detail.xhr.getResponseHeader('HX-Trigger-After-Swap');
@@ -454,3 +521,6 @@ html(class="has-navbar-fixed-top")
               healthCheckIntervalId = null;
           }
       }
+
+    / Add Mermaid.js library from CDN
+    script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"
