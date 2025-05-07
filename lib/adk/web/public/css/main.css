@@ -28,6 +28,27 @@ strong.has-text-link { /* Navbar Brand */
   font-size: 1.2em;
 }
 
+/* Active state for current section */
+.navbar-item.is-active {
+  background-color: #f0f4fa !important; /* Light blue background */
+  color: #3273dc !important; /* Brand blue color */
+  font-weight: 600;
+}
+.navbar-item.is-active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+}
+
+/* Hover state - make it darker than active state */
+.navbar-item:hover:not(.is-active) {
+  background-color: #e9ecef !important; /* Darker gray for hover */
+  color: #2160c4 !important; /* Darker blue for hover */
+}
+
 /* --- Cards & Boxes --- */
 .card, .box {
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.07); /* Slightly deeper shadow */
