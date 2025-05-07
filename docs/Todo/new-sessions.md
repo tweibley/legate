@@ -156,11 +156,11 @@ This document outlines the plan to implement a feature allowing users to have mu
 *   [x] **`lib/adk/web/views/chat.slim` - "Start New Chat" Button:**
     *   [x] Add button.
     *   [x] Wire up HTMX POST to the new session route.
-*   [ ] **`lib/adk/web/views/chat.slim` - Previous Sessions List:**
-    *   [ ] Iterate and display summarized previous sessions (using helper).
-    *   [ ] Clearly indicate the currently active session in the list (e.g., `is-active` class).
-    *   [ ] Handle the "no previous sessions" UI state.
-    *   [ ] Add "Switch" buttons/forms with HTMX targeting `#chat_interface_wrapper`.
+*   [x] **`lib/adk/web/views/chat.slim` - Previous Sessions List:**
+    *   [x] Iterate and display summarized previous sessions (using helper).
+    *   [x] Clearly indicate the currently active session in the list (e.g., `is-active` class).
+    *   [x] Handle the "no previous sessions" UI state.
+    *   [x] Add "Switch" buttons/forms with HTMX targeting `#chat_interface_wrapper`.
 
 **Phase 3: Refinements & Optional Features**
 

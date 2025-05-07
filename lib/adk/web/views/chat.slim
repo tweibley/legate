@@ -44,12 +44,24 @@
           / Previous Sessions List - will be detailed in a later step
           h3.title.is-5 Previous Chats
           #previous-sessions-container
-            p.has-text-grey Italic placeholder: Previous sessions will appear here.
-            / Example of a session item (structure to be built dynamically later):
-            / .session-list-item.box.is-clickable.mb-2
-            /   p Chat from Oct 20, 2023 (5 messages)
-            /   p First message preview...
-            /   button.button.is-small Switch
+            - if @previous_sessions_list && !@previous_sessions_list.empty?
+              - @previous_sessions_list.each do |session_item|
+                - is_active_session = @active_session_details && session_item.id == @active_session_details.id
+                .session-list-item.box.mb-2 class=(is_active_session ? 'has-background-info-light' : 'is-clickable') style=(is_active_session ? '' : 'cursor: pointer;')
+                  p.is-size-7= summarize_session(session_item)
+                  - unless is_active_session
+                    form.mt-2( hx-post="/agents/#{@agent_data[:name]}/chat/session/switch"
+                               hx-target="#chat_interface_wrapper"
+                               hx-indicator="#session_#{session_item.id}_switch_indicator")
+                      input type="hidden" name="adk_session_to_switch_to" value="#{session_item.id}"
+                      button.button.is-small.is-link.is-outlined type="submit"
+                        span Switch to this session
+                        span.icon.is-small.ml-1.htmx-indicator id="session_#{session_item.id}_switch_indicator"
+                          i.fas.fa-spinner.fa-pulse
+                  - else
+                    p.tag.is-info.is-pulled-right.is-small Active Session
+            - else
+              p.has-text-grey.is-italic No previous chats with this agent yet.
 
       / --- NEW: Main Chat Panel (contains existing elements) ---
       .column.is-two-thirds#chat_main_panel
@@ -119,7 +131,7 @@
 
         / Chat form - HTMX target updated to #chat-log-container
         form#chat-form( hx-post="/agents/#{@agent_data[:name]}/chat"
-                     hx-target="#chat-log-container" /েল Target for individual messages
+                     hx-target="#chat-log-container"
                      hx-swap="beforeend"
                      hx-indicator="#send-button-indicator"
                      _="on htmx:afterRequest reset()" )
