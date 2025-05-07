@@ -1,3 +1,0 @@
-- [X] (Optional) Review/Refactor DSL method names (`tool_description` vs `description`) and variable scope based on implementation and testing. (Completed during debugging)
-- [X] (Optional) Update `docs/better-tools.md` to accurately reflect the final implementation details.
-- [X] Refactor Built-in Tools (`lib/adk/tools/`):

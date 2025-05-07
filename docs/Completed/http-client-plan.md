@@ -144,4 +144,4 @@ This document outlines the plan for implementing a robust and flexible HTTP clie
     *   [x] Verify the `cause` is correctly set on wrapped errors (where feasible).
 9.  [x] **Refactor Existing Tools (if applicable):** Refactored `CatFacts` tool.
 10. [x] **Implement `WebhookTool`:** Use the new `HttpClient` to implement the `WebhookTool` as per `docs/webhooks-plan.md`.
-11. [ ] **Documentation:** Update ADK documentation with examples of how to use the `HttpClient` module in custom tools. 
+11. [x] **Documentation:** Update ADK documentation with examples of how to use the `HttpClient` module in custom tools. 
