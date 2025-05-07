@@ -176,24 +176,46 @@ module ADK
           content_type :html
           active_agents_hash = self.instance_variable_get(:@agents)
           session_service = self.instance_variable_get(:@session_service)
+          web_user_id = session[:web_user_id] # Available from before filter
 
           current_agent_instance = active_agents_hash[name]
           user_message_text = params['message']&.strip
 
-          session[:adk_sessions] ||= {}
-          current_session_id = session[:adk_sessions][name]
+          # --- MODIFIED: Use new session structure for active session ID ---
+          session[:active_agent_sessions] ||= {}
+          active_adk_session_id = session[:active_agent_sessions][name]
+          # --- END MODIFICATION ---
 
           view_locals = {
             user_message: user_message_text || "[Empty Message]",
             agent_result: nil,
-            agent_name: current_agent_instance ? current_agent_instance.name : name
+            agent_name: current_agent_instance ? current_agent_instance.name : name,
+            # Include web_user_id in locals if needed by the partial, though not directly used by _chat_message.slim currently
+            # web_user_id: web_user_id
           }
 
-          unless current_session_id && session_service.get_session(session_id: current_session_id)
-            logger.error("Chat POST Error: Missing or invalid session ID (#{current_session_id}) (from AgentInteractionRoutes). Redirecting.")
-            session[:adk_sessions].delete(name) # Clear specific agent session
-            redirect "/agents/#{name}/chat"
+          # --- MODIFIED: Validate active_adk_session_id and the session itself ---
+          current_adk_session_object = nil
+          if active_adk_session_id
+            begin
+              current_adk_session_object = session_service.get_session(session_id: active_adk_session_id)
+              # Verify ownership and agent match, crucial for security and correctness
+              unless current_adk_session_object && current_adk_session_object.user_id == web_user_id && current_adk_session_object.app_name == name
+                logger.error("Chat POST Error: Active session ID '#{active_adk_session_id}' is invalid, not found, or does not belong to user '#{web_user_id}' for agent '#{name}'. Redirecting.")
+                session[:active_agent_sessions].delete(name) # Clear the problematic ID
+                redirect "/agents/#{name}/chat" # Redirect to GET to re-establish a valid session
+              end
+            rescue => e
+              logger.error("Chat POST Error: Failed to retrieve session '#{active_adk_session_id}': #{e.message}. Redirecting.")
+              session[:active_agent_sessions].delete(name) # Clear the problematic ID
+              redirect "/agents/#{name}/chat"
+            end
+          else
+            logger.error("Chat POST Error: No active ADK session ID found for agent '#{name}'. Redirecting.")
+            redirect "/agents/#{name}/chat" # Redirect to GET to establish a session
           end
+          # --- END MODIFICATION ---
+
           unless current_agent_instance
             view_locals[:agent_result] = { status: :error, error_message: "[Error: Agent '#{name}' is not running.]" }
             halt 400, slim(:_chat_message, layout: false, locals: view_locals)
@@ -204,17 +226,19 @@ module ADK
           end
 
           begin
-            logger.info("Agent '#{name}' processing chat in session '#{current_session_id}' (from AgentInteractionRoutes): #{user_message_text}")
+            logger.info("Agent '#{name}' processing chat in session '#{active_adk_session_id}' for user '#{web_user_id}': #{user_message_text}")
             final_event_or_error = current_agent_instance.run_task(
-              session_id: current_session_id,
+              session_id: active_adk_session_id, # Use the validated active session ID
               user_input: user_message_text,
-              session_service: session_service
+              session_service: session_service,
+              # Pass user_id to run_task if the agent/tools need it directly, though session implies user
+              # user_id: web_user_id
             )
-            logger.info("Agent '#{name}' task processing complete (from AgentInteractionRoutes). Final result: #{final_event_or_error.inspect}")
+            logger.info("Agent '#{name}' task processing complete for session '#{active_adk_session_id}'. Final result: #{final_event_or_error.inspect}")
             view_locals[:agent_result] = final_event_or_error
             slim :_chat_message, layout: false, locals: view_locals
           rescue => e
-            logger.error("Error processing chat for agent #{name} (from AgentInteractionRoutes): #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
+            logger.error("Error processing chat for agent #{name}, session '#{active_adk_session_id}': #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
             view_locals[:agent_result] =
               { status: :error, error_message: "[Internal Error executing task: #{e.message}]" }
             halt 500, slim(:_chat_message, layout: false, locals: view_locals)
@@ -423,6 +447,131 @@ module ADK
             halt 503, json(error: "AI service communication error.")
           end
         end
+
+        # --- NEW ROUTE: Create a new chat session ---
+        app.post '/agents/:name/chat/session/new' do |name|
+          session_service = self.instance_variable_get(:@session_service)
+          web_user_id = session[:web_user_id] # Ensured by before filter
+
+          halt 503, "Session Service unavailable." unless session_service
+
+          begin
+            logger.info "User '#{web_user_id}' requesting new chat session for agent '#{name}'"
+            new_adk_session = session_service.create_session(app_name: name, user_id: web_user_id, initial_state: {})
+            logger.info "Created new ADK session '#{new_adk_session.id}' for user '#{web_user_id}', agent '#{name}'"
+
+            session[:active_agent_sessions] ||= {}
+            session[:active_agent_sessions][name] = new_adk_session.id
+            logger.debug "Set active session to new session '#{new_adk_session.id}' for agent '#{name}'"
+
+            if request.env['HTTP_HX_REQUEST'] == 'true'
+              # For HTMX, we need to re-render the chat interface content.
+              # This implies that the GET /agents/:name/chat logic for fetching all data needs to be available
+              # or duplicated. For now, redirecting to GET which will then render correctly.
+              # A more optimized HTMX approach might render a partial directly if all data is easily assembled here.
+              # However, the GET route is already set up to fetch everything needed for chat.slim.
+              logger.debug "HTMX request detected for new session, redirecting to GET /agents/#{name}/chat to refresh UI."
+              # Instead of full redirect, to make HTMX update the target, we can set HX-Redirect header.
+              # Or, more simply, just let the GET route handle the full page render or HTMX fragment rendering if it's also HTMX aware.
+              # For now, a full redirect ensures the GET route's full logic is run.
+              # Consider HX-Location for client-side redirect if only a partial update is desired without full page reload by browser
+              # response.headers['HX-Location'] = "/agents/#{name}/chat"
+              # For a full refresh via HTMX target, the client button would POST then GET, or we render the fragment here.
+              # The plan suggests rendering a fragment: render an HTML fragment targeting `#chat_interface_wrapper`
+              # This means we need to call the chat display logic here.
+
+              # Re-fetch necessary data for the chat view, similar to GET /agents/:name/chat
+              definition_store = self.instance_variable_get(:@definition_store)
+              active_agents_hash = self.instance_variable_get(:@agents)
+              agent_definition = definition_store.get_definition(name)
+              # Minimal data for now, assuming chat.slim can handle it or we refine this.
+              self.instance_variable_set(:@agent_data, { name: name, description: agent_definition[:description], running: active_agents_hash.key?(name) })
+              self.instance_variable_set(:@active_session_details, new_adk_session)
+              self.instance_variable_set(:@chat_history_events, new_adk_session.events || [])
+
+              all_sessions_for_user_agent = session_service.list_sessions(app_name: name, user_id: web_user_id)
+              previous_sessions_list = all_sessions_for_user_agent.sort_by(&:updated_at).reverse
+              self.instance_variable_set(:@previous_sessions_list, previous_sessions_list)
+
+              # Render chat.slim without the layout, targeting the wrapper ID specified in the plan.
+              # The slim template itself should be wrapped in a div with id="chat_interface_wrapper"
+              slim :chat, layout: false
+            else
+              redirect "/agents/#{name}/chat"
+            end
+          rescue => e
+            logger.error "Error creating new session for agent '#{name}', user '#{web_user_id}': #{e.message}\n#{e.backtrace.join("\n")}"
+            # For HTMX, ideally return an error partial. For now, standard error for both.
+            halt 500, "Failed to create new chat session."
+          end
+        end
+        # --- END NEW ROUTE ---
+
+        # --- NEW ROUTE: Switch active chat session ---
+        app.post '/agents/:name/chat/session/switch' do |name|
+          session_service = self.instance_variable_get(:@session_service)
+          web_user_id = session[:web_user_id] # Ensured by before filter
+          adk_session_to_switch_to = params[:adk_session_to_switch_to]
+
+          halt 503, "Session Service unavailable." unless session_service
+          halt 400, "Missing adk_session_to_switch_to parameter." unless adk_session_to_switch_to
+
+          logger.info "User '#{web_user_id}' requesting to switch to session '#{adk_session_to_switch_to}' for agent '#{name}'"
+
+          begin
+            potential_session = session_service.get_session(session_id: adk_session_to_switch_to)
+
+            if potential_session && potential_session.user_id == web_user_id && potential_session.app_name == name
+              session[:active_agent_sessions] ||= {}
+              session[:active_agent_sessions][name] = potential_session.id # Store the validated ID
+              logger.info "Successfully switched active session to '#{potential_session.id}' for user '#{web_user_id}', agent '#{name}'"
+
+              if request.env['HTTP_HX_REQUEST'] == 'true'
+                # Re-fetch necessary data for the chat view, similar to GET /agents/:name/chat and POST .../session/new
+                definition_store = self.instance_variable_get(:@definition_store)
+                active_agents_hash = self.instance_variable_get(:@agents)
+                agent_definition = definition_store.get_definition(name)
+
+                self.instance_variable_set(:@agent_data, { name: name, description: agent_definition[:description], running: active_agents_hash.key?(name) })
+                self.instance_variable_set(:@active_session_details, potential_session) # This is the session we just switched to
+                self.instance_variable_set(:@chat_history_events, potential_session.events || [])
+
+                all_sessions_for_user_agent = session_service.list_sessions(app_name: name, user_id: web_user_id)
+                previous_sessions_list = all_sessions_for_user_agent.sort_by(&:updated_at).reverse
+                self.instance_variable_set(:@previous_sessions_list, previous_sessions_list)
+
+                slim :chat, layout: false
+              else
+                redirect "/agents/#{name}/chat"
+              end
+            else
+              logger.warn "Failed switch attempt: Session '#{adk_session_to_switch_to}' not found, or does not belong to user '#{web_user_id}' for agent '#{name}'."
+              # For HTMX, ideally return an error partial targeting #session-operation-error
+              # For now, a 403 for HTMX or redirect with flash for non-HTMX.
+              if request.env['HTTP_HX_REQUEST'] == 'true'
+                # Sending a 403 might be too abrupt. Consider a notification swap.
+                # For now, to keep it simple, maybe just redirect like the GET handler would ignore an invalid desired_session_id
+                # This would mean the UI just reloads with the *current* active session, not the one attempted.
+                # Or, more explicitly, return an error message for HTMX to display.
+                # Let's redirect to GET, which will effectively ignore the failed switch and load current/latest.
+                # This matches the behavior if desired_session_id in GET is invalid.
+                # To provide feedback, a flash message would be good, but that requires more setup for HTMX.
+                # A simple way for HTMX: send a 200 with HX-Retarget to an error div and a small error message.
+                # For now, let's make HTMX reload the chat interface, which shows the *not* switched session.
+                # This implicitly shows the switch failed. A dedicated error message is better (Phase 3).
+                response.headers['HX-Location'] = JSON.dump({path: "/agents/#{name}/chat", target: "#chat_interface_wrapper"})
+                halt 200 # Halt to ensure HX-Location is processed
+              else
+                # flash[:error] = "Could not switch to the requested session. It may not exist or belong to you."
+                redirect "/agents/#{name}/chat"
+              end
+            end
+          rescue => e
+            logger.error "Error switching session for agent '#{name}', user '#{web_user_id}' to '#{adk_session_to_switch_to}': #{e.message}\n#{e.backtrace.join("\n")}"
+            halt 500, "Failed to switch chat session."
+          end
+        end
+        # --- END NEW ROUTE ---
       end
     end
   end

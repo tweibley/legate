@@ -135,16 +135,18 @@ This document outlines the plan to implement a feature allowing users to have mu
     *   [x] Ensure active ADK session ID is stored in Sinatra session.
     *   [x] Load active session history.
     *   [x] Load list of all previous sessions for the agent/user.
-*   [ ] **`POST /agents/:name/chat` - Core Logic:**
-    *   [ ] Integrate `session[:web_user_id]`.
-*   [ ] **Route: `POST /agents/:name/chat/session/new`:**
-    *   [ ] Implement creation of new ADK session.
-    *   [ ] Update active ADK session ID in Sinatra session.
-    *   [ ] Implement redirect/HTMX reload trigger.
-*   [ ] **Route: Session Switching (e.g., `GET /agents/:name/chat?desired_session_id=:id` or `POST /agents/:name/chat/session/switch`):**
-    *   [ ] Implement logic to switch active ADK session ID.
-    *   [ ] Crucial: Add validation to ensure session belongs to the current user and agent.
-    *   [ ] Implement redirect/HTMX reload trigger.
+*   [x] **`POST /agents/:name/chat` - Core Logic:**
+    *   [x] Integrate `session[:web_user_id]`.
+    *   [x] Use the stored active ADK session ID.
+    *   [x] Add error handling if no active session ID is found (e.g., redirect to `GET /agents/:name/chat` to establish one).
+*   [x] **Route: `POST /agents/:name/chat/session/new`:**
+    *   [x] Implement creation of new ADK session.
+    *   [x] Update active ADK session ID in Sinatra session.
+    *   [x] Implement redirect/HTMX reload trigger.
+*   [x] **Route: Session Switching (e.g., `GET /agents/:name/chat?desired_session_id=:id` or `POST /agents/:name/chat/session/switch`):**
+    *   [x] Implement logic to switch active ADK session ID.
+    *   [x] Crucial: Add validation to ensure session belongs to the current user and agent.
+    *   [x] Implement redirect/HTMX reload trigger.
 
 **Phase 2: Frontend Integration**
 
