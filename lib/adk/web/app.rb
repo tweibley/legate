@@ -481,6 +481,40 @@ module ADK
         end
         # --- END NEW HELPER ---
 
+        # --- NEW HELPER: Summarize ADK Session for display ---
+        def summarize_session(session_object)
+          return "Invalid session object" unless session_object.is_a?(ADK::Session)
+
+          created_at_formatted = session_object.created_at.strftime("%b %d, %Y %H:%M")
+          updated_at_formatted = session_object.updated_at.strftime("%b %d, %Y %H:%M")
+          event_count = session_object.events&.count || 0
+          messages_text = event_count == 1 ? "message" : "messages"
+
+          preview_text = "Session started"
+          if event_count.zero?
+            preview_text = "Empty session (created #{created_at_formatted})"
+          else
+            # Find the first user-initiated text event for preview
+            first_user_text_event = session_object.events.find do |event|
+              event.role == :user && event.content.is_a?(String) && !event.content.strip.empty?
+            end
+
+            if first_user_text_event
+              # Take first ~10 words. Split by space, take up to 10, join back.
+              words = first_user_text_event.content.strip.split(/\s+/)
+              preview = words.take(10).join(" ")
+              preview_text = "#{preview}#{words.size > 10 ? '...' : ''}"
+            elsif session_object.events.any? { |e| e.role == :user }
+              preview_text = "Contains non-text user messages"
+            else # No user events, or only non-text user events
+              preview_text = "Agent-initiated session"
+            end
+          end
+
+          "Chat from #{created_at_formatted} (Last active: #{updated_at_formatted}) (#{event_count} #{messages_text}): #{preview_text}"
+        end
+        # --- END NEW HELPER ---
+
         # --- NEW HELPER: Pretty Print JSON ---
         # --- MODIFIED: Accepts Ruby object, not just JSON string ---
         def pretty_json(object)

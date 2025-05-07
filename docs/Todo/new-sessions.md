@@ -150,12 +150,12 @@ This document outlines the plan to implement a feature allowing users to have mu
 
 **Phase 2: Frontend Integration**
 
-*   [ ] **`lib/adk/web/app.rb` - Session Summary Helper:** Create `summarize_session` helper (include event count).
-*   [ ] **`lib/adk/web/views/chat.slim` - Overall Structure:** Implement `#chat_interface_wrapper` and conceptual layout (sidebar, main panel).
-*   [ ] **`lib/adk/web/views/chat.slim` - Display Active Session Info:** Show details of `@active_session_details` in the main panel and highlight in sidebar.
-*   [ ] **`lib/adk/web/views/chat.slim` - "Start New Chat" Button:**
-    *   [ ] Add button.
-    *   [ ] Wire up HTMX POST to the new session route.
+*   [x] **`lib/adk/web/app.rb` - Session Summary Helper:** Create `summarize_session` helper (include event count).
+*   [x] **`lib/adk/web/views/chat.slim` - Overall Structure:** Implement `#chat_interface_wrapper` and conceptual layout (sidebar, main panel).
+*   [x] **`lib/adk/web/views/chat.slim` - Display Active Session Info:** Show details of `@active_session_details` in the main panel and highlight in sidebar.
+*   [x] **`lib/adk/web/views/chat.slim` - "Start New Chat" Button:**
+    *   [x] Add button.
+    *   [x] Wire up HTMX POST to the new session route.
 *   [ ] **`lib/adk/web/views/chat.slim` - Previous Sessions List:**
     *   [ ] Iterate and display summarized previous sessions (using helper).
     *   [ ] Clearly indicate the currently active session in the list (e.g., `is-active` class).
