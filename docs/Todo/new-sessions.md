@@ -126,18 +126,17 @@ This document outlines the plan to implement a feature allowing users to have mu
 
 **Phase 1: Backend Foundation**
 
-*   [ ] **Web User ID:** Implement `before '/agents/:name/chat*'` filter for `session[:web_user_id]`.
-*   [ ] **Active ADK Session Store:** Modify Sinatra session to store the active ADK session ID per agent for the `web_user_id` (e.g., `session[:active_agent_sessions][agent_name]`).
-*   [ ] **`GET /agents/:name/chat` - Core Logic:**
-    *   [ ] Integrate `session[:web_user_id]`.
-    *   [ ] Implement logic to determine/set the active ADK session ID using `session_service.list_sessions` (sorted by `updated_at` desc) and `session_service.create_session` as fallback.
-    *   [ ] Add robust error handling if active session ID is stale/invalid (re-evaluate active session).
-    *   [ ] Ensure active ADK session ID is stored in Sinatra session.
-    *   [ ] Load active session history.
-    *   [ ] Load list of all previous sessions for the agent/user.
+*   [x] **Web User ID:** Implement `before '/agents/:name/chat*'` filter for `session[:web_user_id]`.
+*   [x] **Active ADK Session Store:** Modify Sinatra session to store the active ADK session ID per agent for the `web_user_id` (e.g., `session[:active_agent_sessions][agent_name]` established in GET route).
+*   [x] **`GET /agents/:name/chat` - Core Logic:**
+    *   [x] Integrate `session[:web_user_id]`.
+    *   [x] Implement logic to determine/set the active ADK session ID using `session_service.list_sessions` (sorted by `updated_at` desc) and `session_service.create_session` as fallback.
+    *   [x] Add robust error handling if active session ID is stale/invalid (re-evaluate active session).
+    *   [x] Ensure active ADK session ID is stored in Sinatra session.
+    *   [x] Load active session history.
+    *   [x] Load list of all previous sessions for the agent/user.
 *   [ ] **`POST /agents/:name/chat` - Core Logic:**
     *   [ ] Integrate `session[:web_user_id]`.
-    *   [ ] Use the stored active ADK session ID.
 *   [ ] **Route: `POST /agents/:name/chat/session/new`:**
     *   [ ] Implement creation of new ADK session.
     *   [ ] Update active ADK session ID in Sinatra session.

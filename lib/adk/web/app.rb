@@ -83,6 +83,14 @@ module ADK
         set :session_secret, ENV['SESSION_SECRET'] || SecureRandom.hex(64)
       end
 
+      # --- NEW: Before filter for Web User ID ---
+      before '/agents/:name/chat*' do
+        session[:web_user_id] ||= SecureRandom.uuid
+        # Optional: Log the web_user_id for debugging purposes during development
+        # logger.debug "Current web_user_id: #{session[:web_user_id]}"
+      end
+      # --- END NEW ---
+
       # --- Sinatra Settings ---
       set :root, File.expand_path('../../..', __dir__) # Project root directory
       set :views, File.expand_path('../views', __FILE__) # Views directory for Slim templates

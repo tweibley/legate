@@ -13,6 +13,7 @@ module ADK
           active_agents_hash = self.instance_variable_get(:@agents)
 
           halt 503, "Definition Store unavailable." unless definition_store
+          halt 503, "Session Service unavailable." unless session_service # Added check for session_service
 
           agent_definition = nil
           begin
@@ -29,36 +30,144 @@ module ADK
 
           agent_description_for_view = agent_definition[:description]
           is_running = active_agents_hash.key?(name)
+          web_user_id = session[:web_user_id] # From the before filter
 
-          session[:adk_sessions] ||= {}
-          current_session_id = session[:adk_sessions][name]
+          # --- BEGIN NEW MULTI-SESSION LOGIC ---
+          active_adk_session_id = nil
+          active_session_object = nil
+          session_load_error_occurred = false # Flag if a chosen session ID failed to load
 
-          unless current_session_id && session_service.get_session(session_id: current_session_id)
+          # Initialize Sinatra session structure for storing active sessions per agent
+          session[:active_agent_sessions] ||= {}
+
+          # 1. Check for 'desired_session_id' query parameter
+          desired_id_from_param = params[:desired_session_id]
+          if desired_id_from_param
+            logger.debug "Attempting to use desired_session_id: #{desired_id_from_param} for agent '#{name}', user '#{web_user_id}'"
             begin
-              new_adk_session = session_service.create_session(app_name: name,
-                                                               user_id: "web_user_#{SecureRandom.hex(4)}")
-              current_session_id = new_adk_session.id
-              session[:adk_sessions][name] = current_session_id
-              logger.info("Created new ADK session for agent '#{name}': #{current_session_id} (from AgentInteractionRoutes)")
+              potential_session = session_service.get_session(session_id: desired_id_from_param)
+              if potential_session && potential_session.user_id == web_user_id && potential_session.app_name == name
+                active_adk_session_id = desired_id_from_param
+                active_session_object = potential_session
+                logger.info "Successfully loaded session via desired_session_id: #{active_adk_session_id}"
+              else
+                logger.warn "desired_session_id '#{desired_id_from_param}' is invalid, not found, or does not belong to user '#{web_user_id}' for agent '#{name}'. Ignoring."
+                # Optionally: Add a flash message for the user if this occurs
+                # flash[:warning] = "Could not switch to the requested session. Loading the latest active session instead."
+              end
             rescue => e
-              logger.error("Failed to create ADK session for agent '#{name}' (from AgentInteractionRoutes): #{e.message}")
-              halt 500, "Failed to initialize chat session."
+              logger.error "Error trying to load desired_session_id '#{desired_id_from_param}': #{e.message}"
+              session_load_error_occurred = true # Mark that there was an issue
             end
           end
-          logger.debug("Using ADK session ID: #{current_session_id} for agent '#{name}' chat (from AgentInteractionRoutes)")
 
-          chat_history_events_list = []
-          begin
-            adk_session_obj = session_service.get_session(session_id: current_session_id)
-            chat_history_events_list = adk_session_obj&.events || []
-          rescue => e
-            logger.error("Failed to load chat history for session '#{current_session_id}' (from AgentInteractionRoutes): #{e.message}")
+          # 2. If no active session yet, try the stored active ID from the Sinatra session
+          unless active_adk_session_id
+            stored_active_id = session[:active_agent_sessions][name]
+            if stored_active_id
+              logger.debug "Attempting to use stored active session ID: #{stored_active_id} for agent '#{name}', user '#{web_user_id}'"
+              begin
+                potential_session = session_service.get_session(session_id: stored_active_id)
+                if potential_session && potential_session.user_id == web_user_id && potential_session.app_name == name
+                  active_adk_session_id = stored_active_id
+                  active_session_object = potential_session
+                  logger.info "Successfully loaded stored active session ID: #{active_adk_session_id}"
+                else
+                  logger.warn "Stored active session ID '#{stored_active_id}' is stale or invalid for user '#{web_user_id}' / agent '#{name}'. Clearing it."
+                  session[:active_agent_sessions].delete(name)
+                  session_load_error_occurred = true # Mark that the stored session was problematic
+                end
+              rescue => e
+                logger.error "Error trying to load stored active session ID '#{stored_active_id}': #{e.message}"
+                session[:active_agent_sessions].delete(name) # Clear if error
+                session_load_error_occurred = true
+              end
+            end
           end
+
+          # 3. If still no active session, list all sessions for the user/agent and pick the most recently updated
+          unless active_adk_session_id
+            logger.debug "No valid active session from params or Sinatra session. Listing sessions for agent '#{name}', user '#{web_user_id}'"
+            begin
+              user_agent_sessions = session_service.list_sessions(app_name: name, user_id: web_user_id)
+              if user_agent_sessions && !user_agent_sessions.empty?
+                latest_session = user_agent_sessions.sort_by(&:updated_at).last # sort_by is ascending by default
+                if latest_session
+                  active_adk_session_id = latest_session.id
+                  active_session_object = latest_session # We already have the object
+                  logger.info "Found existing sessions. Set active to most recently updated: #{active_adk_session_id}"
+                else
+                  logger.warn "list_sessions for agent '#{name}', user '#{web_user_id}' returned sortable but empty/nil data."
+                  session_load_error_occurred = true # Should ideally not happen if list_sessions itself is non-empty
+                end
+              else
+                logger.info "No existing sessions found for agent '#{name}', user '#{web_user_id}'. Will create a new one."
+                # This is an expected path for a new user/agent interaction, not an error.
+              end
+            rescue => e
+              logger.error "Error listing sessions for agent '#{name}', user '#{web_user_id}': #{e.message}"
+              halt 500, "Error retrieving session list." # This is a critical failure path
+            end
+          end
+
+          # 4. If still no active session object (i.e., no existing found or a chosen one failed to load), create a new one.
+          unless active_session_object
+            logger.info "No active session determined or loaded. Creating new session for agent '#{name}', user '#{web_user_id}'."
+            if session_load_error_occurred
+              logger.warn "Proceeding to create new session because a previous attempt to load a specific session failed."
+            end
+            begin
+              new_session = session_service.create_session(app_name: name, user_id: web_user_id, initial_state: {})
+              active_adk_session_id = new_session.id
+              active_session_object = new_session
+              logger.info "Created new ADK session: #{active_adk_session_id}"
+              session_load_error_occurred = false # Reset flag as we have a fresh, valid session
+            rescue => e
+              logger.error "Failed to create new ADK session for agent '#{name}', user '#{web_user_id}': #{e.message}"
+              halt 500, "Failed to initialize chat session." # Critical failure
+            end
+          end
+
+          # 5. Ensure the determined active ADK session ID is stored in the Sinatra session
+          if active_adk_session_id
+            session[:active_agent_sessions][name] = active_adk_session_id
+            logger.debug "Ensured active ADK session ID '#{active_adk_session_id}' is stored for agent '#{name}'."
+          else
+            # This block should ideally be unreachable if the logic above guarantees a session.
+            logger.fatal "CRITICAL: Could not determine or create an active session ID for agent '#{name}', user '#{web_user_id}'. Halting."
+            halt 500, "Critical error: Unable to establish an active chat session."
+          end
+
+          if session_load_error_occurred
+            logger.warn "A previously selected or stored session could not be loaded. A new session was started or the latest available was used."
+            # Optionally: flash[:info] = "A previous session could not be loaded. A new/latest session has been started."
+          end
+
+          # 6. Load chat history for the active session
+          chat_history_events_list = active_session_object&.events || []
+          logger.debug "Loaded #{chat_history_events_list.count} events for active session '#{active_adk_session_id}'"
+
+          # 7. Load all sessions for this agent/user for the sidebar list
+          previous_sessions_list = []
+          begin
+            all_sessions_for_user_agent = session_service.list_sessions(app_name: name, user_id: web_user_id)
+            if all_sessions_for_user_agent
+              # Sort by updated_at descending for display (most recent first)
+              previous_sessions_list = all_sessions_for_user_agent.sort_by(&:updated_at).reverse
+              logger.debug "Loaded #{previous_sessions_list.count} total sessions for agent '#{name}', user '#{web_user_id}' for sidebar."
+            end
+          rescue => e
+            logger.error "Failed to load all previous sessions list for agent '#{name}', user '#{web_user_id}': #{e.message}"
+            # Non-fatal for page load, list will be empty.
+          end
+          # --- END NEW MULTI-SESSION LOGIC ---
 
           self.instance_variable_set(:@agent_data,
                                      { name: name, description: agent_description_for_view, running: is_running })
-          self.instance_variable_set(:@session_id, current_session_id)
-          self.instance_variable_set(:@chat_history_events, chat_history_events_list)
+          # New: Pass the full active session object and the list of previous sessions
+          self.instance_variable_set(:@active_session_details, active_session_object)
+          self.instance_variable_set(:@previous_sessions_list, previous_sessions_list)
+          self.instance_variable_set(:@chat_history_events, chat_history_events_list) # Still needed for current view structure
           slim :chat
         end
 
