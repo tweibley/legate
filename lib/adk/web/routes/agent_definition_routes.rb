@@ -252,7 +252,8 @@ module ADK
           if field == 'model'
             view_locals[:available_models] = ADK::Web::App::AVAILABLE_MODELS
           elsif field == 'tools'
-            view_locals[:configured_tool_names] = agent_definition[:tools]
+            # Ensure configured_tool_names is an array of strings for the view's .include? check
+            view_locals[:configured_tool_names] = agent_definition[:tools].map(&:to_s)
             native_tools = ADK::GlobalToolManager.list_all_tools
 
             mcp_configs = []
