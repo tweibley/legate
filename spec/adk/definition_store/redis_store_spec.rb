@@ -291,7 +291,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         fallback_mode: :error,
         mcp_servers_json: JSON.generate([{ url: 'http://localhost:8080' }]),
         webhook_enabled: false,
-        webhook_secret: nil
+        webhook_secret: nil,
+        persistent_status: 'stopped'
       }
       # Mock redis values corresponding to the expected hash
       redis_values_get = [
@@ -635,7 +636,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
           mcp_servers_json: '[]',
           instruction: '',
           webhook_enabled: webhook_enabled.to_s,
-          webhook_secret: webhook_secret || ''
+          webhook_secret: webhook_secret || '',
+          persistent_status: nil
         },
         {
           name: :agent2, # Expect symbols
@@ -646,7 +648,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
           mcp_servers_json: '[]',
           instruction: '',
           webhook_enabled: webhook_enabled.to_s,
-          webhook_secret: webhook_secret || ''
+          webhook_secret: webhook_secret || '',
+          persistent_status: nil
         }
       ].sort_by { |h| h[:name] }
     end

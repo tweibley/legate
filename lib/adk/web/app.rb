@@ -121,15 +121,18 @@ module ADK
         begin
           # 1. Create Redis client instance
           #    (Consider making connection details configurable via ENV vars)
-          redis_client = Redis.new
+          redis_client = Redis.new(ADK.redis_options || {}) # Reverted to use ADK.redis_options
 
           # 2. Check connection explicitly before creating store
           redis_client.ping
-          @logger.info("Successfully connected to Redis.")
+          @logger.info("Successfully connected to Redis for Definition Store.")
 
           # 3. Instantiate the definition store
-          @definition_store = ADK::DefinitionStore::RedisStore.new(redis_client: Redis.new(ADK.redis_options))
+          @definition_store = ADK::DefinitionStore::RedisStore.new(redis_client: redis_client)
           @logger.info("Agent Definition Store initialized.")
+
+          # 4. Attempt to synchronize running agents based on persistent_status
+          synchronize_persistent_agents
         rescue Redis::CannotConnectError => e
           @logger.error("Could not connect to Redis. Agent definition persistence disabled. #{e.message}")
           # @definition_store remains nil
@@ -219,26 +222,59 @@ module ADK
         # Helper for Agent Start/Stop button fragments (used in table view)
         def agent_status_fragments(agent_data_or_obj)
           agent_name = agent_data_or_obj.is_a?(Hash) ? agent_data_or_obj[:name] : agent_data_or_obj.name
+          # Ensure agent_name is safe for use in HTML attributes (e.g. if it can have spaces or quotes)
+          # For simplicity, assuming agent_name is already suitably formatted or IDs are handled carefully.
+          # However, in _agent_row.slim, container_id already does: agent_name.gsub(/[^a-zA-Z0-9_-]/, '-')
+          # Let's ensure we use a similarly sanitized name for consistency if needed, but Slim handles it.
+
           is_running = agent_data_or_obj.is_a?(Hash) ? agent_data_or_obj[:running] : agent_data_or_obj.running?
+
+          # ID for the status span in _agent_row.slim
           status_content_id = "agent-status-content-#{agent_name}"
-          start_button_id = "agent-start-button-#{agent_name}"
-          stop_button_id = "agent-stop-button-#{agent_name}"
+          # IDs for the action links in _agent_row.slim
+          start_action_id = "agent-start-action-#{agent_name}"
+          stop_action_id = "agent-stop-action-#{agent_name}"
+          # ID for the dropdown (used for indicator reference, from _agent_row.slim)
+          dropdown_id = "agent-actions-dropdown-#{agent_name}"
 
-          status_tag_class = is_running ? 'is-success' : 'is-light'
-          status_text = is_running ? 'Running' : 'Stopped'
-          status_content_html = %(<span class='tag #{status_tag_class}'>#{status_text}</span>)
+          # Fragment 1: Status Display (replicates structure from _agent_row.slim)
+          status_html = <<~HTML
+            <span id="#{status_content_id}" hx-swap-oob="outerHTML">
+              <span class="tag is-medium #{is_running ? 'is-success' : 'is-danger'}">
+                <span class="icon is-small"><i class="fas #{is_running ? 'fa-check-circle' : 'fa-stop-circle'}"></i></span>
+                <span class="ml-1">#{is_running ? 'Running' : 'Stopped'}</span>
+              </span>
+            </span>
+          HTML
 
-          start_button_html = %(
-            <button class='button is-success is-light is-small' type='button' id='#{start_button_id}'
-                    hx-post='/agents/#{agent_name}/start' hx-target='##{status_content_id}' hx-swap='innerHTML'
-                    #{is_running ? 'disabled' : ''} hx-swap-oob='outerHTML:##{start_button_id}'>Start</button>
-          )
-          stop_button_html = %(
-            <button class='button is-warning is-light is-small' type='button' id='#{stop_button_id}'
-                    hx-post='/agents/#{agent_name}/stop' hx-target='##{status_content_id}' hx-swap='innerHTML'
-                    #{is_running ? '' : 'disabled'} hx-swap-oob='outerHTML:##{stop_button_id}'>Stop</button>
-          )
-          status_content_html + start_button_html + stop_button_html
+          # Fragment 2: Start Action Link (replicates structure from _agent_row.slim)
+          start_action_html = <<~HTML
+            <a class="dropdown-item #{is_running ? 'is-disabled' : ''}" href="#"#{' '}
+               id="#{start_action_id}"#{' '}
+               hx-post="/agents/#{agent_name}/start"#{' '}
+               hx-indicator="##{dropdown_id} .dropdown-trigger button"
+               hx-swap-oob="outerHTML"#{' '}
+               onclick="if(this.classList.contains('is-disabled')) event.preventDefault();">
+              <span class="icon has-text-success"><i class="fas fa-play"></i></span>
+              <span>Start</span>
+            </a>
+          HTML
+
+          # Fragment 3: Stop Action Link (replicates structure from _agent_row.slim)
+          stop_action_html = <<~HTML
+            <a class="dropdown-item #{!is_running ? 'is-disabled' : ''}" href="#"#{' '}
+               id="#{stop_action_id}"#{' '}
+               hx-post="/agents/#{agent_name}/stop"#{' '}
+               hx-indicator="##{dropdown_id} .dropdown-trigger button"
+               hx-swap-oob="outerHTML"#{' '}
+               onclick="if(this.classList.contains('is-disabled')) event.preventDefault();">
+              <span class="icon has-text-danger"><i class="fas fa-stop"></i></span>
+              <span>Stop</span>
+            </a>
+          HTML
+
+          # Concatenate all fragments
+          status_html.strip + start_action_html.strip + stop_action_html.strip
         end # end agent_status_fragments
 
         # Helper for formatting tool/agent execution results into HTML <-- MODIFIED
@@ -471,7 +507,7 @@ module ADK
       # POST /agents/:name/execute - MOVED to agent_interaction_routes.rb
       # GET /agents/:name/generate_example_task - MOVED to agent_interaction_routes.rb
 
-      # --- Agent Runtime Control Routes --- MOVED 
+      # --- Agent Runtime Control Routes --- MOVED
       # POST /agents/:name/start/detail - MOVED to agent_runtime_routes.rb
       # POST /agents/:name/stop/detail - MOVED to agent_runtime_routes.rb
       # (The /agents/:name/start and /agents/:name/stop routes for main list are also in agent_runtime_routes.rb)
@@ -483,7 +519,7 @@ module ADK
       # --- Tools Page Routes --- MOVED
       # GET /tools - MOVED to tools_ui_routes.rb
       # GET /tools/:name - MOVED to tools_ui_routes.rb
-      
+
       # --- Agent Definition Field Edit/Display Routes --- MOVED
       # These were part of the agent_definition_routes logic and are now in that module.
       # GET /agents/:name/edit/:field - MOVED
@@ -494,6 +530,41 @@ module ADK
       # --- Private Helper Methods ---
       private
 
+      def synchronize_persistent_agents
+        return unless @definition_store && @definition_store.check_connection
+
+        @logger.info("Synchronizing persistent agent statuses on startup...")
+        begin
+          definitions = @definition_store.list_definitions
+          definitions.each do |definition|
+            agent_name = definition[:name]
+            if definition[:persistent_status] == 'running'
+              if @agents.key?(agent_name)
+                logger.info("Agent '#{agent_name}' is already running (in @agents), no action needed for sync.")
+              else
+                logger.info("Agent '#{agent_name}' has persistent_status='running', attempting to start it...")
+                started_agent = _start_agent(agent_name) # _start_agent already logs success/failure
+                unless started_agent
+                  logger.error("Failed to auto-start agent '#{agent_name}' during sync. Its persistent_status remains 'running'.")
+                  # Optionally, update persistent_status to 'stopped' if auto-start fails critically
+                  # @definition_store.update_definition(agent_name, { persistent_status: 'stopped' })
+                end
+              end
+            elsif definition[:persistent_status] == 'stopped' && @agents.key?(agent_name)
+              # This case should ideally not happen if stops are clean, but as a safeguard:
+              logger.warn("Agent '#{agent_name}' has persistent_status='stopped' but was found in @agents. Stopping it now.")
+              _stop_agent(agent_name) # _stop_agent will update persistent_status again, which is fine.
+            end
+          end
+          @logger.info("Finished synchronizing persistent agent statuses.")
+        rescue ADK::DefinitionStore::StoreError => e
+          @logger.error("Store error during persistent agent synchronization: #{e.message}")
+        rescue => e
+          @logger.error("Unexpected error during persistent agent synchronization: #{e.class} - #{e.message}")
+          @logger.error(e.backtrace.first(5).join("\n"))
+        end
+      end
+
       def _stop_agent(name)
         agent = @agents[name]
         if agent
@@ -501,15 +572,42 @@ module ADK
           begin
             agent.stop
             @agents.delete(name)
-            logger.info("Agent '#{name}' stopped.")
+            # Update persistent status in Redis
+            if @definition_store
+              @definition_store.update_definition(name, { persistent_status: 'stopped' })
+              logger.info("Agent '#{name}' persistent_status updated to 'stopped' in store.")
+            else
+              logger.warn("Definition store not available, cannot update persistent_status for agent '#{name}'.")
+            end
+            logger.info("Agent '#{name}' stopped.") # Original log message
             true
           rescue => e
             logger.error("Error stopping agent '#{name}': #{e.message}")
+            # Optionally, still update persistent_status to 'stopped' if appropriate
+            # if @definition_store
+            #   @definition_store.update_definition(name, { persistent_status: 'stopped' })
+            # end
             false # Indicate error
           end
         else
-          logger.warn("Attempted to stop non-running agent: '#{name}'.")
-          true # Considered success as it's already stopped
+          logger.warn("Attempted to stop non-running agent: '#{name}'. Ensuring persistent_status is 'stopped'.")
+          # Ensure persistent status is 'stopped' even if agent wasn't in memory
+          if @definition_store
+            begin
+              definition = @definition_store.get_definition(name)
+              if definition && definition[:persistent_status] != 'stopped'
+                @definition_store.update_definition(name, { persistent_status: 'stopped' })
+                logger.info("Agent '#{name}' was not running in memory, persistent_status ensured as 'stopped' in store.")
+              elsif !definition
+                logger.warn("Agent definition for '#{name}' not found in store while trying to ensure stopped status.")
+              end
+            rescue ADK::DefinitionStore::StoreError => e
+              logger.error("Store error while ensuring agent '#{name}' persistent_status is 'stopped': #{e.message}")
+            end
+          else
+            logger.warn("Definition store not available, cannot ensure persistent_status for agent '#{name}'.")
+          end
+          true # Considered success as it's already effectively stopped
         end
       end
 
@@ -573,12 +671,28 @@ module ADK
 
         agent.start
         @agents[name] = agent
-        logger.info("Agent '#{name}' started successfully.")
+        # Update persistent status in Redis
+        if @definition_store
+          @definition_store.update_definition(name, { persistent_status: 'running' })
+          logger.info("Agent '#{name}' persistent_status updated to 'running' in store.")
+        else
+          logger.warn("Definition store not available, cannot update persistent_status for agent '#{name}'.")
+        end
+        logger.info("Agent '#{name}' started successfully.") # Original log message
         agent # Return the agent instance
       rescue StandardError => e
         logger.error("Failed to start agent '#{name}': #{e.class} - #{e.message}")
         logger.error(e.backtrace.join("\n"))
         @agents.delete(name) # Clean up if partially added
+        # Ensure persistent status is 'stopped' on failed start
+        if @definition_store
+          begin
+            @definition_store.update_definition(name, { persistent_status: 'stopped' })
+            logger.info("Agent '#{name}' failed to start, persistent_status set to 'stopped' in store.")
+          rescue ADK::DefinitionStore::StoreError => se
+            logger.error("Store error while setting persistent_status to 'stopped' for failed agent '#{name}': #{se.message}")
+          end
+        end
         nil # Failed to start
       end
     end # End App class

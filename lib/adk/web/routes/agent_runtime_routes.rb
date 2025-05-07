@@ -29,19 +29,23 @@ module ADK
                     # Add other fields if the partial needs them
                   }
                 else
-                  agent_data_for_view = { name: name, description: "Error: Definition not found", running: false, model: "N/A" }
+                  agent_data_for_view = { name: name, description: "Error: Definition not found", running: false,
+                                          model: "N/A" }
                 end
               rescue ADK::DefinitionStore::StoreError => e
                 logger.error("Store error fetching definition after failed start for '#{name}' (from AgentRuntimeRoutes): #{e.message}")
-                agent_data_for_view = { name: name, description: "Error retrieving definition", running: false, model: "N/A" }
+                agent_data_for_view = { name: name, description: "Error retrieving definition", running: false,
+                                        model: "N/A" }
               end
             else
-              agent_data_for_view = { name: name, description: "Error: Store unavailable", running: false, model: "N/A" }
+              agent_data_for_view = { name: name, description: "Error: Store unavailable", running: false,
+                                      model: "N/A" }
             end
           end
 
-          status_controls_html = slim(:_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view })
-          
+          status_controls_html = slim(:_agent_status_controls, layout: false,
+                                                               locals: { agent_data: agent_data_for_view })
+
           execute_button_text = is_running ? 'Execute' : 'Execute (Requires Start)'
           disabled_attr_string = is_running ? '' : 'disabled'
           execute_button_oob_html = %(
@@ -62,7 +66,7 @@ module ADK
           # Logic for chat_help_oob_html based on is_running
           chat_help_class = is_running ? 'is-hidden' : ''
           chat_help_oob_html = %(<p id="chat-status-help" hx-swap-oob="outerHTML" class="help is-danger #{chat_help_class}">Agent must be running to chat.</p>)
-          
+
           status 200
           status_controls_html + execute_button_oob_html + chat_input_oob_html + chat_button_oob_html + chat_help_oob_html
         end
@@ -87,18 +91,21 @@ module ADK
                   # Add other fields if the partial needs them
                 }
               else
-                agent_data_for_view = { name: name, description: "Error: Definition not found", running: false, model: "N/A" }
+                agent_data_for_view = { name: name, description: "Error: Definition not found", running: false,
+                                        model: "N/A" }
               end
             rescue ADK::DefinitionStore::StoreError => e
               logger.error("Store error fetching definition after stop detail for '#{name}' (from AgentRuntimeRoutes): #{e.message}")
-              agent_data_for_view = { name: name, description: "Error retrieving definition", running: false, model: "N/A" }
+              agent_data_for_view = { name: name, description: "Error retrieving definition", running: false,
+                                      model: "N/A" }
             end
           else
             agent_data_for_view = { name: name, description: "Error: Store unavailable", running: false, model: "N/A" }
           end
 
-          status_controls_html = slim(:_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view })
-          
+          status_controls_html = slim(:_agent_status_controls, layout: false,
+                                                               locals: { agent_data: agent_data_for_view })
+
           execute_button_oob_html = %(
             <button class="button is-primary" id="execute-task-button" type="submit" disabled hx-swap-oob="true">
               <span class="icon is-small"><i class="fas fa-play-circle"></i></span>
@@ -115,7 +122,7 @@ module ADK
             </button>
           )
           chat_help_oob_html = %(<p id="chat-status-help" hx-swap-oob="outerHTML" class="help is-danger">Agent must be running to chat.</p>)
-          
+
           status 200
           status_controls_html + execute_button_oob_html + chat_input_oob_html + chat_button_oob_html + chat_help_oob_html
         end
@@ -125,33 +132,34 @@ module ADK
           # `self` is the Sinatra app instance here
           agent = self.send(:_start_agent, name) # Call private helper
           definition_store = self.instance_variable_get(:@definition_store) # Access ivar
-          
-          agent_data_for_view = { name: name, running: !agent.nil? }
-          if definition_store && agent_data_for_view[:running] # Augment with def if running
-            definition = definition_store.get_definition(name)
-            if definition
-              agent_data_for_view[:description] = definition[:description]
-              agent_data_for_view[:model] = definition[:model]
-            end
-          elsif definition_store # Not running, but get def for consistency
-            definition = definition_store.get_definition(name)
-            if definition
-              agent_data_for_view[:description] = definition[:description]
-              agent_data_for_view[:model] = definition[:model]
-            end
-          end
+
+          # Fetch the full definition to ensure all necessary fields for fragments are present
+          agent_definition_for_view = definition_store&.get_definition(name) if definition_store
+
+          agent_data_for_view = if agent_definition_for_view
+                                  agent_definition_for_view.dup # Make a mutable copy
+                                else
+                                  { name: name, description: "N/A", model: "N/A", tools: [] } # Minimal fallback with all expected keys by _agent_row or its fragments
+                                end
+
+          agent_data_for_view[:running] = !agent.nil? # Update running status based on actual start
 
           if agent
             logger.info "Agent '#{name}' started from main list (from AgentRuntimeRoutes)."
             status 200
-            # This renders the controls for the *table row* specifically
-            slim :_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view }
+            # Use the helper that generates OOB fragments for the agent row
+            # The agent_status_fragments helper is defined in app.rb
+            # Ensure all data needed by the fragments (and the elements they target in _agent_row) is in agent_data_for_view
+            headers 'Content-Type' => 'text/html' # Ensure correct content type for HTML fragments
+            agent_status_fragments(agent_data_for_view)
           else
             logger.error "Failed to start agent '#{name}' from main list (from AgentRuntimeRoutes)."
             status 500 # Keep error status
-            # Render the controls in a stopped state, possibly with an error message if the partial supports it
             agent_data_for_view[:running] = false # Ensure it shows as stopped
-            slim :_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view }
+            headers 'Content-Type' => 'text/html'
+            # Even on failure, we might want to return fragments that update the UI to show 'Stopped'
+            # and ensure buttons are correctly disabled/enabled.
+            agent_status_fragments(agent_data_for_view)
           end
         end
 
@@ -161,26 +169,37 @@ module ADK
           success = self.send(:_stop_agent, name) # Call private helper
           definition_store = self.instance_variable_get(:@definition_store) # Access ivar
 
-          agent_data_for_view = { name: name, running: false } # Always show as stopped
-          if definition_store 
-            definition = definition_store.get_definition(name)
-            if definition
-              agent_data_for_view[:description] = definition[:description]
-              agent_data_for_view[:model] = definition[:model]
-            end
-          end
+          agent_definition_for_view = definition_store&.get_definition(name) if definition_store
+
+          agent_data_for_view = if agent_definition_for_view
+                                  agent_definition_for_view.dup
+                                else
+                                  { name: name, description: "N/A", model: "N/A", tools: [] }
+                                end
+
+          agent_data_for_view[:running] = false # After a stop action, it should be marked as not running
 
           if success
             logger.info "Agent '#{name}' stopped from main list (from AgentRuntimeRoutes)."
             status 200
-            slim :_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view }
-          else # Should ideally not happen if _stop_agent handles non-running state gracefully
+            headers 'Content-Type' => 'text/html'
+            agent_status_fragments(agent_data_for_view)
+          else
             logger.error "Failed to stop agent '#{name}' from main list (from AgentRuntimeRoutes) - _stop_agent returned false."
-            status 500
-            slim :_agent_status_controls, layout: false, locals: { agent_data: agent_data_for_view }
+            status 500 # Internal error if _stop_agent fails unexpectedly
+            # Still return fragments reflecting the intended (stopped) state or current persisted state
+            # Re-fetch definition to be sure of the persisted state if _stop_agent failed.
+            current_def_after_fail = definition_store&.get_definition(name)
+            if current_def_after_fail
+              agent_data_for_view[:running] = (current_def_after_fail[:persistent_status] == 'running')
+            else # fallback if def somehow disappeared
+              agent_data_for_view[:running] = false # Best guess
+            end
+            headers 'Content-Type' => 'text/html'
+            agent_status_fragments(agent_data_for_view)
           end
         end
       end
     end
   end
-end 
+end

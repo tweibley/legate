@@ -59,9 +59,9 @@ tr(data-agent-name=agent_name id=row_id class=(is_new_row ? 'is-newly-added' : '
         .dropdown-content
           / Start Button
           a.dropdown-item( href="#"
+                           id="agent-start-action-#{agent_name}"
                            hx-post="/agents/#{agent_name}/start"
-                           hx-target="##{status_content_id}"
-                           hx-swap="innerHTML"
+                           hx-indicator="##{dropdown_id} .dropdown-trigger button"
                            class=(is_running ? 'is-disabled' : '')
                            onclick="if(this.classList.contains('is-disabled')) event.preventDefault();" )
             span.icon.has-text-success
@@ -69,9 +69,9 @@ tr(data-agent-name=agent_name id=row_id class=(is_new_row ? 'is-newly-added' : '
             span Start
           / Stop Button
           a.dropdown-item( href="#"
+                           id="agent-stop-action-#{agent_name}"
                            hx-post="/agents/#{agent_name}/stop"
-                           hx-target="##{status_content_id}"
-                           hx-swap="innerHTML"
+                           hx-indicator="##{dropdown_id} .dropdown-trigger button"
                            class=(!is_running ? 'is-disabled' : '')
                            onclick="if(this.classList.contains('is-disabled')) event.preventDefault();" )
             span.icon.has-text-danger

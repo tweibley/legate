@@ -18,7 +18,7 @@ module ADK
       # They are handled by the AgentDefinition object in memory, not persisted here by default.
       # Expected field names in the Redis hash
       AGENT_DEFINITION_FIELDS = %w[name description tools model fallback_mode mcp_servers_json instruction
-                                   webhook_enabled webhook_secret].freeze
+                                   webhook_enabled webhook_secret persistent_status].freeze
 
       # Expects a keyword argument for the Redis client instance.
       # @param redis_client [Redis] An instance of the Redis client.
@@ -79,6 +79,7 @@ module ADK
             multi.hset(agent_key, 'instruction', instruction || "") # Save instruction (empty string if nil)
             multi.hset(agent_key, 'webhook_enabled', webhook_enabled.to_s) # Store boolean as string ('true'/'false')
             multi.hset(agent_key, 'webhook_secret', webhook_secret || "") # Store secret (empty if nil)
+            multi.hset(agent_key, 'persistent_status', 'stopped') # Default new agents to 'stopped'
             multi.sadd(AGENTS_SET_KEY, name)
           end
 
@@ -169,6 +170,8 @@ module ADK
           definition_hash['webhook_enabled'] = (definition_hash['webhook_enabled'] == 'true') # Convert string back to boolean
           definition_hash['webhook_secret'] = definition_hash['webhook_secret'] # Already string (or empty string)
           definition_hash['webhook_secret'] = nil if definition_hash['webhook_secret']&.empty? # Convert empty string back to nil
+          # --- Process persistent_status ---
+          definition_hash['persistent_status'] ||= 'stopped' # Default to 'stopped' if not present
           # Note: Procs (validator, transformer, extractor) are not stored/retrieved.
           # --- END Webhook Fields ---
           # --- Return symbol-keyed hash for consistency? ---
@@ -199,23 +202,46 @@ module ADK
       # @raise [StoreError] for Redis errors or other issues.
       def update_definition(agent_name, updates_hash)
         raise ConfigurationError, "Redis client not available." unless @redis
-        raise ArgumentError, "Agent name cannot be empty." if agent_name.nil? || agent_name.strip.empty?
+
+        # Convert agent_name to string before calling strip
+        agent_name_str = agent_name.to_s
+        raise ArgumentError, "Agent name cannot be empty." if agent_name_str.nil? || agent_name_str.strip.empty?
         raise ArgumentError, "Updates hash cannot be empty." if updates_hash.nil? || updates_hash.empty?
 
-        agent_key = agent_redis_key(agent_name)
+        agent_key = agent_redis_key(agent_name_str) # Use stringified name for key
 
-        # First, check if the agent actually exists using the set key for efficiency
+        # Check existence using the original name (definition_exists? handles symbols/strings)
         unless definition_exists?(agent_name)
           @logger.warn("Attempted to update non-existent agent: '#{agent_name}'")
-          return false # Or raise NotFoundError? Returning false might align better with web app PUT logic.
+          return false
         end
 
-        # Prepare updates for Redis HSET (expects field-value pairs)
+        # === START SPECIAL CASE ===
+        # Check if this is ONLY a persistent_status update
+        updates_hash_keys = updates_hash.keys.map(&:to_s)
+        if updates_hash_keys.length == 1 && updates_hash_keys.first == 'persistent_status'
+          status_val = updates_hash.values.first.to_s
+          if %w[running stopped unknown].include?(status_val)
+            begin
+              @redis.hset(agent_key, 'persistent_status', status_val)
+              @logger.info("Agent definition '#{agent_name}' updated successfully with fields: persistent_status (special case).")
+              return true # Successfully handled the special case
+            rescue Redis::BaseError => e
+              @logger.error("Redis error updating agent '#{agent_name}' (special case persistent_status): #{e.class} - #{e.message}")
+              raise StoreError, "Redis error updating agent definition: #{e.message}"
+            end
+          else
+            @logger.warn("Attempted to update persistent_status with invalid value '#{status_val}' for agent '#{agent_name}' (special case). Ignoring.")
+            return false # Treat as no-op / invalid update
+          end
+        end
+        # === END SPECIAL CASE ===
+
+        # If not the special case, proceed with the normal iteration and case statement
         redis_updates = {}
         updates_hash.each do |key, value|
-          field_str = key.to_s # Ensure string keys for Redis fields
+          field_str = key.to_s
 
-          # Handle specific serializations
           case field_str
           when 'tools'
             # Wrap the specific call that can raise JSON::GeneratorError
@@ -226,7 +252,15 @@ module ADK
               raise StoreError, "Internal error serializing tool data for agent update."
             end
           when 'mcp_servers_json'
-            mcp_json_to_save = (value.nil? || value.strip.empty?) ? '[]' : value.strip
+            # Defensive check for non-string types remains:
+            stringified_value = value.to_s
+            if stringified_value.is_a?(String)
+              mcp_json_to_save = (stringified_value.strip.empty?) ? '[]' : stringified_value.strip
+            else
+              @logger.warn("Unexpected non-string type for mcp_servers_json after .to_s for agent '#{agent_name}': #{stringified_value.class}. Defaulting to '[]'.")
+              mcp_json_to_save = '[]'
+            end
+
             # Validate MCP JSON before adding to updates
             begin
               unless mcp_json_to_save == '[]'
@@ -245,32 +279,41 @@ module ADK
             next # Skip this update
           when 'instruction' # Added instruction case
             redis_updates[field_str] = value || "" # Store empty string if value is nil
+          when 'persistent_status'
+            # This branch is still needed for multi-field updates
+            status_val = value.to_s
+            if %w[running stopped unknown].include?(status_val)
+              redis_updates[field_str] = status_val
+            else
+              @logger.warn("Attempted to update persistent_status with invalid value '#{status_val}' for agent '#{agent_name}'. Ignoring.")
+              next
+            end
           else
-            # Assume other fields can be stored directly (description, model)
-            # Ensure we only try to update valid fields?
+            # Assume other fields can be stored directly (description, model, webhook_enabled, webhook_secret)
             if AGENT_DEFINITION_FIELDS.include?(field_str)
-              redis_updates[field_str] = value
+              if field_str == 'webhook_enabled'
+                redis_updates[field_str] = value.to_s
+              elsif field_str == 'webhook_secret'
+                redis_updates[field_str] = value || ""
+              else
+                redis_updates[field_str] = value
+              end
             else
               @logger.warn("Attempted to update unknown field '#{field_str}' for agent '#{agent_name}'. Ignoring.")
             end
           end
-        end
+        end # end of .each loop
 
         return false if redis_updates.empty? # No valid updates to apply
 
         begin
-          # HSET returns the number of fields that were added (not updated).
-          # Can use HSET with multiple field/value pairs directly.
           result = @redis.hset(agent_key, redis_updates)
-
-          # We could check if result > 0 if we only wanted to return true on actual additions,
-          # but for an update, success means the command executed without error.
           @logger.info("Agent definition '#{agent_name}' updated successfully with fields: #{redis_updates.keys.join(', ')}.")
-          true # Indicate command succeeded
+          true
         rescue Redis::BaseError => e
           @logger.error("Redis error updating agent '#{agent_name}': #{e.class} - #{e.message}")
           raise StoreError, "Redis error updating agent definition: #{e.message}"
-        rescue => e # Catch other unexpected errors
+        rescue => e
           @logger.error("Unexpected error updating agent '#{agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
           raise StoreError, "Unexpected error updating agent definition: #{e.message}"
         end
@@ -402,17 +445,21 @@ module ADK
       # @raise [StoreError] for Redis errors.
       def definition_exists?(agent_name)
         raise ConfigurationError, "Redis client not available." unless @redis
-        return false if agent_name.nil? || agent_name.strip.empty?
+
+        # Convert to string before stripping
+        agent_name_str = agent_name.to_s
+        return false if agent_name_str.nil? || agent_name_str.strip.empty?
 
         begin
-          exists = @redis.sismember(AGENTS_SET_KEY, agent_name)
-          @logger.debug("Checked existence for agent '#{agent_name}': #{exists}")
+          # Use the string version for Redis command
+          exists = @redis.sismember(AGENTS_SET_KEY, agent_name_str)
+          @logger.debug("Checked existence for agent '#{agent_name_str}': #{exists}")
           exists
         rescue Redis::BaseError => e
-          @logger.error("Redis error checking agent existence for '#{agent_name}': #{e.class} - #{e.message}")
+          @logger.error("Redis error checking agent existence for '#{agent_name_str}': #{e.class} - #{e.message}")
           raise StoreError, "Redis error checking agent existence: #{e.message}"
         rescue => e # Catch other unexpected errors
-          @logger.error("Unexpected error checking agent existence for '#{agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+          @logger.error("Unexpected error checking agent existence for '#{agent_name_str}': #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
           raise StoreError, "Unexpected error checking agent existence: #{e.message}"
         end
       end
