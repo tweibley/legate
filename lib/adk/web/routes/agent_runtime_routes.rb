@@ -70,8 +70,82 @@ module ADK
           chat_input_oob_html = %(<input class="input" id="chat-input" type="text" name="message" placeholder="Enter your message..." required="true" autofocus #{disabled_attr_string} hx-swap-oob="outerHTML">)
           chat_button_oob_html = %(<button class="button is-link" id="send-button" type="submit" #{disabled_attr_string} hx-swap-oob="outerHTML"><span>Send</span><span class="icon is-small htmx-indicator ml-2" id="send-button-indicator"><i class="fas fa-spinner fa-pulse"></i></span></button>)
 
-          chat_help_class = is_running ? 'is-hidden' : ''
-          chat_help_oob_html = %(<p id="chat-status-help" hx-swap-oob="outerHTML" class="help is-danger #{chat_help_class}">Agent must be running to chat.</p>)
+          # --- MODIFIED: Determine content for chat-status-help-container ---
+          new_chat_status_help_content = ""
+          if is_running # is_running reflects the new state of the agent
+            # Agent is running, attempt to ensure an active session for the help text
+            web_user_id = session[:web_user_id]
+            session_service = self.instance_variable_get(:@session_service)
+            active_session_object_for_help_check = nil
+
+            if web_user_id && session_service
+              # 1. Try to load session from Sinatra session store
+              stored_active_adk_session_id = session.dig(:active_agent_sessions, name)
+              if stored_active_adk_session_id
+                begin
+                  potential_session = session_service.get_session(session_id: stored_active_adk_session_id)
+                  if potential_session && potential_session.user_id == web_user_id && potential_session.app_name == name
+                    active_session_object_for_help_check = potential_session
+                    logger.debug "OOB Chat Help (Start): Found valid session '#{stored_active_adk_session_id}' from Sinatra session for agent '#{name}'."
+                  else
+                    logger.warn "OOB Chat Help (Start): Stored session ID '#{stored_active_adk_session_id}' invalid/mismatched for agent '#{name}'. Clearing from Sinatra session."
+                    session[:active_agent_sessions]&.delete(name)
+                  end
+                rescue => e
+                  logger.error("OOB Chat Help (Start): Error fetching stored session '#{stored_active_adk_session_id}' for agent '#{name}': #{e.message}")
+                  session[:active_agent_sessions]&.delete(name) # Clear if error
+                end
+              end
+
+              # 2. If no valid session from Sinatra store, try to find latest or create new
+              unless active_session_object_for_help_check
+                logger.debug "OOB Chat Help (Start): No valid session from Sinatra store. Attempting to find/create for agent '#{name}', user '#{web_user_id}'."
+                begin
+                  user_agent_sessions = session_service.list_sessions(app_name: name, user_id: web_user_id)
+                  if user_agent_sessions && !user_agent_sessions.empty?
+                    latest_session = user_agent_sessions.sort_by(&:updated_at).last
+                    if latest_session
+                      active_session_object_for_help_check = latest_session
+                      logger.info "OOB Chat Help (Start): Found latest existing session '#{latest_session.id}' for agent '#{name}'."
+                    end
+                  end
+
+                  unless active_session_object_for_help_check
+                    new_session = session_service.create_session(app_name: name, user_id: web_user_id,
+                                                                 initial_state: {})
+                    active_session_object_for_help_check = new_session
+                    logger.info "OOB Chat Help (Start): Created new session '#{new_session.id}' for agent '#{name}'."
+                  end
+
+                  # Store the found/created session ID in Sinatra session
+                  if active_session_object_for_help_check
+                    session[:active_agent_sessions] ||= {}
+                    session[:active_agent_sessions][name] = active_session_object_for_help_check.id
+                    logger.debug "OOB Chat Help (Start): Stored session '#{active_session_object_for_help_check.id}' in Sinatra session for agent '#{name}'."
+                  end
+                rescue => e
+                  logger.error "OOB Chat Help (Start): Critical error finding/creating session for agent '#{name}', user '#{web_user_id}': #{e.message}"
+                  # If session creation fails, active_session_object_for_help_check will remain nil
+                end
+              end
+            else
+              logger.error "OOB Chat Help (Start): web_user_id or session_service not available. Cannot manage session for help text for agent '#{name}'."
+            end
+
+            # Final determination of help content based on whether an active session is now established
+            if active_session_object_for_help_check
+              new_chat_status_help_content = %(<p class="help is-hidden">No issues.</p>)
+            else
+              # This branch means session_service might be down, or a user_id is missing, or find/create failed critically.
+              new_chat_status_help_content = %(<p id="chat-no-active-session-help" class="help is-warning">Chat session not active. Please try starting a new chat or reloading the page.</p>)
+            end
+          else
+            # Agent is not running
+            new_chat_status_help_content = %(<p id="chat-not-running-help" class="help is-danger">Agent must be running to chat.</p>)
+          end
+
+          chat_help_oob_html = %(<div id="chat-status-help-container" hx-swap-oob="innerHTML" class="mt-2">#{new_chat_status_help_content}</div>)
+          # --- END MODIFICATION ---
 
           chat_panel_status_html = %(
             <div id="agent-chat-panel-status-display" hx-swap-oob="innerHTML">
@@ -130,8 +204,43 @@ module ADK
           chat_input_oob_html = %(<input class="input" id="chat-input" type="text" name="message" placeholder="Enter your message..." required="true" autofocus #{disabled_attr_string} hx-swap-oob="outerHTML">)
           chat_button_oob_html = %(<button class="button is-link" id="send-button" type="submit" #{disabled_attr_string} hx-swap-oob="outerHTML"><span>Send</span><span class="icon is-small htmx-indicator ml-2" id="send-button-indicator"><i class="fas fa-spinner fa-pulse"></i></span></button>)
 
-          chat_help_class = is_running ? 'is-hidden' : '' # is_running is false here
-          chat_help_oob_html = %(<p id="chat-status-help" hx-swap-oob="outerHTML" class="help is-danger #{chat_help_class}">Agent must be running to chat.</p>)
+          # --- MODIFIED: Determine content for chat-status-help-container ---
+          # is_running is false in this context (agent stop)
+          new_chat_status_help_content = ""
+          if is_running # This will be false
+            # This block should ideally not be reached if is_running is false,
+            # but keeping structure for clarity, will be optimized by the 'else'.
+            web_user_id = session[:web_user_id]
+            session_service = self.instance_variable_get(:@session_service)
+            active_session_details = nil
+            # 'name' is the agent_name from the route parameter
+
+            if web_user_id && session_service
+              active_adk_session_id = session.dig(:active_agent_sessions, name)
+              if active_adk_session_id
+                begin
+                  potential_session = session_service.get_session(session_id: active_adk_session_id)
+                  if potential_session && potential_session.user_id == web_user_id && potential_session.app_name == name
+                    active_session_details = potential_session
+                  end
+                rescue => e
+                  logger.error("OOB Chat Help (Stop - Running Path, Unexpected): Error fetching session #{active_adk_session_id} for agent #{name}: #{e.message}")
+                end
+              end
+            end
+
+            if active_session_details
+              new_chat_status_help_content = %(<p class="help is-hidden">No issues.</p>)
+            else
+              new_chat_status_help_content = %(<p id="chat-no-active-session-help" class="help is-warning">No active chat session. Please start a new chat from the sidebar.</p>)
+            end
+          else
+            # Agent is not running (this is the expected path for agent stop)
+            new_chat_status_help_content = %(<p id="chat-not-running-help" class="help is-danger">Agent must be running to chat.</p>)
+          end
+
+          chat_help_oob_html = %(<div id="chat-status-help-container" hx-swap-oob="innerHTML" class="mt-2">#{new_chat_status_help_content}</div>)
+          # --- END MODIFICATION ---
 
           chat_panel_status_html = %(
             <div id="agent-chat-panel-status-display" hx-swap-oob="innerHTML">

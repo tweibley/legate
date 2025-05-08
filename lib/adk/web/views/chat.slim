@@ -9,7 +9,7 @@ div#chat_interface_wrapper
         h2.title.is-4 Chat Sessions
         hr
         / "Start New Chat" Button
-        div style="margin-bottom: 1rem;"
+        div.mb-4
           button.button.is-primary.is-fullwidth#start-new-chat-button(hx-post="/agents/#{@agent_data[:name]}/chat/session/new" hx-target="#chat_interface_wrapper" hx-indicator="#chat_session_sidebar")
             | New Chat
             span.icon.is-small.ml-2.htmx-indicator
@@ -23,8 +23,20 @@ div#chat_interface_wrapper
         - if @active_session_details
           .mb-3
             h4.title.is-6 Current Active Session:
-            .box.has-background-info-light.p-2
-              p.is-size-7= summarize_session(@active_session_details)
+            .box.has-background-info-light.p-3
+              .is-flex.is-justify-content-space-between.mb-2
+                p.is-size-7.has-text-weight-semibold style="margin-bottom: 0" Current Session
+                form(style="margin-bottom: 0;" hx-delete="/agents/#{@agent_data[:name]}/chat/session/#{@active_session_details.id}"
+                    hx-target="#chat_interface_wrapper"
+                    hx-confirm="Are you sure you want to delete this chat session? This cannot be undone."
+                    hx-indicator="#delete-session-#{@active_session_details.id}-indicator")
+                  button.button.is-danger.is-light.is-small style="height: 24px; padding: 0 7px 0 14px;" type="submit"
+                    span.icon.is-small
+                      i.fas.fa-trash-alt
+                    span.icon.is-small.ml-1.htmx-indicator id="delete-session-#{@active_session_details.id}-indicator"
+                      i.fas.fa-spinner.fa-pulse
+              p.is-size-7 style="margin-top: 6px; margin-bottom: 0;"
+                = summarize_session(@active_session_details)
         - else
           .notification.is-warning No active session identified.
         / --- END Active Session Quick Info ---
@@ -37,28 +49,25 @@ div#chat_interface_wrapper
               - is_active_session = @active_session_details && session_item.id == @active_session_details.id
               - next if is_active_session # Skip rendering the active session in this list
 
-              / Use Bulma level for better alignment
-              .level.is-mobile.session-list-item.box.mb-2.is-clickable style="cursor: pointer;"
-                .level-left
-                  .level-item
-                    p.is-size-7= summarize_session(session_item)
-                .level-right
-                  .level-item
-                    / Switch button form (no longer needs unless is_active_session)
-                    form( hx-post="/agents/#{@agent_data[:name]}/chat/session/switch"
-                             hx-target="#chat_interface_wrapper"
-                             hx-indicator="#session_#{session_item.id}_switch_indicator")
-                      input type="hidden" name="adk_session_to_switch_to" value="#{session_item.id}"
-                      button.button.is-small.is-link.is-outlined type="submit"
-                        span Switch to this session
-                        span.icon.is-small.ml-1.htmx-indicator id="session_#{session_item.id}_switch_indicator"
-                          i.fas.fa-spinner.fa-pulse
+              .box.mb-2.is-clickable.p-3 style="cursor: pointer;"
+                p.is-size-7.mb-2= summarize_session(session_item)
+                / Switch button form (no longer needs unless is_active_session)
+                form.is-flex.is-justify-content-flex-end(
+                  hx-post="/agents/#{@agent_data[:name]}/chat/session/switch"
+                  hx-target="#chat_interface_wrapper"
+                  hx-indicator="#session_#{session_item.id}_switch_indicator")
+                  input type="hidden" name="adk_session_to_switch_to" value="#{session_item.id}"
+                  button.button.is-small.is-link.is-outlined type="submit"
+                    span Switch to this session
+                    span.icon.is-small.ml-1.htmx-indicator id="session_#{session_item.id}_switch_indicator"
+                      i.fas.fa-spinner.fa-pulse
           - else
             p.has-text-grey.is-italic No previous chats with this agent yet.
 
     / --- Main Chat Panel ---
     .column.is-two-thirds#chat_main_panel
-      .box style="background-color: #f5f5f5;"
+      / Agent and Session Status
+      .box.mb-3 style="background-color: #f5f5f5;"
         div#agent-chat-panel-status-display
           p
             strong Status:
@@ -82,65 +91,118 @@ div#chat_interface_wrapper
           - else
             p.has-text-danger No active session details available.
 
-      / Chat Log Container
-      #chat-log-container.box( style="height: 500px; overflow-y: scroll; margin-bottom: 1rem; border: 1px solid #dbdbdb;"
-                               hx-on::after-swap="this.scrollTop = this.scrollHeight"
-                               _="init set my scrollTop to my scrollHeight end" )
-        - if @chat_history_events && !@chat_history_events.empty?
-          - @chat_history_events.each do |event|
-            - if event.role == :user
-              .message.is-link.is-small.mb-2(id="event-#{event.event_id}")
-                .message-header style="background-color: #eef6fc; color: #1d72aa;"
-                  p You
-                .message-body(style="border-color: #eef6fc;")= event.content
-            - elsif event.role == :agent
-              - agent_response_content = event.content
-              - is_complex_content = (agent_response_content.is_a?(Hash) && agent_response_content.key?(:status)) || (agent_response_content.is_a?(Array) && agent_response_content.first.is_a?(Hash) && agent_response_content.first.key?(:status))
-              - msg_class = 'is-light'
-              - if is_complex_content
-                - status = agent_response_content.is_a?(Array) ? agent_response_content.first[:status] : agent_response_content[:status]
-                - case status
-                - when :error
-                  - msg_class = 'is-danger'
-                - when :pending
-                  - msg_class = 'is-warning'
+      / Chat Interface Container
+      .box.p-0 style="display: flex; flex-direction: column; height: 550px;"
+        / Chat Log Container
+        #chat-log-container(
+          style="flex: 1; overflow-y: auto; padding: 1rem; border-bottom: 1px solid #dbdbdb;"
+          hx-on::after-swap="this.scrollTop = this.scrollHeight"
+          _="init set my scrollTop to my scrollHeight end"
+        )
+          - if @chat_history_events && !@chat_history_events.empty?
+            - @chat_history_events.each do |event|
+              - if event.role == :user
+                .message.is-link.is-small.mb-2.user-message(id="event-#{event.event_id}")
+                  .message-header
+                    p You
+                  .message-body= event.content
+              - elsif event.role == :agent
+                - agent_response_content = event.content
+                - is_complex_content = (agent_response_content.is_a?(Hash) && agent_response_content.key?(:status)) || (agent_response_content.is_a?(Array) && agent_response_content.first.is_a?(Hash) && agent_response_content.first.key?(:status))
+                - msg_class = 'is-light'
+                - if is_complex_content
+                  - status = agent_response_content.is_a?(Array) ? agent_response_content.first[:status] : agent_response_content[:status]
+                  - case status
+                  - when :error
+                    - msg_class = 'is-danger'
+                  - when :pending
+                    - msg_class = 'is-warning'
+                  - else
+                    - msg_class = 'is-success'
                 - else
                   - msg_class = 'is-success'
+
+                .message class="#{msg_class} agent-message is-small mb-4" id="event-#{event.event_id}" style="border-radius: 6px; overflow: hidden;"
+                  .message-header style="border-top-left-radius: 6px; border-top-right-radius: 6px;"
+                    p Agent (#{@agent_data[:name]})
+                    - raw_json_content = agent_response_content.to_json rescue "{}"
+                    - unless raw_json_content.empty? || raw_json_content == "{}"
+                      button.button.is-light.is-small.ml-auto( onclick="var el = document.getElementById('raw-#{event.event_id}'); el.style.display = (el.style.display == 'none' ? 'block' : 'none');" )
+                        | Raw
+                  .message-body style="border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;"
+                    div style="white-space: pre-wrap; word-break: break-all; margin-bottom: 0.5rem;" = format_historical_agent_content(agent_response_content)
+                    
+                    - if agent_response_content.is_a?(Hash) && agent_response_content[:plan_details].is_a?(Array) && !agent_response_content[:plan_details].empty?
+                      details.execution-plan-details
+                        summary.execution-plan-summary
+                          | Execution Plan (#{agent_response_content[:plan_details].size} step#{'s' if agent_response_content[:plan_details].size != 1})
+                        .execution-plan-steps
+                          - agent_response_content[:plan_details].each_with_index do |step_detail, index|
+                            .execution-plan-step
+                              p.step-title Step #{index + 1}: #{step_detail[:tool_name]}
+                              p.step-params-label Parameters:
+                              pre.step-params-pre= JSON.pretty_generate(step_detail[:params] || {})
+
+                              - result_status = step_detail[:result][:status] rescue nil
+                              - result_class = case result_status when :success then 'has-text-success-dark' when :error then 'has-text-danger-dark' when :pending then 'has-text-warning-dark' else 'has-text-grey' end
+
+                              p class="step-result-label #{result_class}" Result (#{result_status || "unknown"}):
+                              pre class="step-result-pre #{result_class}"= JSON.pretty_generate(step_detail[:result] || {}) rescue "{}"
+
+                    - raw_json_content = agent_response_content.to_json rescue "{}"
+                    - unless raw_json_content.empty? || raw_json_content == "{}"
+                      div.raw-json-container id="raw-#{event.event_id}" style="display: none;"
+                        pre.raw-json-pre= raw_json_content
+              - elsif event.role == :tool_request || event.role == :tool_result
+                / Hide tool request and tool result events for a cleaner conversation history
+                / These events are still accessible in the execution plan details of agent messages
               - else
-                - msg_class = 'is-success'
+                p.notification.is-warning.is-light Unknown event role: #{event.role}
+          - else
+            p.has-text-grey-light.has-text-centered.p-4 Start chatting... Messages will appear here.
 
-              .message class="#{msg_class} is-small mb-4" id="event-#{event.event_id}"
-                .message-header
-                  p Agent (#{@agent_data[:name]})
-                .message-body
-                  div style="white-space: pre-wrap; word-break: break-all;" = format_historical_agent_content(agent_response_content)
-            - else
-              p Unknown event role: #{event.role}
-        - else
-          p.has-text-grey-light.is-italic Start chatting... Messages will appear here.
+        / Chat Form - Fixed at bottom
+        div.p-3 style="background-color: #f5f5f5;"
+          form#chat-form(
+            hx-post="/agents/#{@agent_data[:name]}/chat"
+            hx-target="#chat-log-container"
+            hx-swap="beforeend"
+            hx-indicator="#send-button-indicator"
+            _="on htmx:afterRequest call me.reset() then get #chat-log-container then set its scrollTop to its scrollHeight"
+          )
+            .field.has-addons
+              .control.is-expanded style="position: relative;"
+                input.input#chat-input(
+                  type="text" 
+                  name="message" 
+                  placeholder="Enter your message..." 
+                  required=true 
+                  autofocus 
+                  disabled=(!@agent_data[:running] || !@active_session_details)
+                )
+                span.icon.is-small.is-right.htmx-indicator style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;"
+                  i.fas.fa-spinner.fa-spin
+              .control
+                button.button.is-link#send-button(
+                  type="submit" 
+                  disabled=(!@agent_data[:running] || !@active_session_details)
+                )
+                  span Send
+                  span.icon.is-small#send-button-indicator.htmx-indicator.ml-2
+                    i.fas.fa-spinner.fa-pulse
 
-      / Chat form - Added scroll command to afterRequest
-      form#chat-form( hx-post="/agents/#{@agent_data[:name]}/chat"
-                   hx-target="#chat-log-container"
-                   hx-swap="beforeend"
-                   hx-indicator="#send-button-indicator"
-                   _="on htmx:afterRequest call me.reset() then get #chat-log-container then set its scrollTop to its scrollHeight")
-        .field.has-addons
-          .control.is-expanded style="position: relative;"
-            input.input#chat-input(type="text" name="message" placeholder="Enter your message..." required=true autofocus disabled=(!@agent_data[:running]))
-            span.icon.is-small.is-right.htmx-indicator style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;"
-              i.fas.fa-spinner.fa-spin
-          .control
-            button.button.is-link#send-button(type="submit" disabled=(!@agent_data[:running]))
-              span Send
-              span.icon.is-small#send-button-indicator.htmx-indicator.ml-2
-                i.fas.fa-spinner.fa-pulse
+            / Chat Status Help Text
+            #chat-status-help-container.mt-2
+              - if @agent_data && !@agent_data[:running]
+                p.help.is-danger#chat-not-running-help Agent must be running to chat.
+              - elsif @agent_data && @agent_data[:running] && !@active_session_details
+                p.help.is-warning#chat-no-active-session-help No active chat session. Please start a new chat from the sidebar.
+              - else
+                p.help.is-hidden No issues.
 
-        / Ensure #chat-status-help is always present for OOB swaps and reflects initial state
-        - if @agent_data && !@agent_data[:running]
-          p.help.is-danger#chat-status-help Agent must be running to chat.
-        - else
-          p.help.is-danger.is-hidden#chat-status-help Agent must be running to chat.
-
-    / Back to agents button
-    .has-text-centered.mt-4
+      / Back to Agents Link
+      .has-text-centered.mt-4
+        a.button.is-light href="/agents"
+          span.icon.is-small.mr-1
+            i.fas.fa-arrow-left
+          | Back to Agents List

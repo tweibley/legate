@@ -7,6 +7,7 @@ module ADK
       def self.registered(app)
         # GET /agents/:name/chat - Display the chat interface for an agent.
         app.get '/agents/:name/chat' do |name|
+          logger.debug "GET /agents/#{name}/chat: Entry. web_user_id: #{session[:web_user_id]}, session_id: #{request.session_options[:id]}"
           # `self` is the Sinatra app instance
           definition_store = self.instance_variable_get(:@definition_store)
           session_service = self.instance_variable_get(:@session_service)
@@ -211,7 +212,7 @@ module ADK
               redirect "/agents/#{name}/chat"
             end
           else
-            logger.error("Chat POST Error: No active ADK session ID found for agent '#{name}'. Redirecting.")
+            logger.error("Chat POST Error: No active ADK session ID found for agent '#{name}' for web_user_id '#{session[:web_user_id]}'. Session active_agent_sessions: #{session[:active_agent_sessions].inspect}. Redirecting.")
             redirect "/agents/#{name}/chat" # Redirect to GET to establish a session
           end
           # --- END MODIFICATION ---
@@ -577,7 +578,109 @@ module ADK
           end
         end
         # --- END NEW ROUTE ---
-      end
+
+        # --- NEW ROUTE: Delete a specific chat session ---
+        app.delete '/agents/:name/chat/session/:adk_session_id_to_delete' do |name, adk_session_id_to_delete|
+          session_service = self.instance_variable_get(:@session_service)
+          web_user_id = session[:web_user_id] # Ensured by before filter
+
+          halt 503, "Session Service unavailable." unless session_service
+
+          logger.info "User '#{web_user_id}' requesting deletion of session '#{adk_session_id_to_delete}' for agent '#{name}'"
+
+          # 1. Validation: Fetch and verify ownership
+          session_to_delete = nil
+          begin
+            session_to_delete = session_service.get_session(session_id: adk_session_id_to_delete)
+            unless session_to_delete && session_to_delete.user_id == web_user_id && session_to_delete.app_name == name
+              logger.warn "Attempt to delete invalid/unowned session '#{adk_session_id_to_delete}' by user '#{web_user_id}' for agent '#{name}'."
+              # Render error partial into sidebar for HTMX, or redirect for non-HTMX
+              if request.env['HTTP_HX_REQUEST'] == 'true'
+                response.headers['HX-Retarget'] = '#session-operation-error'
+                response.headers['HX-Reswap'] = 'outerHTML'
+                halt 403,
+                     slim(:_session_error, layout: false,
+                                           locals: { error_message: "Forbidden: Cannot delete this session." })
+              else
+                # Maybe set flash message?
+                redirect "/agents/#{name}/chat", 403
+              end
+            end
+          rescue => e # Catch potential errors from get_session
+            logger.error "Error fetching session '#{adk_session_id_to_delete}' for deletion: #{e.message}"
+            if request.env['HTTP_HX_REQUEST'] == 'true'
+              response.headers['HX-Retarget'] = '#session-operation-error'
+              response.headers['HX-Reswap'] = 'outerHTML'
+              halt 500,
+                   slim(:_session_error, layout: false,
+                                         locals: { error_message: "Error verifying session for deletion." })
+            else
+              redirect "/agents/#{name}/chat", 500
+            end
+          end
+
+          # 2. Delete the session
+          begin
+            session_service.delete_session(session_id: adk_session_id_to_delete)
+            logger.info "Successfully deleted session '#{adk_session_id_to_delete}' for user '#{web_user_id}', agent '#{name}'."
+          rescue => e
+            logger.error "Error deleting session '#{adk_session_id_to_delete}': #{e.message}"
+            if request.env['HTTP_HX_REQUEST'] == 'true'
+              response.headers['HX-Retarget'] = '#session-operation-error'
+              response.headers['HX-Reswap'] = 'outerHTML'
+              halt 500, slim(:_session_error, layout: false, locals: { error_message: "Failed to delete session." })
+            else
+              redirect "/agents/#{name}/chat", 500
+            end
+          end
+
+          # 3. Update active session if the deleted one was active
+          session[:active_agent_sessions] ||= {}
+          if session[:active_agent_sessions][name] == adk_session_id_to_delete
+            logger.info "Deleted session '#{adk_session_id_to_delete}' was the active one for agent '#{name}'. Finding new active session."
+            session[:active_agent_sessions].delete(name) # Clear the old active ID
+
+            # Find the next most recent session to make active
+            remaining_sessions = session_service.list_sessions(app_name: name, user_id: web_user_id)
+            if remaining_sessions && !remaining_sessions.empty?
+              next_active_session = remaining_sessions.sort_by(&:updated_at).last # Most recently updated
+              session[:active_agent_sessions][name] = next_active_session.id
+              logger.info "Set next active session for agent '#{name}' to '#{next_active_session.id}'."
+            else
+              logger.info "No remaining sessions found for agent '#{name}', user '#{web_user_id}'. Active session cleared."
+              # GET /chat will create a new one if needed later
+            end
+          end
+
+          # 4. Respond (Refresh UI)
+          if request.env['HTTP_HX_REQUEST'] == 'true'
+            # Re-fetch all necessary data and render the chat partial, similar to POST /new and POST /switch
+            logger.debug "HTMX request detected for delete session, re-rendering chat interface."
+            definition_store = self.instance_variable_get(:@definition_store)
+            active_agents_hash = self.instance_variable_get(:@agents)
+            agent_definition = definition_store.get_definition(name)
+
+            # Fetch the new active session details (which might be nil if last session was deleted)
+            new_active_session_id = session[:active_agent_sessions][name]
+            new_active_session_details = new_active_session_id ? session_service.get_session(session_id: new_active_session_id) : nil
+            new_chat_history = new_active_session_details&.events || []
+            new_previous_sessions_list = session_service.list_sessions(app_name: name,
+                                                                       user_id: web_user_id).sort_by(&:updated_at).reverse
+
+            self.instance_variable_set(:@agent_data,
+                                       { name: name, description: agent_definition[:description],
+                                         running: active_agents_hash.key?(name) })
+            self.instance_variable_set(:@active_session_details, new_active_session_details)
+            self.instance_variable_set(:@chat_history_events, new_chat_history)
+            self.instance_variable_set(:@previous_sessions_list, new_previous_sessions_list)
+
+            slim :chat, layout: false # Render the main chat wrapper
+          else
+            redirect "/agents/#{name}/chat"
+          end
+        end
+        # --- END DELETE ROUTE ---
+      end # self.registered
     end
   end
 end

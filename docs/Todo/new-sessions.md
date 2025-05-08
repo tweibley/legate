@@ -166,7 +166,7 @@ This document outlines the plan to implement a feature allowing users to have mu
 
 *   [ ] **UI/UX:** Polish the appearance and interaction of the session management UI. Consider responsive behavior for the sidebar on smaller screens.
 *   [ ] **Error Handling:** Robust error handling for invalid session IDs, etc., with user-friendly messages displayed in `#session-operation-error` via HTMX swaps from error partials.
-*   [ ] **(Optional) Route: `DELETE /agents/:name/chat/session/:adk_session_id_to_delete`:** Implement if desired.
+*   [x] **(Optional) Route: `DELETE /agents/:name/chat/session/:adk_session_id_to_delete`:** Implement if desired.
 *   [ ] **Testing:** Thoroughly test session creation, switching, message posting within switched sessions, and user isolation.
 *   **HTMX Swaps:** Primary HTMX target for session changes is `#chat_interface_wrapper`. Individual new messages can still target a more specific `#chat-log-container` within the main panel.
 *   **User-Friendly Error Display:** Backend routes should, on error during an HTMX request, return an HTML partial (e.g., `_session_error.slim` containing the error message wrapped in a notification div) that is swapped into the `#session-operation-error` div in the sidebar. For non-HTMX errors, use standard flash messages or error pages.

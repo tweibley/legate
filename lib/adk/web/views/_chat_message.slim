@@ -7,32 +7,68 @@
 
 - response_data = process_agent_response(agent_result)
 
-.message class="#{response_data[:msg_class]} is-small mb-4 agent-message" id="event-#{response_data[:event_id]}"
-  .message-header
-    p Agent (#{agent_name})
+.message class="#{response_data[:msg_class]} agent-message is-small mb-4" id="event-#{response_data[:event_id]}" style="border-radius: 6px; overflow: hidden;"
+  .message-header style="border-top-left-radius: 6px; border-top-right-radius: 6px;"
+    - if agent_result.is_a?(ADK::Event) && agent_result.role == :tool_request
+      p Tool Request
+      span.tag.is-info.ml-2 #{agent_result.content[:tool_name] if agent_result.content.is_a?(Hash) && agent_result.content[:tool_name]}
+    - elsif agent_result.is_a?(ADK::Event) && agent_result.role == :tool_result
+      p Tool Result
+      - result_status = agent_result.content.is_a?(Hash) && agent_result.content[:status] ? agent_result.content[:status] : :success
+      span.tag class="is-#{result_status == :error ? 'danger' : (result_status == :pending ? 'warning' : 'success')} ml-2" #{result_status}
+    - else
+      p Agent (#{agent_name})
+    
     - unless response_data[:raw_json_content].empty?
       button.button.is-light.is-small.ml-auto( onclick="var el = document.getElementById('raw-#{response_data[:event_id]}'); el.style.display = (el.style.display == 'none' ? 'block' : 'none');" )
         | Raw
-  .message-body
-    div style="white-space: pre-wrap; word-break: break-all; margin-bottom: 0.5rem;" = response_data[:display_content]
+  
+  .message-body style="border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;"
+    - if agent_result.is_a?(ADK::Event) && agent_result.role == :tool_request
+      - if agent_result.content.is_a?(Hash)
+        - if agent_result.content[:params].is_a?(Hash) && !agent_result.content[:params].empty?
+          p.mb-2 Parameters:
+          pre.has-background-light.p-2.is-size-7= JSON.pretty_generate(agent_result.content[:params])
+        - else
+          p No parameters
+      - else
+        p= agent_result.content.to_s
+    
+    - elsif agent_result.is_a?(ADK::Event) && agent_result.role == :tool_result
+      - if agent_result.content.is_a?(Hash)
+        - if agent_result.content[:error]
+          p.has-text-danger= agent_result.content[:error]
+        - elsif agent_result.content[:result]
+          - result_content = agent_result.content[:result]
+          - if result_content.is_a?(String)
+            p= result_content
+          - else
+            pre.has-background-light.p-2.is-size-7= JSON.pretty_generate(result_content)
+        - else
+          pre.has-background-light.p-2.is-size-7= JSON.pretty_generate(agent_result.content)
+      - else
+        p= agent_result.content.to_s
+    
+    - else
+      div style="white-space: pre-wrap; word-break: break-all; margin-bottom: 0.5rem;" = response_data[:display_content]
 
-    - if agent_result.is_a?(ADK::Event) && agent_result.content.is_a?(Hash) && agent_result.content[:plan_details].is_a?(Array) && !agent_result.content[:plan_details].empty?
-      details.execution-plan-details
-        summary.execution-plan-summary
-          | Execution Plan (#{agent_result.content[:plan_details].size} step#{'s' if agent_result.content[:plan_details].size != 1})
-        .execution-plan-steps
-          - agent_result.content[:plan_details].each_with_index do |step_detail, index|
-            .execution-plan-step
-              p.step-title Step #{index + 1}: #{step_detail[:tool_name]}
-              p.step-params-label Parameters:
-              pre.step-params-pre= pretty_json(step_detail[:params])
+      - if agent_result.is_a?(ADK::Event) && agent_result.content.is_a?(Hash) && agent_result.content[:plan_details].is_a?(Array) && !agent_result.content[:plan_details].empty?
+        details.execution-plan-details
+          summary.execution-plan-summary
+            | Execution Plan (#{agent_result.content[:plan_details].size} step#{'s' if agent_result.content[:plan_details].size != 1})
+          .execution-plan-steps
+            - agent_result.content[:plan_details].each_with_index do |step_detail, index|
+              .execution-plan-step
+                p.step-title Step #{index + 1}: #{step_detail[:tool_name]}
+                p.step-params-label Parameters:
+                pre.step-params-pre= pretty_json(step_detail[:params] || {})
 
-              - result_status = step_detail[:result][:status]
-              - result_class = case result_status when :success then 'has-text-success-dark' when :error then 'has-text-danger-dark' when :pending then 'has-text-warning-dark' else 'has-text-grey' end
+                - result_status = step_detail[:result][:status] rescue nil
+                - result_class = case result_status when :success then 'has-text-success-dark' when :error then 'has-text-danger-dark' when :pending then 'has-text-warning-dark' else 'has-text-grey' end
 
-              p class="step-result-label #{result_class}" Result (#{result_status}):
-              pre class="step-result-pre #{result_class}"= pretty_json(step_detail[:result])
-
+                p class="step-result-label #{result_class}" Result (#{result_status || "unknown"}):
+                pre class="step-result-pre #{result_class}"= pretty_json(step_detail[:result] || {}) rescue "{}"
+    
     - unless response_data[:raw_json_content].empty?
       div.raw-json-container id="raw-#{response_data[:event_id]}" style="display: none;"
         pre.raw-json-pre= response_data[:raw_json_content]
