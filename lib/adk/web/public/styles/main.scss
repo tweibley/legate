@@ -330,8 +330,9 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
     border-radius: 15px 15px 0 15px !important;
 }
 .message.agent-message {
+    float: right;
     align-self: flex-start;
-    max-width: 75%;
+    width: 80%;
     border-radius: 15px 15px 15px 0 !important;
 }
 .message.user-message .message-header,

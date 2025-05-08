@@ -84,10 +84,10 @@ module ADK
       end
 
       # --- NEW: Before filter for Web User ID ---
-      before '/agents/:name/chat*' do
+      before do
         session[:web_user_id] ||= SecureRandom.uuid
         # Optional: Log the web_user_id for debugging purposes during development
-        # logger.debug "Current web_user_id: #{session[:web_user_id]}"
+        logger.debug "Current web_user_id: #{session[:web_user_id]}"
       end
       # --- END NEW ---
 
@@ -391,6 +391,8 @@ module ADK
           case agent_result
           when ADK::Event
             response_data[:event_id] = agent_result.event_id || response_data[:event_id]
+
+            # Different processing based on event role
             if agent_result.role == :agent
               content = agent_result.content
               # --- Ensure raw content is always the full hash inspection ---
@@ -428,8 +430,44 @@ module ADK
                 response_data[:display_content] = "Agent event content format unexpected: #{content.inspect}"
                 # Raw content is already set above
               end
-            else # Event not from agent role
-              response_data[:display_content] = "Received non-agent event role: #{agent_result.role}"
+            elsif agent_result.role == :tool_request
+              # Tool request event handling
+              response_data[:msg_class] = 'is-info is-light'
+              content = agent_result.content
+              response_data[:raw_json_content] = content.inspect
+
+              if content.is_a?(Hash) && content[:tool_name]
+                tool_name = content[:tool_name]
+                params_preview = content[:params] && !content[:params].empty? ? " with parameters" : " (no parameters)"
+                response_data[:display_content] = "Tool Request: #{tool_name}#{params_preview}"
+              else
+                response_data[:display_content] = "Tool Request: #{content.inspect}"
+              end
+            elsif agent_result.role == :tool_result
+              # Tool result event handling
+              content = agent_result.content
+              response_data[:raw_json_content] = content.inspect
+
+              if content.is_a?(Hash)
+                if content[:status] == :error || content[:error]
+                  response_data[:msg_class] = 'is-danger is-light'
+                  response_data[:display_content] =
+                    "Tool Error: #{content[:error] || content[:error_message] || 'Unknown error'}"
+                else
+                  response_data[:msg_class] = 'is-success is-light'
+                  if content[:result]
+                    result_str = content[:result].is_a?(String) ? content[:result] : content[:result].inspect
+                    response_data[:display_content] = "Tool Result: #{result_str}"
+                  else
+                    response_data[:display_content] = "Tool Result: #{content.inspect}"
+                  end
+                end
+              else
+                response_data[:display_content] = "Tool Result: #{content.inspect}"
+                response_data[:msg_class] = 'is-success is-light'
+              end
+            else # Event not from known role
+              response_data[:display_content] = "Received event with unknown role: #{agent_result.role}"
               response_data[:raw_json_content] = agent_result.inspect
             end
 
@@ -470,6 +508,22 @@ module ADK
               if content[:message] then display_content << " - #{content[:message]}"; end
             else # Unknown status in hash
               display_content = "Agent response (unknown status): #{content.inspect}"
+            end
+          elsif content.is_a?(Hash) && content.key?(:tool_name)
+            # This might be a tool_request event content
+            display_content = "Tool request: #{content[:tool_name]}"
+            if content[:params] && !content[:params].empty?
+              display_content += " with parameters"
+            end
+          elsif content.is_a?(Hash) && (content.key?(:result) || content.key?(:error))
+            # This might be a tool_result event content
+            if content[:error]
+              display_content = "Tool error: #{content[:error]}"
+            elsif content[:result]
+              result_str = content[:result].is_a?(String) ? content[:result] : content[:result].inspect
+              display_content = "Tool result: #{result_str}"
+            else
+              display_content = "Tool response: #{content.inspect}"
             end
           elsif content.is_a?(Array) # Handle array case if needed, or show inspect
             display_content = "Agent response (array): #{content.inspect}"

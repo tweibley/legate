@@ -1,0 +1,4 @@
+.notification.is-danger.mt-2 role="alert"
+  button.delete type="button" aria-label="Dismiss" onclick="this.parentElement.classList.add('is-hidden');"
+  - msg = defined?(error_message) && !error_message.to_s.strip.empty? ? error_message : "An error occurred with the session operation."
+  = msg 
