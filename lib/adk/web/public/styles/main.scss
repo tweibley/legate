@@ -751,3 +751,23 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
     width: 100px;
   }
 }
+
+/* --- Agent List Enhancements --- */
+tr.is-newly-added {
+  animation: highlight-new-row 2s ease-out;
+}
+
+@keyframes highlight-new-row {
+  0% {
+    background-color: hsl(171, 100%, 41%); /* Bulma's $primary color */
+    color: hsl(0, 0%, 96%); /* Bulma's $primary-invert color */
+  }
+  20% {
+    background-color: hsl(171, 100%, 41%);
+    color: hsl(0, 0%, 96%);
+  }
+  100% {
+    background-color: transparent; /* Or initial row color if striped */
+    color: inherit;
+  }
+}

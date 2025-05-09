@@ -247,17 +247,18 @@ module ADK
               rescue => e
                 logger.error("Chat POST: Failed to re-fetch session '#{current_adk_session_object.id}' for stats update: #{e.message}")
                 # Fallback to the session object we had, though it might be slightly stale for updated_at
-                updated_session_object = current_adk_session_object 
+                updated_session_object = current_adk_session_object
               end
             end
 
             chat_message_html = slim(:_chat_message, layout: false, locals: view_locals)
-            
+
             # Render the raw inner content of session info
-            session_info_inner_html = slim(:_active_session_info, layout: false, locals: { active_session_details: updated_session_object })
+            session_info_inner_html = slim(:_active_session_info, layout: false,
+                                                                  locals: { active_session_details: updated_session_object })
             # Wrap it in a div with ID and OOB attributes for the swap
             active_session_info_oob_wrapper_html = %(<div id="active-session-info" class="mt-2" hx-swap-oob="outerHTML">#{session_info_inner_html}</div>)
-            
+
             status 200 # Ensure HTMX processes OOB swaps
             chat_message_html + active_session_info_oob_wrapper_html
           rescue => e
@@ -274,6 +275,7 @@ module ADK
           active_agents_hash = self.instance_variable_get(:@agents)
           session_service = self.instance_variable_get(:@session_service)
           agent_instance = active_agents_hash[name]
+          final_result_content_for_diagram = nil # To store content for mermaid
 
           error_handler = lambda do |message, code = 400|
             trigger_event = (code == 400) ? 'showTaskError' : 'showTaskServerError'
@@ -282,7 +284,32 @@ module ADK
           end
 
           success_handler = lambda do |result_hash|
-            format_execution_result_html(result_hash) # Helper is available in instance context
+            # --- NEW: Generate Mermaid Diagram ---
+            mermaid_diagram_html = ""
+            # task_desc is available in the outer scope from parsed_data or direct assignment
+            original_input_for_diagram = task_desc
+            current_final_content = final_result_content_for_diagram || result_hash # Prioritize the one captured during run_task
+
+            if current_final_content.is_a?(Hash) && current_final_content[:plan_details]
+              mermaid_def = generate_mermaid_sequence_diagram(current_final_content, original_input_for_diagram)
+              unless mermaid_def.empty?
+                mermaid_diagram_html = <<~HTML
+                  <div class="mt-3 pt-3" style="border-top: 1px dashed #ccc;">
+                    <button class="button is-small is-info is-light mb-2"
+                            onclick="var diag = document.getElementById('direct-exec-mermaid-#{name.gsub(/[^a-zA-Z0-9_-]/, '-')}'); diag.classList.toggle('is-hidden'); if (!diag.classList.contains('is-hidden')) { mermaid.run({nodes: [diag.querySelector('.mermaid')]}); }">
+                      <span class="icon is-small"><i class="fas fa-project-diagram"></i></span>
+                      <span>Toggle Execution Flow</span>
+                    </button>
+                    <div id="direct-exec-mermaid-#{name.gsub(/[^a-zA-Z0-9_-]/, '-')}" class="is-hidden">
+                      <pre class="mermaid">#{mermaid_def}</pre>
+                    </div>
+                  </div>
+                HTML
+              end
+            end
+            # --- END NEW ---
+            formatted_result_html = format_execution_result_html(result_hash)
+            formatted_result_html + mermaid_diagram_html
           end
 
           error_handler.call("Error: Agent '#{name}' not found or not running.", 400) unless agent_instance
@@ -332,6 +359,7 @@ module ADK
               tool_ctx = ADK::ToolContext.new(session_id: temp_adk_session.id, user_id: temp_adk_session.user_id,
                                               app_name: temp_adk_session.app_name, tool_registry: agent_instance.tool_registry)
               result = tool_instance_to_run.execute(exec_params.transform_keys(&:to_sym), tool_ctx)
+              final_result_content_for_diagram = result # Capture for mermaid
               success_handler.call(result)
             else
               logger.info("Agent '#{name}' executing task via PLANNER (AgentInteractionRoutes): #{task_desc}")
@@ -340,6 +368,7 @@ module ADK
               final_result = agent_instance.run_task(session_id: temp_adk_session.id, user_input: task_desc,
                                                      session_service: session_service)
               content_to_show = final_result.is_a?(ADK::Event) ? final_result.content : final_result
+              final_result_content_for_diagram = content_to_show # Capture for mermaid
               success_handler.call(content_to_show)
             end
           rescue => e
