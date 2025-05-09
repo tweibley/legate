@@ -340,29 +340,34 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
 }
 
 /* --- Chat --- */
-.chat-history-box {
+#chat-log-container {
   background-color: #f8f9fa;
-  border: 1px solid #dee2e6 !important;
+  border: 1px solid #dee2e6;
   padding: 1rem;
   height: 450px;
   overflow-y: scroll;
   margin-bottom: 1rem;
+}
+
+.message {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  max-width: 85%;
+  width: fit-content;
+  margin-bottom: 1rem;
+  clear: both;
 }
 
 .message.user-message {
-  align-self: flex-end;
+  float: left;
   max-width: 75%;
-  border-radius: 15px 15px 0 15px !important;
+  border-radius: 15px 15px 15px 0 !important;
 }
 
 .message.agent-message {
   float: right;
-  align-self: flex-start;
-  width: 80%;
-  border-radius: 15px 15px 15px 0 !important;
+  max-width: 85%;
+  border-radius: 15px 15px 0 15px !important;
 }
 
 .message.user-message .message-header,
@@ -379,15 +384,17 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
 }
 
 .message.user-message .message-body {
-  border-radius: 0 0 0 15px;
-  border-width: 0 1px 1px 1px;
-  padding: 0.75em 1em;
-}
-
-.message.agent-message .message-body {
   border-radius: 0 0 15px 0;
   border-width: 0 1px 1px 1px;
   padding: 0.75em 1em;
+  word-break: break-word;
+}
+
+.message.agent-message .message-body {
+  border-radius: 0 0 0 15px;
+  border-width: 0 1px 1px 1px;
+  padding: 0.75em 1em;
+  word-break: break-word;
 }
 
 .message.user-message.is-link .message-header {
@@ -400,6 +407,7 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
   background-color: #f0f5fc;
 }
 
+/* Agent message variants */
 .message.agent-message.is-light {
   background-color: #e9ecef;
   border: 1px solid #ced4da;

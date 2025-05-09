@@ -313,28 +313,36 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
 }
 
 /* --- Chat --- */
-.chat-history-box {
+#chat-log-container {
     background-color: #f8f9fa;
-    border: 1px solid #dee2e6 !important;
+    border: 1px solid #dee2e6;
     padding: 1rem;
     height: 450px;
     overflow-y: scroll;
     margin-bottom: 1rem;
+}
+
+.message {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    max-width: 85%;
+    width: fit-content;
+    margin-bottom: 1rem;
+    clear: both;
 }
+
 .message.user-message {
-    align-self: flex-end;
+    float: left;
     max-width: 75%;
-    border-radius: 15px 15px 0 15px !important;
-}
-.message.agent-message {
-    float: right;
-    align-self: flex-start;
-    width: 80%;
     border-radius: 15px 15px 15px 0 !important;
 }
+
+.message.agent-message {
+    float: right;
+    max-width: 85%;
+    border-radius: 15px 15px 0 15px !important;
+}
+
 .message.user-message .message-header,
 .message.agent-message .message-header {
     border-bottom: none;
@@ -343,40 +351,96 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
     display: flex;
     align-items: center;
 }
+
 .message.agent-message .message-header button {
     margin-left: auto;
 }
 
 .message.user-message .message-body {
-    border-radius: 0 0 0 15px;
-    border-width: 0 1px 1px 1px;
-    padding: 0.75em 1em;
-}
-.message.agent-message .message-body {
     border-radius: 0 0 15px 0;
     border-width: 0 1px 1px 1px;
     padding: 0.75em 1em;
+    word-break: break-word;
 }
+
+.message.agent-message .message-body {
+    border-radius: 0 0 0 15px;
+    border-width: 0 1px 1px 1px;
+    padding: 0.75em 1em;
+    word-break: break-word;
+}
+
 .message.user-message.is-link .message-header {
     background-color: #3273dc;
     color: white;
 }
+
 .message.user-message.is-link .message-body {
     border-color: #3273dc;
     background-color: #f0f5fc;
 }
-.message.agent-message.is-light { background-color: #e9ecef; border: 1px solid #ced4da; }
-.message.agent-message.is-light .message-header { background-color: #ced4da; color: #495057; }
-.message.agent-message.is-light .message-body { border-color: #ced4da; background-color: #e9ecef; color: #363636; }
-.message.agent-message.is-success { background-color: #eaf7ec; border-color: #9fd8a0; }
-.message.agent-message.is-success .message-header { background-color: #9fd8a0; color: #256c3b; }
-.message.agent-message.is-success .message-body { border-color: #9fd8a0; background-color: #eaf7ec; }
-.message.agent-message.is-danger { background-color: #fdecea; border-color: #f6a3a1; }
-.message.agent-message.is-danger .message-header { background-color: #f6a3a1; color: #b71c1c; }
-.message.agent-message.is-danger .message-body { border-color: #f6a3a1; background-color: #fdecea; }
-.message.agent-message.is-warning { background-color: #fffbeb; border-color: #ffe58a; }
-.message.agent-message.is-warning .message-header { background-color: #ffe58a; color: #7a4f01; }
-.message.agent-message.is-warning .message-body { border-color: #ffe58a; background-color: #fffbeb; }
+
+/* Agent message variants */
+.message.agent-message.is-light { 
+    background-color: #e9ecef; 
+    border: 1px solid #ced4da; 
+}
+
+.message.agent-message.is-light .message-header { 
+    background-color: #ced4da; 
+    color: #495057; 
+}
+
+.message.agent-message.is-light .message-body { 
+    border-color: #ced4da; 
+    background-color: #e9ecef; 
+    color: #363636; 
+}
+
+.message.agent-message.is-success { 
+    background-color: #eaf7ec; 
+    border-color: #9fd8a0; 
+}
+
+.message.agent-message.is-success .message-header { 
+    background-color: #9fd8a0; 
+    color: #256c3b; 
+}
+
+.message.agent-message.is-success .message-body { 
+    border-color: #9fd8a0; 
+    background-color: #eaf7ec; 
+}
+
+.message.agent-message.is-danger { 
+    background-color: #fdecea; 
+    border-color: #f6a3a1; 
+}
+
+.message.agent-message.is-danger .message-header { 
+    background-color: #f6a3a1; 
+    color: #b71c1c; 
+}
+
+.message.agent-message.is-danger .message-body { 
+    border-color: #f6a3a1; 
+    background-color: #fdecea; 
+}
+
+.message.agent-message.is-warning { 
+    background-color: #fffbeb; 
+    border-color: #ffe58a; 
+}
+
+.message.agent-message.is-warning .message-header { 
+    background-color: #ffe58a; 
+    color: #7a4f01; 
+}
+
+.message.agent-message.is-warning .message-body { 
+    border-color: #ffe58a; 
+    background-color: #fffbeb; 
+}
 
 /* Execution Plan Details Styles (within chat message body) */
 .message-body .execution-plan-details { margin-top: 1rem; border-top: 1px solid #eee; padding-top: 0.5rem; }

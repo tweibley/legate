@@ -75,21 +75,7 @@ div#chat_interface_wrapper
               = @agent_data[:running] ? 'Running' : 'Stopped (Go to agent page to start)'
         / Active session info
         div#active-session-info.mt-2
-          - if @active_session_details
-            p
-              strong Active Session ID:
-              span.ml-1= @active_session_details.id
-            p
-              strong Chatting since:
-              span.ml-1= @active_session_details.created_at.strftime("%b %d, %Y %H:%M:%S")
-            p
-              strong Last activity:
-              span.ml-1= @active_session_details.updated_at.strftime("%b %d, %Y %H:%M:%S")
-            p
-              strong Total events in session:
-              span.ml-1= @active_session_details.events&.count || 0
-          - else
-            p.has-text-danger No active session details available.
+          == slim :_active_session_info, locals: { active_session_details: @active_session_details }
 
       / Chat Interface Container
       .box.p-0 style="display: flex; flex-direction: column; height: 550px;"
