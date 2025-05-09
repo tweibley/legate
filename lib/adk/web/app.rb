@@ -21,6 +21,7 @@ require 'securerandom' # For session secret generation
 require 'sidekiq/api' # Used for potential future async job display (not currently used in active logic)
 require_relative '../mcp/util/schema_converter' # For converting MCP tool schemas
 require 'gemini-ai' # For example task generation via Gemini API
+require 'set' # Needed for Mermaid helper
 
 # --- Load ADK Components ---
 # Order matters: Load core concepts before components that depend on them.
@@ -230,22 +231,13 @@ module ADK
         # Helper for Agent Start/Stop button fragments (used in table view)
         def agent_status_fragments(agent_data_or_obj)
           agent_name = agent_data_or_obj.is_a?(Hash) ? agent_data_or_obj[:name] : agent_data_or_obj.name
-          # Ensure agent_name is safe for use in HTML attributes (e.g. if it can have spaces or quotes)
-          # For simplicity, assuming agent_name is already suitably formatted or IDs are handled carefully.
-          # However, in _agent_row.slim, container_id already does: agent_name.gsub(/[^a-zA-Z0-9_-]/, '-')
-          # Let's ensure we use a similarly sanitized name for consistency if needed, but Slim handles it.
-
           is_running = agent_data_or_obj.is_a?(Hash) ? agent_data_or_obj[:running] : agent_data_or_obj.running?
 
-          # ID for the status span in _agent_row.slim
           status_content_id = "agent-status-content-#{agent_name}"
-          # IDs for the action links in _agent_row.slim
           start_action_id = "agent-start-action-#{agent_name}"
           stop_action_id = "agent-stop-action-#{agent_name}"
-          # ID for the dropdown (used for indicator reference, from _agent_row.slim)
           dropdown_id = "agent-actions-dropdown-#{agent_name}"
 
-          # Fragment 1: Status Display (replicates structure from _agent_row.slim)
           status_html = <<~HTML
             <span id="#{status_content_id}" hx-swap-oob="outerHTML">
               <span class="tag is-medium #{is_running ? 'is-success' : 'is-danger'}">
@@ -254,8 +246,6 @@ module ADK
               </span>
             </span>
           HTML
-
-          # Fragment 2: Start Action Link (replicates structure from _agent_row.slim)
           start_action_html = <<~HTML
             <a class="dropdown-item #{is_running ? 'is-disabled' : ''}" href="#"#{' '}
                id="#{start_action_id}"#{' '}
@@ -267,8 +257,6 @@ module ADK
               <span>Start</span>
             </a>
           HTML
-
-          # Fragment 3: Stop Action Link (replicates structure from _agent_row.slim)
           stop_action_html = <<~HTML
             <a class="dropdown-item #{!is_running ? 'is-disabled' : ''}" href="#"#{' '}
                id="#{stop_action_id}"#{' '}
@@ -280,24 +268,19 @@ module ADK
               <span>Stop</span>
             </a>
           HTML
-
-          # Concatenate all fragments
           status_html.strip + start_action_html.strip + stop_action_html.strip
         end # end agent_status_fragments
 
-        # Helper for formatting tool/agent execution results into HTML <-- MODIFIED
-        # Handles success, error, and pending statuses.
+        # Helper for formatting tool/agent execution results into HTML
         def format_execution_result_html(result_data)
           html_parts = []
           notification_class = 'is-info'
           overall_status = :unknown
 
-          # Handle ADK::Event first
           if result_data.is_a?(ADK::Event)
             result_data = result_data.content
           end
 
-          # Determine overall status from hash or array
           if result_data.is_a?(Hash) && result_data.key?(:status)
             overall_status = result_data[:status]
           elsif result_data.is_a?(Array) && result_data.all? { |h| h.is_a?(Hash) && h.key?(:status) }
@@ -310,14 +293,12 @@ module ADK
             result_data = { status: :error, error_message: "Unexpected result format: #{result_data.inspect}" }
           end
 
-          # Set notification class based on status
           notification_class = case overall_status
                                when :success then 'is-success'
                                when :error then 'is-danger'
-                               when :pending then 'is-warning' # Use warning for pending
+                               when :pending then 'is-warning'
                                else 'is-info' end
 
-          # Generate HTML content
           if result_data.is_a?(Array) # Multi-step result array
             html_parts << "<p><strong>Multi-step Result:</strong></p><ol>"
             result_data.each_with_index do |step_hash, index|
@@ -350,7 +331,6 @@ module ADK
               html_parts << "</li>"
             end
             html_parts << "</ol>"
-
           elsif result_data.is_a?(Hash) # Single result/error/pending hash
             case result_data[:status]
             when :success
@@ -374,68 +354,50 @@ module ADK
               html_parts << "<p><strong>Result (Unknown Status):</strong></p><pre>#{Rack::Utils.escape_html(result_data.inspect)}</pre>"
             end
           end
-
-          # Return final HTML structure
           "<div class='notification #{notification_class} mt-4'>#{html_parts.join}</div>"
-        end # end format_execution_result_html
+        end
 
-        # --- NEW HELPER: Process agent chat response for display ---
         def process_agent_response(agent_result)
           response_data = {
             msg_class: 'is-warning',
             display_content: "",
             raw_json_content: "",
-            event_id: SecureRandom.hex(4) # Default unique ID
+            event_id: SecureRandom.hex(4)
           }
-
           case agent_result
           when ADK::Event
             response_data[:event_id] = agent_result.event_id || response_data[:event_id]
-
-            # Different processing based on event role
             if agent_result.role == :agent
               content = agent_result.content
-              # --- Ensure raw content is always the full hash inspection ---
               response_data[:raw_json_content] = content.inspect
-
               if content.is_a?(Hash)
-                # Extract the primary result/message based on status
                 case content[:status]
                 when :success
                   response_data[:msg_class] = 'is-success'
-                  # --- MODIFIED: Explicitly convert only the result value to string ---
-                  result_value = content[:result]
-                  response_data[:display_content] = result_value.to_s # Explicit .to_s here
-                  # --------------------------------------------------------------------
+                  response_data[:display_content] = content[:result].to_s
                 when :error
                   response_data[:msg_class] = 'is-danger'
                   original_error = content[:error_message] || "Agent error (no message)"
-                  # --- Make planning error friendlier ---
                   if original_error == "I cannot fulfill this request with the available tools (empty plan)."
                     response_data[:display_content] =
                       "Sorry, I couldn't determine how to handle that request with the tools I have available."
                   else
                     response_data[:display_content] = original_error
                   end
-                  # --- End friendly error ---
                 when :pending
                   response_data[:msg_class] = 'is-warning'
                   response_data[:display_content] = "Task pending... Job ID: #{content[:job_id]}"
                   if content[:message] then response_data[:display_content] << " - #{content[:message]}"; end
-                else # Unknown status in hash
+                else
                   response_data[:display_content] = "Agent response has unknown status: #{content[:status]}"
-                  # Raw content is already set above
                 end
-              else # Event Content wasn't a hash
+              else
                 response_data[:display_content] = "Agent event content format unexpected: #{content.inspect}"
-                # Raw content is already set above
               end
             elsif agent_result.role == :tool_request
-              # Tool request event handling
               response_data[:msg_class] = 'is-info is-light'
               content = agent_result.content
               response_data[:raw_json_content] = content.inspect
-
               if content.is_a?(Hash) && content[:tool_name]
                 tool_name = content[:tool_name]
                 params_preview = content[:params] && !content[:params].empty? ? " with parameters" : " (no parameters)"
@@ -444,10 +406,8 @@ module ADK
                 response_data[:display_content] = "Tool Request: #{content.inspect}"
               end
             elsif agent_result.role == :tool_result
-              # Tool result event handling
               content = agent_result.content
               response_data[:raw_json_content] = content.inspect
-
               if content.is_a?(Hash)
                 if content[:status] == :error || content[:error]
                   response_data[:msg_class] = 'is-danger is-light'
@@ -466,30 +426,25 @@ module ADK
                 response_data[:display_content] = "Tool Result: #{content.inspect}"
                 response_data[:msg_class] = 'is-success is-light'
               end
-            else # Event not from known role
+            else
               response_data[:display_content] = "Received event with unknown role: #{agent_result.role}"
               response_data[:raw_json_content] = agent_result.inspect
             end
-
           when Hash
             response_data[:raw_json_content] = agent_result.inspect
-            if agent_result[:status] == :error # Explicit error hash (e.g., agent not running)
+            if agent_result[:status] == :error
               response_data[:msg_class] = 'is-danger'
               response_data[:display_content] = agent_result[:error_message] || "An unspecified error occurred."
-            else # Other hash format?
+            else
               response_data[:display_content] = "Unexpected hash format from server: #{agent_result.inspect}"
             end
-
-          else # Not Event or Hash
+          else
             response_data[:raw_json_content] = agent_result.inspect
             response_data[:display_content] = "Unexpected response type from server: #{agent_result.class}"
           end
-
-          response_data # Return the processed hash
+          response_data
         end
-        # --- END NEW HELPER ---
 
-        # --- NEW HELPER: Format historical agent message content ---
         def format_historical_agent_content(content)
           display_content = ""
           if content.is_a?(Hash) && content.key?(:status)
@@ -506,17 +461,15 @@ module ADK
             when :pending
               display_content = "Task pending... Job ID: #{content[:job_id]}"
               if content[:message] then display_content << " - #{content[:message]}"; end
-            else # Unknown status in hash
+            else
               display_content = "Agent response (unknown status): #{content.inspect}"
             end
           elsif content.is_a?(Hash) && content.key?(:tool_name)
-            # This might be a tool_request event content
             display_content = "Tool request: #{content[:tool_name]}"
             if content[:params] && !content[:params].empty?
               display_content += " with parameters"
             end
           elsif content.is_a?(Hash) && (content.key?(:result) || content.key?(:error))
-            # This might be a tool_result event content
             if content[:error]
               display_content = "Tool error: #{content[:error]}"
             elsif content[:result]
@@ -525,17 +478,14 @@ module ADK
             else
               display_content = "Tool response: #{content.inspect}"
             end
-          elsif content.is_a?(Array) # Handle array case if needed, or show inspect
+          elsif content.is_a?(Array)
             display_content = "Agent response (array): #{content.inspect}"
-          else # Simple string or other type
+          else
             display_content = content.to_s
           end
-          # Return the formatted string (ensure it's a string)
           display_content.to_s
         end
-        # --- END NEW HELPER ---
 
-        # --- NEW HELPER: Summarize ADK Session for display ---
         def summarize_session(session_object)
           return "Invalid session object" unless session_object.is_a?(ADK::Session)
 
@@ -543,85 +493,141 @@ module ADK
           updated_at_formatted = session_object.updated_at.strftime("%b %d, %Y %H:%M")
           event_count = session_object.events&.count || 0
           messages_text = event_count == 1 ? "message" : "messages"
-
           preview_text = "Session started"
           if event_count.zero?
             preview_text = "Empty session (created #{created_at_formatted})"
           else
-            # Find the first user-initiated text event for preview
             first_user_text_event = session_object.events.find do |event|
               event.role == :user && event.content.is_a?(String) && !event.content.strip.empty?
             end
-
             if first_user_text_event
-              # Take first ~10 words. Split by space, take up to 10, join back.
               words = first_user_text_event.content.strip.split(/\s+/)
               preview = words.take(10).join(" ")
               preview_text = "#{preview}#{words.size > 10 ? '...' : ''}"
             elsif session_object.events.any? { |e| e.role == :user }
               preview_text = "Contains non-text user messages"
-            else # No user events, or only non-text user events
+            else
               preview_text = "Agent-initiated session"
             end
           end
-
           "Chat from #{created_at_formatted} (Last active: #{updated_at_formatted}) (#{event_count} #{messages_text}): #{preview_text}"
         end
-        # --- END NEW HELPER ---
 
-        # --- NEW HELPER: Pretty Print JSON ---
-        # --- MODIFIED: Accepts Ruby object, not just JSON string ---
         def pretty_json(object)
           begin
             JSON.pretty_generate(object)
-          rescue => e # Catch errors during generation (like NestingError)
-            # Fallback to inspect on error
+          rescue => e
             object.inspect
           end
         end
-        # --- END NEW HELPER ---
+
+        # --- START: MERMAID HELPERS (with more robust summarization and escaping) ---
+        def generate_mermaid_sequence_diagram(final_agent_event_content, original_user_input)
+          return "" unless final_agent_event_content.is_a?(Hash)
+
+          mermaid_def = ["sequenceDiagram"]
+          participants = Set.new(['User', 'Agent'])
+
+          plan_details = final_agent_event_content[:plan_details]
+          plan_details = [] unless plan_details.is_a?(Array)
+
+          plan_details.each do |step|
+            tool_name_str = step[:tool_name]&.to_s
+            participants.add("Tool(#{tool_name_str})") if tool_name_str && !tool_name_str.empty?
+          end
+          participants.each { |p| mermaid_def << "  participant #{p}" }
+
+          mermaid_def << "  User->>Agent: #{escape_mermaid_label(original_user_input)}"
+
+          plan_details.each_with_index do |step, index|
+            tool_name_str = step[:tool_name]&.to_s || "UnknownTool"
+            tool_participant = "Tool(#{tool_name_str})"
+            # Pass the raw params hash to summarize_for_mermaid
+            params_summary = summarize_for_mermaid(step[:params])
+            mermaid_def << "  Agent->>#{tool_participant}: Call #{tool_name_str} with #{params_summary}"
+
+            result_data = step[:result]
+            if result_data.is_a?(Hash)
+              status = result_data[:status]&.to_s || "unknown"
+              case status.to_sym
+              when :success
+                result_summary = summarize_for_mermaid(result_data[:result])
+                mermaid_def << "  #{tool_participant}-->>Agent: Result: #{result_summary}"
+              when :error
+                error_summary = summarize_for_mermaid(result_data[:error_message] || "Unknown Error")
+                mermaid_def << "  #{tool_participant}-->>Agent: Error: #{error_summary}"
+              when :pending
+                job_id_summary = summarize_for_mermaid(result_data[:job_id] || "N/A")
+                message_summary = result_data[:message] ? " (#{summarize_for_mermaid(result_data[:message])})" : ""
+                mermaid_def << "  #{tool_participant}-->>Agent: Pending (Job ID: #{job_id_summary})#{message_summary}"
+              else
+                mermaid_def << "  #{tool_participant}-->>Agent: Result (Status: #{status}): #{summarize_for_mermaid(result_data)}"
+              end
+            else
+              mermaid_def << "  #{tool_participant}-->>Agent: Malformed Result: #{summarize_for_mermaid(result_data)}"
+            end
+          end
+
+          final_response_summary = ""
+          if final_agent_event_content[:status] == :success
+            final_response_summary = "Final Result: #{summarize_for_mermaid(final_agent_event_content[:result])}"
+          elsif final_agent_event_content[:status] == :error
+            final_response_summary = "Final Error: #{summarize_for_mermaid(final_agent_event_content[:error_message])}"
+          elsif final_agent_event_content[:status] == :pending
+            job_id_summary = summarize_for_mermaid(final_agent_event_content[:job_id])
+            message_summary = final_agent_event_content[:message] ? " - #{summarize_for_mermaid(final_agent_event_content[:message])}" : ""
+            final_response_summary = "Task Pending: Job ID #{job_id_summary}#{message_summary}"
+          else
+            final_response_summary = "Final Response (Status: #{final_agent_event_content[:status]}): #{summarize_for_mermaid(final_agent_event_content)}"
+          end
+          mermaid_def << "  Agent-->>User: #{final_response_summary}"
+
+          mermaid_def.join("\n")
+        end
+
+        # Helper to create a summarized string for Mermaid labels, then escape, then truncate.
+        def summarize_for_mermaid(data, max_length = 70)
+          return "nil" if data.nil?
+
+          raw_summary_str = ""
+          if data.is_a?(Hash)
+            # For hashes (like parameters), show all key-value pairs.
+            # Individual values are inspected to get quotes around strings etc.
+            items = data.map do |k, v_raw|
+              # For string values in a hash, don't use .inspect if they are short, to avoid double quotes in the label.
+              # For other types or long strings, .inspect is safer.
+              v_str = if v_raw.is_a?(String) && v_raw.length <= 20
+                        v_raw # Use raw string if short
+                      else
+                        v_raw.inspect # Use inspect for numbers, booleans, long strings, other types
+                      end
+              "#{k}: #{v_str}"
+            end
+            raw_summary_str = "{#{items.join(', ')}}"
+          elsif data.is_a?(Array)
+            # For arrays, show a few items, inspected.
+            items_str = data.take(3).map(&:inspect).join(', ')
+            raw_summary_str = "[#{items_str}#{data.size > 3 ? ', ...' : ''}]"
+          else
+            raw_summary_str = data.to_s # For simple types like strings, numbers directly
+          end
+
+          logger.debug "summarize_for_mermaid: raw_summary_str: #{raw_summary_str}"
+
+          # Now, truncate the *escaped* summary if it's too long.
+          if raw_summary_str.length > max_length
+            final_summary = raw_summary_str[0...(max_length - 3)] + "..."
+          else
+            final_summary = raw_summary_str
+          end
+
+          final_summary
+        end
+
+        # Helper to escape characters problematic for Mermaid labels
+
+        # --- END MERMAID HELPERS ---
       end # end helpers
-
-      # --- Routes ---
-      # Defines the HTTP endpoints for the web application.
-
-      # --- Agent Definition Management Routes (Redis Persistence) --- MOVED
-      # All routes previously under this heading have been moved to agent_definition_routes.rb
-      # This includes:
-      # GET /agents
-      # POST /agents
-      # DELETE /agents/:name
-      # GET /agents/:name
-      # GET /agents/:name/edit/:field
-      # PUT /agents/:name/update/:field
-      # GET /agents/:name/display/:field
-      # GET /agents/:name/display/tool_table
-
-      # --- Agent Interaction Routes --- MOVED
-      # GET /agents/:name/chat - MOVED to agent_interaction_routes.rb
-      # POST /agents/:name/chat - MOVED to agent_interaction_routes.rb
-      # POST /agents/:name/execute - MOVED to agent_interaction_routes.rb
-      # GET /agents/:name/generate_example_task - MOVED to agent_interaction_routes.rb
-
-      # --- Agent Runtime Control Routes --- MOVED
-      # POST /agents/:name/start/detail - MOVED to agent_runtime_routes.rb
-      # POST /agents/:name/stop/detail - MOVED to agent_runtime_routes.rb
-      # (The /agents/:name/start and /agents/:name/stop routes for main list are also in agent_runtime_routes.rb)
-
-      # --- API Endpoints (JSON) --- MOVED
-      # GET /api/agents - MOVED to api_routes.rb
-      # GET /api/tools - MOVED to api_routes.rb
-
-      # --- Tools Page Routes --- MOVED
-      # GET /tools - MOVED to tools_ui_routes.rb
-      # GET /tools/:name - MOVED to tools_ui_routes.rb
-
-      # --- Agent Definition Field Edit/Display Routes --- MOVED
-      # These were part of the agent_definition_routes logic and are now in that module.
-      # GET /agents/:name/edit/:field - MOVED
-      # GET /agents/:name/display/tool_table - MOVED
-      # GET /agents/:name/display/:field - MOVED
-      # PUT /agents/:name/update/:field - MOVED
 
       # --- Private Helper Methods ---
       private
@@ -639,17 +645,14 @@ module ADK
                 logger.info("Agent '#{agent_name}' is already running (in @agents), no action needed for sync.")
               else
                 logger.info("Agent '#{agent_name}' has persistent_status='running', attempting to start it...")
-                started_agent = _start_agent(agent_name) # _start_agent already logs success/failure
+                started_agent = _start_agent(agent_name)
                 unless started_agent
                   logger.error("Failed to auto-start agent '#{agent_name}' during sync. Its persistent_status remains 'running'.")
-                  # Optionally, update persistent_status to 'stopped' if auto-start fails critically
-                  # @definition_store.update_definition(agent_name, { persistent_status: 'stopped' })
                 end
               end
             elsif definition[:persistent_status] == 'stopped' && @agents.key?(agent_name)
-              # This case should ideally not happen if stops are clean, but as a safeguard:
               logger.warn("Agent '#{agent_name}' has persistent_status='stopped' but was found in @agents. Stopping it now.")
-              _stop_agent(agent_name) # _stop_agent will update persistent_status again, which is fine.
+              _stop_agent(agent_name)
             end
           end
           @logger.info("Finished synchronizing persistent agent statuses.")
@@ -668,26 +671,20 @@ module ADK
           begin
             agent.stop
             @agents.delete(name)
-            # Update persistent status in Redis
             if @definition_store
               @definition_store.update_definition(name, { persistent_status: 'stopped' })
               logger.info("Agent '#{name}' persistent_status updated to 'stopped' in store.")
             else
               logger.warn("Definition store not available, cannot update persistent_status for agent '#{name}'.")
             end
-            logger.info("Agent '#{name}' stopped.") # Original log message
+            logger.info("Agent '#{name}' stopped.")
             true
           rescue => e
             logger.error("Error stopping agent '#{name}': #{e.message}")
-            # Optionally, still update persistent_status to 'stopped' if appropriate
-            # if @definition_store
-            #   @definition_store.update_definition(name, { persistent_status: 'stopped' })
-            # end
-            false # Indicate error
+            false
           end
         else
           logger.warn("Attempted to stop non-running agent: '#{name}'. Ensuring persistent_status is 'stopped'.")
-          # Ensure persistent status is 'stopped' even if agent wasn't in memory
           if @definition_store
             begin
               definition = @definition_store.get_definition(name)
@@ -703,84 +700,74 @@ module ADK
           else
             logger.warn("Definition store not available, cannot ensure persistent_status for agent '#{name}'.")
           end
-          true # Considered success as it's already effectively stopped
+          true
         end
       end
 
       def _start_agent(name)
-        return @agents[name] if @agents.key?(name) # Already running
+        return @agents[name] if @agents.key?(name)
 
-        # --- MODIFIED: Use Definition Store ---
         halt 503, "Definition Store unavailable." unless @definition_store
         agent_definition = nil
         begin
           agent_definition = @definition_store.get_definition(name)
         rescue ADK::DefinitionStore::StoreError => e
           logger.error("Store error fetching definition for starting agent '#{name}': #{e.message}")
-          return nil # Failed to start
+          return nil
         end
 
         unless agent_definition
           logger.error("Agent definition not found for '#{name}', cannot start.")
-          return nil # Failed to start
+          return nil
         end
 
-        # Extract data from definition hash (symbol keys)
         agent_description = agent_definition[:description]
-        selected_tool_names = agent_definition[:tools].map(&:to_sym) # Agent expects symbols
+        selected_tool_names = agent_definition[:tools].map(&:to_sym)
         model_name = agent_definition[:model]
-        fallback_mode_sym = agent_definition[:fallback_mode] # Already symbol
+        fallback_mode_sym = agent_definition[:fallback_mode]
         mcp_servers_json = agent_definition[:mcp_servers_json]
-        # --- END MODIFICATION ---
+        agent_instruction = agent_definition[:instruction]
 
-        # --- FIXED: Parse MCP JSON before counting for logging ---
         mcp_server_count = 0
         begin
           parsed_mcp = JSON.parse(mcp_servers_json)
           mcp_server_count = parsed_mcp.is_a?(Array) ? parsed_mcp.count : 0
         rescue JSON::ParserError
-          # Keep count 0 if JSON is invalid
         end
         logger.info("Attempting to start agent '#{name}' (Model: #{model_name}, Fallback: #{fallback_mode_sym}, MCP: #{mcp_server_count} servers)... Selected Tools: #{selected_tool_names.inspect}")
-        # --- END FIX ---
+
         agent = ADK::Agent.new(
           name: name, description: agent_description, model_name: model_name,
           fallback_mode: fallback_mode_sym,
           mcp_servers: mcp_servers_json,
-          selected_tool_names: selected_tool_names
+          selected_tool_names: selected_tool_names,
+          instruction: agent_instruction
         )
 
-        # --- Add explicitly configured NATIVE tools ---
-        # MCP tools are registered during agent.start -> discover_and_register_mcp_tools
         selected_tool_names.each do |tn|
-          # Check if this selected tool is a known NATIVE tool
           inst = ADK::GlobalToolManager.create_instance(tn)
           if inst
             logger.debug("Adding selected native tool: #{tn}")
             agent.add_tool(inst)
           else
-            # Assuming it's an intended MCP tool, do nothing here.
-            # It will be registered later if available on the server and selected.
             logger.debug("Tool '#{tn}' selected but not found in GlobalToolManager (assuming MCP tool).")
           end
         end
 
         agent.start
         @agents[name] = agent
-        # Update persistent status in Redis
         if @definition_store
           @definition_store.update_definition(name, { persistent_status: 'running' })
           logger.info("Agent '#{name}' persistent_status updated to 'running' in store.")
         else
           logger.warn("Definition store not available, cannot update persistent_status for agent '#{name}'.")
         end
-        logger.info("Agent '#{name}' started successfully.") # Original log message
-        agent # Return the agent instance
+        logger.info("Agent '#{name}' started successfully.")
+        agent
       rescue StandardError => e
         logger.error("Failed to start agent '#{name}': #{e.class} - #{e.message}")
         logger.error(e.backtrace.join("\n"))
-        @agents.delete(name) # Clean up if partially added
-        # Ensure persistent status is 'stopped' on failed start
+        @agents.delete(name)
         if @definition_store
           begin
             @definition_store.update_definition(name, { persistent_status: 'stopped' })
@@ -789,7 +776,7 @@ module ADK
             logger.error("Store error while setting persistent_status to 'stopped' for failed agent '#{name}': #{se.message}")
           end
         end
-        nil # Failed to start
+        nil
       end
     end # End App class
   end # End Web module

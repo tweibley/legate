@@ -1,6 +1,6 @@
 / File: lib/adk/web/views/layout.slim
 doctype html
-html(class="has-navbar-fixed-top")
+html(class="has-navbar-fixed-top is-clipped-touch")
   head
     title Ruby ADK - Agent Development Kit
     meta charset="utf-8"
@@ -24,26 +24,8 @@ html(class="has-navbar-fixed-top")
     script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/ruby.min.js"
     script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"
     script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"
-
-    javascript:
-      document.addEventListener('DOMContentLoaded', function() {
-        initializeHighlighting();
-      });
-
-      function initializeHighlighting() {
-        // Select all 'pre code' blocks that are NOT specifically marked for Mermaid
-        document.querySelectorAll('pre code:not(.language-mermaid):not(.mermaid)').forEach(function(block) {
-          // Check if the block hasn't already been highlighted by hljs
-          // This prevents potential errors if htmx swaps already highlighted content
-          if (!block.classList.contains('hljs')) {
-             try {
-               hljs.highlightElement(block);
-             } catch (e) {
-               console.error("Highlight.js error:", e, "on block:", block);
-             }
-          }
-        });
-      }
+    / Add Mermaid.js library from CDN
+    script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"
 
     / Determine current section for nav highlighting
     - current_path = request.path_info
@@ -84,13 +66,31 @@ html(class="has-navbar-fixed-top")
           p.has-text-grey Attempting to reconnect...
           progress.progress.is-small.is-warning.mt-4 max="100"
 
+    /! --- NEW: Reusable Mermaid Modal Structure ---
+    #mermaid-modal.modal
+      .modal-background.modal-close-button
+      .modal-card style="width: 80%; max-width: 1000px;"
+        header.modal-card-head
+          p.modal-card-title Agent Execution Flow
+          button.delete.modal-close-button aria-label="close"
+        section.modal-card-body
+          #mermaid-modal-content style="text-align: center;"
+            /! Mermaid definition will be injected here by JS
+            pre.mermaid
+              /! Initial placeholder or empty content
+        footer.modal-card-foot
+          button.button.modal-close-button Close
+    /! --- END NEW MODAL STRUCTURE ---
+
     footer.footer.mt-6
       .content.has-text-centered
         p.is-size-7.has-text-grey-light
           strong Ruby ADK Web UI
 
+    /! Moved all JavaScript to the end of the body for better performance and DOM availability
     javascript:
       document.addEventListener('DOMContentLoaded', () => {
+        // Navbar burger toggle
         const $navbarBurgers = Array.prototype.slice.call(document.querySelectorAll('.navbar-burger'), 0);
         if ($navbarBurgers.length > 0) {
           $navbarBurgers.forEach( el => {
@@ -102,303 +102,398 @@ html(class="has-navbar-fixed-top")
             });
           });
         }
-      });
 
-      window.codeMirrorInstances = window.codeMirrorInstances || {};
-      window.codeMirrorObservers = window.codeMirrorObservers || {};
+        // CodeMirror global instances and observers
+        window.codeMirrorInstances = window.codeMirrorInstances || {};
+        window.codeMirrorObservers = window.codeMirrorObservers || {};
 
-      function initCodeMirrorEditor(editorElement, options = {}) {
-        if (editorElement && editorElement.id && !window.codeMirrorInstances[editorElement.id]) {
-          const elementId = editorElement.id;
-          try {
-            const defaultOptions = {
-              lineNumbers: true,
-              mode: { name: "javascript", json: true },
-              theme: "default",
-              lineWrapping: true,
-              gutters: ["CodeMirror-lint-markers"],
-              lint: false,
-              extraKeys: {"Ctrl-Q": function(cm){ cm.foldCode(cm.getCursor()); }, "Ctrl-Space": "autocomplete"},
-              foldGutter: true,
-              gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter", "CodeMirror-lint-markers"]
-            };
+        // Initialize CodeMirror editors
+        function initCodeMirrorEditor(editorElement, options = {}) {
+          if (editorElement && editorElement.id && !window.codeMirrorInstances[editorElement.id]) {
+            const elementId = editorElement.id;
+            try {
+              const defaultOptions = {
+                lineNumbers: true,
+                mode: { name: "javascript", json: true },
+                theme: "default",
+                lineWrapping: true,
+                gutters: ["CodeMirror-lint-markers"],
+                lint: false, // Default to false, enable for JSON
+                extraKeys: {"Ctrl-Q": function(cm){ cm.foldCode(cm.getCursor()); }, "Ctrl-Space": "autocomplete"},
+                foldGutter: true,
+                gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter", "CodeMirror-lint-markers"]
+              };
 
-            if (options.mode === 'text/plain' || elementId.includes('instruction')) {
-              options.mode = 'text/plain';
-              options.lint = false;
-            } else if (options.mode === 'markdown' || elementId.includes('some-markdown-field')) {
-              options.mode = 'markdown';
-              options.lint = false;
-            } else {
-              options.mode = { name: "javascript", json: true };
-              options.lint = true;
+              if (options.mode === 'text/plain' || elementId.includes('instruction')) {
+                options.mode = 'text/plain';
+                options.lint = false; // No linting for plain text
+              } else if (options.mode === 'markdown' || elementId.includes('some-markdown-field')) { // Example for markdown
+                options.mode = 'markdown';
+                options.lint = false;
+              } else { // Default to JSON mode
+                options.mode = { name: "javascript", json: true };
+                options.lint = true; // Enable linting for JSON
+              }
+
+              const cmOptions = Object.assign({}, defaultOptions, options);
+              const instance = CodeMirror.fromTextArea(editorElement, cmOptions);
+
+              instance.on('change', function(cm) {
+                cm.save(); // Update original textarea on change
+              });
+
+              window.codeMirrorInstances[elementId] = instance;
+              // Refresh after a slight delay to ensure layout is complete
+              setTimeout(() => instance.refresh(), 50);
+
+              // Observer to refresh CodeMirror when it becomes visible
+              const observer = new IntersectionObserver((entries) => {
+                  entries.forEach(entry => {
+                      if (entry.isIntersecting) {
+                         if(window.codeMirrorInstances[elementId]) {
+                            setTimeout(() => window.codeMirrorInstances[elementId].refresh(), 50);
+                         }
+                      }
+                  });
+              }, { threshold: 0.1 });
+              observer.observe(instance.getWrapperElement());
+              window.codeMirrorObservers[elementId] = observer;
+
+            } catch (e) {
+              // Fallback if CodeMirror fails to initialize
+              editorElement.style.display = 'block';
+              console.error("CodeMirror initialization error for ID " + elementId + ":", e);
             }
-
-            const cmOptions = Object.assign({}, defaultOptions, options);
-            const instance = CodeMirror.fromTextArea(editorElement, cmOptions);
-
-            instance.on('change', function(cm) {
-              cm.save();
-            });
-
-            window.codeMirrorInstances[elementId] = instance;
-
-            setTimeout(() => instance.refresh(), 50);
-
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                       if(window.codeMirrorInstances[elementId]) {
-                          setTimeout(() => window.codeMirrorInstances[elementId].refresh(), 50);
-                       }
-                    }
-                });
-            }, { threshold: 0.1 });
-            observer.observe(instance.getWrapperElement());
-            window.codeMirrorObservers[elementId] = observer;
-
-          } catch (e) {
-            editorElement.style.display = 'block';
+          } else if (editorElement && editorElement.id && window.codeMirrorInstances[editorElement.id]) {
+            // If instance exists, just refresh it (e.g., after HTMX swap)
+            const elementId = editorElement.id;
+            setTimeout(() => {
+               if (window.codeMirrorInstances[elementId]) {
+                  window.codeMirrorInstances[elementId].refresh()
+               }
+              }, 50);
+          } else if (!editorElement) {
+            // console.warn("initCodeMirrorEditor called with null editorElement");
+          } else if (!editorElement.id) {
+            // console.warn("initCodeMirrorEditor called with editorElement lacking an ID:", editorElement);
           }
-        } else if (editorElement && editorElement.id && window.codeMirrorInstances[editorElement.id]) {
-          const elementId = editorElement.id;
-          setTimeout(() => {
-             if (window.codeMirrorInstances[elementId]) {
-                window.codeMirrorInstances[elementId].refresh()
-             }
-            }, 50);
-        } else if (!editorElement) {
-        } else if (!editorElement.id) {
-        }
-      }
-
-      function destroyCodeMirrorInstance(elementId) {
-        if (window.codeMirrorObservers && window.codeMirrorObservers[elementId]) {
-          window.codeMirrorObservers[elementId].disconnect();
-          delete window.codeMirrorObservers[elementId];
         }
 
-        if (window.codeMirrorInstances && window.codeMirrorInstances[elementId]) {
-          const instance = window.codeMirrorInstances[elementId];
-          const wrapper = instance.getWrapperElement();
-          try {
-            instance.toTextArea();
-          } catch (e) {
+        // Destroy CodeMirror instance
+        function destroyCodeMirrorInstance(elementId) {
+          if (window.codeMirrorObservers && window.codeMirrorObservers[elementId]) {
+            window.codeMirrorObservers[elementId].disconnect();
+            delete window.codeMirrorObservers[elementId];
           }
-          if (wrapper && wrapper.parentNode) {
-             wrapper.parentNode.removeChild(wrapper);
+
+          if (window.codeMirrorInstances && window.codeMirrorInstances[elementId]) {
+            const instance = window.codeMirrorInstances[elementId];
+            const wrapper = instance.getWrapperElement();
+            try {
+              instance.toTextArea(); // Restore original textarea
+            } catch (e) {
+              // console.error("Error converting CodeMirror to TextArea for ID " + elementId + ":", e);
+            }
+            // It's safer to just hide or let HTMX replace, rather than removing child manually if HTMX is also managing it.
+            // if (wrapper && wrapper.parentNode) {
+            //    wrapper.parentNode.removeChild(wrapper);
+            // }
+            delete window.codeMirrorInstances[elementId];
           }
-          delete window.codeMirrorInstances[elementId];
         }
-      }
 
-      function initializeRelevantEditors(targetElement = document.body) {
-        const editorsToInit = [
-          { id: 'mcp_servers_json', options: {} },
-          { id: 'instruction', options: { mode: 'text/plain'} },
-          { id: 'mcp-json-editor', options: {} },
-          { id: 'mcp-json-display', options: { readOnly: true } },
-          { id: 'task-json-editor', options: {} },
-        ];
+        // Initialize CodeMirror for relevant textareas on the page or within a target element
+        function initializeRelevantEditors(targetElement = document.body) {
+          const editorsToInit = [
+            { id: 'mcp_servers_json', options: {} },        // Agent create form
+            { id: 'instruction', options: { mode: 'text/plain'} }, // Agent create form
+            { id: 'mcp-json-editor', options: {} },       // MCP edit field
+            { id: 'mcp-json-display', options: { readOnly: true } }, // MCP display field (might not be needed)
+            { id: 'task-json-editor', options: {} },      // Agent execute task field
+            { id: 'edit-instruction-textarea', options: { mode: 'text/plain'} } // Instruction edit field
+          ];
 
-        editorsToInit.forEach(editor => {
-          let element = null;
-          let foundIn = null;
-          if (targetElement && targetElement !== document.body && typeof targetElement.querySelector === 'function') {
-             element = targetElement.querySelector(`#${editor.id}`);
-             if (element) {
-                foundIn = 'target';
-             }
+          editorsToInit.forEach(editor => {
+            let element = null;
+            // Try finding within the targetElement first (e.g., after an HTMX swap)
+            if (targetElement && targetElement !== document.body && typeof targetElement.querySelector === 'function') {
+               element = targetElement.querySelector(`#${editor.id}`);
+            }
+            // If not found in target, or target is body, search the whole document
+            if (!element) {
+              element = document.getElementById(editor.id);
+            }
+            
+            if (element) {
+               initCodeMirrorEditor(element, editor.options);
+            }
+          });
+        }
+
+        // Highlight.js initialization
+        function initializeHighlighting(targetElement = document.body) {
+          const selector = targetElement === document.body ? 'pre code:not(.language-mermaid):not(.mermaid)' : 'pre code:not(.language-mermaid):not(.mermaid)';
+          targetElement.querySelectorAll(selector).forEach(function(block) {
+            if (!block.classList.contains('hljs')) {
+               try {
+                 hljs.highlightElement(block);
+               } catch (e) {
+                 console.error("Highlight.js error:", e, "on block:", block);
+               }
+            }
+          });
+        }
+
+        // Mermaid.js preparation
+        function prepareMermaidContainers(targetElement = document.body) {
+          const selector = targetElement === document.body ? 'code.language-mermaid' : 'code.language-mermaid';
+          targetElement.querySelectorAll(selector).forEach(block => {
+            const preElement = block.closest('pre');
+            if (!preElement || preElement.dataset.mermaidProcessed === 'true') {
+              return;
+            }
+            const diagramCode = block.textContent || block.innerText;
+            if (!diagramCode || diagramCode.trim() === '') {
+              return;
+            }
+            const mermaidContainer = document.createElement('div');
+            mermaidContainer.className = 'mermaid';
+            mermaidContainer.textContent = diagramCode;
+            if (preElement.parentNode) {
+              preElement.parentNode.replaceChild(mermaidContainer, preElement);
+              mermaidContainer.dataset.mermaidProcessed = 'true';
+            }
+          });
+        }
+
+        // Initial calls on DOMContentLoaded
+        initializeRelevantEditors(document.body);
+        initializeHighlighting(document.body);
+        prepareMermaidContainers(document.body);
+        try {
+          const initialMermaidNodes = document.querySelectorAll('.mermaid:not(#mermaid-modal-content .mermaid)');
+          if (initialMermaidNodes.length > 0) {
+            mermaid.run({ nodes: Array.from(initialMermaidNodes) });
           }
+        } catch (e) {
+          console.error("Error running mermaid.run() on initial load (non-modal):", e);
+        }
 
-          if (!element && (!targetElement || targetElement === document.body)) {
-            element = document.getElementById(editor.id);
-             if (element) {
-                foundIn = 'document';
-             }
-          }
-          
-          if (element) {
-             initCodeMirrorEditor(element, editor.options);
-          } else {
-          }
-        });
-      }
+        // Health Check Logic
+        if (!window.healthCheckInitialized) {
+          const healthCheckModal = document.getElementById('health-check-modal');
+          let isServerUnavailable = false;
+          // Ensure healthCheckIntervalId is declared to be accessible by checkServerHealth
+          let healthCheckIntervalId = null;
 
-      // --- NEW: Mermaid Preparation Function ---
-      function prepareMermaidContainers() {
-        document.querySelectorAll('code.language-mermaid').forEach(block => {
-          const preElement = block.closest('pre');
-          // Check if already processed to avoid infinite loops on swaps
-          if (!preElement || preElement.dataset.mermaidProcessed === 'true') {
+          window.checkServerHealth = function() {
+            fetch('/healthz', { method: 'GET', cache: 'no-cache' })
+              .then(response => {
+                if (!response.ok) {
+                  throw new Error(`Server status: ${response.status}`);
+                }
+                if (isServerUnavailable) {
+                  if (healthCheckModal) healthCheckModal.classList.remove('is-active');
+                  isServerUnavailable = false;
+                  showToast("Server connection restored.", "is-success");
+                }
+              })
+              .catch(error => {
+                if (!isServerUnavailable) {
+                  if (healthCheckModal) healthCheckModal.classList.add('is-active');
+                  isServerUnavailable = true;
+                }
+              });
+          }
+          // Start health check
+          if (typeof window.checkServerHealth === 'function') {
+            window.checkServerHealth(); // Initial check
+            healthCheckIntervalId = setInterval(window.checkServerHealth, 5000); // Store interval ID
+          }
+          window.healthCheckInitialized = true;
+        }
+
+        // --- NEW: Mermaid Modal Handling Setup ---
+        function setupMermaidModal() {
+          const modal = document.getElementById('mermaid-modal');
+          const modalContentArea = document.getElementById('mermaid-modal-content'); // The div that will contain the pre
+          // const mermaidTargetInModal = modalContentArea.querySelector('pre.mermaid'); // This is the pre tag
+          const closeButtons = modal.querySelectorAll('.modal-close-button, .modal-background');
+
+          if (!modal || !modalContentArea) { // Removed mermaidTargetInModal from check as it's created dynamically
+            console.error("Mermaid modal main elements not found.");
             return;
           }
-          
-          const diagramCode = block.textContent || block.innerText;
-          if (!diagramCode || diagramCode.trim() === '') {
-            return; // Skip empty blocks
-          }
-          
-          const mermaidContainer = document.createElement('div');
-          mermaidContainer.className = 'mermaid'; // Class mermaid.run() looks for
-          mermaidContainer.textContent = diagramCode;
-          
-          if (preElement.parentNode) {
-            preElement.parentNode.replaceChild(mermaidContainer, preElement);
-            // Mark the new container so we know the original pre was processed
-            // This helps if the container itself is somehow selected again
-            mermaidContainer.dataset.mermaidProcessed = 'true'; 
-          } else {
-            // Fallback or error if preElement has no parent?
-            console.warn('Could not replace pre element for mermaid diagram as it has no parent.', preElement);
-          }
-        });
-      }
-      // --- End Mermaid Preparation Function ---
 
-      // Wrap health check initialization in a guard
-      if (!window.healthCheckInitialized) {
-        const healthCheckModal = document.getElementById('health-check-modal');
-        let isServerUnavailable = false;
-        let healthCheckIntervalId = null;
+          function closeModal() {
+            modal.classList.remove('is-active');
+            document.documentElement.classList.remove('is-clipped');
+            // Clear the content of the pre tag when modal closes
+            const currentMermaidPre = modalContentArea.querySelector('pre.mermaid');
+            if (currentMermaidPre) {
+              currentMermaidPre.textContent = '';
+              currentMermaidPre.removeAttribute('data-processed');
+            }
+          }
 
-        window.checkServerHealth = function() { // Assign to window to make it globally accessible if needed elsewhere, or keep local
-          fetch('/healthz', { method: 'GET', cache: 'no-cache' })
-            .then(response => {
-              if (!response.ok) {
-                throw new Error(`Server status: ${response.status}`);
+          closeButtons.forEach(button => {
+            button.addEventListener('click', closeModal);
+          });
+
+          document.body.addEventListener('click', function(event) {
+            const triggerButton = event.target.closest('.show-mermaid-flow-btn');
+            if (triggerButton) {
+              event.preventDefault();
+              const mermaidDefinition = triggerButton.dataset.mermaidDefinition;
+
+              if (mermaidDefinition && mermaidDefinition.trim() !== '') {
+                // Ensure pre.mermaid exists or create it
+                let mermaidTargetPre = modalContentArea.querySelector('pre.mermaid');
+                if (!mermaidTargetPre) {
+                    mermaidTargetPre = document.createElement('pre');
+                    mermaidTargetPre.className = 'mermaid';
+                    modalContentArea.innerHTML = ''; // Clear previous content if any
+                    modalContentArea.appendChild(mermaidTargetPre);
+                }
+
+                mermaidTargetPre.textContent = mermaidDefinition;
+                mermaidTargetPre.removeAttribute('data-processed');
+
+                modal.classList.add('is-active');
+                document.documentElement.classList.add('is-clipped');
+
+                setTimeout(() => {
+                  try {
+                     console.log("Rendering Mermaid in modal for element:", mermaidTargetPre);
+                     mermaid.run({ nodes: [mermaidTargetPre] });
+                     console.log("Mermaid rendering attempt complete in modal.");
+                   } catch (e) {
+                     console.error("Error rendering Mermaid in modal:", e);
+                     mermaidTargetPre.textContent = `Error rendering diagram:\n${e.message}\n\n${mermaidDefinition}`;
+                   }
+                }, 50);
+              } else {
+                console.warn("Mermaid definition data attribute was missing or empty on button:", triggerButton);
+                showToast("Could not load execution flow diagram.", "is-warning");
               }
-              if (isServerUnavailable) {
-                if (healthCheckModal) healthCheckModal.classList.remove('is-active');
-                isServerUnavailable = false;
-                showToast("Server connection restored.", "is-success");
-              }
-            })
-            .catch(error => {
-              if (!isServerUnavailable) {
-                if (healthCheckModal) healthCheckModal.classList.add('is-active');
-                isServerUnavailable = true;
-              }
-            });
+            }
+          });
         }
-        
-        // Ensure DOM is ready before starting interval if called outside DOMContentLoaded
-        // (though it is currently inside)
-        // Removed the direct call and setInterval from here, moved to DOMContentLoaded
+        setupMermaidModal(); // Call the setup function
+        // --- END NEW MODAL HANDLING ---
+      }); // End DOMContentLoaded for main JS block
 
-        window.healthCheckInitialized = true;
-      }
-
-      document.addEventListener('DOMContentLoaded', () => {
-         initializeRelevantEditors(document.body);
-         initializeHighlighting(); 
-         prepareMermaidContainers(); // Prepare containers first
-         try {
-             mermaid.run(); // Explicitly run Mermaid on prepared containers
-         } catch (e) {
-             console.error("Error running mermaid.run() on initial load:", e);
-         }
-         // Start health check only after DOM is ready and initialization guard has run
-         if (window.healthCheckInitialized && typeof window.checkServerHealth === 'function' && !window.healthCheckIntervalId) {
-            window.checkServerHealth(); // Initial check
-            window.healthCheckIntervalId = setInterval(window.checkServerHealth, 5000);
-         }
-      });
-
+      // HTMX Event Listener for afterSwap
       document.body.addEventListener('htmx:afterSwap', function(event) {
         const targetElement = event.detail.target;
-        const newElement = event.detail.elt;
-        let elementToScan = newElement || targetElement;
-        
+        const newElement = event.detail.elt; // The new content that was swapped in
+        let elementToScan = newElement || targetElement; // Prefer the new content for scanning
+
         if (elementToScan) {
-          initializeRelevantEditors(elementToScan);
-          initializeHighlighting(); // Re-run highlight
-          prepareMermaidContainers(); // Prepare containers in swapped content
+          // Re-initialize CodeMirror, Highlight.js, and Mermaid for the new/updated content
+          // Assuming initializeRelevantEditors, initializeHighlighting, prepareMermaidContainers are defined globally or within this scope
+          if (typeof initializeRelevantEditors === 'function') initializeRelevantEditors(elementToScan);
+          if (typeof initializeHighlighting === 'function') initializeHighlighting(elementToScan);
+          if (typeof prepareMermaidContainers === 'function') prepareMermaidContainers(elementToScan);
+          
           try {
-             // Run mermaid specifically on nodes within the swapped content if possible
-             // Otherwise, re-run globally (may be less efficient but safer)
-             const mermaidNodes = elementToScan.querySelectorAll ? elementToScan.querySelectorAll('.mermaid') : [];
-             if (mermaidNodes.length > 0) {
-                mermaid.run({ nodes: mermaidNodes });
-             } else {
-                mermaid.run(); // Fallback to global run if needed
+             // Run mermaid specifically on nodes within the swapped content (excluding the modal)
+             const mermaidNodesInSwap = elementToScan.querySelectorAll ? elementToScan.querySelectorAll('.mermaid:not(#mermaid-modal-content .mermaid)') : [];
+             if (mermaidNodesInSwap.length > 0) {
+                mermaid.run({ nodes: mermaidNodesInSwap });
              }
           } catch (e) {
-             console.error("Error running mermaid.run() after htmx swap:", e);
+             console.error("Error running mermaid.run() after htmx swap on specific nodes:", e);
           }
         } else {
-           // Fallback if no specific element found
-           initializeHighlighting(); 
-           prepareMermaidContainers(); 
+           // Fallback if no specific element found (less ideal)
+           if (typeof initializeHighlighting === 'function') initializeHighlighting(document.body);
+           if (typeof prepareMermaidContainers === 'function') prepareMermaidContainers(document.body);
            try {
-              mermaid.run();
+              // Global run, excluding modal
+              const nonModalMermaidNodes = document.querySelectorAll('.mermaid:not(#mermaid-modal-content .mermaid)');
+              if (nonModalMermaidNodes.length > 0) {
+                 mermaid.run({ nodes: Array.from(nonModalMermaidNodes) });
+              }
            } catch (e) {
-              console.error("Error running mermaid.run() after htmx swap (fallback):", e);
+              console.error("Error running mermaid.run() after htmx swap (fallback global):", e);
            }
         }
 
+        // Toast notification logic (remains the same)
         const triggerHeader = event.detail.xhr.getResponseHeader('HX-Trigger-After-Swap');
         if (triggerHeader) {
           try {
             if (triggerHeader.startsWith('{') && triggerHeader.endsWith('}')) {
                const triggers = JSON.parse(triggerHeader);
-               if (triggers.showToast) {
+               if (triggers.showToast && typeof showToast === 'function') {
                    showToast(triggers.showToast.message, triggers.showToast.type);
                }
             } else {
               triggerHeader.split(',').forEach(triggerName => {
                 triggerName = triggerName.trim();
-                if (triggerName === 'showRestartToast') {
-                  showToast("Agent automatically restarted to apply changes.", "is-info");
-                } else if (triggerName === 'showRestartErrorToast') {
-                  showToast("Error: Failed to automatically restart agent. Please stop/start manually.", "is-danger");
-                } else if (triggerName === 'showSaveSuccessToast') {
-                  showToast("Configuration saved successfully.", "is-success");
+                if (typeof showToast === 'function') {
+                  if (triggerName === 'showRestartToast') {
+                    showToast("Agent automatically restarted to apply changes.", "is-info");
+                  } else if (triggerName === 'showRestartErrorToast') {
+                    showToast("Error: Failed to automatically restart agent. Please stop/start manually.", "is-danger");
+                  } else if (triggerName === 'showSaveSuccessToast') {
+                    showToast("Configuration saved successfully.", "is-success");
+                  }
                 }
               });
             }
           } catch (e) {
-             if (triggerHeader === 'showRestartToast') showToast("Agent automatically restarted.", "is-info");
+             if (triggerHeader === 'showRestartToast' && typeof showToast === 'function') showToast("Agent automatically restarted.", "is-info");
           }
         }
       });
 
+      // HTMX Event Listener for beforeSwap (remains the same)
       document.body.addEventListener('htmx:beforeSwap', function(event) {
           const swapTarget = event.detail.target;
-
           if (swapTarget && swapTarget.id === 'agent-mcp-display-container') {
               const editorId = 'mcp-json-editor';
-              destroyCodeMirrorInstance(editorId);
+              if (typeof destroyCodeMirrorInstance === 'function') destroyCodeMirrorInstance(editorId);
+          }
+          // Add similar logic for other CodeMirror instances if they are swapped out
+          if (swapTarget && swapTarget.id === 'agent-instruction-display-container') {
+              const editorId = 'edit-instruction-textarea';
+              if (typeof destroyCodeMirrorInstance === 'function') destroyCodeMirrorInstance(editorId);
           }
       });
 
+      // HTMX Event Listener for afterRequest (remains the same)
       document.body.addEventListener('htmx:afterRequest', function(event) {
         const config = event.detail.requestConfig;
         const xhr = event.detail.xhr;
         const elt = config.elt;
 
+        // Example Task Generation
         if (elt && elt.id === 'generate-example-task-btn') {
-           const editorId = 'task-json-editor';
+           const editorId = 'task-json-editor'; // Assumes the direct execution task editor has this ID
            const editorInstance = window.codeMirrorInstances[editorId];
 
            if (!editorInstance) {
-               showToast("Task editor is not ready. Please wait.", "is-warning");
+               if (typeof showToast === 'function') showToast("Task editor is not ready. Please wait.", "is-warning");
                return;
            }
 
            if (event.detail.successful) {
              try {
                const responseJson = xhr.responseText;
+               // Assuming responseJson is already a pretty-printed JSON string
                editorInstance.setValue(responseJson);
-               showToast("Example task generated.", "is-info", 2000);
+               if (typeof showToast === 'function') showToast("Example task generated.", "is-info", 2000);
              } catch (e) {
-               showToast("Failed to update task editor with example.", "is-danger");
+               if (typeof showToast === 'function') showToast("Failed to update task editor with example.", "is-danger");
              }
            } else {
-             showToast(`Failed to generate example (Status: ${xhr.status})`, "is-danger");
+             if (typeof showToast === 'function') showToast(`Failed to generate example (Status: ${xhr.status})`, "is-danger");
            }
          }
 
+         // Error display for direct task execution
          const triggerHeader = xhr.getResponseHeader('HX-Trigger-After-Swap');
          if (config.path && config.path.includes('/execute') && triggerHeader && triggerHeader.startsWith('showTaskError')) {
              try {
@@ -411,7 +506,7 @@ html(class="has-navbar-fixed-top")
                       <strong>Execution Error:</strong><br>
                       <pre style="white-space: pre-wrap; word-break: break-all;">${errorMessage}</pre>
                     </div>`;
-                 const targetElement = document.getElementById('task-result');
+                 const targetElement = document.getElementById('task-result'); // Assumes result div has this ID
                  if (targetElement) {
                      targetElement.innerHTML = errorHtml;
                  }
@@ -424,20 +519,19 @@ html(class="has-navbar-fixed-top")
          }
       });
 
+      // Function to show toast notifications (remains the same)
       function showToast(message, type = 'is-info', duration = 4000) {
           const toastContainer = document.getElementById('toast-container');
           if (!toastContainer) {
+              // console.error("Toast container not found!");
               return;
           }
-
           const toast = document.createElement('div');
           toast.className = `notification ${type} is-light`;
           toast.style.marginBottom = '0.5em';
           toast.style.opacity = '0';
           toast.style.transition = 'opacity 0.3s ease-in-out';
           toast.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)';
-
-
           const deleteButton = document.createElement('button');
           deleteButton.className = 'delete';
           deleteButton.type = 'button';
@@ -445,80 +539,50 @@ html(class="has-navbar-fixed-top")
              toast.style.opacity = '0';
              setTimeout(() => toast.remove(), 300);
           };
-
           toast.appendChild(deleteButton);
           toast.appendChild(document.createTextNode(message));
-
           toastContainer.appendChild(toast);
-
           setTimeout(() => toast.style.opacity = '1', 10);
-
           const timeoutId = setTimeout(() => {
               toast.style.opacity = '0';
               setTimeout(() => toast.remove(), 300);
           }, duration);
-
           deleteButton.addEventListener('click', () => clearTimeout(timeoutId));
       }
 
+      // General notification closer (remains the same)
       document.body.addEventListener('click', function(event) {
         if (event.target.matches('.notification > .delete')) {
-          if (!event.target.closest('#toast-container')) {
+          if (!event.target.closest('#toast-container')) { // Don't self-close toasts here
              event.target.parentElement.remove();
           }
         }
       });
 
+      // Dropdown adjustment logic (remains the same)
       function adjustDropdownDirection(dropdownId) {
-        // console.log("Adjusting dropdown:" + dropdownId);
         const dropdown = document.getElementById(dropdownId);
-        if (!dropdown) {
-          // console.warn("Dropdown element not found:" + dropdownId);
-          return;
-        }
+        if (!dropdown) return;
         const menu = dropdown.querySelector('.dropdown-menu');
-        if (!menu) {
-          // console.warn("Dropdown menu not found within:" + dropdownId);
-          return;
-        }
+        if (!menu) return;
         const trigger = dropdown.querySelector('.dropdown-trigger button');
-        if (!trigger) {
-          // console.warn("Dropdown trigger button not found within:" + dropdownId);
-          return;
-        }
+        if (!trigger) return;
         const tableContainer = trigger.closest('.table-container');
-        if (!tableContainer) {
-            // console.warn("Table container not found for dropdown:" + dropdownId);
-            return;
-        }
+        if (!tableContainer) return;
 
         requestAnimationFrame(() => {
           const menuHeight = menu.offsetHeight;
-
           if (menuHeight === 0) {
-            // console.warn("Menu height is 0 for " + dropdownId + ", defaulting to dropdown.");
             dropdown.classList.remove('is-up');
             return;
           }
-
           const triggerRect = trigger.getBoundingClientRect();
           const containerRect = tableContainer.getBoundingClientRect();
           const spaceBelow = containerRect.bottom - triggerRect.bottom;
-          const spaceAboveInContainer = triggerRect.top - containerRect.top;
-
-          // console.log("Trigger Rect Top:", triggerRect.top, "Container Rect Top:", containerRect.top, "Container Rect Bottom:", containerRect.bottom);
-          // console.log("Space Below (relative):", spaceBelow, "Space Above (relative):", spaceAboveInContainer, "Actual Menu Height:", menuHeight);
-
-          // Simplified Logic: If not enough space below, try going up.
           if (spaceBelow < menuHeight) {
-            // console.log("Not enough space below, adding is-up class to", dropdownId);
             dropdown.classList.add('is-up');
           } else {
-            // console.log("Enough space below, removing is-up class from", dropdownId);
             dropdown.classList.remove('is-up');
           }
         });
       }
-
-    / Add Mermaid.js library from CDN
-    script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"

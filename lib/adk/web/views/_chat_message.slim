@@ -1,14 +1,21 @@
 / File: lib/adk/web/views/_chat_message.slim
+
+/ Display the user's message
 .message.is-link.is-small.mb-2.user-message
   .message-header
     p You
   .message-body
     = user_message
 
+/ Process the agent's result to get display data
 - response_data = process_agent_response(agent_result)
+/ Capture the original user message text for use in the Mermaid diagram generation
+- original_user_input_for_diagram = user_message
 
+/ Display the agent's response message
 .message class="#{response_data[:msg_class]} agent-message is-small mb-4" id="event-#{response_data[:event_id]}" style="border-radius: 6px; overflow: hidden;"
   .message-header style="border-top-left-radius: 6px; border-top-right-radius: 6px;"
+    / Determine and display the source of the agent's message (Agent, Tool Request, Tool Result)
     - if agent_result.is_a?(ADK::Event) && agent_result.role == :tool_request
       p Tool Request
       span.tag.is-info.ml-2 #{agent_result.content[:tool_name] if agent_result.content.is_a?(Hash) && agent_result.content[:tool_name]}
@@ -18,12 +25,31 @@
       span.tag class="is-#{result_status == :error ? 'danger' : (result_status == :pending ? 'warning' : 'success')} ml-2" #{result_status}
     - else
       p Agent (#{agent_name})
-    
+
+    / Button to toggle raw JSON display
     - unless response_data[:raw_json_content].empty?
-      button.button.is-light.is-small.ml-auto( onclick="var el = document.getElementById('raw-#{response_data[:event_id]}'); el.style.display = (el.style.display == 'none' ? 'block' : 'none');" )
-        | Raw
-  
+      button.button.is-light.is-small.ml-1( onclick="var el = document.getElementById('raw-#{response_data[:event_id]}'); el.style.display = (el.style.display == 'none' ? 'block' : 'none');" )
+        | Raw JSON
+
+    /! --- MODIFIED: Mermaid Diagram Trigger Button ---
+    /! This button will trigger the modal display.
+    /! It's shown if the agent_result is an Event, from the agent, contains a Hash content, and that hash has plan_details.
+    - if agent_result.is_a?(ADK::Event) && agent_result.role == :agent && agent_result.content.is_a?(Hash) && agent_result.content[:plan_details]
+      / Generate the Mermaid definition string using the helper.
+      / The helper function `generate_mermaid_sequence_diagram` is expected to be available from `app.rb`.
+      - mermaid_definition = generate_mermaid_sequence_diagram(agent_result.content, original_user_input_for_diagram)
+      / Only show the button if a valid Mermaid definition was generated.
+      - unless mermaid_definition.empty?
+        / The button now has a specific class and a data attribute to hold the Mermaid definition.
+        button.button.is-light.is-small.ml-1.show-mermaid-flow-btn( data-mermaid-definition=mermaid_definition )
+          span.icon.is-small
+            i.fas.fa-project-diagram
+          span Flow
+    /! --- END MODIFICATION ---
+
   .message-body style="border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;"
+    / Display the primary textual content of the agent's response
+    / (or tool request/result information if applicable)
     - if agent_result.is_a?(ADK::Event) && agent_result.role == :tool_request
       - if agent_result.content.is_a?(Hash)
         - if agent_result.content[:params].is_a?(Hash) && !agent_result.content[:params].empty?
@@ -33,7 +59,6 @@
           p No parameters
       - else
         p= agent_result.content.to_s
-    
     - elsif agent_result.is_a?(ADK::Event) && agent_result.role == :tool_result
       - if agent_result.content.is_a?(Hash)
         - if agent_result.content[:error]
@@ -48,10 +73,11 @@
           pre.has-background-light.p-2.is-size-7= JSON.pretty_generate(agent_result.content)
       - else
         p= agent_result.content.to_s
-    
     - else
+      / Default display for agent messages or other types
       div style="white-space: pre-wrap; word-break: break-all; margin-bottom: 0.5rem;" = response_data[:display_content]
 
+      / Display Execution Plan details if available
       - if agent_result.is_a?(ADK::Event) && agent_result.content.is_a?(Hash) && agent_result.content[:plan_details].is_a?(Array) && !agent_result.content[:plan_details].empty?
         details.execution-plan-details
           summary.execution-plan-summary
@@ -68,7 +94,11 @@
 
                 p class="step-result-label #{result_class}" Result (#{result_status || "unknown"}):
                 pre class="step-result-pre #{result_class}"= pretty_json(step_detail[:result] || {}) rescue "{}"
-    
+
+    / Display Raw JSON content (hidden by default)
     - unless response_data[:raw_json_content].empty?
       div.raw-json-container id="raw-#{response_data[:event_id]}" style="display: none;"
         pre.raw-json-pre= response_data[:raw_json_content]
+
+    /! --- REMOVED: Inline Mermaid Diagram Container and pre.mermaid ---
+    /! The diagram will now be shown in a modal.
