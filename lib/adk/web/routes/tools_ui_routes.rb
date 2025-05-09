@@ -173,7 +173,7 @@ module ADK
           if tool_to_display
             self.instance_variable_set(:@tool, tool_to_display)
             logger.debug("Found tool metadata for '#{name}': #{tool_to_display.inspect}")
-            slim :tool
+            slim :tool_detail
           else
             logger.warn("Tool '#{name}' not found anywhere (from ToolsUIRoutes).")
             status 404
