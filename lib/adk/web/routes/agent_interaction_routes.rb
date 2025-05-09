@@ -237,7 +237,29 @@ module ADK
             )
             logger.info("Agent '#{name}' task processing complete for session '#{active_adk_session_id}'. Final result: #{final_event_or_error.inspect}")
             view_locals[:agent_result] = final_event_or_error
-            slim :_chat_message, layout: false, locals: view_locals
+
+            # Re-fetch the session object to get the latest event count and updated_at
+            updated_session_object = nil
+            if current_adk_session_object # This is the session object from before the agent call
+              begin
+                # Fetch by ID to ensure we get the absolute latest state from the service
+                updated_session_object = session_service.get_session(session_id: current_adk_session_object.id)
+              rescue => e
+                logger.error("Chat POST: Failed to re-fetch session '#{current_adk_session_object.id}' for stats update: #{e.message}")
+                # Fallback to the session object we had, though it might be slightly stale for updated_at
+                updated_session_object = current_adk_session_object 
+              end
+            end
+
+            chat_message_html = slim(:_chat_message, layout: false, locals: view_locals)
+            
+            # Render the raw inner content of session info
+            session_info_inner_html = slim(:_active_session_info, layout: false, locals: { active_session_details: updated_session_object })
+            # Wrap it in a div with ID and OOB attributes for the swap
+            active_session_info_oob_wrapper_html = %(<div id="active-session-info" class="mt-2" hx-swap-oob="outerHTML">#{session_info_inner_html}</div>)
+            
+            status 200 # Ensure HTMX processes OOB swaps
+            chat_message_html + active_session_info_oob_wrapper_html
           rescue => e
             logger.error("Error processing chat for agent #{name}, session '#{active_adk_session_id}': #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
             view_locals[:agent_result] =

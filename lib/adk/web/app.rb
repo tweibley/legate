@@ -87,7 +87,7 @@ module ADK
       before do
         session[:web_user_id] ||= SecureRandom.uuid
         # Optional: Log the web_user_id for debugging purposes during development
-        logger.debug "Current web_user_id: #{session[:web_user_id]}"
+        # logger.debug "Current web_user_id: #{session[:web_user_id]}"
       end
       # --- END NEW ---
 
