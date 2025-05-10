@@ -8,7 +8,7 @@ RSpec.describe ADK do
   # Capture original environment variables and logger state
   original_log_level = ENV['ADK_LOG_LEVEL']
   original_rack_env = ENV['RACK_ENV']
-  # Note: We can't easily reset the @logger instance var itself here,
+  # NOTE: We can't easily reset the @logger instance var itself here,
   # so tests will modify the existing logger instance created eagerly.
 
   before do

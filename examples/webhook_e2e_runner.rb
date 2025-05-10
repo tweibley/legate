@@ -41,7 +41,7 @@ ADK.configure do |config|
   # The listener passes ADK.redis_options to the job payload.
   # Ensure the worker uses RedisSessionService with these options.
   config.webhooks.default_session_service = ADK::SessionService::Redis.new(redis_client: Redis.new(ADK.redis_options)) 
-  # Note: This specific instance isn't used directly, but aligns config with worker behavior.
+  # NOTE: This specific instance isn't used directly, but aligns config with worker behavior.
 end
 
 # --- Verify Agent Definition Was Saved --- 

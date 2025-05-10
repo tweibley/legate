@@ -111,7 +111,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
       expect(logger_spy).to have_received(:info).with("Created fast-mcp adapter for ADK agent definition: '#{agent_name}'")
     end
 
-    # Note: Testing the Redis connection failure within .wrap might be complex due to class methods
+    # NOTE: Testing the Redis connection failure within .wrap might be complex due to class methods
   end
 
   # --- #call Method Tests ---

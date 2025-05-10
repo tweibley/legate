@@ -15,7 +15,7 @@ require_relative '../lib/adk'
 
 # Load the custom tool class
 require_relative 'tools/sleepy_tool'
-# Note: The worker itself (sleepy_worker.rb) needs to be loaded by the Sidekiq process,
+# NOTE: The worker itself (sleepy_worker.rb) needs to be loaded by the Sidekiq process,
 # not necessarily by this script, unless you are using Sidekiq inline testing.
 
 puts '--- Async Job Example ---'

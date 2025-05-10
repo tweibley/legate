@@ -276,7 +276,7 @@ RSpec.describe ADK::Mcp::Client do
     end
   end
 
-  # Note: Testing the private send_request_and_wait method directly is complex due to its loop
+  # NOTE: Testing the private send_request_and_wait method directly is complex due to its loop
   # and reliance on the connection's internal queue state. Its behavior is tested indirectly
   # through the public methods (connect, list_tools, call_tool).
 end

@@ -16,7 +16,7 @@ agent = ADK::Agent.new(
     ADK::Tools::Calculator,
     ADK::Tools::CatFacts,
     ADK::Tools::RandomNumberTool,
-    ADK::Tools::AgentTool # Note: AgentTool provides :delegate_task
+    ADK::Tools::AgentTool # NOTE: AgentTool provides :delegate_task
   ]
 )
 

@@ -156,7 +156,7 @@ module ADK
         # @raise [ConnectionError] if the HTTP POST fails or returns non-200.
         # @raise [ProtocolError] if the response body is not valid JSON.
         def send_request(json_rpc_hash)
-          # Note: This does *not* check @connected state for SSE, as POST is independent.
+          # NOTE: This does *not* check @connected state for SSE, as POST is independent.
           # However, a check might be desired depending on application logic.
           request_json = json_rpc_hash.to_json
           ADK.logger.debug("-> [MCP Client POST] #{@message_uri} Body: #{request_json}")
