@@ -31,7 +31,7 @@ RSpec.describe ADK::Mcp::Connection::Stdio do
     allow(Thread).to receive(:new).and_yield.and_return(spy('Thread', kill: nil, join: nil))
     conn.instance_variable_set(:@stdin, mock_stdin)
     conn.instance_variable_set(:@stdout, mock_stdout)
-    # Note: stderr is handled differently via pipe
+    # NOTE: stderr is handled differently via pipe
     conn.instance_variable_set(:@wait_thr, mock_wait_thr)
     conn.instance_variable_set(:@pid, mock_wait_thr.pid)
     conn.instance_variable_set(:@connected, true)

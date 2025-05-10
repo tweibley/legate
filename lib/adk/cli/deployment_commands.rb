@@ -656,7 +656,7 @@ module ADK
       end
 
       def generate_gcp_cloud_run_config(directory)
-        # Note: Generating a static YAML is less flexible than the deploy script.
+        # NOTE: Generating a static YAML is less flexible than the deploy script.
         # The script can dynamically fetch Redis IP etc. Keeping this commented out
         # as generating the script is generally preferred.
         say 'Skipping generation of static cloud-run-service.yaml, deploy script is preferred.', :yellow

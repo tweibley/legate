@@ -97,6 +97,6 @@ RSpec.describe ADK::Tools::RandomNumberTool do
       end
     end
 
-    # Note: Base class validation (missing required) isn't applicable here as params are optional
+    # NOTE: Base class validation (missing required) isn't applicable here as params are optional
   end
 end

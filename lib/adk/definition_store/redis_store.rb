@@ -14,7 +14,7 @@ module ADK
       AGENT_HASH_PREFIX = 'adk:agent:'
       AGENTS_SET_KEY = 'adk:agents:all_names'
 
-      # Note: Validator, Transformer, Extractor are Procs and cannot be directly serialized to Redis easily.
+      # NOTE: Validator, Transformer, Extractor are Procs and cannot be directly serialized to Redis easily.
       # They are handled by the AgentDefinition object in memory, not persisted here by default.
       # Expected field names in the Redis hash
       AGENT_DEFINITION_FIELDS = %w[name description tools model fallback_mode mcp_servers_json instruction

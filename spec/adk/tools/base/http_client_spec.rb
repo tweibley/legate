@@ -194,7 +194,7 @@ RSpec.describe ADK::Tools::Base::HttpClient do
         }).to have_been_made.once
       end
       it 'merges options' do
-        # Note: WebMock cannot assert on Excon options. Trust Excon handles them.
+        # NOTE: WebMock cannot assert on Excon options. Trust Excon handles them.
         tool_def = DummyHttpToolWithClient.new(base_url: base_url, options: { connect_timeout: 1 })
         stub_request(:get, base_url + path).to_return(status: 200)
         tool_def.http_get(path, options: request_options)

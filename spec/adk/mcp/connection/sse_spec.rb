@@ -9,7 +9,7 @@ require 'adk' # For logger
 require 'stringio' # For mocking streams
 
 RSpec.describe ADK::Mcp::Connection::Sse do
-  let(:base_url) { 'http://localhost:9292/mcp' } # Note: No trailing slash
+  let(:base_url) { 'http://localhost:9292/mcp' } # NOTE: No trailing slash
   # URIs used for mocking Net::HTTP calls
   let(:sse_uri) { URI.parse('http://localhost:9292/mcp/sse') } # Correct expected URI
   let(:message_uri) { URI.parse('http://localhost:9292/mcp/messages') } # Correct expected URI
