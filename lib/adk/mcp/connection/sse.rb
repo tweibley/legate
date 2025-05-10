@@ -264,7 +264,7 @@ module ADK
             next if line.start_with?(':') # Skip comments
 
             field, value = line.split(':', 2)
-            value.strip! if value
+            value&.strip!
 
             case field
             when 'event'

@@ -128,7 +128,7 @@ module ADK
 
       def generate_dockerfile_content(path, entry_point, base_image, deployment_dir_basename)
         # Basic validation for entry point format (crude check)
-        unless entry_point && entry_point.include?('/') || entry_point.start_with?('bin/')
+        unless entry_point&.include?('/') || entry_point.start_with?('bin/')
           say "Warning: Entry point '#{entry_point}' does not look like a path. Ensure it's correct.", :yellow
         end
 
@@ -274,7 +274,7 @@ module ADK
         relative_entry_point = entry_point_script # Use the path as provided (e.g., 'bin/adk_web_entrypoint.rb')
 
         # Basic validation
-        unless relative_entry_point && relative_entry_point.include?('/')
+        unless relative_entry_point&.include?('/')
           say "Warning: Entry point '#{relative_entry_point}' for config.ru doesn't look like a relative path. Ensure it's correct.",
               :yellow
         end

@@ -784,7 +784,7 @@ module ADK
       private
 
       def synchronize_persistent_agents
-        return unless @definition_store && @definition_store.check_connection
+        return unless @definition_store&.check_connection
 
         @logger.info('Synchronizing persistent agent statuses on startup...')
         begin
