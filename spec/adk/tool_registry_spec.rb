@@ -124,7 +124,7 @@ RSpec.describe ADK::ToolRegistry do
       clean_registry.register(:registry_error_tool, RegistryErrorTool) # name: :registry_error_tool
       metadata = clean_registry.list_tools
       # Expected sort order based on the explicit names
-      expect(metadata.map { |m| m[:name] }).to eq([:registry_error_tool, :registry_mock])
+      expect(metadata.map { |m| m[:name] }).to eq(%i[registry_error_tool registry_mock])
     end
   end
 end

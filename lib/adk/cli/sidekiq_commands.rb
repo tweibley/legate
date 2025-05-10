@@ -21,7 +21,7 @@ module ADK
         verbose = options[:verbose]
 
         # Build the Sidekiq command
-        cmd = ['bundle', 'exec', 'sidekiq']
+        cmd = %w[bundle exec sidekiq]
         cmd << '-r' << require_path if require_path # Only add -r if a path is specified
         cmd << '-q' << queues
         cmd << '-c' << concurrency.to_s
@@ -71,7 +71,7 @@ module ADK
         require_path = options[:require]
 
         # Build the Sidekiq command
-        cmd = ['bundle', 'exec', 'sidekiqctl', 'shutdown']
+        cmd = %w[bundle exec sidekiqctl shutdown]
         cmd << '-r' << require_path if require_path # Only add -r if a path is specified
 
         puts 'Stopping Sidekiq workers gracefully...'
@@ -94,7 +94,7 @@ module ADK
         require_path = options[:require]
 
         # Build the Sidekiq command
-        cmd = ['bundle', 'exec', 'sidekiqctl', 'status']
+        cmd = %w[bundle exec sidekiqctl status]
         cmd << '-r' << require_path if require_path # Only add -r if a path is specified
 
         puts 'Checking Sidekiq status...'
@@ -118,7 +118,7 @@ module ADK
         queue = options[:queue]
 
         # Build the Sidekiq command
-        cmd = ['bundle', 'exec', 'sidekiqctl', 'list_jobs']
+        cmd = %w[bundle exec sidekiqctl list_jobs]
         cmd << '-r' << require_path if require_path # Only add -r if a path is specified
         cmd << '-q' << queue
 

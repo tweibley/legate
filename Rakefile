@@ -12,7 +12,7 @@ task :sass do
 end
 
 desc 'Run tests and compile Sass'
-task default: [:spec, :sass]
+task default: %i[spec sass]
 
 desc 'Run RuboCop'
 task :rubocop do

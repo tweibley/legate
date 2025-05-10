@@ -17,7 +17,7 @@ module ADK
     default_level = ENV['RACK_ENV'] == 'development' ? 'DEBUG' : 'WARN'
     level_str = ENV['ADK_LOG_LEVEL']&.upcase || default_level
     log_target = $stdout
-    if ['NONE', 'SILENT'].include?(level_str)
+    if %w[NONE SILENT].include?(level_str)
       log_target = IO::NULL
       level = Logger::FATAL + 1
     else
@@ -33,7 +33,7 @@ module ADK
     logger_instance = Logger.new(log_target)
     logger_instance.level = level
     logger_instance.formatter = proc { |severity, _, _, msg| "#{severity}: #{msg}\n" }
-    unless ['NONE', 'SILENT'].include?(level_str)
+    unless %w[NONE SILENT].include?(level_str)
       puts "--> ADK Logger initialized with level: #{level_str}, target: #{log_target == IO::NULL ? 'NULL' : 'STDOUT'}"
     end
     logger_instance

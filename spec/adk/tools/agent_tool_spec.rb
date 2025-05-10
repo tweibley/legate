@@ -221,7 +221,7 @@ RSpec.describe ADK::Tools::AgentTool do
     end
 
     context 'when a needed tool is not found in the executing registry' do
-      let(:definition_missing_tool) { target_definition_hash.merge(tools: ['calculator', 'missing_tool']) }
+      let(:definition_missing_tool) { target_definition_hash.merge(tools: %w[calculator missing_tool]) }
       before do
         allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_s).and_return(definition_missing_tool)
         # Make executing registry return nil for the missing tool

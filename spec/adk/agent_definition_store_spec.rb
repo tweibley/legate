@@ -12,7 +12,7 @@ RSpec.describe ADK::AgentDefinitionStore do
   let(:test_agent_def) do
     {
       description: 'Test Agent One Desc',
-      tools: ['calculator', 'echo'],
+      tools: %w[calculator echo],
       model: 'gemini-test'
     }
   end
@@ -45,12 +45,12 @@ RSpec.describe ADK::AgentDefinitionStore do
   describe '.register' do
     it 'stores a valid definition in memory' do
       expect(described_class.register(test_agent_name, test_agent_def)).to be true
-      expect(described_class.find(test_agent_name)).to eq(test_agent_def.merge(tools: ['calculator', 'echo'])) # Tools are stringified
+      expect(described_class.find(test_agent_name)).to eq(test_agent_def.merge(tools: %w[calculator echo])) # Tools are stringified
     end
 
     it 'converts tool names to strings' do
-      described_class.register(:sym_tools, { description: 'd', tools: [:echo, :calculator] })
-      expect(described_class.find(:sym_tools)[:tools]).to eq(['echo', 'calculator'])
+      described_class.register(:sym_tools, { description: 'd', tools: %i[echo calculator] })
+      expect(described_class.find(:sym_tools)[:tools]).to eq(%w[echo calculator])
     end
 
     it 'handles non-array tools gracefully' do
@@ -195,7 +195,7 @@ RSpec.describe ADK::AgentDefinitionStore do
       loaded_count = described_class.load_all_from_redis
       expect(loaded_count).to eq(2)
       # Definitions are registered with stringified tool names
-      expect(described_class.find(test_agent_name)).to eq(test_agent_def.merge(tools: ['calculator', 'echo']))
+      expect(described_class.find(test_agent_name)).to eq(test_agent_def.merge(tools: %w[calculator echo]))
       expect(described_class.find(agent2_name)).to eq(agent2_def.merge(tools: ['echo']))
     end
 

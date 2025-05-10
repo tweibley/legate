@@ -212,7 +212,7 @@ RSpec.describe ADK::Agent do
   describe '#initialize with definition:' do
     before do
       # Ensure the mock definition returns the expected tool names
-      allow(mock_definition).to receive(:tool_names).and_return([:mock_tool, :another_tool])
+      allow(mock_definition).to receive(:tool_names).and_return(%i[mock_tool another_tool])
       allow(mock_tool_manager).to receive(:find_class).with(:mock_tool).and_return(MockTool)
       allow(mock_tool_manager).to receive(:find_class).with(:another_tool).and_return(MockAnotherTool)
     end
@@ -262,7 +262,7 @@ RSpec.describe ADK::Agent do
     end
 
     it 'warns if a tool class from definition is not found globally' do
-      allow(mock_definition).to receive(:tool_names).and_return([:mock_tool, :missing_tool])
+      allow(mock_definition).to receive(:tool_names).and_return(%i[mock_tool missing_tool])
       allow(mock_tool_manager).to receive(:find_class).with(:missing_tool).and_return(nil)
 
       create_agent_from_definition
@@ -693,7 +693,7 @@ RSpec.describe ADK::Agent do
         session = real_session_service.get_session(session_id: session_id)
         history = session.events
         expect(history.size).to eq(6) # user, req1, res1, req2, res2, agent
-        expect(history.map(&:role)).to eq([:user, :tool_request, :tool_result, :tool_request, :tool_result, :agent])
+        expect(history.map(&:role)).to eq(%i[user tool_request tool_result tool_request tool_result agent])
         expect(history[1].tool_name).to eq(:mock_tool)
         expect(history[3].tool_name).to eq(:another_tool)
         # Check the actual result of the second tool - string duplication

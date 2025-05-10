@@ -17,7 +17,7 @@ module ADK
       tool_description 'Sends an HTTP POST request with a JSON payload to a specified webhook URL. Can optionally sign the request using HMAC-SHA256.'
 
       parameter :url, type: :string, required: true, description: 'The target webhook URL.'
-      parameter :payload, type: [:hash, :string], required: true,
+      parameter :payload, type: %i[hash string], required: true,
                           description: 'The data payload to send. Hash payloads are automatically JSON-encoded with Content-Type: application/json.'
       parameter :secret, type: :string, required: false,
                          description: 'Optional secret key for calculating HMAC-SHA256 signature (X-Hub-Signature-256 header).'

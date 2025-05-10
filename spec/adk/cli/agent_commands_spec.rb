@@ -165,11 +165,11 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'saves the definition to Redis and registers it in memory' do
         expect(ADK::AgentDefinitionStore).to receive(:save_to_redis).with(
           :my_agent,
-          { description: description, tools: ['mock_cli_tool', 'echo'], model: ADK::Agent::DEFAULT_MODEL }
+          { description: description, tools: %w[mock_cli_tool echo], model: ADK::Agent::DEFAULT_MODEL }
         ).and_return(true)
         expect(ADK::AgentDefinitionStore).to receive(:register).with(
           :my_agent,
-          { description: description, tools: ['mock_cli_tool', 'echo'], model: ADK::Agent::DEFAULT_MODEL }
+          { description: description, tools: %w[mock_cli_tool echo], model: ADK::Agent::DEFAULT_MODEL }
         )
 
         invoke_command(:save, agent_name, description: description, tools: valid_tools)
@@ -414,7 +414,7 @@ RSpec.describe ADK::CLI::AgentCommands do
 
     context 'when a defined tool is not globally registered' do
       let(:agent_def_missing_tool) {
-        { description: 'Missing tool', tools: ['mock_cli_tool', 'forgotten_tool'], model: 'gemini-test' }
+        { description: 'Missing tool', tools: %w[mock_cli_tool forgotten_tool], model: 'gemini-test' }
       }
       before do
         ADK::AgentDefinitionStore.register(agent_name, agent_def_missing_tool)
@@ -785,7 +785,7 @@ RSpec.describe ADK::CLI::AgentCommands do
 
     context 'warning for missing tools' do
       let(:agent_def_missing) {
-        { description: 'Executor Missing', tools: ['mock_cli_tool', 'unregistered_tool'], model: 'gemini-exec' }
+        { description: 'Executor Missing', tools: %w[mock_cli_tool unregistered_tool], model: 'gemini-exec' }
       }
       before do
         ADK::AgentDefinitionStore.register(agent_name, agent_def_missing)

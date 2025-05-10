@@ -23,7 +23,7 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
           'active' => { 'type' => 'boolean', 'description' => 'Activation status' }
         }
       end
-      let(:required) { ['name', 'age'] }
+      let(:required) { %w[name age] }
 
       it 'converts properties to ADK parameters hash' do
         expected_params = {
