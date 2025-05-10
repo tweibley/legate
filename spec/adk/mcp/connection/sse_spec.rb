@@ -89,7 +89,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
       allow(mock_http).to receive(:request).with(sse_get_request).and_yield(wrong_type_response)
       # read_body shouldn't be called here either
       expect(wrong_type_response).not_to receive(:read_body)
-      expect { connection.connect }.to raise_error(ADK::Mcp::ConnectionError, /Content-Type: application\/json/)
+      expect { connection.connect }.to raise_error(ADK::Mcp::ConnectionError, %r{Content-Type: application/json})
       expect(connection.connected?).to be false
     end
 

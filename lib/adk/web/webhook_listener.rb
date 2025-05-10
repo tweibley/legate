@@ -37,7 +37,7 @@ module ADK
 
       before do
         # Ensure request body is parsed as JSON if content type indicates it
-        if request.content_type&.match?(/application\/json/i)
+        if request.content_type&.match?(%r{application/json}i)
           request.body.rewind
           begin
             # Store parsed body in rack env for handlers to access

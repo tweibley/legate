@@ -211,7 +211,7 @@ RSpec.describe ADK::Mcp::Client do
     it 'raises RemoteToolError if server returns an error' do
       error_response = { jsonrpc: '2.0', id: 2, error: { code: -32001, message: 'Server error', data: 'details' } }
       expect(client).to receive(:send_request_and_wait).with(list_request).and_return(error_response)
-      expect { client.list_tools }.to raise_error(ADK::Mcp::RemoteToolError, /MCP tools\/list failed: Server error/)
+      expect { client.list_tools }.to raise_error(ADK::Mcp::RemoteToolError, %r{MCP tools/list failed: Server error})
     end
 
     it 'raises ProtocolError if response is invalid or missing' do
