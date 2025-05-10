@@ -357,13 +357,13 @@ DEPENDENCIES
   rspec (~> 3.12)
   rubocop (~> 1.50)
   sassc
-  sidekiq
-  simplecov
+  sidekiq (~> 7.3)
+  simplecov (~> 0.21)
   sinatra (~> 3.2)
   sinatra-contrib (~> 3.2)
   slim (~> 5.0)
   timecop (~> 0.9)
-  webmock
+  webmock (~> 3.18)
   yard (~> 0.9)
 
 BUNDLED WITH
