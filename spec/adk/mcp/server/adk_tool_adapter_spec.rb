@@ -53,7 +53,7 @@ end
 
 RSpec.describe ADK::Mcp::Server::AdkToolAdapter do
   let(:logger_spy) { spy('Logger') }
-  let(:mock_schema_proc) { Proc.new { required(:param1).filled(:string) } }
+  let(:mock_schema_proc) { proc { required(:param1).filled(:string) } }
 
   before do
     allow(ADK).to receive(:logger).and_return(logger_spy)
