@@ -59,7 +59,7 @@ module ADK
         # Process code blocks to add language classes and data attributes
         def process_code_blocks(html)
           # Find fenced code blocks with language specifications
-          html.gsub(/<pre><code\s+class="language-(\w+)">(.*?)<\/code><\/pre>/m) do |match|
+          html.gsub(%r{<pre><code\s+class="language-(\w+)">(.*?)</code></pre>}m) do |match|
             language = $1
             code_content = $2
             # Replace with our enhanced version that adds data-lang attribute
@@ -173,7 +173,7 @@ module ADK
           # Sanitize path_splat: allow alphanumeric, underscore, hyphen, and forward slash for path
           # Remove leading/trailing slashes and protect against directory traversal
           sane_path = path_splat.gsub(%r{^/+|/+$}, '').gsub(%r{\.{2}/}, '')
-          sane_path.gsub!(/[^0-9a-zA-Z_\-\/]/, '') # Allow alphanumeric, _, -, /
+          sane_path.gsub!(%r{[^0-9a-zA-Z_\-/]}, '') # Allow alphanumeric, _, -, /
 
           if sane_path.empty?
             logger.warn("Attempt to access doc with invalid path: '#{path_splat}'")
