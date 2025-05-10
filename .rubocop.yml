@@ -1,0 +1,23 @@
+Metrics/BlockLength:
+  Enabled: false
+
+Layout/LineLength:
+  Enabled: false
+
+Style/BlockDelimiters:
+  Enabled: false
+
+Style/Lambda:
+  Enabled: false
+
+Style/SingleLineMethods:
+  Enabled: false
+
+Style/StringConcatenation:
+  Enabled: false
+
+Lint/UselessAssignment:
+  Enabled: false
+
+Lint/UnusedBlockArgument:
+  Enabled: false
