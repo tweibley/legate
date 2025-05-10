@@ -77,7 +77,7 @@ module ADK
         # @return [Proc] A Proc containing the Dry::Schema definition.
         def self.adk_to_dry_schema(adk_parameters_hash)
           ADK.logger.debug("Converting ADK params to Dry::Schema: #{adk_parameters_hash.inspect}")
-          return Proc.new {} unless adk_parameters_hash.is_a?(Hash)
+          return proc {} unless adk_parameters_hash.is_a?(Hash)
 
           schema_lines = []
 
@@ -129,7 +129,7 @@ module ADK
           schema_definition_string = schema_lines.join("\n")
           ADK.logger.debug("Generated Dry::Schema definition string:\n#{schema_definition_string}")
 
-          Proc.new { instance_eval(schema_definition_string) }
+          proc { instance_eval(schema_definition_string) }
         end
       end
     end
