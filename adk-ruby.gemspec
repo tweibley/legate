@@ -2,12 +2,12 @@
 
 Gem::Specification.new do |spec|
   spec.name          = 'adk-ruby'
-  spec.version       = '0.6.1'
+  spec.version       = '0.6.2'
   spec.authors       = ['Taylor Weibley']
-  spec.email         = ['spam@taylorw.com']
+  spec.email         = ['taylor@taylorw.com']
 
   spec.summary       = 'Agent Development Kit for Ruby'
-  spec.description   = 'A framework for building and managing AI agents in Ruby'
+  spec.description   = 'A framework for building and managing AI agents in Ruby, with support for tools, planning, sessions, and integrations.'
   spec.homepage      = 'https://github.com/tweibley/adk-ruby'
   spec.license       = 'NODHHLICENSE'
   spec.required_ruby_version = '>= 3.0.0'
