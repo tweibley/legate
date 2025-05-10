@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 require 'adk/session_service/base'
 
 module ADK

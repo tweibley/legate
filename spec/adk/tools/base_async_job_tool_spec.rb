@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 # File: spec/adk/tools/base_async_job_tool_spec.rb
 require 'spec_helper'
 require 'sidekiq/testing' # Use Sidekiq testing helpers
@@ -133,7 +134,7 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
     context 'when Redis connection fails' do
       before do
         allow(DummySidekiqWorker).to receive(:set).and_return(DummySidekiqWorker)
-        allow(DummySidekiqWorker).to receive(:perform_async).and_raise(Redis::CannotConnectError, "Connection refused")
+        allow(DummySidekiqWorker).to receive(:perform_async).and_raise(Redis::CannotConnectError, 'Connection refused')
       end
       it 'raises ToolError' do
         expect {
@@ -201,8 +202,8 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
     # Similar tests as store_job_result, but checking the error format
     let(:mock_redis) { instance_double(Redis) }
     let(:jid) { 'error_jid_1' }
-    let(:error_msg) { "Something went wrong" }
-    let(:error_cls) { "MyError" }
+    let(:error_msg) { 'Something went wrong' }
+    let(:error_cls) { 'MyError' }
     let(:expected_key) { "#{ADK::Tools::BaseAsyncJobTool::JOB_RESULT_REDIS_PREFIX}#{jid}" }
     let(:expected_ttl) { ADK::Tools::BaseAsyncJobTool::JOB_RESULT_TTL }
     let(:expected_json) { { status: :error, error_message: "#{error_cls}: #{error_msg}" }.to_json }
@@ -236,7 +237,7 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
     let(:jid) { 'pending_jid_1' }
     let(:expected_key) { "#{ADK::Tools::BaseAsyncJobTool::JOB_RESULT_REDIS_PREFIX}#{jid}" }
     let(:expected_ttl) { ADK::Tools::BaseAsyncJobTool::JOB_RESULT_TTL }
-    let(:expected_json) { { status: :pending, message: "Job processing started." }.to_json }
+    let(:expected_json) { { status: :pending, message: 'Job processing started.' }.to_json }
 
     before do
       allow(Redis).to receive(:new).and_return(mock_redis)

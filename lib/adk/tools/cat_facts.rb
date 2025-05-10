@@ -44,7 +44,7 @@ module ADK
       # @return [Hash] A hash with :status (:success or :error) and :result/:error_message.
       # @raise [ADK::ToolError] Propagates errors from http_get, parse_json_response, or validation.
       def fetch_cat_fact
-        ADK.logger.info("Fetching cat fact using HttpClient...")
+        ADK.logger.info('Fetching cat fact using HttpClient...')
 
         # Perform the GET request using the base module helper
         # Network/HTTP/Timeout errors are automatically handled and raised as ADK::ToolError
@@ -61,7 +61,7 @@ module ADK
 
         # Check if a valid fact was received
         if fact && !fact.empty?
-          ADK.logger.info("Cat fact fetched successfully.")
+          ADK.logger.info('Cat fact fetched successfully.')
           { status: :success, result: fact }
         else
           # Raise an error if the expected field is missing or empty

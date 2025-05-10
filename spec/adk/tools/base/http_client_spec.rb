@@ -162,9 +162,9 @@ RSpec.describe ADK::Tools::Base::HttpClient do
       end
       it 'joins absolute path correctly' do
         # Base URL path should be ignored for absolute path input
-        stub_request(:get, "https://api.example.com" + absolute_path).to_return(status: 200)
+        stub_request(:get, 'https://api.example.com' + absolute_path).to_return(status: 200)
         tool.http_get(absolute_path)
-        expect(a_request(:get, "https://api.example.com" + absolute_path)).to have_been_made.once
+        expect(a_request(:get, 'https://api.example.com' + absolute_path)).to have_been_made.once
       end
       it 'handles full URL path directly' do
         stub_request(:get, full_url_no_base).to_return(status: 200)
@@ -255,7 +255,7 @@ RSpec.describe ADK::Tools::Base::HttpClient do
       end
       it 'raises ADK::ToolError if JSON encoding fails' do
         # No request is made if JSON encoding fails, so no stub needed
-        allow(JSON).to receive(:generate).and_raise(JSON::GeneratorError.new("json gen error"))
+        allow(JSON).to receive(:generate).and_raise(JSON::GeneratorError.new('json gen error'))
         expect {
           tool.http_post(path,
                          body: request_body_hash)

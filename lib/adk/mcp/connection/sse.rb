@@ -79,7 +79,7 @@ module ADK
                 # Start the reader thread *after* confirming connection
                 @sse_reader_thread = Thread.new(response) do |resp|
                   begin
-                    buffer = ""
+                    buffer = ''
                     # Use read_body to stream chunks
                     resp.read_body do |chunk|
                       buffer << chunk
@@ -89,15 +89,15 @@ module ADK
                       end
                       # Handle potential partial message at the end if needed
                     end
-                    ADK.logger.info("SSE stream ended.")
+                    ADK.logger.info('SSE stream ended.')
                   rescue EOFError
-                    ADK.logger.info("SSE stream closed by server.")
+                    ADK.logger.info('SSE stream closed by server.')
                   rescue StandardError => e
                     ADK.logger.error("Error reading SSE stream: #{e.class} - #{e.message}")
                     ADK.logger.error(e.backtrace.join("\n"))
                     @last_error = "SSE stream read error: #{e.message}"
                   ensure
-                    ADK.logger.debug("SSE reader thread finishing...")
+                    ADK.logger.debug('SSE reader thread finishing...')
                     @connected = false # Mark as disconnected if thread stops
                   end
                 end
@@ -130,12 +130,12 @@ module ADK
         def disconnect
           return unless @connected || @sse_reader_thread # Only if connected or thread exists
 
-          ADK.logger.info("Disconnecting SSE connection...")
+          ADK.logger.info('Disconnecting SSE connection...')
           @connected = false # Mark as disconnected first
 
           # Stop the reader thread
           if @sse_reader_thread&.alive?
-            ADK.logger.debug("Stopping SSE reader thread...")
+            ADK.logger.debug('Stopping SSE reader thread...')
             @sse_reader_thread.kill # Forcefully stop the thread
             @sse_reader_thread.join(1) # Wait briefly for it to finish
           end
@@ -147,7 +147,7 @@ module ADK
           @sse_reader_thread = nil
           @http_client = nil # Let GC handle connection pool if any
           @notification_queue.clear
-          ADK.logger.info("SSE connection disconnected.")
+          ADK.logger.info('SSE connection disconnected.')
         end
 
         # Sends a request via HTTP POST and returns the response immediately.
@@ -254,7 +254,7 @@ module ADK
         # Parses data lines and pushes JSON onto notification queue.
         def process_sse_event(event_string)
           ADK.logger.debug("Processing SSE Event: #{event_string.inspect}")
-          data_buffer = +"" # Use unary plus for mutable empty string
+          data_buffer = +'' # Use unary plus for mutable empty string
           event_type = nil
           # id = nil # Not typically used by MCP notifications
 

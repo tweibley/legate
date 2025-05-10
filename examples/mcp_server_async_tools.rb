@@ -45,11 +45,11 @@ ADK.logger.level = Logger::INFO
 
 # Create and register the SleepyTool
 class SleepyToolWrapper < FastMcp::Tool
-  description "Sleep for a specified duration"
+  description 'Sleep for a specified duration'
 
   arguments do
-    required(:duration).filled(:integer, gt?: 0).description("Duration to sleep in seconds")
-    required(:message).filled(:string).description("A message to include in the final result")
+    required(:duration).filled(:integer, gt?: 0).description('Duration to sleep in seconds')
+    required(:message).filled(:string).description('A message to include in the final result')
   end
 
   def call(args)
@@ -79,10 +79,10 @@ end
 
 # Create and register the CheckJobStatusTool
 class CheckJobStatusToolWrapper < FastMcp::Tool
-  description "Check the status of a background job"
+  description 'Check the status of a background job'
 
   arguments do
-    required(:job_id).filled(:string, min_size?: 1).description("The ID of the job to check")
+    required(:job_id).filled(:string, min_size?: 1).description('The ID of the job to check')
   end
 
   def call(args)
@@ -116,9 +116,9 @@ server.register_tool(SleepyToolWrapper)
 server.register_tool(CheckJobStatusToolWrapper)
 
 # Start the server
-ADK.logger.info("Starting MCP server with async tools...")
+ADK.logger.info('Starting MCP server with async tools...')
 begin
   server.start
 rescue Interrupt
-  ADK.logger.info("Shutting down MCP server...")
+  ADK.logger.info('Shutting down MCP server...')
 end

@@ -13,8 +13,8 @@ require 'thor/shell/basic' # Required for explicit shell
 
 # Mock Tool for testing
 class MockCliTool < ADK::Tool
-  tool_description "A mock tool for CLI tests."
-  parameter :param1, type: :string, description: "A parameter", required: true
+  tool_description 'A mock tool for CLI tests.'
+  parameter :param1, type: :string, description: 'A parameter', required: true
 
   def perform_execution(params, _context)
     { status: :success, result: "MockCliTool executed with #{params[:param1]}" }
@@ -42,14 +42,14 @@ RSpec.describe ADK::CLI::AgentCommands do
 
     # Mock Redis connection for definition store
     allow(Redis).to receive(:new).and_return(redis_mock)
-    allow(redis_mock).to receive(:ping).and_return("PONG")
+    allow(redis_mock).to receive(:ping).and_return('PONG')
     allow(redis_mock).to receive(:sadd)
     allow(redis_mock).to receive(:hset)
     allow(redis_mock).to receive(:smembers).and_return([])
     allow(redis_mock).to receive(:hgetall).and_return({})
     allow(redis_mock).to receive(:del)
     allow(redis_mock).to receive(:srem)
-    allow(redis_mock).to receive(:multi).and_yield(redis_mock).and_return(["OK"])
+    allow(redis_mock).to receive(:multi).and_yield(redis_mock).and_return(['OK'])
     allow(redis_mock).to receive(:pipelined).and_return([])
     allow(redis_mock).to receive(:close)
 
@@ -85,7 +85,7 @@ RSpec.describe ADK::CLI::AgentCommands do
     output.puts "SystemExit with status #{e.status} (rescued)"
   rescue Thor::RequiredArgumentMissingError => e
     output.puts "Thor Error: #{e.message}"
-    output.puts "SystemExit with status 1 (captured missing arg)"
+    output.puts 'SystemExit with status 1 (captured missing arg)'
   end
 
   # --- Tests will go here ---
@@ -94,27 +94,27 @@ RSpec.describe ADK::CLI::AgentCommands do
     context 'when Redis connection fails' do
       before do
         allow(ADK::AgentDefinitionStore).to receive(:load_all_from_redis).and_raise(Redis::CannotConnectError,
-                                                                                    "Connection refused")
+                                                                                    'Connection refused')
       end
 
       it 'prints an error and exits' do
         invoke_command(:list)
-        expect(output.string).to include("Error: Could not connect to Redis")
-        expect(output.string).to include("SystemExit with status 1")
+        expect(output.string).to include('Error: Could not connect to Redis')
+        expect(output.string).to include('SystemExit with status 1')
       end
     end
 
     context 'when no definitions exist' do
       it 'prints a message indicating no definitions' do
         invoke_command(:list)
-        expect(output.string).to include("No agent definitions found.")
+        expect(output.string).to include('No agent definitions found.')
       end
     end
 
     context 'when definitions exist' do
-      let(:agent1_def) { { description: "First agent", tools: ["mock_cli_tool"], model: "gemini-1.5-pro" } }
-      let(:agent2_def) { { description: "Second agent", tools: [], model: ADK::Agent::DEFAULT_MODEL } }
-      let(:agent3_def) { { tools: ["mock_cli_tool"], model: "gemini-1.5-pro" } }
+      let(:agent1_def) { { description: 'First agent', tools: ['mock_cli_tool'], model: 'gemini-1.5-pro' } }
+      let(:agent2_def) { { description: 'Second agent', tools: [], model: ADK::Agent::DEFAULT_MODEL } }
+      let(:agent3_def) { { tools: ['mock_cli_tool'], model: 'gemini-1.5-pro' } }
 
       before do
         # Register agents in memory for setup
@@ -128,10 +128,10 @@ RSpec.describe ADK::CLI::AgentCommands do
         # Mock .all to return only the agents set up in the before block
         allow(ADK::AgentDefinitionStore).to receive(:all).and_return({ agent_one: agent1_def, agent_two: agent2_def })
         invoke_command(:list)
-        expect(output.string).to include("Defined Agents:")
-        expect(output.string).to include("- agent_one: First agent (Model: gemini-1.5-pro, Tools: mock_cli_tool)")
+        expect(output.string).to include('Defined Agents:')
+        expect(output.string).to include('- agent_one: First agent (Model: gemini-1.5-pro, Tools: mock_cli_tool)')
         expect(output.string).to include("- agent_two: Second agent (Model: #{ADK::Agent::DEFAULT_MODEL}, Tools: None)")
-        expect(output.string).not_to include("agent_three") # Ensure it doesn't list agent 3 here
+        expect(output.string).not_to include('agent_three') # Ensure it doesn't list agent 3 here
       end
 
       it 'handles definitions with no description' do
@@ -141,10 +141,10 @@ RSpec.describe ADK::CLI::AgentCommands do
         allow(ADK::AgentDefinitionStore).to receive(:all).and_return({ agent_one: agent1_def, agent_two: agent2_def,
                                                                        agent_three: agent3_def })
         invoke_command(:list)
-        expect(output.string).to include("Defined Agents:")
-        expect(output.string).to include("- agent_three: [No description] (Model: gemini-1.5-pro, Tools: mock_cli_tool)")
-        expect(output.string).to include("- agent_one: First agent")
-        expect(output.string).to include("- agent_two: Second agent")
+        expect(output.string).to include('Defined Agents:')
+        expect(output.string).to include('- agent_three: [No description] (Model: gemini-1.5-pro, Tools: mock_cli_tool)')
+        expect(output.string).to include('- agent_one: First agent')
+        expect(output.string).to include('- agent_two: Second agent')
       end
     end
   end
@@ -175,7 +175,7 @@ RSpec.describe ADK::CLI::AgentCommands do
         invoke_command(:save, agent_name, description: description, tools: valid_tools)
 
         expect(output.string).to include("Agent definition 'my_agent' saved")
-        expect(output.string).to include("Tools: mock_cli_tool, echo")
+        expect(output.string).to include('Tools: mock_cli_tool, echo')
         expect(output.string).to include("Model: #{ADK::Agent::DEFAULT_MODEL}")
       end
 
@@ -193,7 +193,7 @@ RSpec.describe ADK::CLI::AgentCommands do
         invoke_command(:save, agent_name, description: description, model: model_name)
 
         expect(output.string).to include("Model: #{model_name}")
-        expect(output.string).to include("Tools: None")
+        expect(output.string).to include('Tools: None')
       end
 
       it 'saves with no tools specified' do
@@ -205,7 +205,7 @@ RSpec.describe ADK::CLI::AgentCommands do
 
         invoke_command(:save, agent_name, description: description)
 
-        expect(output.string).to include("Tools: None")
+        expect(output.string).to include('Tools: None')
       end
     end
 
@@ -221,7 +221,7 @@ RSpec.describe ADK::CLI::AgentCommands do
 
         expect(output.string).to include("Warning: Unknown globally registered tool 'non_existent_tool', ignoring.")
         expect(output.string).to include("Agent definition 'my_agent' saved")
-        expect(output.string).to include("Tools: mock_cli_tool")
+        expect(output.string).to include('Tools: mock_cli_tool')
       end
     end
 
@@ -233,8 +233,8 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'prints an error and exits' do
         expect(ADK::AgentDefinitionStore).not_to receive(:register)
         invoke_command(:save, agent_name, description: description, tools: valid_tools)
-        expect(output.string).to include("Error saving definition to Redis. Aborting.")
-        expect(output.string).to include("SystemExit with status 1")
+        expect(output.string).to include('Error saving definition to Redis. Aborting.')
+        expect(output.string).to include('SystemExit with status 1')
       end
     end
   end
@@ -242,7 +242,7 @@ RSpec.describe ADK::CLI::AgentCommands do
   # --- Test delete command ---
   describe '#delete' do
     let(:agent_name) { :my_agent_to_delete }
-    let(:agent_def) { { description: "To be deleted", tools: [], model: "test-model" } }
+    let(:agent_def) { { description: 'To be deleted', tools: [], model: 'test-model' } }
 
     context 'when definition exists in memory' do
       before do
@@ -252,7 +252,7 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'prompts for confirmation and deletes from Redis and memory' do
         # FIX: Expect uncolored prompt when using explicit basic shell
         expected_prompt = "Are you sure you want to permanently delete agent definition 'my_agent_to_delete'? [y/N] "
-        expect(Thor::LineEditor).to receive(:readline).with(expected_prompt, { add_to_history: false }).and_return("y")
+        expect(Thor::LineEditor).to receive(:readline).with(expected_prompt, { add_to_history: false }).and_return('y')
 
         expect(ADK::AgentDefinitionStore).to receive(:delete_from_redis).with(agent_name).and_return(true)
         expect(ADK::AgentDefinitionStore).to receive(:remove).with(agent_name).and_call_original
@@ -266,14 +266,14 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'cancels deletion if user answers no' do
         # FIX: Expect uncolored prompt
         expected_prompt = "Are you sure you want to permanently delete agent definition 'my_agent_to_delete'? [y/N] "
-        expect(Thor::LineEditor).to receive(:readline).with(expected_prompt, { add_to_history: false }).and_return("n")
+        expect(Thor::LineEditor).to receive(:readline).with(expected_prompt, { add_to_history: false }).and_return('n')
 
         expect(ADK::AgentDefinitionStore).not_to receive(:delete_from_redis)
         expect(ADK::AgentDefinitionStore).not_to receive(:remove)
 
         invoke_command(:delete, agent_name.to_s)
 
-        expect(output.string).to include("Deletion cancelled.")
+        expect(output.string).to include('Deletion cancelled.')
         expect(ADK::AgentDefinitionStore.find(agent_name)).not_to be_nil # Still exists
       end
     end
@@ -287,7 +287,7 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'prompts and deletes from Redis and memory (even if not initially loaded)' do
         # FIX: Expect uncolored prompt
         expected_prompt = "Are you sure you want to permanently delete agent definition 'my_agent_to_delete'? [y/N] "
-        expect(Thor::LineEditor).to receive(:readline).with(expected_prompt, { add_to_history: false }).and_return("y")
+        expect(Thor::LineEditor).to receive(:readline).with(expected_prompt, { add_to_history: false }).and_return('y')
 
         expect(ADK::AgentDefinitionStore).to receive(:delete_from_redis).with(agent_name).and_return(true)
         expect(ADK::AgentDefinitionStore).to receive(:remove).with(agent_name)
@@ -312,7 +312,7 @@ RSpec.describe ADK::CLI::AgentCommands do
         invoke_command(:delete, agent_name.to_s)
 
         expect(output.string).to include("Error: Agent definition 'my_agent_to_delete' not found.")
-        expect(output.string).to include("SystemExit with status 1")
+        expect(output.string).to include('SystemExit with status 1')
       end
     end
 
@@ -320,14 +320,14 @@ RSpec.describe ADK::CLI::AgentCommands do
       before do
         allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(nil)
         allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(agent_name).and_raise(Redis::BaseError,
-                                                                                                 "Connection timeout")
+                                                                                                 'Connection timeout')
       end
 
       it 'prints a Redis connection error and exits' do
         expect(commands).not_to receive(:yes?)
         invoke_command(:delete, agent_name.to_s)
-        expect(output.string).to include("Error: Could not connect to Redis to check agent definition.")
-        expect(output.string).to include("SystemExit with status 1")
+        expect(output.string).to include('Error: Could not connect to Redis to check agent definition.')
+        expect(output.string).to include('SystemExit with status 1')
       end
     end
 
@@ -340,13 +340,13 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'prints an error, removes from memory, and exits with error status' do
         # FIX: Expect uncolored prompt
         expected_prompt = "Are you sure you want to permanently delete agent definition 'my_agent_to_delete'? [y/N] "
-        expect(Thor::LineEditor).to receive(:readline).with(expected_prompt, { add_to_history: false }).and_return("y")
+        expect(Thor::LineEditor).to receive(:readline).with(expected_prompt, { add_to_history: false }).and_return('y')
 
         expect(ADK::AgentDefinitionStore).to receive(:remove).with(agent_name).and_call_original
         invoke_command(:delete, agent_name.to_s)
-        expect(output.string).to include("Error deleting definition from Redis.")
+        expect(output.string).to include('Error deleting definition from Redis.')
         expect(ADK::AgentDefinitionStore.find(agent_name)).to be_nil # Removed from memory
-        expect(output.string).to include("SystemExit with status 1")
+        expect(output.string).to include('SystemExit with status 1')
       end
     end
   end
@@ -354,7 +354,7 @@ RSpec.describe ADK::CLI::AgentCommands do
   # --- Test start command ---
   describe '#start' do
     let(:agent_name) { :starter_agent }
-    let(:agent_def) { { description: "Starter", tools: ['mock_cli_tool'], model: "gemini-test" } }
+    let(:agent_def) { { description: 'Starter', tools: ['mock_cli_tool'], model: 'gemini-test' } }
 
     context 'when definition exists in memory' do
       before do
@@ -369,12 +369,12 @@ RSpec.describe ADK::CLI::AgentCommands do
         invoke_command(:start, agent_name.to_s)
 
         expect(output.string).to include("Loading agent 'starter_agent'...")
-        expect(output.string).to include("Agent uses model: gemini-test")
-        expect(output.string).to include("Loaded tools: [mock_cli_tool, check_job_status]")
-        expect(output.string).to include("Starting agent runtime...started.")
-        expect(output.string).to include("Stopping agent runtime...stopped.")
+        expect(output.string).to include('Agent uses model: gemini-test')
+        expect(output.string).to include('Loaded tools: [mock_cli_tool, check_job_status]')
+        expect(output.string).to include('Starting agent runtime...started.')
+        expect(output.string).to include('Stopping agent runtime...stopped.')
         expect(output.string).to include("Agent 'starter_agent' is ready.")
-        expect(output.string).not_to include("SystemExit")
+        expect(output.string).not_to include('SystemExit')
       end
     end
 
@@ -392,10 +392,10 @@ RSpec.describe ADK::CLI::AgentCommands do
         invoke_command(:start, agent_name.to_s)
 
         expect(output.string).to include("Loading agent 'starter_agent'...") # Indicates loading attempt
-        expect(output.string).to include("Agent uses model: gemini-test")
-        expect(output.string).to include("Loaded tools: [mock_cli_tool, check_job_status]")
+        expect(output.string).to include('Agent uses model: gemini-test')
+        expect(output.string).to include('Loaded tools: [mock_cli_tool, check_job_status]')
         expect(output.string).to include("Agent 'starter_agent' is ready.")
-        expect(output.string).not_to include("SystemExit")
+        expect(output.string).not_to include('SystemExit')
       end
     end
 
@@ -408,13 +408,13 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'prints an error and exits' do
         invoke_command(:start, agent_name.to_s)
         expect(output.string).to include("Error: Agent definition 'starter_agent' not found.")
-        expect(output.string).to include("SystemExit with status 1")
+        expect(output.string).to include('SystemExit with status 1')
       end
     end
 
     context 'when a defined tool is not globally registered' do
       let(:agent_def_missing_tool) {
-        { description: "Missing tool", tools: ['mock_cli_tool', 'forgotten_tool'], model: "gemini-test" }
+        { description: 'Missing tool', tools: ['mock_cli_tool', 'forgotten_tool'], model: 'gemini-test' }
       }
       before do
         ADK::AgentDefinitionStore.register(agent_name, agent_def_missing_tool)
@@ -427,23 +427,23 @@ RSpec.describe ADK::CLI::AgentCommands do
 
         invoke_command(:start, agent_name.to_s)
 
-        expect(output.string).to include("Warning: Tools defined but not found in GlobalToolManager: [forgotten_tool]")
-        expect(output.string).to include("Loaded tools: [mock_cli_tool, check_job_status]")
+        expect(output.string).to include('Warning: Tools defined but not found in GlobalToolManager: [forgotten_tool]')
+        expect(output.string).to include('Loaded tools: [mock_cli_tool, check_job_status]')
         expect(output.string).to include("Agent 'starter_agent' is ready.")
-        expect(output.string).not_to include("SystemExit")
+        expect(output.string).not_to include('SystemExit')
       end
     end
 
     context 'when agent instantiation fails' do
       before do
         ADK::AgentDefinitionStore.register(agent_name, agent_def)
-        allow(ADK::Agent).to receive(:new).and_raise(StandardError, "Initialization failed")
+        allow(ADK::Agent).to receive(:new).and_raise(StandardError, 'Initialization failed')
       end
 
       it 'prints an error, includes backtrace, and exits' do
         invoke_command(:start, agent_name.to_s)
-        expect(output.string).to include("Error during agent setup: StandardError - Initialization failed")
-        expect(output.string).to include("SystemExit with status 1")
+        expect(output.string).to include('Error during agent setup: StandardError - Initialization failed')
+        expect(output.string).to include('SystemExit with status 1')
       end
     end
 
@@ -451,15 +451,15 @@ RSpec.describe ADK::CLI::AgentCommands do
       before do
         ADK::AgentDefinitionStore.register(agent_name, agent_def)
         allow(ADK::Agent).to receive(:new).and_call_original
-        allow_any_instance_of(ADK::Agent).to receive(:start).and_raise(StandardError, "Start sequence failed")
+        allow_any_instance_of(ADK::Agent).to receive(:start).and_raise(StandardError, 'Start sequence failed')
       end
 
       it 'prints an error, attempts stop, includes backtrace, and exits' do
         # FIX: Remove expect any_instance stop - it's not guaranteed if start itself fails
         # expect_any_instance_of(ADK::Agent).to receive(:stop).and_call_original
         invoke_command(:start, agent_name.to_s)
-        expect(output.string).to include("Error during agent setup: StandardError - Start sequence failed")
-        expect(output.string).to include("SystemExit with status 1")
+        expect(output.string).to include('Error during agent setup: StandardError - Start sequence failed')
+        expect(output.string).to include('SystemExit with status 1')
       end
     end
   end
@@ -467,10 +467,10 @@ RSpec.describe ADK::CLI::AgentCommands do
   # --- Test execute command ---
   describe '#execute' do
     let(:agent_name) { :executor_agent }
-    let(:task) { "Run the mock tool with foo" }
-    let(:agent_def) { { description: "Executor", tools: ['mock_cli_tool'], model: "gemini-exec" } }
+    let(:task) { 'Run the mock tool with foo' }
+    let(:agent_def) { { description: 'Executor', tools: ['mock_cli_tool'], model: 'gemini-exec' } }
     let(:mock_agent_instance) {
-      instance_double(ADK::Agent, name: agent_name, model_name: "gemini-exec", tools: [MockCliTool.new],
+      instance_double(ADK::Agent, name: agent_name, model_name: 'gemini-exec', tools: [MockCliTool.new],
                                   running?: false)
     }
     let(:session_service_in_memory) { ADK::SessionService::InMemory.new }
@@ -512,7 +512,7 @@ RSpec.describe ADK::CLI::AgentCommands do
     context 'basic execution (in-memory session)' do
       it 'loads definition, starts agent, runs task, formats result, and stops agent' do
         ADK::AgentDefinitionStore.register(agent_name, agent_def)
-        expected_event = ADK::Event.new(role: :agent, content: { status: :success, result: "Task completed!" })
+        expected_event = ADK::Event.new(role: :agent, content: { status: :success, result: 'Task completed!' })
 
         # Expect run_task on the agent mock
         expect(mock_agent_instance).to receive(:run_task) do |args|
@@ -532,14 +532,14 @@ RSpec.describe ADK::CLI::AgentCommands do
 
         expect(output.string).to include("Loading agent 'executor_agent' to execute task: \"#{task}\"...")
         expect(output.string).to match(/Started new session: [\w-]{36}/)
-        expect(output.string).to include("Agent uses model: gemini-exec")
-        expect(output.string).to include("Loaded tools: [mock_cli_tool]")
+        expect(output.string).to include('Agent uses model: gemini-exec')
+        expect(output.string).to include('Loaded tools: [mock_cli_tool]')
         expect(output.string).to match(/Running task in session [\w-]{36}: '#{task}'...finished./)
-        expect(output.string).to include("Task Result:")
-        expect(output.string).to include("(Nested Result) Success:")
-        expect(output.string).to include("Result: Task completed!")
-        expect(output.string).to include("Stopping agent runtime...stopped.")
-        expect(output.string).not_to include("Intentional Exit") # Should not exit on success
+        expect(output.string).to include('Task Result:')
+        expect(output.string).to include('(Nested Result) Success:')
+        expect(output.string).to include('Result: Task completed!')
+        expect(output.string).to include('Stopping agent runtime...stopped.')
+        expect(output.string).not_to include('Intentional Exit') # Should not exit on success
       end
     end
 
@@ -550,12 +550,12 @@ RSpec.describe ADK::CLI::AgentCommands do
       end
 
       it 'successfully loads from Redis and executes' do
-        expect(mock_agent_instance).to receive(:run_task).and_return("Simple String Result")
+        expect(mock_agent_instance).to receive(:run_task).and_return('Simple String Result')
         invoke_command(:execute, agent_name.to_s, task)
         expect(output.string).to include("Loading agent 'executor_agent'")
-        expect(output.string).to include("Success:")
-        expect(output.string).to include("Result: Simple String Result")
-        expect(output.string).not_to include("SystemExit")
+        expect(output.string).to include('Success:')
+        expect(output.string).to include('Result: Simple String Result')
+        expect(output.string).not_to include('SystemExit')
       end
     end
 
@@ -568,7 +568,7 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'prints error and exits' do
         invoke_command(:execute, agent_name.to_s, task)
         expect(output.string).to include("Error: Agent definition 'executor_agent' not found.")
-        expect(output.string).to include("SystemExit with status 1")
+        expect(output.string).to include('SystemExit with status 1')
       end
     end
 
@@ -585,7 +585,7 @@ RSpec.describe ADK::CLI::AgentCommands do
         # Expect run_task with the correct session ID
         expect(mock_agent_instance).to receive(:run_task).with(
           hash_including(session_id: existing_session_id, session_service: session_service_in_memory)
-        ).and_return({ status: :success, result: "Used existing session" })
+        ).and_return({ status: :success, result: 'Used existing session' })
 
         # Ensure create_session is NOT called on the controlled instance
         expect(session_service_in_memory).not_to receive(:create_session)
@@ -594,11 +594,11 @@ RSpec.describe ADK::CLI::AgentCommands do
 
         expect(output.string).to include("Continuing session: #{existing_session_id}")
         expect(output.string).to include("Running task in session #{existing_session_id}")
-        expect(output.string).to include("Result: Used existing session")
+        expect(output.string).to include('Result: Used existing session')
       end
 
       it 'warns and creates new session if provided session ID not found' do
-        non_existent_session_id = "non-existent-session-456"
+        non_existent_session_id = 'non-existent-session-456'
 
         # Expect run_task will be called with a *new* session ID
         new_session_id = nil
@@ -606,7 +606,7 @@ RSpec.describe ADK::CLI::AgentCommands do
           expect(args[:session_id]).not_to eq non_existent_session_id
           expect(args[:session_id]).to match(/^[\w-]+$/)
           new_session_id = args[:session_id] # Capture the generated ID
-          { status: :success, result: "Created new session ok" }
+          { status: :success, result: 'Created new session ok' }
         end
 
         # FIX: Use allow(...).to receive(...).and_call_original to spy
@@ -617,7 +617,7 @@ RSpec.describe ADK::CLI::AgentCommands do
         expect(session_service_in_memory).to have_received(:create_session)
         expect(output.string).to include("Warning: Session ID '#{non_existent_session_id}' provided but not found. Starting a new session.")
         expect(output.string).to match(/Started new session: #{Regexp.escape(new_session_id)}/) if new_session_id # Check output includes the captured ID
-        expect(output.string).to include("Result: Created new session ok")
+        expect(output.string).to include('Result: Created new session ok')
       end
 
       it 'uses Redis session service when --redis is specified' do
@@ -626,8 +626,8 @@ RSpec.describe ADK::CLI::AgentCommands do
 
         invoke_command(:execute, agent_name.to_s, task, redis: true)
 
-        expect(output.string).to include("Using Redis session storage")
-        expect(output.string).not_to include("Using in-memory session storage")
+        expect(output.string).to include('Using Redis session storage')
+        expect(output.string).not_to include('Using in-memory session storage')
       end
     end
 
@@ -635,24 +635,24 @@ RSpec.describe ADK::CLI::AgentCommands do
       before { ADK::AgentDefinitionStore.register(agent_name, agent_def) }
 
       it 'handles agent instantiation errors' do
-        allow(ADK::Agent).to receive(:new).and_raise(StandardError, "Init went wrong")
+        allow(ADK::Agent).to receive(:new).and_raise(StandardError, 'Init went wrong')
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Error during agent execution: StandardError - Init went wrong")
-        expect(output.string).to include("SystemExit with status 1")
+        expect(output.string).to include('Error during agent execution: StandardError - Init went wrong')
+        expect(output.string).to include('SystemExit with status 1')
       end
 
       it 'handles agent start errors' do
-        allow(mock_agent_instance).to receive(:start).and_raise(StandardError, "Start broke")
+        allow(mock_agent_instance).to receive(:start).and_raise(StandardError, 'Start broke')
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Error during agent execution: StandardError - Start broke")
-        expect(output.string).to include("SystemExit with status 1")
+        expect(output.string).to include('Error during agent execution: StandardError - Start broke')
+        expect(output.string).to include('SystemExit with status 1')
       end
 
       it 'handles agent run_task errors' do
-        allow(mock_agent_instance).to receive(:run_task).and_raise(StandardError, "Task failed internally")
+        allow(mock_agent_instance).to receive(:run_task).and_raise(StandardError, 'Task failed internally')
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Error during agent execution: StandardError - Task failed internally")
-        expect(output.string).to include("SystemExit with status 1")
+        expect(output.string).to include('Error during agent execution: StandardError - Task failed internally')
+        expect(output.string).to include('SystemExit with status 1')
       end
     end
 
@@ -662,130 +662,130 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'formats simple success event' do
         allow(mock_agent_instance).to receive(:run_task).and_return(ADK::Event.new(role: :agent,
                                                                                    content: {
-                                                                                     status: :success, result: "All good"
+                                                                                     status: :success, result: 'All good'
                                                                                    }))
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Success:")
-        expect(output.string).to include("Result: All good")
+        expect(output.string).to include('Success:')
+        expect(output.string).to include('Result: All good')
       end
 
       it 'formats simple success hash' do
-        allow(mock_agent_instance).to receive(:run_task).and_return({ status: :success, result: "Simpler success" })
+        allow(mock_agent_instance).to receive(:run_task).and_return({ status: :success, result: 'Simpler success' })
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Success:")
-        expect(output.string).to include("Result: Simpler success")
+        expect(output.string).to include('Success:')
+        expect(output.string).to include('Result: Simpler success')
       end
 
       it 'formats pending event' do
         allow(mock_agent_instance).to receive(:run_task).and_return(ADK::Event.new(role: :agent,
                                                                                    content: {
-                                                                                     status: :pending, job_id: "job-789", message: "Working on it"
+                                                                                     status: :pending, job_id: 'job-789', message: 'Working on it'
                                                                                    }))
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Pending:")
-        expect(output.string).to include("Job ID: job-789")
-        expect(output.string).to include("Message: Working on it")
+        expect(output.string).to include('Pending:')
+        expect(output.string).to include('Job ID: job-789')
+        expect(output.string).to include('Message: Working on it')
       end
 
       it 'formats pending hash' do
-        allow(mock_agent_instance).to receive(:run_task).and_return({ status: :pending, job_id: "job-789" })
+        allow(mock_agent_instance).to receive(:run_task).and_return({ status: :pending, job_id: 'job-789' })
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Pending:")
-        expect(output.string).to include("Job ID: job-789")
-        expect(output.string).not_to include("Message:")
+        expect(output.string).to include('Pending:')
+        expect(output.string).to include('Job ID: job-789')
+        expect(output.string).not_to include('Message:')
       end
 
       it 'formats error event' do
         allow(mock_agent_instance).to receive(:run_task).and_return(ADK::Event.new(role: :agent,
                                                                                    content: {
-                                                                                     status: :error, error_message: "It broke"
+                                                                                     status: :error, error_message: 'It broke'
                                                                                    }))
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Error:")
-        expect(output.string).to include("Message: It broke")
+        expect(output.string).to include('Error:')
+        expect(output.string).to include('Message: It broke')
       end
 
       it 'formats error hash' do
-        allow(mock_agent_instance).to receive(:run_task).and_return({ status: :error, error_message: "Hash broke" })
+        allow(mock_agent_instance).to receive(:run_task).and_return({ status: :error, error_message: 'Hash broke' })
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Error:")
-        expect(output.string).to include("Message: Hash broke")
+        expect(output.string).to include('Error:')
+        expect(output.string).to include('Message: Hash broke')
       end
 
       it 'formats multi-step success result' do
         multi_step_result = [
-          { status: :success, result: "Step 1 done" },
-          { status: :success, result: { status: :success, result: "Nested step 2 done" } }
+          { status: :success, result: 'Step 1 done' },
+          { status: :success, result: { status: :success, result: 'Nested step 2 done' } }
         ]
         allow(mock_agent_instance).to receive(:run_task).and_return(multi_step_result)
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Multi-Step Result:")
-        expect(output.string).to include("Step 1 (Success):")
-        expect(output.string).to include("Result: Step 1 done")
-        expect(output.string).to include("Step 2 (Success):")
-        expect(output.string).to include("Result (Nested): {status: :success, result: \"Nested step 2 done\"}")
-        expect(output.string).to include("Overall Plan Status: Completed successfully")
+        expect(output.string).to include('Multi-Step Result:')
+        expect(output.string).to include('Step 1 (Success):')
+        expect(output.string).to include('Result: Step 1 done')
+        expect(output.string).to include('Step 2 (Success):')
+        expect(output.string).to include('Result (Nested): {status: :success, result: "Nested step 2 done"}')
+        expect(output.string).to include('Overall Plan Status: Completed successfully')
       end
 
       it 'formats multi-step with pending and errors' do
         multi_step_result = [
-          { status: :success, result: "Step 1 good" },
-          { status: :pending, job_id: "j1", message: "Step 2 pending" },
-          { status: :error, error_message: "Step 3 failed" },
-          "Unknown step format",
-          { status: :unknown, data: "Weird step" }
+          { status: :success, result: 'Step 1 good' },
+          { status: :pending, job_id: 'j1', message: 'Step 2 pending' },
+          { status: :error, error_message: 'Step 3 failed' },
+          'Unknown step format',
+          { status: :unknown, data: 'Weird step' }
         ]
         allow(mock_agent_instance).to receive(:run_task).and_return(multi_step_result)
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Multi-Step Result:")
-        expect(output.string).to include("Step 1 (Success):")
-        expect(output.string).to include("Step 2 (Pending):")
-        expect(output.string).to include("Job ID: j1")
-        expect(output.string).to include("Step 3 (Error):")
-        expect(output.string).to include("Message: Step 3 failed")
-        expect(output.string).to include("Step 4 (Unknown Step Format): \"Unknown step format\"")
-        expect(output.string).to include("Step 5 (Unknown Status): {status: :unknown, data: \"Weird step\"}")
-        expect(output.string).to include("Overall Plan Status: Completed with errors")
+        expect(output.string).to include('Multi-Step Result:')
+        expect(output.string).to include('Step 1 (Success):')
+        expect(output.string).to include('Step 2 (Pending):')
+        expect(output.string).to include('Job ID: j1')
+        expect(output.string).to include('Step 3 (Error):')
+        expect(output.string).to include('Message: Step 3 failed')
+        expect(output.string).to include('Step 4 (Unknown Step Format): "Unknown step format"')
+        expect(output.string).to include('Step 5 (Unknown Status): {status: :unknown, data: "Weird step"}')
+        expect(output.string).to include('Overall Plan Status: Completed with errors')
       end
 
       it 'formats simple non-hash/event result as success' do
-        allow(mock_agent_instance).to receive(:run_task).and_return("Just a string result")
+        allow(mock_agent_instance).to receive(:run_task).and_return('Just a string result')
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Success:")
-        expect(output.string).to include("Result: Just a string result")
+        expect(output.string).to include('Success:')
+        expect(output.string).to include('Result: Just a string result')
       end
 
       it 'formats unknown status hash' do
-        allow(mock_agent_instance).to receive(:run_task).and_return({ status: :weird, info: "Something else" })
+        allow(mock_agent_instance).to receive(:run_task).and_return({ status: :weird, info: 'Something else' })
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Unknown Status:")
-        expect(output.string).to include("Data: {status: :weird, info: \"Something else\"}")
+        expect(output.string).to include('Unknown Status:')
+        expect(output.string).to include('Data: {status: :weird, info: "Something else"}')
       end
 
       it 'formats tool_result event correctly' do
         tool_result_event = ADK::Event.new(
           role: :tool_result,
           tool_name: :mock_cli_tool,
-          content: { status: :success, result: "From tool directly" }
+          content: { status: :success, result: 'From tool directly' }
         )
         allow(mock_agent_instance).to receive(:run_task).and_return(tool_result_event)
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Success:")
-        expect(output.string).to include("Result: From tool directly")
+        expect(output.string).to include('Success:')
+        expect(output.string).to include('Result: From tool directly')
       end
 
       it 'ignores non-agent/tool_result events' do
-        other_event = ADK::Event.new(role: :user, content: "User input")
+        other_event = ADK::Event.new(role: :user, content: 'User input')
         allow(mock_agent_instance).to receive(:run_task).and_return(other_event)
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Success:")
-        expect(output.string).to include("Stopping agent runtime...stopped.")
+        expect(output.string).to include('Success:')
+        expect(output.string).to include('Stopping agent runtime...stopped.')
       end
     end
 
     context 'warning for missing tools' do
       let(:agent_def_missing) {
-        { description: "Executor Missing", tools: ['mock_cli_tool', 'unregistered_tool'], model: "gemini-exec" }
+        { description: 'Executor Missing', tools: ['mock_cli_tool', 'unregistered_tool'], model: 'gemini-exec' }
       }
       before do
         ADK::AgentDefinitionStore.register(agent_name, agent_def_missing)
@@ -794,8 +794,8 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'warns about missing tools during instantiation' do
         expect(mock_agent_instance).to receive(:run_task)
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Warning: Tools defined but not found in GlobalToolManager: [unregistered_tool]")
-        expect(output.string).to include("Loaded tools: [mock_cli_tool]")
+        expect(output.string).to include('Warning: Tools defined but not found in GlobalToolManager: [unregistered_tool]')
+        expect(output.string).to include('Loaded tools: [mock_cli_tool]')
       end
     end
   end

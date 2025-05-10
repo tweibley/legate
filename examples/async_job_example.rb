@@ -1,10 +1,10 @@
 # File: examples/async_job_example.rb
 # frozen_string_literal: true
 
-puts "To see this work end-to-end:"
-puts "1. Ensure Redis is running."
-puts "2. Start a Sidekiq worker: bundle exec adk sidekiq start"
-puts "3. Run this script: bundle exec ruby examples/async_job_example.rb"
+puts 'To see this work end-to-end:'
+puts '1. Ensure Redis is running.'
+puts '2. Start a Sidekiq worker: bundle exec adk sidekiq start'
+puts '3. Run this script: bundle exec ruby examples/async_job_example.rb'
 
 # This example demonstrates how to use an ADK tool that starts
 # an asynchronous Sidekiq background job and how to check its status.
@@ -18,7 +18,7 @@ require_relative 'tools/sleepy_tool'
 # Note: The worker itself (sleepy_worker.rb) needs to be loaded by the Sidekiq process,
 # not necessarily by this script, unless you are using Sidekiq inline testing.
 
-puts "--- Async Job Example ---"
+puts '--- Async Job Example ---'
 
 # Configure ADK (ensure REDIS_URL in .env points to your Redis)
 # ADK.configure do |config|

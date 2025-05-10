@@ -5,8 +5,8 @@ require 'adk/agent'
 require 'adk/tool_registry'
 require 'adk/session_service/redis'
 
-RSpec.describe "Agent MCP Fix" do
-  describe "MCP servers handling" do
+RSpec.describe 'Agent MCP Fix' do
+  describe 'MCP servers handling' do
     # Create a mock tool class for testing
     class TestTool < ADK::Tool
       def self.tool_metadata
@@ -21,7 +21,7 @@ RSpec.describe "Agent MCP Fix" do
       )
     end
 
-    it "handles nil mcp_servers gracefully" do
+    it 'handles nil mcp_servers gracefully' do
       # Use minimal concrete objects to avoid mock expectations issues
       session_service = instance_double(ADK::SessionService::Redis)
       allow(session_service).to receive(:get_session)
@@ -29,9 +29,9 @@ RSpec.describe "Agent MCP Fix" do
 
       agent_def = instance_double(ADK::AgentDefinition,
                                   name: :test_agent,
-                                  description: "Test agent",
-                                  instruction: "Test instruction",
-                                  model_name: "gemini-pro",
+                                  description: 'Test agent',
+                                  instruction: 'Test instruction',
+                                  model_name: 'gemini-pro',
                                   tool_names: [],
                                   mcp_servers: nil,
                                   webhook_enabled: true,
@@ -63,7 +63,7 @@ RSpec.describe "Agent MCP Fix" do
       }.not_to raise_error
     end
 
-    it "handles empty mcp_servers array gracefully" do
+    it 'handles empty mcp_servers array gracefully' do
       # Use minimal concrete objects to avoid mock expectations issues
       session_service = instance_double(ADK::SessionService::Redis)
       allow(session_service).to receive(:get_session)
@@ -71,9 +71,9 @@ RSpec.describe "Agent MCP Fix" do
 
       agent_def = instance_double(ADK::AgentDefinition,
                                   name: :test_agent,
-                                  description: "Test agent",
-                                  instruction: "Test instruction",
-                                  model_name: "gemini-pro",
+                                  description: 'Test agent',
+                                  instruction: 'Test instruction',
+                                  model_name: 'gemini-pro',
                                   tool_names: [],
                                   mcp_servers: [],
                                   webhook_enabled: true,

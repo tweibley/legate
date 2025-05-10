@@ -63,11 +63,11 @@ begin
   ADK.logger.info("Agent wrapped successfully as MCP tool: #{AdaptedAgentRedis.tool_name}")
 rescue ADK::Mcp::Error => e
   ADK.logger.fatal("ERROR: Failed to wrap agent '#{AGENT_NAME_IN_REDIS}'. #{e.message}")
-  ADK.logger.fatal("Is Redis running and the agent definition present?")
+  ADK.logger.fatal('Is Redis running and the agent definition present?')
   exit(1)
 rescue NameError => e
   ADK.logger.fatal("ERROR: Failed to load dependencies. #{e.message}")
-  ADK.logger.fatal("Ensure necessary tool files are required and classes are available.")
+  ADK.logger.fatal('Ensure necessary tool files are required and classes are available.')
   exit(1)
 rescue => e
   ADK.logger.fatal("ERROR: An unexpected error occurred during agent wrapping: #{e.class} - #{e.message}")
@@ -89,4 +89,4 @@ mcp_server.register_tool(AdaptedAgentRedis)
 puts "Starting ADK MCP Agent Server (Redis: '#{AGENT_NAME_IN_REDIS}') via STDIO..."
 mcp_server.start # Blocks here
 
-ADK.logger.info("Server finished.")
+ADK.logger.info('Server finished.')

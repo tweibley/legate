@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 # File: spec/adk/agent_spec.rb
 require 'spec_helper'
 require 'adk/agent'
@@ -19,7 +20,7 @@ require 'adk/definition_store/redis_store' # For mocking RedisStore directly
 
 # --- Mock Tools ---
 class MockTool < ADK::Tool
-  tool_description "A simple mock tool."
+  tool_description 'A simple mock tool.'
   self.explicit_tool_name = :mock_tool
   parameter :input, type: :string, required: true
 
@@ -29,7 +30,7 @@ class MockTool < ADK::Tool
 end
 
 class MockAnotherTool < ADK::Tool
-  tool_description "Another mock tool."
+  tool_description 'Another mock tool.'
   self.explicit_tool_name = :another_tool
   parameter :value, type: :integer
 
@@ -39,7 +40,7 @@ class MockAnotherTool < ADK::Tool
 end
 
 class MockToolNeedsContext < ADK::Tool
-  tool_description "A tool that uses context."
+  tool_description 'A tool that uses context.'
   self.explicit_tool_name = :context_tool
   parameter :data, type: :string
 
@@ -50,12 +51,12 @@ end
 
 class MockToolNoName < ADK::Tool
   # No tool_name defined
-  tool_description "A tool without an explicit name."
+  tool_description 'A tool without an explicit name.'
   # No self.explicit_tool_name = ...
 end
 
 class MockToolWithPending < ADK::Tool
-  tool_description "A tool that can return pending status."
+  tool_description 'A tool that can return pending status.'
   self.explicit_tool_name = :pending_tool
   parameter :job_request, type: :string
 
@@ -65,7 +66,7 @@ class MockToolWithPending < ADK::Tool
 end
 
 class MockToolWithError < ADK::Tool
-  tool_description "A tool that always errors."
+  tool_description 'A tool that always errors.'
   self.explicit_tool_name = :error_tool
   parameter :fail_message, type: :string
 
@@ -75,46 +76,46 @@ class MockToolWithError < ADK::Tool
 end
 
 class MockToolWithArgError < ADK::Tool
-  tool_description "A tool that raises argument errors."
+  tool_description 'A tool that raises argument errors.'
   self.explicit_tool_name = :arg_error_tool
   parameter :number, type: :integer, required: true
 
   def perform_execution(params, context)
     # Assume validation happens before this, but raise here for test
-    raise ADK::ToolArgumentError, "Invalid number provided" unless params[:number] > 0
+    raise ADK::ToolArgumentError, 'Invalid number provided' unless params[:number] > 0
 
     { status: :success, result: params[:number] }
   end
 end
 
 class MockToolInvalidResult < ADK::Tool
-  tool_description "A tool that returns invalid hash."
+  tool_description 'A tool that returns invalid hash.'
   self.explicit_tool_name = :invalid_result_tool
 
   def perform_execution(params, context)
-    "not a hash" # Invalid return
+    'not a hash' # Invalid return
   end
 end
 
 class MockToolPreparationError < ADK::Tool
-  tool_description "A tool that errors during prepare_context."
+  tool_description 'A tool that errors during prepare_context.'
   self.explicit_tool_name = :prep_error_tool
 
   def prepare_context(context)
-    raise StandardError, "Preparation Boom!"
+    raise StandardError, 'Preparation Boom!'
   end
 
   def perform_execution(params, context)
-    { status: :success, result: "Should not reach here" }
+    { status: :success, result: 'Should not reach here' }
   end
 end
 # --- End Mock Tools ---
 
 RSpec.describe ADK::Agent do
   let(:agent_name) { :test_agent }
-  let(:agent_description) { "A test agent." }
+  let(:agent_description) { 'A test agent.' }
   let(:model_name) { 'test_model' }
-  let(:instruction) { "You are a helpful test agent." }
+  let(:instruction) { 'You are a helpful test agent.' }
   let(:tool_classes) { [MockTool, MockAnotherTool] }
   let(:tool_paths) { [] } # Assume no path discovery by default
   let(:planner_double) { instance_double(ADK::Planner, plan: []) } # Use ADK::Planner
@@ -129,7 +130,7 @@ RSpec.describe ADK::Agent do
     end
   end
   let(:session_id) { "test_session_#{rand(1000)}" }
-  let(:user_input) { "Test user input" }
+  let(:user_input) { 'Test user input' }
   let(:logger_double) { spy('Logger') } # Use spy for easier verification
 
   # Mocks for definition/global components
@@ -177,7 +178,7 @@ RSpec.describe ADK::Agent do
   def create_agent(**overrides)
     # Ensure required args are present
     args = init_args.merge(overrides)
-    args[:description] ||= "Default description for test" # Ensure description if not in overrides
+    args[:description] ||= 'Default description for test' # Ensure description if not in overrides
     ADK::Agent.new(**args)
   end
 
@@ -595,7 +596,7 @@ RSpec.describe ADK::Agent do
 
       # Stub get_session on the real service to return our session_double
       allow(svc).to receive(:get_session).with(session_id: session_id).and_return(session_double)
-      allow(svc).to receive(:get_session).with(session_id: "non_existent_session").and_return(nil)
+      allow(svc).to receive(:get_session).with(session_id: 'non_existent_session').and_return(nil)
       # Revert: Allow append_event on the real service AND let it call the original method (which calls session_double.add_event)
       allow(svc).to receive(:append_event).and_call_original
     end
@@ -611,7 +612,7 @@ RSpec.describe ADK::Agent do
       end
 
       it 'returns error hash if session not found' do
-        non_existent_session_id = "non_existent_session"
+        non_existent_session_id = 'non_existent_session'
         result = agent.run_task(session_id: non_existent_session_id, user_input: user_input,
                                 session_service: real_session_service)
         expect(result).to be_a(ADK::Event)
@@ -636,9 +637,9 @@ RSpec.describe ADK::Agent do
         expect(history[1]).to have_attributes(role: :tool_request, tool_name: :mock_tool,
                                               content: { input: 'step 1 data' })
         expect(history[2]).to have_attributes(role: :tool_result, tool_name: :mock_tool,
-                                              content: hash_including(status: :success, result: "Mock tool processed: step 1 data"))
+                                              content: hash_including(status: :success, result: 'Mock tool processed: step 1 data'))
         expect(history[3]).to have_attributes(role: :agent,
-                                              content: hash_including(status: :success, result: "Mock tool processed: step 1 data",
+                                              content: hash_including(status: :success, result: 'Mock tool processed: step 1 data',
                                                                       plan_details: an_instance_of(Array)))
       end
 
@@ -649,10 +650,10 @@ RSpec.describe ADK::Agent do
         expect(final_event.role).to eq(:agent)
         expect(final_event.content).to include(
           status: :success,
-          result: "Mock tool processed: step 1 data"
+          result: 'Mock tool processed: step 1 data'
         )
         expect(final_event.content[:plan_details].first[:result]).to include(status: :success,
-                                                                             result: "Mock tool processed: step 1 data")
+                                                                             result: 'Mock tool processed: step 1 data')
       end
     end
 
@@ -680,7 +681,7 @@ RSpec.describe ADK::Agent do
         # The value injected should be the actual result string, not its length * 2
         expect(agent).to receive(:execute_step).with(
           hash_including(tool: :another_tool,
-                         params: { value: "Mock tool processed: data for step 1" }), any_args
+                         params: { value: 'Mock tool processed: data for step 1' }), any_args
         ).and_call_original.ordered
 
         agent.run_task(session_id: session_id, user_input: user_input, session_service: real_session_service)
@@ -695,7 +696,7 @@ RSpec.describe ADK::Agent do
         expect(history[1].tool_name).to eq(:mock_tool)
         expect(history[3].tool_name).to eq(:another_tool)
         # Check the actual result of the second tool - string duplication
-        expect(history[4].content).to include(status: :success, result: ("Mock tool processed: data for step 1" * 2))
+        expect(history[4].content).to include(status: :success, result: ('Mock tool processed: data for step 1' * 2))
       end
 
       it 'returns the final agent event with the result of the last step' do
@@ -704,7 +705,7 @@ RSpec.describe ADK::Agent do
         expect(final_event.role).to eq(:agent)
         expect(final_event.content[:status]).to eq(:success)
         # The final result should be the result of the *last* tool (:another_tool) - string duplication
-        expect(final_event.content[:result]).to eq("Mock tool processed: data for step 1" * 2)
+        expect(final_event.content[:result]).to eq('Mock tool processed: data for step 1' * 2)
       end
     end
 
@@ -734,7 +735,7 @@ RSpec.describe ADK::Agent do
       } # Placeholder for job_id
       # Define the full plan upfront
       let(:full_plan) { [plan_step1, plan_step2] }
-      let(:mock_job_id) { "job-12345" }
+      let(:mock_job_id) { 'job-12345' }
 
       before do
         # Simulate planner returning the full plan initially
@@ -742,7 +743,7 @@ RSpec.describe ADK::Agent do
 
         # Mock the pending tool to return a predictable job_id
         allow_any_instance_of(MockToolWithPending).to receive(:perform_execution).and_return({ status: :pending,
-                                                                                               job_id: mock_job_id, message: "Job submitted" })
+                                                                                               job_id: mock_job_id, message: 'Job submitted' })
         # Mock the check status tool to return success when called with the correct job_id
         # Target execute on the instance double
         check_tool_instance_double = instance_double(ADK::Tools::CheckJobStatusTool)

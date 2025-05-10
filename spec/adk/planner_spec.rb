@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 # File: spec/adk/planner_spec.rb
 require 'spec_helper'
 
@@ -47,12 +48,12 @@ RSpec.describe ADK::Planner do
 
     it 'logs an error when API key is missing' do
       allow(ENV).to receive(:[]).with('GOOGLE_API_KEY').and_return(nil)
-      expect(mock_logger).to receive(:error).with("GOOGLE_API_KEY not found. GeminiPlanner requires an API key.")
+      expect(mock_logger).to receive(:error).with('GOOGLE_API_KEY not found. GeminiPlanner requires an API key.')
       described_class.new(agent: agent, logger: mock_logger)
     end
 
     it 'logs an error when Gemini client initialization fails' do
-      allow(Gemini).to receive(:new).and_raise(StandardError.new("Initialization error"))
+      allow(Gemini).to receive(:new).and_raise(StandardError.new('Initialization error'))
       expect(mock_logger).to receive(:error).with(/Failed to initialize Gemini AI client/)
       planner = described_class.new(agent: agent, logger: mock_logger)
       expect(planner.instance_variable_get(:@client)).to be_nil
@@ -76,14 +77,14 @@ RSpec.describe ADK::Planner do
         test_planner.instance_variable_set(:@client, nil)
 
         # Create a fallback response
-        fallback_response = [{ tool: :echo, params: { message: "fallback message" } }]
+        fallback_response = [{ tool: :echo, params: { message: 'fallback message' } }]
 
         # Mock the fallback_plan method
         allow(test_planner).to receive(:fallback_plan).with('test task',
-                                                            "Gemini client not available.").and_return(fallback_response)
+                                                            'Gemini client not available.').and_return(fallback_response)
 
         # Expect logger to receive the error
-        expect(mock_logger).to receive(:error).with("Gemini client not initialized. Falling back to default plan.")
+        expect(mock_logger).to receive(:error).with('Gemini client not initialized. Falling back to default plan.')
 
         # Call the method under test
         result = test_planner.plan('test task')
@@ -125,11 +126,11 @@ RSpec.describe ADK::Planner do
 
         expect(planner).to receive(:validate_and_format_multi_step_plan).and_return([
                                                                                       { tool: :echo,
-                                                                                        params: { message: "Hello" } }
+                                                                                        params: { message: 'Hello' } }
                                                                                     ])
 
         result = planner.plan('task')
-        expect(result).to eq([{ tool: :echo, params: { message: "Hello" } }])
+        expect(result).to eq([{ tool: :echo, params: { message: 'Hello' } }])
       end
 
       it 'handles empty Gemini response' do
@@ -148,7 +149,7 @@ RSpec.describe ADK::Planner do
         }
         allow(mock_client).to receive(:generate_content).and_return(invalid_json_response)
 
-        expect(planner).to receive(:parse_gemini_response).and_raise(JSON::ParserError.new("Invalid JSON"))
+        expect(planner).to receive(:parse_gemini_response).and_raise(JSON::ParserError.new('Invalid JSON'))
         expect(mock_logger).to receive(:error).with(/Failed to parse Gemini response as JSON/)
         expect(planner).to receive(:fallback_plan)
 
@@ -156,7 +157,7 @@ RSpec.describe ADK::Planner do
       end
 
       it 'handles general errors during planning' do
-        allow(mock_client).to receive(:generate_content).and_raise(StandardError.new("API error"))
+        allow(mock_client).to receive(:generate_content).and_raise(StandardError.new('API error'))
 
         expect(mock_logger).to receive(:error).with(/Error during planning with gemini-ai/)
         expect(planner).to receive(:fallback_plan)
@@ -169,17 +170,17 @@ RSpec.describe ADK::Planner do
   describe '#parse_gemini_response' do
     it 'parses valid JSON response' do
       result = planner.send(:parse_gemini_response, '[{"key": "value"}]')
-      expect(result).to eq([{ "key" => "value" }])
+      expect(result).to eq([{ 'key' => 'value' }])
     end
 
     it 'removes markdown code blocks from response' do
       result = planner.send(:parse_gemini_response, "```json\n[{\"key\": \"value\"}]\n```")
-      expect(result).to eq([{ "key" => "value" }])
+      expect(result).to eq([{ 'key' => 'value' }])
     end
 
     it 'removes generic code blocks from response' do
       result = planner.send(:parse_gemini_response, "```\n[{\"key\": \"value\"}]\n```")
-      expect(result).to eq([{ "key" => "value" }])
+      expect(result).to eq([{ 'key' => 'value' }])
     end
 
     it 'raises error when response is not a JSON array' do
@@ -202,39 +203,39 @@ RSpec.describe ADK::Planner do
 
     it 'returns an empty array if any step is not a hash' do
       expect(mock_logger).to receive(:warn)
-      result = planner.send(:validate_and_format_multi_step_plan, [{ "tool_name" => "echo" }, "invalid_step"])
+      result = planner.send(:validate_and_format_multi_step_plan, [{ 'tool_name' => 'echo' }, 'invalid_step'])
       expect(result).to eq([])
     end
 
     it 'returns an empty array if tool_name is missing or empty' do
       expect(mock_logger).to receive(:warn)
-      result = planner.send(:validate_and_format_multi_step_plan, [{ "tool_name" => "", "parameters" => {} }])
+      result = planner.send(:validate_and_format_multi_step_plan, [{ 'tool_name' => '', 'parameters' => {} }])
       expect(result).to eq([])
     end
 
     it 'returns an empty array if tool does not exist' do
       expect(mock_logger).to receive(:warn)
       result = planner.send(:validate_and_format_multi_step_plan,
-                            [{ "tool_name" => "unknown_tool", "parameters" => {} }])
+                            [{ 'tool_name' => 'unknown_tool', 'parameters' => {} }])
       expect(result).to eq([])
     end
 
     it 'returns an empty array if parameters is not a hash' do
       expect(mock_logger).to receive(:warn)
       result = planner.send(:validate_and_format_multi_step_plan,
-                            [{ "tool_name" => "echo", "parameters" => "invalid" }])
+                            [{ 'tool_name' => 'echo', 'parameters' => 'invalid' }])
       expect(result).to eq([])
     end
 
     it 'returns a properly formatted plan when input is valid' do
       result = planner.send(:validate_and_format_multi_step_plan,
-                            [{ "tool_name" => "echo", "parameters" => { "message" => "Hello" } }])
-      expect(result).to eq([{ tool: :echo, params: { message: "Hello" } }])
+                            [{ 'tool_name' => 'echo', 'parameters' => { 'message' => 'Hello' } }])
+      expect(result).to eq([{ tool: :echo, params: { message: 'Hello' } }])
     end
 
     it 'converts parameter keys to symbols' do
       result = planner.send(:validate_and_format_multi_step_plan,
-                            [{ "tool_name" => "echo", "parameters" => { "message" => "Hello" } }])
+                            [{ 'tool_name' => 'echo', 'parameters' => { 'message' => 'Hello' } }])
       expect(result.first[:params].keys.first).to be_a(Symbol)
     end
   end
@@ -250,7 +251,7 @@ RSpec.describe ADK::Planner do
         result = planner.send(:fallback_plan, 'original task', 'reason for fallback')
         expect(result).to eq([{
                                tool: :echo,
-                               params: { message: "Planning failed: reason for fallback. Original task: original task" }
+                               params: { message: 'Planning failed: reason for fallback. Original task: original task' }
                              }])
       end
     end
@@ -261,7 +262,7 @@ RSpec.describe ADK::Planner do
 
       it 'returns an empty plan' do
         expect(mock_logger).to receive(:warn)
-        expect(mock_logger).to receive(:error).with("Fallback failed: Echo tool not available to the agent.")
+        expect(mock_logger).to receive(:error).with('Fallback failed: Echo tool not available to the agent.')
         result = planner.send(:fallback_plan, 'original task', 'reason for fallback')
         expect(result).to eq([])
       end
@@ -287,32 +288,32 @@ RSpec.describe ADK::Planner do
     it 'returns a message when no tools are available' do
       # Stub the call on the specific planner instance for this test
       allow(planner.agent).to receive(:available_tools_metadata).and_return([])
-      expect(planner.send(:format_tools_for_prompt)).to eq("No tools available.")
+      expect(planner.send(:format_tools_for_prompt)).to eq('No tools available.')
     end
 
     it 'formats a tool with no parameters' do
       allow(planner.agent).to receive(:available_tools_metadata).and_return([tool_no_params_metadata])
       result = planner.send(:format_tools_for_prompt)
-      expect(result).to include("Tool Name: test")
-      expect(result).to include("Description: Test tool")
+      expect(result).to include('Tool Name: test')
+      expect(result).to include('Description: Test tool')
       expect(result).to include("Parameters:\n  None")
     end
 
     it 'formats a tool with parameters' do
       allow(planner.agent).to receive(:available_tools_metadata).and_return([tool_with_params_metadata])
       result = planner.send(:format_tools_for_prompt)
-      expect(result).to include("Tool Name: parameterized")
-      expect(result).to include("Description: Tool with params")
-      expect(result).to include("required_param (string, required)")
-      expect(result).to include("optional_param (number, optional)")
+      expect(result).to include('Tool Name: parameterized')
+      expect(result).to include('Description: Tool with params')
+      expect(result).to include('required_param (string, required)')
+      expect(result).to include('optional_param (number, optional)')
     end
 
     it 'formats multiple tools' do
       allow(planner.agent).to receive(:available_tools_metadata).and_return([tool_no_params_metadata,
                                                                              tool_with_params_metadata])
       result = planner.send(:format_tools_for_prompt)
-      expect(result).to include("Tool Name: test")
-      expect(result).to include("Tool Name: parameterized")
+      expect(result).to include('Tool Name: test')
+      expect(result).to include('Tool Name: parameterized')
     end
   end
 
@@ -328,7 +329,7 @@ RSpec.describe ADK::Planner do
       it 'prepends the instruction to the prompt' do
         prompt = planner.send(:build_multi_step_gemini_prompt, task, tools_description)
         expect(prompt).to start_with("AGENT_INSTRUCTION: #{instruction}\n---\n")
-        expect(prompt).to include("You are an AI planner") # Check original prompt part is still there
+        expect(prompt).to include('You are an AI planner') # Check original prompt part is still there
         expect(prompt).to include("User Request: \"#{task}\"")
         expect(prompt).to include(tools_description)
       end
@@ -341,7 +342,7 @@ RSpec.describe ADK::Planner do
       it 'does not include the instruction block' do
         prompt = planner.send(:build_multi_step_gemini_prompt, task, tools_description)
         expect(prompt).not_to include('AGENT_INSTRUCTION:')
-        expect(prompt).to start_with("You are an AI planner")
+        expect(prompt).to start_with('You are an AI planner')
         expect(prompt).to include("User Request: \"#{task}\"")
         expect(prompt).to include(tools_description)
       end
@@ -354,7 +355,7 @@ RSpec.describe ADK::Planner do
       it 'does not include the instruction block' do
         prompt = planner.send(:build_multi_step_gemini_prompt, task, tools_description)
         expect(prompt).not_to include('AGENT_INSTRUCTION:')
-        expect(prompt).to start_with("You are an AI planner")
+        expect(prompt).to start_with('You are an AI planner')
         expect(prompt).to include("User Request: \"#{task}\"")
         expect(prompt).to include(tools_description)
       end

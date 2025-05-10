@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 # File: spec/adk/tools/check_job_status_tool_spec.rb
 require 'spec_helper'
 require 'sidekiq/api'
@@ -105,7 +106,7 @@ RSpec.describe ADK::Tools::CheckJobStatusTool do
       before { allow(mock_queue).to receive(:find_job).with(job_id).and_return(mock_job) }
       it 'returns a pending status hash' do
         result = tool.send(:perform_execution, params, context)
-        expect(result).to eq({ status: :pending, job_id: job_id, message: "Job is queued or currently running." })
+        expect(result).to eq({ status: :pending, job_id: job_id, message: 'Job is queued or currently running.' })
       end
     end
 
@@ -113,7 +114,7 @@ RSpec.describe ADK::Tools::CheckJobStatusTool do
       before { allow(mock_retry_set).to receive(:find_job).with(job_id).and_return(mock_job) }
       it 'returns a pending status hash' do
         result = tool.send(:perform_execution, params, context)
-        expect(result).to eq({ status: :pending, job_id: job_id, message: "Job is queued or currently running." })
+        expect(result).to eq({ status: :pending, job_id: job_id, message: 'Job is queued or currently running.' })
       end
     end
 
@@ -137,7 +138,7 @@ RSpec.describe ADK::Tools::CheckJobStatusTool do
 
     context 'when Redis connection fails' do
       before {
-        allow(Redis).to receive(:new).with(redis_options).and_raise(Redis::CannotConnectError, "Connection refused")
+        allow(Redis).to receive(:new).with(redis_options).and_raise(Redis::CannotConnectError, 'Connection refused')
       }
       it 'raises ToolError' do
         expect {
@@ -147,7 +148,7 @@ RSpec.describe ADK::Tools::CheckJobStatusTool do
     end
 
     context 'when Sidekiq API query fails' do
-      before { allow(mock_queue).to receive(:find_job).and_raise(StandardError, "Sidekiq API error") }
+      before { allow(mock_queue).to receive(:find_job).and_raise(StandardError, 'Sidekiq API error') }
       it 'raises ToolError indicating unknown status' do
         expect {
           tool.send(:perform_execution, params, context)

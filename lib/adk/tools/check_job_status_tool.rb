@@ -80,15 +80,15 @@ module ADK
             {
               status: :pending,
               job_id: job_id,
-              message: "Job is queued or currently running."
+              message: 'Job is queued or currently running.'
             }
           when :failed
             # Job failed and ended up in Dead Set
-            raise ADK::ToolError, "Job has failed (found in Sidekiq Dead Set)."
+            raise ADK::ToolError, 'Job has failed (found in Sidekiq Dead Set).'
           when :completed_or_disappeared
             # Job not found in Sidekiq or Redis
             raise ADK::ToolError,
-                  "Job result is unavailable. The job may have completed without storing a result, or the job ID may be invalid."
+                  'Job result is unavailable. The job may have completed without storing a result, or the job ID may be invalid.'
           end
         rescue Redis::BaseError => e
           err_msg = "Could not connect to Redis to check job status: #{e.message}"

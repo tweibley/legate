@@ -41,7 +41,7 @@ RSpec.describe ADK::Tools::CatFacts do
 
     context 'when API call is successful' do
       let(:fact_text) { 'Cats use their whiskers to determine if a space is too small to fit through.' }
-      let(:json_body) { JSON.generate({ "fact" => fact_text, "length" => fact_text.length }) }
+      let(:json_body) { JSON.generate({ 'fact' => fact_text, 'length' => fact_text.length }) }
 
       before do
         # Stub http_get to return a new Excon::Response with the desired body
@@ -57,7 +57,7 @@ RSpec.describe ADK::Tools::CatFacts do
     end
 
     context 'when API response body is missing the fact field' do
-      let(:json_body) { JSON.generate({ "length" => 27 }) } # Missing 'fact'
+      let(:json_body) { JSON.generate({ 'length' => 27 }) } # Missing 'fact'
 
       before do
         allow(tool).to receive(:http_get).with(api_path).and_return(Excon::Response.new(body: json_body, status: 200,
@@ -75,7 +75,7 @@ RSpec.describe ADK::Tools::CatFacts do
       # Simulate the error HttpClient would raise
       # Create a more realistic response object for ToolHttpError
       let(:error_response) { Excon::Response.new(status: 500, body: 'Server Error') }
-      let(:http_error) { ADK::ToolHttpError.new("HTTP Error 500", response: error_response) }
+      let(:http_error) { ADK::ToolHttpError.new('HTTP Error 500', response: error_response) }
 
       before do
         allow(tool).to receive(:http_get).with(api_path).and_raise(http_error)
@@ -90,7 +90,7 @@ RSpec.describe ADK::Tools::CatFacts do
 
     context 'when API call times out' do
       # Simulate the error HttpClient would raise
-      let(:timeout_error) { ADK::ToolTimeoutError.new("Timeout") }
+      let(:timeout_error) { ADK::ToolTimeoutError.new('Timeout') }
       before do
         allow(tool).to receive(:http_get).with(api_path).and_raise(timeout_error)
       end
@@ -104,7 +104,7 @@ RSpec.describe ADK::Tools::CatFacts do
 
     context 'when API connection fails' do
       # Simulate the error HttpClient would raise
-      let(:network_error) { ADK::ToolNetworkError.new("Connection failed") }
+      let(:network_error) { ADK::ToolNetworkError.new('Connection failed') }
       before do
         allow(tool).to receive(:http_get).with(api_path).and_raise(network_error)
       end

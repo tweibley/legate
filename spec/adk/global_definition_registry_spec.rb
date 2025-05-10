@@ -97,7 +97,7 @@ RSpec.describe ADK::GlobalDefinitionRegistry do
       expect(described_class.find(:agent2)).to eq(definition2)
 
       # Clear the registry
-      expect(ADK.logger).to receive(:debug).with("GlobalDefinitionRegistry: Cleared.")
+      expect(ADK.logger).to receive(:debug).with('GlobalDefinitionRegistry: Cleared.')
       described_class.clear!
 
       # Verify they're gone
@@ -131,7 +131,7 @@ RSpec.describe ADK::GlobalDefinitionRegistry do
 
       # Get the registry and modify it
       registry_copy = described_class.all
-      registry_copy[:new_key] = "new value"
+      registry_copy[:new_key] = 'new value'
 
       # The original registry should not be modified
       expect(described_class.all.keys).to contain_exactly(:single_agent)

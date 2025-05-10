@@ -32,17 +32,17 @@ RSpec.describe ADK::Web::WebhookListener do
   end
 
   let(:error_handler) do
-    ->(request) { raise StandardError, "Handler error" }
+    ->(request) { raise StandardError, 'Handler error' }
   end
 
   # Default static routes
   let(:static_routes) do
     {
-      "POST /api/webhook" => route_config_class.new(handler: post_handler, validator: nil, secret: nil),
-      "GET /api/data" => route_config_class.new(handler: get_handler, validator: nil, secret: nil),
-      "PUT /api/update" => route_config_class.new(handler: put_handler, validator: nil, secret: nil),
-      "DELETE /api/remove" => route_config_class.new(handler: delete_handler, validator: nil, secret: nil),
-      "GET /api/error" => route_config_class.new(handler: error_handler, validator: nil, secret: nil)
+      'POST /api/webhook' => route_config_class.new(handler: post_handler, validator: nil, secret: nil),
+      'GET /api/data' => route_config_class.new(handler: get_handler, validator: nil, secret: nil),
+      'PUT /api/update' => route_config_class.new(handler: put_handler, validator: nil, secret: nil),
+      'DELETE /api/remove' => route_config_class.new(handler: delete_handler, validator: nil, secret: nil),
+      'GET /api/error' => route_config_class.new(handler: error_handler, validator: nil, secret: nil)
     }
   end
 
@@ -86,38 +86,38 @@ RSpec.describe ADK::Web::WebhookListener do
     ADK::Web::WebhookListener.new
   end
 
-  describe "static routes basic functionality" do
-    it "responds to POST /api/webhook endpoint" do
-      post "/api/webhook"
+  describe 'static routes basic functionality' do
+    it 'responds to POST /api/webhook endpoint' do
+      post '/api/webhook'
       expect(last_response.status).to eq(200)
       expect(last_response.body).to eq('{"method":"POST","status":"success"}')
     end
 
-    it "responds to GET /api/data endpoint" do
-      get "/api/data"
+    it 'responds to GET /api/data endpoint' do
+      get '/api/data'
       expect(last_response.status).to eq(200)
       expect(last_response.body).to eq('{"method":"GET","status":"success"}')
     end
 
-    it "handles PUT requests" do
-      put "/api/update"
+    it 'handles PUT requests' do
+      put '/api/update'
       expect(last_response.status).to eq(200)
       expect(last_response.body).to eq('{"method":"PUT","status":"success"}')
     end
 
-    it "handles DELETE requests" do
-      delete "/api/remove"
+    it 'handles DELETE requests' do
+      delete '/api/remove'
       expect(last_response.status).to eq(200)
       expect(last_response.body).to eq('{"method":"DELETE","status":"success"}')
     end
 
-    it "returns 404 for undefined routes" do
-      get "/undefined/route"
+    it 'returns 404 for undefined routes' do
+      get '/undefined/route'
       expect(last_response.status).to eq(404)
     end
 
-    it "returns 500 when handler raises an error" do
-      get "/api/error"
+    it 'returns 500 when handler raises an error' do
+      get '/api/error'
       expect(last_response.status).to eq(500)
       expect(JSON.parse(last_response.body)['error_message']).to include('Internal Server Error')
     end

@@ -21,13 +21,13 @@ module ADK
 
       # --- Generic Options ---
       desc 'generate', 'Generate deployment assets (Dockerfile, .dockerignore, cloud-specific configs)'
-      method_option :cloud, type: :string, aliases: "-c", default: 'none', required: true,
+      method_option :cloud, type: :string, aliases: '-c', default: 'none', required: true,
                             enum: %w[gcp aws azure none], desc: 'Target cloud provider (gcp, aws, azure, none)'
-      method_option :entry_point, type: :string, aliases: "-e", required: false,
+      method_option :entry_point, type: :string, aliases: '-e', required: false,
                                   desc: 'Entry point script for the main application/web process (e.g., bin/web). Required unless --generate-sample-entrypoint is used.'
-      method_option :agent_entry_points, type: :array, aliases: "-a",
+      method_option :agent_entry_points, type: :array, aliases: '-a',
                                          desc: 'Entry points for user agents (comma separated)'
-      method_option :name, type: :string, aliases: "-n", default: DEFAULT_DEPLOYMENT_DIR_NAME,
+      method_option :name, type: :string, aliases: '-n', default: DEFAULT_DEPLOYMENT_DIR_NAME,
                            desc: 'Base name for the output directory and potentially generated resources'
       method_option :base_image, type: :string, default: DEFAULT_RUBY_IMAGE, desc: 'Base Ruby Docker image to use'
       method_option :generate_sample_entrypoint, type: :boolean, default: false,
@@ -45,7 +45,7 @@ module ADK
       class_option :gcp_cpu, type: :string, default: '1', group: 'GCP', desc: 'GCP Cloud Run CPU allocation'
       # We might add options for agent service names, memory, cpu later.
 
-      def generate(directory = ".")
+      def generate(directory = '.')
         # Determine the effective entry point
         effective_entry_point = if options[:generate_sample_entrypoint]
                                   options[:entry_point] || DEFAULT_SAMPLE_ENTRYPOINT_PATH
@@ -55,7 +55,7 @@ module ADK
 
         # Validate entry_point is provided if sample isn't generated
         unless effective_entry_point
-          say "Error: --entry-point is required unless --generate-sample-entrypoint is used.", :red
+          say 'Error: --entry-point is required unless --generate-sample-entrypoint is used.', :red
           exit 1
         end
 
@@ -85,22 +85,22 @@ module ADK
         when 'azure'
           generate_azure_assets(deployment_dir)
         when 'none'
-          say "Generated generic Docker assets only.", :yellow
+          say 'Generated generic Docker assets only.', :yellow
         else
           # Should not happen due to Thor's enum check, but good practice
           say "Unsupported cloud provider: #{options[:cloud]}", :red
           exit 1
         end
 
-        say "Deployment asset generation complete!", :green
+        say 'Deployment asset generation complete!', :green
         if options[:generate_sample_entrypoint]
           say "NOTE: Sample entrypoint generated at '#{effective_entry_point}'.", :yellow
         end
         if gcp_config_name
           say "NOTE: A gcloud configuration named '#{gcp_config_name}' was created/updated.", :yellow
-          say "      Activate it using:", :yellow
+          say '      Activate it using:', :yellow
           say "        gcloud config configurations activate #{gcp_config_name}", :cyan
-          say "      Before running the deployment script.", :yellow
+          say '      Before running the deployment script.', :yellow
         end
         if options[:cloud] == 'gcp'
           say "Review the generated files in #{deployment_dir} and the deployment guide:"
@@ -112,14 +112,14 @@ module ADK
 
       def generate_dockerfiles(directory, main_entry_point, deployment_dir_basename)
         # Main Dockerfile
-        main_dockerfile_path = File.join(directory, "Dockerfile")
+        main_dockerfile_path = File.join(directory, 'Dockerfile')
         generate_dockerfile_content(main_dockerfile_path, main_entry_point, options[:base_image],
                                     deployment_dir_basename)
         say "Created main Dockerfile at #{main_dockerfile_path}", :cyan
 
         # Agent Dockerfiles (if specified)
         options[:agent_entry_points]&.each_with_index do |agent_entry, index|
-          agent_name = File.basename(agent_entry, ".rb").gsub(/[^0-9a-z_.-]/i, '_')
+          agent_name = File.basename(agent_entry, '.rb').gsub(/[^0-9a-z_.-]/i, '_')
           agent_dockerfile_path = File.join(directory, "Dockerfile.agent.#{agent_name}.#{index}")
           generate_dockerfile_content(agent_dockerfile_path, agent_entry, options[:base_image], '')
           say "Created agent Dockerfile for '#{agent_entry}' at #{agent_dockerfile_path}", :cyan
@@ -134,7 +134,7 @@ module ADK
 
         # Determine the path to config.ru relative to the build context (project root)
         # config.ru is generated inside the deployment directory
-        config_ru_build_context_path = File.join(deployment_dir_basename, "config.ru")
+        config_ru_build_context_path = File.join(deployment_dir_basename, 'config.ru')
 
         # Apply changes based on user provided diff
         content = <<~DOCKERFILE
@@ -207,7 +207,7 @@ module ADK
       end
 
       def generate_dockerignore(directory)
-        dockerignore_path = File.join(directory, ".dockerignore")
+        dockerignore_path = File.join(directory, '.dockerignore')
         # Avoid overwriting if it exists, maybe merge or warn later?
         if File.exist?(dockerignore_path)
           say "Skipping .dockerignore generation, file already exists: #{dockerignore_path}", :yellow
@@ -261,7 +261,7 @@ module ADK
 
       # --- Generate config.ru (Generic) ---
       def generate_config_ru(directory, entry_point_script)
-        config_ru_path = File.join(directory, "config.ru")
+        config_ru_path = File.join(directory, 'config.ru')
 
         if File.exist?(config_ru_path)
           say "Skipping config.ru generation, file already exists: #{config_ru_path}", :yellow
@@ -528,7 +528,7 @@ module ADK
 
       # --- GCP Asset Generation (Only called if --cloud gcp) ---
       def generate_gcp_assets(directory)
-        say "Generating GCP specific assets...", :magenta
+        say 'Generating GCP specific assets...', :magenta
         gcp_config_name = nil # Initialize
 
         # Validate required GCP options
@@ -543,12 +543,12 @@ module ADK
           # Ensure it starts with a letter (though our pattern should ensure this)
           suggested_project_id = "a#{suggested_project_id}" unless suggested_project_id[/^[a-z]/]
           suggested_project_id = suggested_project_id.slice(0, 30) # Re-slice if prepended 'a' pushed length
-          say "Error: --gcp-project-id is required for GCP deployment.", :red
-          say "You must provide an existing GCP project ID where you have appropriate permissions.", :yellow
-          say "If you need to create a new project first, you could use a command like this ", :yellow
-          say "After ensuring billing is configured for your account):", :yellow
+          say 'Error: --gcp-project-id is required for GCP deployment.', :red
+          say 'You must provide an existing GCP project ID where you have appropriate permissions.', :yellow
+          say 'If you need to create a new project first, you could use a command like this ', :yellow
+          say 'After ensuring billing is configured for your account):', :yellow
           say "  gcloud projects create #{suggested_project_id}", :cyan
-          say "Then, re-run this command adding the flag:", :yellow
+          say 'Then, re-run this command adding the flag:', :yellow
           say "  --gcp-project-id #{suggested_project_id}", :cyan
           exit 1 # Stop execution, user needs to provide a valid project ID
         end
@@ -586,7 +586,7 @@ module ADK
           # For config commands, maybe warn and continue?
           # For critical commands in deploy script, exit is better.
           # Let's warn for config issues but allow script generation.
-          say "Warning: Failed to automatically configure gcloud. Please ensure configuration is correct manually.",
+          say 'Warning: Failed to automatically configure gcloud. Please ensure configuration is correct manually.',
               :yellow
           return false # Indicate failure
         end
@@ -601,7 +601,7 @@ module ADK
         # Check if gcloud command exists first
         unless system('command -v gcloud > /dev/null 2>&1')
           say "Error: 'gcloud' command not found in PATH. Cannot create gcloud configuration.", :red
-          say "Please install the Google Cloud SDK.", :yellow
+          say 'Please install the Google Cloud SDK.', :yellow
           return nil # Cannot proceed
         end
 
@@ -622,9 +622,9 @@ module ADK
 
         # 2. Set properties
         run_gcloud_command("config set project #{project_id} --configuration=#{config_name}",
-                           "Failed to set project in gcloud config.")
+                           'Failed to set project in gcloud config.')
         run_gcloud_command("config set compute/region #{region} --configuration=#{config_name}",
-                           "Failed to set region in gcloud config.")
+                           'Failed to set region in gcloud config.')
         # Add other relevant defaults? e.g., run/region?
         # run_gcloud_command("config set run/region #{region} --configuration=#{config_name}", "Failed to set run/region in gcloud config.")
 
@@ -634,7 +634,7 @@ module ADK
       # --- GCP Specific Helper Methods ---
       def generate_gcp_redis_config(directory)
         instance_name = options[:gcp_redis_instance_name]
-        redis_config_path = File.join(directory, "redis-memorystore.yaml")
+        redis_config_path = File.join(directory, 'redis-memorystore.yaml')
 
         content = <<~YAML
           apiVersion: redis.cnrm.cloud.google.com/v1beta1
@@ -659,11 +659,11 @@ module ADK
         # Note: Generating a static YAML is less flexible than the deploy script.
         # The script can dynamically fetch Redis IP etc. Keeping this commented out
         # as generating the script is generally preferred.
-        say "Skipping generation of static cloud-run-service.yaml, deploy script is preferred.", :yellow
+        say 'Skipping generation of static cloud-run-service.yaml, deploy script is preferred.', :yellow
       end
 
       def generate_gcp_deploy_script(directory)
-        deploy_script_path = File.join(directory, "deploy-gcp.sh")
+        deploy_script_path = File.join(directory, 'deploy-gcp.sh')
 
         # Extract GCP options with defaults from class_options
         project_id = options[:gcp_project_id] # Already validated in generate_gcp_assets
@@ -677,16 +677,16 @@ module ADK
 
         # Image names
         main_image_name = "#{base_name}-web" # Assume main entry point is web
-        main_image_tag = "latest"
+        main_image_tag = 'latest'
         # Derive Artifact Registry location from region for image URI
         ar_location = region # Typically the same, but made explicit
-        ar_repo_name = "adk-images" # Keep consistent with script template
+        ar_repo_name = 'adk-images' # Keep consistent with script template
         main_image_uri = "#{ar_location}-docker.pkg.dev/#{project_id}/#{ar_repo_name}/#{main_image_name}:#{main_image_tag}"
 
         # Cloud Build config file path (relative to project root)
-        cloudbuild_config_file = File.join(deployment_dir_basename, "cloudbuild.yaml")
+        cloudbuild_config_file = File.join(deployment_dir_basename, 'cloudbuild.yaml')
         # Dockerfile path relative to deployment dir
-        main_dockerfile_path_relative = "Dockerfile" # Dockerfile is inside the deploy dir context for the script
+        main_dockerfile_path_relative = 'Dockerfile' # Dockerfile is inside the deploy dir context for the script
 
         # --- Script Content ---
         # This script is more comprehensive than before, includes setup
@@ -939,7 +939,7 @@ module ADK
         File.write(deploy_script_path, script_content)
         FileUtils.chmod(0755, deploy_script_path)
         say "Created GCP deployment script at #{deploy_script_path}", :cyan
-        say "Please review and customize the script, especially the Configuration section, before running.", :yellow
+        say 'Please review and customize the script, especially the Configuration section, before running.', :yellow
       end
 
       def generate_gcp_deployment_docs(directory)
@@ -960,9 +960,9 @@ module ADK
 
       # New method to generate cloudbuild.yaml
       def generate_gcp_cloudbuild_yaml(directory)
-        cloudbuild_path = File.join(directory, "cloudbuild.yaml")
+        cloudbuild_path = File.join(directory, 'cloudbuild.yaml')
         deployment_dir_basename = File.basename(directory)
-        main_dockerfile_path_relative = File.join(deployment_dir_basename, "Dockerfile")
+        main_dockerfile_path_relative = File.join(deployment_dir_basename, 'Dockerfile')
 
         content = <<~YAML
           steps:
@@ -984,13 +984,13 @@ module ADK
 
       # --- AWS Asset Generation (Placeholder) ---
       def generate_aws_assets(directory)
-        say "AWS deployment asset generation is not yet implemented.", :yellow
+        say 'AWS deployment asset generation is not yet implemented.', :yellow
         # Placeholder for future: generate CloudFormation/CDK/Terraform, deploy scripts etc.
       end
 
       # --- Azure Asset Generation (Placeholder) ---
       def generate_azure_assets(directory)
-        say "Azure deployment asset generation is not yet implemented.", :yellow
+        say 'Azure deployment asset generation is not yet implemented.', :yellow
         # Placeholder for future: generate ARM templates/Bicep, deploy scripts etc.
       end
     end

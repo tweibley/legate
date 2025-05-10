@@ -60,4 +60,4 @@ class SleepyToolWorker
 end
 
 # Log that the worker is ready
-ADK.logger.info("SleepyTool worker loaded and ready to process jobs")
+ADK.logger.info('SleepyTool worker loaded and ready to process jobs')

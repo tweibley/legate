@@ -172,11 +172,11 @@ end
 class InlineAgentToolAdapter < FastMcp::Tool
   # --- Define metadata via class methods ---
   def self.tool_name
-    "run_calculator_agent"
+    'run_calculator_agent'
   end
 
   def self.description
-    "Runs the internal ADK Calculator Agent with the given prompt."
+    'Runs the internal ADK Calculator Agent with the given prompt.'
   end
   # --- End metadata via class methods ---
 
@@ -204,8 +204,8 @@ class InlineAgentToolAdapter < FastMcp::Tool
 
   def call(prompt:)
     # Make sure dependencies are set up via the class method
-    raise "Agent not configured via InlineAgentToolAdapter.setup" unless @@agent
-    raise "Session service not configured via InlineAgentToolAdapter.setup" unless @@session_service
+    raise 'Agent not configured via InlineAgentToolAdapter.setup' unless @@agent
+    raise 'Session service not configured via InlineAgentToolAdapter.setup' unless @@session_service
 
     temp_session = nil
     # ADK logs are silenced via ENV var setup
@@ -232,11 +232,11 @@ class InlineAgentToolAdapter < FastMcp::Tool
       when :success
         return result_content[:result]
       when :error
-        err_msg = result_content[:error_message] || "Agent execution failed."
+        err_msg = result_content[:error_message] || 'Agent execution failed.'
         raise StandardError, "Agent Error: #{err_msg}"
       when :pending
         job_id = result_content[:job_id]
-        msg = result_content[:message] || "Agent task resulted in a pending job."
+        msg = result_content[:message] || 'Agent task resulted in a pending job.'
         return { status: 'pending', job_id: job_id, message: msg }
       else
         raise StandardError, "Agent task finished with unknown status: #{result_content[:status]}"
@@ -287,10 +287,10 @@ mcp_server.register_tools(
 
 # Start the server (defaults to STDIO transport)
 # Output status messages to STDERR so they don't interfere with STDOUT protocol
-STDERR.puts "--- Starting ADK Combined MCP Server (STDIO) ---"
-STDERR.puts "Resource: counter"
-STDERR.puts "Tools: incrementcounter, decrementcounter, getcounter, run_calculator_agent"
-STDERR.puts "Waiting for MCP client requests on STDIN..."
+STDERR.puts '--- Starting ADK Combined MCP Server (STDIO) ---'
+STDERR.puts 'Resource: counter'
+STDERR.puts 'Tools: incrementcounter, decrementcounter, getcounter, run_calculator_agent'
+STDERR.puts 'Waiting for MCP client requests on STDIN...'
 begin
   mcp_server.start # This uses STDIO by default
 rescue Interrupt

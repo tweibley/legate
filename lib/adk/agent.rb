@@ -236,7 +236,7 @@ module ADK
         configs = Array(server_configs).flatten.compact
         # Basic validation: Ensure it's an array of hashes?
         unless configs.all? { |c| c.is_a?(Hash) }
-          raise ArgumentError, "MCP server configurations must be provided as Hashes."
+          raise ArgumentError, 'MCP server configurations must be provided as Hashes.'
         end
 
         @definition.instance_variable_set(:@mcp_servers, configs)
@@ -278,7 +278,7 @@ module ADK
     # @return [ADK::Agent] The newly configured agent instance.
     # @raise [ArgumentError] if the block is not provided or required attributes are missing.
     def self.define(&block)
-      raise ArgumentError, "ADK::Agent.define requires a block." unless block_given?
+      raise ArgumentError, 'ADK::Agent.define requires a block.' unless block_given?
 
       # 1. Create a new AgentDefinition
       definition = ADK::AgentDefinition.new
@@ -296,7 +296,7 @@ module ADK
       # 3. Save the validated definition using the configured definition store
       begin
         store = ADK.config.definition_store
-        raise ADK::ConfigurationError, "ADK.config.definition_store is not configured." unless store
+        raise ADK::ConfigurationError, 'ADK.config.definition_store is not configured.' unless store
 
         # Ensure store responds to save_definition
         unless store.respond_to?(:save_definition)
@@ -382,7 +382,7 @@ module ADK
         # Use duck-typing instead of is_a? for mock compatibility
         unless definition.respond_to?(:name) && definition.respond_to?(:description) && definition.respond_to?(:instruction) && definition.respond_to?(:tool_names)
           raise ArgumentError,
-                "provided definition object does not appear to be a valid ADK::AgentDefinition (missing required methods)"
+                'provided definition object does not appear to be a valid ADK::AgentDefinition (missing required methods)'
         end
 
         # raise ArgumentError, "definition must be an ADK::AgentDefinition" unless definition.is_a?(ADK::AgentDefinition)
@@ -415,7 +415,7 @@ module ADK
         ADK.logger.info("Initializing agent '#{@name}' from definition...")
       else
         # --- Original initialization logic ---
-        raise ArgumentError, "Agent name must be provided if not using definition." unless name
+        raise ArgumentError, 'Agent name must be provided if not using definition.' unless name
 
         @name = name
         @description = description || ''
@@ -714,7 +714,7 @@ module ADK
           final_content = final_content.merge(plan_details: execution_result[:details])
         else # Should not happen if execute_plan returns error hash correctly
           ADK.logger.error("Unexpected result format from execute_plan: #{final_content.inspect}")
-          final_content = { status: :error, error_message: "Internal error processing plan result.",
+          final_content = { status: :error, error_message: 'Internal error processing plan result.',
                             result: final_content }
           final_content = final_content.merge(plan_details: execution_result[:details]) if execution_result[:details]
         end
@@ -774,7 +774,7 @@ module ADK
           end
         end
       end
-      ADK.logger.debug("Finished tool discovery.")
+      ADK.logger.debug('Finished tool discovery.')
     end
 
     # --- REFACTORED: execute_plan now returns hash { details: [...], last_result: original_hash } ---
@@ -787,7 +787,7 @@ module ADK
       session_id = session.id
 
       unless plan.is_a?(Array)
-        msg = "Invalid plan received from planner (not an Array)."
+        msg = 'Invalid plan received from planner (not an Array).'
         ADK.logger.error("#{msg} Plan: #{plan.inspect}")
         return { details: { status: :error, error_message: msg }, last_result: nil }
       end
@@ -802,18 +802,18 @@ module ADK
             # Find the *last* user event in case of corrections/multiple turns
             original_user_input = session.events.reverse.find { |e|
               e.role == :user
-            }&.content || "[Original input not found]"
+            }&.content || '[Original input not found]'
             plan = [{ tool: :echo, params: { message: original_user_input } }]
             ADK.logger.debug("Reconstructed plan for echo fallback: #{plan.inspect}")
             # Now continue execution with the modified plan
           else
             # Echo tool not available, default to error mode
-            msg = "Planning failed and Echo fallback tool is not available to this agent."
+            msg = 'Planning failed and Echo fallback tool is not available to this agent.'
             ADK.logger.warn(msg)
             return { details: { status: :error, error_message: msg }, last_result: nil }
           end
         else # Default or :error mode
-          msg = "I cannot fulfill this request with the available tools (empty plan)."
+          msg = 'I cannot fulfill this request with the available tools (empty plan).'
           ADK.logger.warn(msg)
           return { details: { status: :error, error_message: msg }, last_result: nil }
         end
@@ -840,17 +840,17 @@ module ADK
                 prev_result = previous_step_result_hash[:result]
                 if prev_result.is_a?(Hash) && prev_result.key?(:status) && prev_result.key?(:result) # AgentTool nested result
                   injection_value = prev_result[:result]
-                  ADK.logger.debug("Injecting nested result...")
+                  ADK.logger.debug('Injecting nested result...')
                 else
                   injection_value = prev_result
-                  ADK.logger.debug("Injecting direct result...")
+                  ADK.logger.debug('Injecting direct result...')
                 end
               elsif previous_step_result_hash.key?(:job_id) # <-- CHANGED from workflow_id
                 injection_value = previous_step_result_hash[:job_id]
-                ADK.logger.debug("Injecting job_id from previous step...")
+                ADK.logger.debug('Injecting job_id from previous step...')
               elsif previous_step_result_hash.key?(:message)
                 injection_value = previous_step_result_hash[:message]
-                ADK.logger.debug("Injecting message from previous step...")
+                ADK.logger.debug('Injecting message from previous step...')
               else
                 ADK.logger.warn("Cannot inject: Previous successful/pending step missing usable key (:result, :job_id, :message). Prev Hash: #{previous_step_result_hash.inspect}")
                 value
@@ -886,7 +886,7 @@ module ADK
           if result_val.is_a?(String) || result_val.is_a?(Numeric) || [true, false, nil].include?(result_val)
             sanitized_result_for_plan[:result] = result_val
           elsif current_result_hash.key?(:result) # It exists but is complex
-            sanitized_result_for_plan[:result] = "[Complex Result Structure]"
+            sanitized_result_for_plan[:result] = '[Complex Result Structure]'
           end
         else # Should not happen based on execute_step validation, but handle defensively
           sanitized_result_for_plan[:status] = :error
@@ -1033,9 +1033,9 @@ module ADK
           # <-----------------------------
 
           # --- NEW: Explicitly convert known string type values to symbols ---
-          if symbolized_config[:type] == "stdio"
+          if symbolized_config[:type] == 'stdio'
             symbolized_config[:type] = :stdio
-          elsif symbolized_config[:type] == "sse"
+          elsif symbolized_config[:type] == 'sse'
             symbolized_config[:type] = :sse
           end
           # Pass the modified hash
@@ -1059,7 +1059,7 @@ module ADK
 
       @mcp_clients.each do |client|
         begin
-          ADK.logger.info("Disconnecting MCP client...")
+          ADK.logger.info('Disconnecting MCP client...')
           client.disconnect
         rescue StandardError => e
           ADK.logger.error("Error disconnecting MCP client: #{e.message}")

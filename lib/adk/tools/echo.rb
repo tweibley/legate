@@ -27,7 +27,7 @@ module ADK
 
           # This check is belts-and-suspenders; validation should catch missing required params.
           unless message
-            err_msg = "Internal Error: Message parameter missing in perform_execution for Echo tool after validation."
+            err_msg = 'Internal Error: Message parameter missing in perform_execution for Echo tool after validation.'
             ADK.logger.error(err_msg)
             raise ADK::ToolError, err_msg
           end

@@ -105,9 +105,9 @@ RSpec.describe ADK::Mcp::Client do
     end
 
     it 'raises ConnectionError and disconnects if connection.connect fails' do
-      allow(mock_connection).to receive(:connect).and_raise(ADK::Mcp::ConnectionError, "Process failed")
+      allow(mock_connection).to receive(:connect).and_raise(ADK::Mcp::ConnectionError, 'Process failed')
       expect(client).to receive(:disconnect)
-      expect { client.connect }.to raise_error(ADK::Mcp::ConnectionError, "Process failed")
+      expect { client.connect }.to raise_error(ADK::Mcp::ConnectionError, 'Process failed')
     end
 
     it 'raises ConnectionError and disconnects if handshake response is missing' do
@@ -126,7 +126,7 @@ RSpec.describe ADK::Mcp::Client do
     end
 
     it 'raises ConnectionError on unexpected errors during connect' do
-      allow(mock_connection).to receive(:connect).and_raise(StandardError, "Unexpected boom")
+      allow(mock_connection).to receive(:connect).and_raise(StandardError, 'Unexpected boom')
       expect(client).to receive(:disconnect)
       expect { client.connect }.to raise_error(ADK::Mcp::ConnectionError, /Unexpected boom/)
     end
@@ -161,7 +161,7 @@ RSpec.describe ADK::Mcp::Client do
     end
 
     it 'handles errors during connection disconnect' do
-      allow(mock_connection).to receive(:disconnect).and_raise("Socket error")
+      allow(mock_connection).to receive(:disconnect).and_raise('Socket error')
       expect { client.disconnect }.not_to raise_error
       # Check the original logger spy again
       expect(logger_spy).to have_received(:error)

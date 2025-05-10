@@ -5,7 +5,7 @@ require_relative '../lib/adk'
 # Require the specific tool class if not automatically loaded
 require_relative 'tools/sleepy_tool'
 
-puts "--- Async Job Agent Example (Polling Status) ---"
+puts '--- Async Job Agent Example (Polling Status) ---'
 
 # 1. --- Agent Setup ---
 # Define agent and add the async tool via tool_classes
@@ -27,7 +27,7 @@ agent = ADK::Agent.new(
 # ADK::Tools::CheckJobStatusTool should be automatically registered by the framework
 status_checker_tool = ADK::GlobalToolManager.create_instance(:check_job_status)
 unless status_checker_tool
-  puts "Error: Status checker tool (:check_job_status) not found in GlobalToolManager."
+  puts 'Error: Status checker tool (:check_job_status) not found in GlobalToolManager.'
   exit 1
 end
 
@@ -36,7 +36,7 @@ puts "Status checker tool loaded: #{status_checker_tool.name}"
 
 # 3. --- Start Agent (Needed for the initial task) ---
 agent.start
-puts "Agent started."
+puts 'Agent started.'
 
 # 4. --- Session Setup ---
 # We use a session service to store the conversation history, including tool results.
@@ -104,7 +104,7 @@ begin
           puts "Error: #{status_result[:error_message]}"
           break
         when :pending
-          print "." # Progress indicator
+          print '.' # Progress indicator
           $stdout.flush
         else
           elapsed = Time.now - start_time
@@ -143,7 +143,7 @@ end
 # 6. --- Stop Agent ---
 puts "\nStopping agent..."
 agent.stop
-puts "Agent stopped."
+puts 'Agent stopped.'
 
 # 7. --- Final Summary ---
 puts "\n--- Example Summary ---"
@@ -151,7 +151,7 @@ if job_id
   puts "Job ID: #{job_id}"
   puts "Final Status: #{final_job_status || 'Unknown'}"
 else
-  puts "Job ID: Not found"
+  puts 'Job ID: Not found'
   puts "Final Status: #{final_job_status || 'Error'}"
 end
-puts "--- Example Complete ---"
+puts '--- Example Complete ---'

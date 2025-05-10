@@ -9,8 +9,8 @@ module ADK
   # Manages Agent Definitions both in-memory and persistently in Redis.
   module AgentDefinitionStore
     # Redis Keys Constants (Consider sharing with CLI)
-    REDIS_AGENT_HASH_PREFIX = "adk:agent:"
-    REDIS_AGENTS_SET_KEY = "adk:agents:all_names"
+    REDIS_AGENT_HASH_PREFIX = 'adk:agent:'
+    REDIS_AGENTS_SET_KEY = 'adk:agents:all_names'
 
     # In-memory storage for loaded/registered definitions
     # { agent_name_symbol => definition_hash }

@@ -35,7 +35,7 @@ RSpec.describe ADK::Tools::WebhookTool do
   let(:url) { 'https://example.com/webhook' }
   let(:payload_hash) { { message: 'Hello', value: 123 } }
   let(:payload_json) { JSON.generate(payload_hash) }
-  let(:payload_string) { "Plain text payload" }
+  let(:payload_string) { 'Plain text payload' }
   let(:secret) { 'my_super_secret_key' }
   let(:custom_headers) { { 'X-Custom-Header' => 'Value' } }
   let(:context) { MockToolContext.new }
@@ -74,7 +74,7 @@ RSpec.describe ADK::Tools::WebhookTool do
       before do
         # Match actual Content-Type header from Excon
         # Remove expectation for Content-Type header
-        stub_request(:post, url).with(body: payload_json).to_return(status: 200, body: "OK")
+        stub_request(:post, url).with(body: payload_json).to_return(status: 200, body: 'OK')
       end
 
       it 'sends POST with JSON payload and default headers' do
@@ -82,7 +82,7 @@ RSpec.describe ADK::Tools::WebhookTool do
         # Check status symbol and data
         expect(result[:status]).to eq(:success)
         expect(result[:result][:response_status]).to eq(200)
-        expect(result[:result][:response_body]).to eq("OK")
+        expect(result[:result][:response_body]).to eq('OK')
         # Remove expectation for Content-Type header
         expect(a_request(:post, url).with(body: payload_json)).to have_been_made.once
         # Check User-Agent header specifically if needed, as other defaults might exist
@@ -96,7 +96,7 @@ RSpec.describe ADK::Tools::WebhookTool do
       let(:params) { { url: url, payload: payload_string } }
       before do
         # Expect NO default Content-Type for string body
-        stub_request(:post, url).with(body: payload_string).to_return(status: 200, body: "Accepted")
+        stub_request(:post, url).with(body: payload_string).to_return(status: 200, body: 'Accepted')
       end
 
       it 'sends POST with string payload and no default Content-Type' do
@@ -104,7 +104,7 @@ RSpec.describe ADK::Tools::WebhookTool do
         # Check status symbol and data
         expect(result[:status]).to eq(:success)
         expect(result[:result][:response_status]).to eq(200)
-        expect(result[:result][:response_body]).to eq("Accepted")
+        expect(result[:result][:response_body]).to eq('Accepted')
         # Assert request was made *without* Content-Type (or ensure it wasn't application/json)
         expect(a_request(:post, url).with { |req|
           !req.headers.key?('Content-Type') || !req.headers['Content-Type'].start_with?('application/json')
@@ -129,14 +129,14 @@ RSpec.describe ADK::Tools::WebhookTool do
         stub_request(:post, url).with(
           body: payload_json,
           headers: { 'X-Hub-Signature-256' => "sha256=#{expected_signature}" }
-        ).to_return(status: 200, body: "Signed OK")
+        ).to_return(status: 200, body: 'Signed OK')
       end
 
       it 'calculates and includes correct X-Hub-Signature-256 header' do
         result = tool.execute(params, context: context)
         # Check status symbol and data
         expect(result[:status]).to eq(:success)
-        expect(result[:result][:response_body]).to eq("Signed OK")
+        expect(result[:result][:response_body]).to eq('Signed OK')
         # Check for signature AND the default content-type for hash payloads
         expect(a_request(:post, url).with do |req|
           req.headers['X-Hub-Signature-256'] == "sha256=#{expected_signature}" &&
@@ -151,14 +151,14 @@ RSpec.describe ADK::Tools::WebhookTool do
         # Adjust stub to match actual Content-Type
         # Remove expectation for Content-Type header, keep custom ones
         stub_request(:post, url).with(body: payload_json, headers: custom_headers).to_return(status: 200,
-                                                                                             body: "Headers OK")
+                                                                                             body: 'Headers OK')
       end
 
       it 'includes custom headers in the request' do
         result = tool.execute(params, context: context)
         # Check status symbol and data
         expect(result[:status]).to eq(:success)
-        expect(result[:result][:response_body]).to eq("Headers OK")
+        expect(result[:result][:response_body]).to eq('Headers OK')
         expect(a_request(:post, url).with { |req|
           req.headers.include?('X-Custom-Header') && req.headers['X-Custom-Header'] == 'Value'
         }).to have_been_made.once

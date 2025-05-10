@@ -100,9 +100,9 @@ module ADK
 
       # --- Constants ---
       # Prefix for Redis keys storing agent definition hashes.
-      REDIS_AGENT_HASH_PREFIX = "adk:agent:"
+      REDIS_AGENT_HASH_PREFIX = 'adk:agent:'
       # Redis key for the set containing all defined agent names.
-      REDIS_AGENTS_SET_KEY = "adk:agents:all_names"
+      REDIS_AGENTS_SET_KEY = 'adk:agents:all_names'
       # List of available Gemini models selectable in the UI.
       AVAILABLE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro'].freeze
 
@@ -134,11 +134,11 @@ module ADK
 
           # 2. Check connection explicitly before creating store
           redis_client.ping
-          @logger.info("Successfully connected to Redis for Definition Store.")
+          @logger.info('Successfully connected to Redis for Definition Store.')
 
           # 3. Instantiate the definition store
           @definition_store = ADK::DefinitionStore::RedisStore.new(redis_client: redis_client)
-          @logger.info("Agent Definition Store initialized.")
+          @logger.info('Agent Definition Store initialized.')
 
           # 4. Attempt to synchronize running agents based on persistent_status
           synchronize_persistent_agents
@@ -191,7 +191,7 @@ module ADK
                   # Transform keys to symbols for the client
                   symbolized_config = config.transform_keys(&:to_sym)
                   # --- NEW: Explicitly convert string 'stdio' value to symbol :stdio ---
-                  if symbolized_config[:type] == "stdio"
+                  if symbolized_config[:type] == 'stdio'
                     symbolized_config[:type] = :stdio
                   end
                   # Pass the modified hash with symbol keys and potentially symbolized type value
@@ -314,9 +314,9 @@ module ADK
 
           # --- Generate HTML content ---
           if result_data.is_a?(Array) # Multi-step result array
-            html_parts << "<p><strong>Multi-step Result:</strong></p><ol>"
+            html_parts << '<p><strong>Multi-step Result:</strong></p><ol>'
             result_data.each_with_index do |step_hash, index|
-              html_parts << "<li>"
+              html_parts << '<li>'
               if step_hash.is_a?(Hash) # Ensure it's a hash before checking status
                 case step_hash[:status]
                 when :success
@@ -326,7 +326,7 @@ module ADK
                     html_parts << "<strong>Step #{index + 1} (Success - Delegated):</strong>"
                     html_parts << "<blockquote style='margin-left: 1em; border-left: 3px solid #dbdbdb; padding-left: 1em;'>"
                     html_parts << format_execution_result_html(step_result_content) # Recursive call
-                    html_parts << "</blockquote>"
+                    html_parts << '</blockquote>'
                   else
                     html_parts << "<strong>Step #{index + 1} (Success):</strong> <pre>#{Rack::Utils.escape_html(step_result_content.to_s)}</pre>"
                   end
@@ -334,7 +334,7 @@ module ADK
                   html_parts << "<strong>Step #{index + 1} (Pending):</strong>"
                   html_parts << "<pre>Job ID: #{Rack::Utils.escape_html(step_hash[:job_id].to_s)}" # Changed workflow_id to job_id
                   html_parts << "\nMessage: #{Rack::Utils.escape_html(step_hash[:message].to_s)}" if step_hash[:message]
-                  html_parts << "</pre>"
+                  html_parts << '</pre>'
                 when :error
                   html_parts << "<strong>Step #{index + 1} (Error):</strong> <pre class='has-text-danger'>#{Rack::Utils.escape_html(step_hash[:error_message].to_s)}</pre>"
                 else # Unknown status
@@ -344,9 +344,9 @@ module ADK
                 # Handle case where an element in the array isn't a hash
                 html_parts << "<strong>Step #{index + 1} (Invalid format):</strong> <pre>#{Rack::Utils.escape_html(step_hash.inspect)}</pre>"
               end
-              html_parts << "</li>"
+              html_parts << '</li>'
             end
-            html_parts << "</ol>"
+            html_parts << '</ol>'
 
           elsif result_data.is_a?(Hash) # Single result/error/pending hash
             case result_data[:status]
@@ -354,15 +354,15 @@ module ADK
               result_content = result_data[:result]
               # Handle potential nested result from AgentTool
               if result_content.is_a?(Hash) && result_content.key?(:status)
-                html_parts << "<p><strong>Result (from delegated agent):</strong></p>"
+                html_parts << '<p><strong>Result (from delegated agent):</strong></p>'
                 html_parts << "<blockquote style='margin-left: 1em; border-left: 3px solid #dbdbdb; padding-left: 1em;'>"
                 html_parts << format_execution_result_html(result_content) # Recursive call
-                html_parts << "</blockquote>"
+                html_parts << '</blockquote>'
               else
                 html_parts << "<p><strong>Result:</strong></p><pre>#{Rack::Utils.escape_html(result_content.to_s)}</pre>"
               end
             when :pending # <-- ADDED Pending Case for Single Step
-              html_parts << "<p><strong>Status: Pending</strong></p>"
+              html_parts << '<p><strong>Status: Pending</strong></p>'
               html_parts << "<pre>Job ID: #{Rack::Utils.escape_html(result_data[:job_id].to_s)}" # Changed workflow_id to job_id
               html_parts << "\nMessage: #{Rack::Utils.escape_html(result_data[:message].to_s)}" if result_data[:message]
               html_parts << "\n(Use tool 'check_job_status' with this ID to get the final result)</pre>"
@@ -381,8 +381,8 @@ module ADK
         def process_agent_response(agent_result)
           response_data = {
             msg_class: 'is-warning',
-            display_content: "",
-            raw_json_content: "",
+            display_content: '',
+            raw_json_content: '',
             event_id: SecureRandom.hex(4)
           }
           case agent_result
@@ -398,8 +398,8 @@ module ADK
                   response_data[:display_content] = content[:result].to_s
                 when :error
                   response_data[:msg_class] = 'is-danger'
-                  original_error = content[:error_message] || "Agent error (no message)"
-                  if original_error == "I cannot fulfill this request with the available tools (empty plan)."
+                  original_error = content[:error_message] || 'Agent error (no message)'
+                  if original_error == 'I cannot fulfill this request with the available tools (empty plan).'
                     response_data[:display_content] =
                       "Sorry, I couldn't determine how to handle that request with the tools I have available."
                   else
@@ -421,7 +421,7 @@ module ADK
               response_data[:raw_json_content] = content.inspect
               if content.is_a?(Hash) && content[:tool_name]
                 tool_name = content[:tool_name]
-                params_preview = content[:params] && !content[:params].empty? ? " with parameters" : " (no parameters)"
+                params_preview = content[:params] && !content[:params].empty? ? ' with parameters' : ' (no parameters)'
                 response_data[:display_content] = "Tool Request: #{tool_name}#{params_preview}"
               else
                 response_data[:display_content] = "Tool Request: #{content.inspect}"
@@ -455,7 +455,7 @@ module ADK
             response_data[:raw_json_content] = agent_result.inspect
             if agent_result[:status] == :error
               response_data[:msg_class] = 'is-danger'
-              response_data[:display_content] = agent_result[:error_message] || "An unspecified error occurred."
+              response_data[:display_content] = agent_result[:error_message] || 'An unspecified error occurred.'
             else
               response_data[:display_content] = "Unexpected hash format from server: #{agent_result.inspect}"
             end
@@ -467,14 +467,14 @@ module ADK
         end
 
         def format_historical_agent_content(content)
-          display_content = ""
+          display_content = ''
           if content.is_a?(Hash) && content.key?(:status)
             case content[:status]
             when :success
               display_content = content[:result]
             when :error
-              original_error = content[:error_message] || "Agent error (no message)"
-              if original_error == "I cannot fulfill this request with the available tools (empty plan)."
+              original_error = content[:error_message] || 'Agent error (no message)'
+              if original_error == 'I cannot fulfill this request with the available tools (empty plan).'
                 display_content = "Sorry, I couldn't determine how to handle that request with the tools I have available."
               else
                 display_content = original_error
@@ -488,7 +488,7 @@ module ADK
           elsif content.is_a?(Hash) && content.key?(:tool_name)
             display_content = "Tool request: #{content[:tool_name]}"
             if content[:params] && !content[:params].empty?
-              display_content += " with parameters"
+              display_content += ' with parameters'
             end
           elsif content.is_a?(Hash) && (content.key?(:result) || content.key?(:error))
             if content[:error]
@@ -508,13 +508,13 @@ module ADK
         end
 
         def summarize_session(session_object)
-          return "Invalid session object" unless session_object.is_a?(ADK::Session)
+          return 'Invalid session object' unless session_object.is_a?(ADK::Session)
 
-          created_at_formatted = session_object.created_at.strftime("%b %d, %Y %H:%M")
-          updated_at_formatted = session_object.updated_at.strftime("%b %d, %Y %H:%M")
+          created_at_formatted = session_object.created_at.strftime('%b %d, %Y %H:%M')
+          updated_at_formatted = session_object.updated_at.strftime('%b %d, %Y %H:%M')
           event_count = session_object.events&.count || 0
-          messages_text = event_count == 1 ? "message" : "messages"
-          preview_text = "Session started"
+          messages_text = event_count == 1 ? 'message' : 'messages'
+          preview_text = 'Session started'
           if event_count.zero?
             preview_text = "Empty session (created #{created_at_formatted})"
           else
@@ -523,12 +523,12 @@ module ADK
             end
             if first_user_text_event
               words = first_user_text_event.content.strip.split(/\s+/)
-              preview = words.take(10).join(" ")
+              preview = words.take(10).join(' ')
               preview_text = "#{preview}#{words.size > 10 ? '...' : ''}"
             elsif session_object.events.any? { |e| e.role == :user }
-              preview_text = "Contains non-text user messages"
+              preview_text = 'Contains non-text user messages'
             else
-              preview_text = "Agent-initiated session"
+              preview_text = 'Agent-initiated session'
             end
           end
           "Chat from #{created_at_formatted} (Last active: #{updated_at_formatted}) (#{event_count} #{messages_text}): #{preview_text}"
@@ -544,23 +544,23 @@ module ADK
 
         # --- START: MERMAID HELPERS (Corrected for delegate_task rich result) ---
         def generate_mermaid_sequence_diagram(final_agent_event_content, original_user_input)
-          return "" unless final_agent_event_content.is_a?(Hash)
+          return '' unless final_agent_event_content.is_a?(Hash)
 
-          mermaid_def = ["sequenceDiagram"]
+          mermaid_def = ['sequenceDiagram']
           participants = Set.new
           # Initial call: current_agent_name is just "Agent"
-          collect_participants_recursive(final_agent_event_content, participants, "Agent")
+          collect_participants_recursive(final_agent_event_content, participants, 'Agent')
 
           participants.each { |p| mermaid_def << "  participant #{p}" }
 
           mermaid_def << "  User->>Agent: #{escape_mermaid_label(original_user_input)}"
           # Initial call: current_agent_is "Agent", final_recipient_is "User"
-          append_plan_to_mermaid_recursive(final_agent_event_content, "Agent", "User", mermaid_def)
+          append_plan_to_mermaid_recursive(final_agent_event_content, 'Agent', 'User', mermaid_def)
 
           mermaid_def.join("\n")
         end
 
-        def collect_participants_recursive(event_content, participants_set, current_agent_alias = "Agent")
+        def collect_participants_recursive(event_content, participants_set, current_agent_alias = 'Agent')
           participants_set.add('User')
           participants_set.add(current_agent_alias)
 
@@ -580,8 +580,8 @@ module ADK
               delegated_agent_full_content = event_content.dig(:result, :result)
               target_agent_name_param = step_in_plan.dig(:params,
                                                          :target_agent_name) || step_in_plan.dig(:params,
-                                                                                                 "target_agent_name")
-              delegated_agent_actual_name = delegated_agent_full_content.dig(:name)&.to_s || target_agent_name_param || "DelegatedAgent"
+                                                                                                 'target_agent_name')
+              delegated_agent_actual_name = delegated_agent_full_content.dig(:name)&.to_s || target_agent_name_param || 'DelegatedAgent'
               delegated_agent_participant_alias = "Agent(#{delegated_agent_actual_name})"
 
               participants_set.add(delegated_agent_participant_alias)
@@ -597,7 +597,7 @@ module ADK
           return unless plan_details.is_a?(Array)
 
           plan_details.each_with_index do |step_in_plan, index|
-            tool_name_str = step_in_plan[:tool_name]&.to_s || "UnknownTool"
+            tool_name_str = step_in_plan[:tool_name]&.to_s || 'UnknownTool'
             tool_participant = "Tool(#{tool_name_str})"
 
             params_summary = summarize_for_mermaid(step_in_plan[:params]) # Removed max_length override
@@ -621,11 +621,11 @@ module ADK
               delegated_agent_content = original_tool_output_for_this_step
               target_agent_name_param = step_in_plan.dig(:params,
                                                          :target_agent_name) || step_in_plan.dig(:params,
-                                                                                                 "target_agent_name")
-              effective_delegated_name = delegated_agent_content[:name]&.to_s || target_agent_name_param&.to_s || "DelegatedAgent"
+                                                                                                 'target_agent_name')
+              effective_delegated_name = delegated_agent_content[:name]&.to_s || target_agent_name_param&.to_s || 'DelegatedAgent'
               delegated_agent_participant = "Agent(#{effective_delegated_name})"
               task_for_delegated = summarize_for_mermaid(step_in_plan.dig(:params,
-                                                                          :task) || step_in_plan.dig(:params, "task"))
+                                                                          :task) || step_in_plan.dig(:params, 'task'))
               mermaid_def_array << "  #{tool_participant}->>#{delegated_agent_participant}: Run task: #{task_for_delegated || 'Delegated Task'}"
               append_plan_to_mermaid_recursive(delegated_agent_content, delegated_agent_participant, tool_participant,
                                                mermaid_def_array)
@@ -638,11 +638,11 @@ module ADK
                                           end
               mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: #{delegated_outcome_summary}"
             elsif original_tool_output_for_this_step.is_a?(Hash)
-              status = original_tool_output_for_this_step[:status]&.to_s || "unknown"
+              status = original_tool_output_for_this_step[:status]&.to_s || 'unknown'
               case status.to_sym
               when :success
                 result_value = original_tool_output_for_this_step[:result]
-                if result_value.is_a?(String) && result_value == "[Complex Result Structure]"
+                if result_value.is_a?(String) && result_value == '[Complex Result Structure]'
                   actual_result = event_content[:result][:result]
                   if actual_result.is_a?(String)
                     mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Result: \"#{actual_result}\""
@@ -654,11 +654,11 @@ module ADK
                   mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Result: #{result_summary}"
                 end
               when :error
-                error_summary = summarize_for_mermaid(original_tool_output_for_this_step[:error_message] || "Unknown Error")
+                error_summary = summarize_for_mermaid(original_tool_output_for_this_step[:error_message] || 'Unknown Error')
                 mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Error: #{error_summary}"
               when :pending
-                job_id_summary = summarize_for_mermaid(original_tool_output_for_this_step[:job_id] || "N/A") # Changed from workflow_id
-                message_summary = original_tool_output_for_this_step[:message] ? " (#{summarize_for_mermaid(original_tool_output_for_this_step[:message])})" : ""
+                job_id_summary = summarize_for_mermaid(original_tool_output_for_this_step[:job_id] || 'N/A') # Changed from workflow_id
+                message_summary = original_tool_output_for_this_step[:message] ? " (#{summarize_for_mermaid(original_tool_output_for_this_step[:message])})" : ''
                 mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Pending (Job ID: #{job_id_summary})#{message_summary}"
               else
                 mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Result (Status: #{status}): #{summarize_for_mermaid(original_tool_output_for_this_step)}"
@@ -668,19 +668,19 @@ module ADK
             end
           end
 
-          final_response_summary = ""
+          final_response_summary = ''
           if event_content[:status] == :success
             core_result = if event_content[:result].is_a?(Hash) && event_content[:result][:status] == :success && event_content[:result].key?(:result)
                             event_content[:result][:result]
                           else
                             event_content[:result]
                           end
-            if core_result.is_a?(String) && core_result == "[Complex Result Structure]"
+            if core_result.is_a?(String) && core_result == '[Complex Result Structure]'
               actual_result = event_content[:result][:result]
               if actual_result.is_a?(String)
                 final_response_summary = "Final Result: \"#{actual_result}\""
               else
-                final_response_summary = "Final Result: [Complex Result Structure]"
+                final_response_summary = 'Final Result: [Complex Result Structure]'
               end
             else
               final_response_summary = "Final Result: #{summarize_for_mermaid(core_result)}"
@@ -689,7 +689,7 @@ module ADK
             final_response_summary = "Final Error: #{summarize_for_mermaid(event_content[:error_message])}"
           elsif event_content[:status] == :pending
             job_id_summary = summarize_for_mermaid(event_content[:job_id]) # Changed from workflow_id
-            message_summary = event_content[:message] ? " - #{summarize_for_mermaid(event_content[:message])}" : ""
+            message_summary = event_content[:message] ? " - #{summarize_for_mermaid(event_content[:message])}" : ''
             final_response_summary = "Task Pending: Job ID #{job_id_summary}#{message_summary}"
           else
             final_response_summary = "Final Response (Status: #{event_content[:status]}): #{summarize_for_mermaid(event_content)}"
@@ -698,9 +698,9 @@ module ADK
         end
 
         def summarize_for_mermaid(data, max_length = 700)
-          return "nil" if data.nil?
+          return 'nil' if data.nil?
 
-          raw_summary_str = ""
+          raw_summary_str = ''
           if data.is_a?(Hash)
             if data.key?(:result) && data[:result].is_a?(Hash) && data[:result].key?(:content)
               content_str = data[:result][:content].to_s
@@ -748,7 +748,7 @@ module ADK
           end
           escaped_summary = escape_mermaid_label(raw_summary_str)
           if escaped_summary.length > max_length
-            final_summary = escaped_summary[0...(max_length - 3)] + "..."
+            final_summary = escaped_summary[0...(max_length - 3)] + '...'
           else
             final_summary = escaped_summary
           end
@@ -757,7 +757,7 @@ module ADK
 
         # MODIFIED: Simplified escape_mermaid_label
         def escape_mermaid_label(text)
-          return "" if text.nil?
+          return '' if text.nil?
 
           s = text.to_s
           s = s.gsub(/#/, '#hash;') # Escape # to prevent it being a comment/directive
@@ -786,7 +786,7 @@ module ADK
       def synchronize_persistent_agents
         return unless @definition_store && @definition_store.check_connection
 
-        @logger.info("Synchronizing persistent agent statuses on startup...")
+        @logger.info('Synchronizing persistent agent statuses on startup...')
         begin
           definitions = @definition_store.list_definitions
           definitions.each do |definition|
@@ -806,7 +806,7 @@ module ADK
               _stop_agent(agent_name)
             end
           end
-          @logger.info("Finished synchronizing persistent agent statuses.")
+          @logger.info('Finished synchronizing persistent agent statuses.')
         rescue ADK::DefinitionStore::StoreError => e
           @logger.error("Store error during persistent agent synchronization: #{e.message}")
         rescue => e
@@ -858,7 +858,7 @@ module ADK
       def _start_agent(name)
         return @agents[name] if @agents.key?(name)
 
-        halt 503, "Definition Store unavailable." unless @definition_store
+        halt 503, 'Definition Store unavailable.' unless @definition_store
         agent_definition = nil
         begin
           agent_definition = @definition_store.get_definition(name)

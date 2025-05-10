@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 # File: spec/spec_helper.rb
 require 'bundler/setup'
 
@@ -57,7 +58,7 @@ RSpec.configure do |config|
   Sidekiq::Testing.fake! # Use :fake! for inline testing by default, or :inline! for real execution
 
   # Enable flags like --only-failures and --next-failure
-  config.example_status_persistence_file_path = ".rspec_status"
+  config.example_status_persistence_file_path = '.rspec_status'
 
   # Disable RSpec exposing methods globally on `Module` and `main`
   config.disable_monkey_patching!

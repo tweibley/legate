@@ -7,7 +7,7 @@ module ADK
       def self.registered(app)
         # GET / - Main welcome page.
         app.get '/' do
-          logger.debug("GET / route handler entered (from CoreRoutes)")
+          logger.debug('GET / route handler entered (from CoreRoutes)')
           slim :index
         end
 
@@ -24,7 +24,7 @@ module ADK
                        end
 
             unless store_ok
-              logger.error("Health check failed: Definition Store unavailable or connection failed (from CoreRoutes).")
+              logger.error('Health check failed: Definition Store unavailable or connection failed (from CoreRoutes).')
               status 503
               body 'Service Unavailable (Persistence)'
               return

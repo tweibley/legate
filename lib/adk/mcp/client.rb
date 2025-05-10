@@ -12,7 +12,7 @@ module ADK
       DEFAULT_RESPONSE_TIMEOUT = 30
       PROCESS_START_TIMEOUT = Connection::Stdio::PROCESS_START_TIMEOUT
       # --- Define the protocol version ADK Client supports ---
-      CLIENT_PROTOCOL_VERSION = "2024-11-05"
+      CLIENT_PROTOCOL_VERSION = '2024-11-05'
       # -----------------------------------------------------
 
       attr_reader :connection_params, :server_capabilities, :last_error
@@ -50,7 +50,7 @@ module ADK
         @lock.synchronize do
           return true if @connected # Double check
 
-          ADK.logger.info("MCP Client connecting...")
+          ADK.logger.info('MCP Client connecting...')
           @last_error = nil
           @connection = nil
           @connected = false
@@ -72,7 +72,7 @@ module ADK
             @connection.connect
             @connected = true # Assume connected for handshake
 
-            ADK.logger.info("Performing MCP initialize handshake...")
+            ADK.logger.info('Performing MCP initialize handshake...')
             id = @connection.next_request_id
             # --- MODIFICATION: Add protocolVersion to params ---
             request = {
@@ -81,7 +81,7 @@ module ADK
                 # --- Added protocolVersion --- >
                 protocolVersion: CLIENT_PROTOCOL_VERSION,
                 # <-----------------------------
-                clientInfo: { name: "adk-ruby-client", version: ADK::VERSION },
+                clientInfo: { name: 'adk-ruby-client', version: ADK::VERSION },
                 capabilities: {} # Keep capabilities empty for now
               }
             }
@@ -91,12 +91,12 @@ module ADK
             response = send_request_and_wait(request, timeout: PROCESS_START_TIMEOUT)
 
             unless response && response[:result]
-              error_msg = "MCP Initialize failed: No response or missing result."
+              error_msg = 'MCP Initialize failed: No response or missing result.'
               if response&.dig(:error)
                 err = response[:error]
                 error_msg += " Server Error: #{err[:message]} (Code: #{err[:code]})"
               elsif !response
-                error_msg += " Connection likely closed or timed out."
+                error_msg += ' Connection likely closed or timed out.'
               else
                 error_msg += " Response: #{response.inspect}"
               end
@@ -114,7 +114,7 @@ module ADK
 
             @server_capabilities = response.dig(:result, :capabilities) || {}
             ADK.logger.info("MCP Handshake successful. Server capabilities: #{@server_capabilities.inspect}")
-            ADK.logger.info("MCP Client connected successfully.")
+            ADK.logger.info('MCP Client connected successfully.')
           rescue ConnectionError => e
             ADK.logger.error("MCP Client connection/handshake failed: #{e.message}")
             error_occurred = e
@@ -140,7 +140,7 @@ module ADK
         @lock.synchronize do
           return unless @connected || @connection # Check if there's anything to disconnect
 
-          ADK.logger.info("MCP Client disconnecting...")
+          ADK.logger.info('MCP Client disconnecting...')
           @connected = false
           @server_capabilities = nil
           @pending_requests.clear
@@ -152,7 +152,7 @@ module ADK
           end
 
           @connection = nil
-          ADK.logger.info("MCP Client disconnected.")
+          ADK.logger.info('MCP Client disconnected.')
         end
       ensure
         # Ensure state is updated even if disconnect fails
@@ -167,7 +167,7 @@ module ADK
       def list_tools
         raise ConnectionError, 'Not connected' unless connected?
 
-        ADK.logger.debug("Requesting tools list from MCP server...")
+        ADK.logger.debug('Requesting tools list from MCP server...')
         id = @connection.next_request_id
         request = {
           jsonrpc: '2.0',
@@ -261,7 +261,7 @@ module ADK
 
         begin
           # Raise connection error immediately if low-level connection is dead
-          raise ConnectionError, "Connection is not alive." unless @connection&.connected?
+          raise ConnectionError, 'Connection is not alive.' unless @connection&.connected?
 
           @connection.send_request(request)
           ADK.logger.debug("Sent request ID #{request_id}, waiting for response (timeout: #{timeout}s)")

@@ -7,7 +7,7 @@ module ADK
       def self.registered(app)
         # GET /tools - Display available native and MCP tools
         app.get '/tools' do
-          logger.info("GET /tools route handler entered (from ToolsUIRoutes)")
+          logger.info('GET /tools route handler entered (from ToolsUIRoutes)')
 
           current_app_instance = self
           definition_store = current_app_instance.instance_variable_get(:@definition_store)
@@ -25,7 +25,7 @@ module ADK
                 }
               end
             end
-            tool_meta.merge(parameters: parameters_array, source: :native, source_detail: "Native")
+            tool_meta.merge(parameters: parameters_array, source: :native, source_detail: 'Native')
           end
 
           # 2. Get MCP Tools
@@ -47,7 +47,7 @@ module ADK
               logger.error("Store error fetching agent definitions for /tools (from ToolsUIRoutes): #{e.message}")
             end
           else
-            logger.warn("Definition store not available for MCP tool discovery in /tools (from ToolsUIRoutes)")
+            logger.warn('Definition store not available for MCP tool discovery in /tools (from ToolsUIRoutes)')
           end
 
           mcp_tool_fetch_results = fetch_mcp_tools(all_mcp_configs || [])
@@ -69,7 +69,7 @@ module ADK
                 end
                 processed_mcp_tools_metadata << {
                   name: mcp_tool_schema[:name].to_sym,
-                  description: mcp_tool_schema[:description] || "",
+                  description: mcp_tool_schema[:description] || '',
                   parameters: parameters,
                   source: :mcp,
                   source_detail: "MCP (#{result[:server]})"
@@ -116,7 +116,7 @@ module ADK
               end
             end
             tool_to_display = native_tool_metadata.merge(parameters: parameters_array, source: :native,
-                                                         source_detail: "Native")
+                                                         source_detail: 'Native')
           else
             # 2. Not native, try to find in MCP tools
             all_mcp_configs = []
@@ -159,7 +159,7 @@ module ADK
                   end
                   tool_to_display = {
                     name: tool_data[:name].to_sym,
-                    description: tool_data[:description] || "",
+                    description: tool_data[:description] || '',
                     parameters: parameters,
                     source: :mcp,
                     source_detail: "MCP (#{result[:server]})"
@@ -178,7 +178,7 @@ module ADK
             logger.warn("Tool '#{name}' not found anywhere (from ToolsUIRoutes).")
             status 404
             slim(:error_404,
-                 locals: { title: "Tool Not Found", message: "Tool definition for '#{name}' not found." })
+                 locals: { title: 'Tool Not Found', message: "Tool definition for '#{name}' not found." })
           end
         end
       end

@@ -27,7 +27,7 @@ module ADK
         cmd << '-c' << concurrency.to_s
         cmd << '-v' if verbose
 
-        puts "Starting Sidekiq worker with the following options:"
+        puts 'Starting Sidekiq worker with the following options:'
         puts "  Require path: #{require_path || 'ADK environment (default)'}"
         puts "  Queues: #{queues}"
         puts "  Concurrency: #{concurrency}"
@@ -74,13 +74,13 @@ module ADK
         cmd = ['bundle', 'exec', 'sidekiqctl', 'shutdown']
         cmd << '-r' << require_path if require_path # Only add -r if a path is specified
 
-        puts "Stopping Sidekiq workers gracefully..."
+        puts 'Stopping Sidekiq workers gracefully...'
         puts "Running command: #{cmd.join(' ')}"
 
         # Execute the command
         begin
           system(*cmd)
-          puts "Sidekiq workers stopped successfully."
+          puts 'Sidekiq workers stopped successfully.'
         rescue => e
           puts "Error stopping Sidekiq workers: #{e.message}"
           exit 1
@@ -97,7 +97,7 @@ module ADK
         cmd = ['bundle', 'exec', 'sidekiqctl', 'status']
         cmd << '-r' << require_path if require_path # Only add -r if a path is specified
 
-        puts "Checking Sidekiq status..."
+        puts 'Checking Sidekiq status...'
         puts "Running command: #{cmd.join(' ')}"
 
         # Execute the command

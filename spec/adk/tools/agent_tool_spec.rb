@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 # File: spec/adk/tools/agent_tool_spec.rb
 require 'spec_helper'
 
@@ -170,7 +171,7 @@ RSpec.describe ADK::Tools::AgentTool do
     end
 
     context 'when target agent task execution raises an error' do
-      let(:target_error) { StandardError.new("Target agent failed!") }
+      let(:target_error) { StandardError.new('Target agent failed!') }
       before do
         # Stub definition store to return the definition, expect string name
         allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_s).and_return(target_definition_hash)

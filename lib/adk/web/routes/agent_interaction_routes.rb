@@ -13,20 +13,20 @@ module ADK
           session_service = self.instance_variable_get(:@session_service)
           active_agents_hash = self.instance_variable_get(:@agents)
 
-          halt 503, "Definition Store unavailable." unless definition_store
-          halt 503, "Session Service unavailable." unless session_service # Added check for session_service
+          halt 503, 'Definition Store unavailable.' unless definition_store
+          halt 503, 'Session Service unavailable.' unless session_service # Added check for session_service
 
           agent_definition = nil
           begin
             agent_definition = definition_store.get_definition(name)
           rescue ADK::DefinitionStore::StoreError => e
             logger.error("Store error fetching definition for '#{name}' chat (from AgentInteractionRoutes): #{e.message}")
-            halt 500, "Error retrieving agent definition."
+            halt 500, 'Error retrieving agent definition.'
           end
           unless agent_definition
             logger.warn("Agent definition not found for '#{name}' in store (GET /chat from AgentInteractionRoutes).")
             halt 404,
-                 slim(:error_404, locals: { title: "Agent Not Found", message: "Definition for '#{name}' not found." })
+                 slim(:error_404, locals: { title: 'Agent Not Found', message: "Definition for '#{name}' not found." })
           end
 
           agent_description_for_view = agent_definition[:description]
@@ -104,7 +104,7 @@ module ADK
               end
             rescue => e
               logger.error "Error listing sessions for agent '#{name}', user '#{web_user_id}': #{e.message}"
-              halt 500, "Error retrieving session list."
+              halt 500, 'Error retrieving session list.'
             end
           end
 
@@ -112,7 +112,7 @@ module ADK
           unless active_session_object
             logger.info "No active session determined or loaded. Creating new session for agent '#{name}', user '#{web_user_id}'."
             if session_load_error_occurred
-              logger.warn "Proceeding to create new session because a previous attempt to load a specific session failed."
+              logger.warn 'Proceeding to create new session because a previous attempt to load a specific session failed.'
             end
             begin
               new_session = session_service.create_session(app_name: name, user_id: web_user_id, initial_state: {})
@@ -122,7 +122,7 @@ module ADK
               session_load_error_occurred = false
             rescue => e
               logger.error "Failed to create new ADK session for agent '#{name}', user '#{web_user_id}': #{e.message}"
-              halt 500, "Failed to initialize chat session."
+              halt 500, 'Failed to initialize chat session.'
             end
           end
 
@@ -132,11 +132,11 @@ module ADK
             logger.debug "Ensured active ADK session ID '#{active_adk_session_id}' is stored for agent '#{name}'."
           else
             logger.fatal "CRITICAL: Could not determine or create an active session ID for agent '#{name}', user '#{web_user_id}'. Halting."
-            halt 500, "Critical error: Unable to establish an active chat session."
+            halt 500, 'Critical error: Unable to establish an active chat session.'
           end
 
           if session_load_error_occurred
-            logger.warn "A previously selected or stored session could not be loaded. A new session was started or the latest available was used."
+            logger.warn 'A previously selected or stored session could not be loaded. A new session was started or the latest available was used.'
           end
 
           # 6. Load chat history for the active session
@@ -178,7 +178,7 @@ module ADK
           active_adk_session_id = session[:active_agent_sessions][name]
 
           view_locals = {
-            user_message: user_message_text || "[Empty Message]",
+            user_message: user_message_text || '[Empty Message]',
             agent_result: nil,
             agent_name: current_agent_instance ? current_agent_instance.name : name
           }
@@ -207,7 +207,7 @@ module ADK
             halt 400, slim(:_chat_message, layout: false, locals: view_locals)
           end
           if user_message_text.nil? || user_message_text.empty?
-            view_locals[:agent_result] = { status: :error, error_message: "[Error: Message cannot be empty.]" }
+            view_locals[:agent_result] = { status: :error, error_message: '[Error: Message cannot be empty.]' }
             halt 400, slim(:_chat_message, layout: false, locals: view_locals)
           end
 
@@ -261,7 +261,7 @@ module ADK
           end
 
           success_handler = lambda do |result_hash, original_task_description|
-            mermaid_diagram_html = ""
+            mermaid_diagram_html = ''
             current_final_content = result_hash # Use the direct result_hash
 
             if current_final_content.is_a?(Hash) && current_final_content[:plan_details]
@@ -311,13 +311,13 @@ module ADK
                 error_handler.call("Error: Invalid JSON structure. Missing 'task' key.", 400)
               end
             else
-              error_handler.call("Error: Input must be a JSON object.", 400)
+              error_handler.call('Error: Input must be a JSON object.', 400)
             end
           rescue JSON::ParserError => e
             logger.warn("Invalid JSON for /execute (AgentInteractionRoutes): #{e.message}. Input: #{task_json_string}")
             error_handler.call("Error: Invalid JSON format - #{e.message}", 400)
           end
-          error_handler.call("Error: Missing task description.",
+          error_handler.call('Error: Missing task description.',
                              400) if tool_to_exec.nil? && (task_desc.nil? || task_desc.empty?)
 
           temp_adk_session = nil
@@ -363,7 +363,7 @@ module ADK
           content_type :json
           logger.info("Generating example task for agent: #{name} (from AgentInteractionRoutes)")
           definition_store = self.instance_variable_get(:@definition_store)
-          halt 503, json(error: "Definition Store unavailable.") unless definition_store
+          halt 503, json(error: 'Definition Store unavailable.') unless definition_store
 
           agent_definition = definition_store.get_definition(name)
           halt 404, json(error: "Agent definition not found for '#{name}'") unless agent_definition
@@ -446,7 +446,7 @@ module ADK
 
           begin
             google_api_key = ENV['GOOGLE_API_KEY']
-            halt 503, json(error: "GOOGLE_API_KEY not configured.") unless google_api_key && !google_api_key.empty?
+            halt 503, json(error: 'GOOGLE_API_KEY not configured.') unless google_api_key && !google_api_key.empty?
 
             logger.info("Using model '#{agent_model_name}' for example task generation (AgentInteractionRoutes).")
             gemini_client = Gemini.new(credentials: { service: 'generative-language-api', api_key: google_api_key },
@@ -456,14 +456,14 @@ module ADK
 
             generated_json_str = response.dig('candidates', 0, 'content', 'parts', 0, 'text')
             halt 500,
-                 json(error: "AI service returned empty response.") unless generated_json_str && !generated_json_str.strip.empty?
+                 json(error: 'AI service returned empty response.') unless generated_json_str && !generated_json_str.strip.empty?
 
             logger.debug("Raw Gemini Response (AgentInteractionRoutes): #{generated_json_str}")
             clean_json_str = generated_json_str.strip.delete_prefix('```json').delete_suffix('```').strip.delete_prefix('```').delete_suffix('```').strip
 
             parsed_json_output = JSON.parse(clean_json_str)
             unless parsed_json_output.is_a?(Hash) && parsed_json_output.key?('tool_name') && parsed_json_output.key?('task') && parsed_json_output.key?('parameters')
-              raise JSON::ParserError, "Generated JSON structure incorrect."
+              raise JSON::ParserError, 'Generated JSON structure incorrect.'
             end
 
             JSON.pretty_generate(parsed_json_output)
@@ -472,7 +472,7 @@ module ADK
             halt 500, json(error: "Failed to generate valid JSON example: #{e.message}")
           rescue StandardError => e
             logger.error("Gemini API error (AgentInteractionRoutes): #{e.class} - #{e.message}")
-            halt 503, json(error: "AI service communication error.")
+            halt 503, json(error: 'AI service communication error.')
           end
         end
 
@@ -481,7 +481,7 @@ module ADK
           session_service = self.instance_variable_get(:@session_service)
           web_user_id = session[:web_user_id]
 
-          halt 503, "Session Service unavailable." unless session_service
+          halt 503, 'Session Service unavailable.' unless session_service
 
           begin
             logger.info "User '#{web_user_id}' requesting new chat session for agent '#{name}'"
@@ -510,7 +510,7 @@ module ADK
             end
           rescue => e
             logger.error "Error creating new session for agent '#{name}', user '#{web_user_id}': #{e.message}\n#{e.backtrace.join("\n")}"
-            halt 500, "Failed to create new chat session."
+            halt 500, 'Failed to create new chat session.'
           end
         end
         # --- END NEW ROUTE ---
@@ -521,8 +521,8 @@ module ADK
           web_user_id = session[:web_user_id]
           adk_session_to_switch_to = params[:adk_session_to_switch_to]
 
-          halt 503, "Session Service unavailable." unless session_service
-          halt 400, "Missing adk_session_to_switch_to parameter." unless adk_session_to_switch_to
+          halt 503, 'Session Service unavailable.' unless session_service
+          halt 400, 'Missing adk_session_to_switch_to parameter.' unless adk_session_to_switch_to
 
           logger.info "User '#{web_user_id}' requesting to switch to session '#{adk_session_to_switch_to}' for agent '#{name}'"
 
@@ -552,7 +552,7 @@ module ADK
               logger.warn "Failed switch attempt: Session '#{adk_session_to_switch_to}' not found, or does not belong to user '#{web_user_id}' for agent '#{name}'."
               if request.env['HTTP_HX_REQUEST'] == 'true'
                 response.headers['HX-Location'] =
-                  JSON.dump({ path: "/agents/#{name}/chat", target: "#chat_interface_wrapper" })
+                  JSON.dump({ path: "/agents/#{name}/chat", target: '#chat_interface_wrapper' })
                 halt 200
               else
                 redirect "/agents/#{name}/chat"
@@ -560,7 +560,7 @@ module ADK
             end
           rescue => e
             logger.error "Error switching session for agent '#{name}', user '#{web_user_id}' to '#{adk_session_to_switch_to}': #{e.message}\n#{e.backtrace.join("\n")}"
-            halt 500, "Failed to switch chat session."
+            halt 500, 'Failed to switch chat session.'
           end
         end
         # --- END NEW ROUTE ---
@@ -570,7 +570,7 @@ module ADK
           session_service = self.instance_variable_get(:@session_service)
           web_user_id = session[:web_user_id]
 
-          halt 503, "Session Service unavailable." unless session_service
+          halt 503, 'Session Service unavailable.' unless session_service
           logger.info "User '#{web_user_id}' requesting deletion of session '#{adk_session_id_to_delete}' for agent '#{name}'"
 
           session_to_delete = nil
@@ -583,7 +583,7 @@ module ADK
                 response.headers['HX-Reswap'] = 'outerHTML'
                 halt 403,
                      slim(:_session_error, layout: false,
-                                           locals: { error_message: "Forbidden: Cannot delete this session." })
+                                           locals: { error_message: 'Forbidden: Cannot delete this session.' })
               else
                 redirect "/agents/#{name}/chat", 403
               end
@@ -595,7 +595,7 @@ module ADK
               response.headers['HX-Reswap'] = 'outerHTML'
               halt 500,
                    slim(:_session_error, layout: false,
-                                         locals: { error_message: "Error verifying session for deletion." })
+                                         locals: { error_message: 'Error verifying session for deletion.' })
             else
               redirect "/agents/#{name}/chat", 500
             end
@@ -609,7 +609,7 @@ module ADK
             if request.env['HTTP_HX_REQUEST'] == 'true'
               response.headers['HX-Retarget'] = '#session-operation-error'
               response.headers['HX-Reswap'] = 'outerHTML'
-              halt 500, slim(:_session_error, layout: false, locals: { error_message: "Failed to delete session." })
+              halt 500, slim(:_session_error, layout: false, locals: { error_message: 'Failed to delete session.' })
             else
               redirect "/agents/#{name}/chat", 500
             end
@@ -630,7 +630,7 @@ module ADK
           end
 
           if request.env['HTTP_HX_REQUEST'] == 'true'
-            logger.debug "HTMX request detected for delete session, re-rendering chat interface."
+            logger.debug 'HTMX request detected for delete session, re-rendering chat interface.'
             definition_store = self.instance_variable_get(:@definition_store)
             active_agents_hash = self.instance_variable_get(:@agents)
             agent_definition = definition_store.get_definition(name)

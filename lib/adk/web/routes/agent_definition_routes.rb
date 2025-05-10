@@ -42,7 +42,7 @@ module ADK
               logger.error("Store error fetching agent list (from AgentDefinitionRoutes): #{e.message}")
             end
           else
-            logger.error("Definition Store unavailable during GET /agents (from AgentDefinitionRoutes)")
+            logger.error('Definition Store unavailable during GET /agents (from AgentDefinitionRoutes)')
           end
 
           self.instance_variable_set(:@view_agents, view_agents_list)
@@ -54,7 +54,7 @@ module ADK
         # POST /agents - Create a new agent definition.
         app.post '/agents' do
           definition_store = self.instance_variable_get(:@definition_store)
-          halt 503, "Redis unavailable." unless definition_store
+          halt 503, 'Redis unavailable.' unless definition_store
 
           agent_name = params['name']&.strip
           agent_description = params['description']&.strip
@@ -85,7 +85,7 @@ module ADK
             logger.info("Agent '#{agent_name}' definition saved (from AgentDefinitionRoutes)")
           rescue ADK::DefinitionStore::StoreError => e
             logger.error("Store error saving agent definition (from AgentDefinitionRoutes): #{e.message}")
-            halt 500, "Error saving agent definition."
+            halt 500, 'Error saving agent definition.'
           end
 
           content_type :html
@@ -110,7 +110,7 @@ module ADK
           logger.info("Received request to delete agent '#{name}' (from AgentDefinitionRoutes)")
           definition_store = self.instance_variable_get(:@definition_store)
           active_agents_hash = self.instance_variable_get(:@agents)
-          halt 503, "Definition Store unavailable." unless definition_store
+          halt 503, 'Definition Store unavailable.' unless definition_store
 
           if active_agents_hash.key?(name)
             logger.info("Stopping running agent '#{name}' before deletion (from AgentDefinitionRoutes)...")
@@ -129,7 +129,7 @@ module ADK
             body ''
           rescue ADK::DefinitionStore::StoreError => e
             logger.error("Store error deleting agent '#{name}' (from AgentDefinitionRoutes): #{e.message}")
-            halt 500, "Database error during deletion."
+            halt 500, 'Database error during deletion.'
           end
         end
 
@@ -138,25 +138,25 @@ module ADK
           logger.info("GET /agents/#{name} route handler entered (from AgentDefinitionRoutes)")
           definition_store = self.instance_variable_get(:@definition_store)
           active_agents_hash = self.instance_variable_get(:@agents)
-          halt 503, "Definition Store unavailable." unless definition_store
+          halt 503, 'Definition Store unavailable.' unless definition_store
 
           agent_definition = nil
           begin
             agent_definition = definition_store.get_definition(name)
           rescue ADK::DefinitionStore::StoreError => e
             logger.error("Store error fetching definition for '#{name}' (from AgentDefinitionRoutes): #{e.message}")
-            halt 500, "Error retrieving agent definition."
+            halt 500, 'Error retrieving agent definition.'
           end
 
           unless agent_definition
             logger.warn("Agent definition not found for '#{name}' in store (from AgentDefinitionRoutes).")
             halt 404,
-                 slim(:error_404, locals: { title: "Agent Not Found", message: "Definition for '#{name}' not found." })
+                 slim(:error_404, locals: { title: 'Agent Not Found', message: "Definition for '#{name}' not found." })
           end
 
           mcp_display_string = begin
             parsed = JSON.parse(agent_definition[:mcp_servers_json])
-            (parsed.is_a?(Array) && parsed.empty?) ? "No MCP Server(s) Configured." : pretty_json(parsed)
+            (parsed.is_a?(Array) && parsed.empty?) ? 'No MCP Server(s) Configured.' : pretty_json(parsed)
           rescue JSON::ParserError
             agent_definition[:mcp_servers_json]
           end
@@ -181,7 +181,7 @@ module ADK
                 params_array << { name: pn, type: d[:type], description: d[:description], required: d[:required] }
               }
             end
-            tm.merge(parameters: params_array, source: :native, source_detail: "Native")
+            tm.merge(parameters: params_array, source: :native, source_detail: 'Native')
           end
 
           mcp_configs_list = []
@@ -202,7 +202,7 @@ module ADK
                                       'properties') || {}, mcp_tool_schema.dig(:inputSchema, 'required') || []
                 )
                 fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
-                                                description: mcp_tool_schema[:description] || "", parameters: parameters, source: :mcp, source_detail: "MCP (#{result[:server]})" }
+                                                description: mcp_tool_schema[:description] || '', parameters: parameters, source: :mcp, source_detail: "MCP (#{result[:server]})" }
               end
             end
           end
@@ -220,7 +220,7 @@ module ADK
             status_tool_meta = all_available_tools_map[:check_job_status]
             if status_tool_meta
               view_tools << status_tool_meta.dup.merge(
-                description: "(Implicitly added) #{status_tool_meta[:description]}", source_detail: "Native (Implicit)"
+                description: "(Implicitly added) #{status_tool_meta[:description]}", source_detail: 'Native (Implicit)'
               )
             end
           end
@@ -235,10 +235,10 @@ module ADK
           supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp', 'instruction']
           halt 404, "Editing field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
-          halt 503, "Definition Store unavailable." unless definition_store
+          halt 503, 'Definition Store unavailable.' unless definition_store
 
           agent_definition = definition_store.get_definition(name)
-          halt 404, "Agent definition not found." unless agent_definition
+          halt 404, 'Agent definition not found.' unless agent_definition
 
           agent_data = {
             name: name, description: agent_definition[:description], model: agent_definition[:model],
@@ -271,7 +271,7 @@ module ADK
                 res[:tools].each do |schema|
                   params = ADK::Mcp::Util::SchemaConverter.json_to_adk(schema.dig(:inputSchema, 'properties') || {},
                                                                        schema.dig(:inputSchema, 'required') || [])
-                  fetched_mcp_meta << { name: schema[:name].to_sym, description: schema[:description] || "",
+                  fetched_mcp_meta << { name: schema[:name].to_sym, description: schema[:description] || '',
                                         parameters: params }
                 end
               end
@@ -288,10 +288,10 @@ module ADK
           supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp', 'instruction']
           halt 404, "Displaying field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
-          halt 503, "Definition Store unavailable." unless definition_store
+          halt 503, 'Definition Store unavailable.' unless definition_store
 
           agent_definition = definition_store.get_definition(name)
-          halt 404, "Agent definition not found." unless agent_definition
+          halt 404, 'Agent definition not found.' unless agent_definition
 
           response_locals = { show_edit_button: true }
           agent_data_for_display = {
@@ -305,7 +305,7 @@ module ADK
             mcp_json_val = agent_definition[:mcp_servers_json]
             agent_data_for_display[:mcp_display_string] = begin
               parsed = JSON.parse(mcp_json_val)
-              (parsed.is_a?(Array) && parsed.empty?) ? "No MCP Server(s) Configured." : pretty_json(parsed)
+              (parsed.is_a?(Array) && parsed.empty?) ? 'No MCP Server(s) Configured.' : pretty_json(parsed)
             rescue JSON::ParserError
               mcp_json_val
             end
@@ -338,9 +338,9 @@ module ADK
         app.get '/agents/:name/display/tool_table' do |name|
           definition_store = self.instance_variable_get(:@definition_store)
           active_agents_hash = self.instance_variable_get(:@agents)
-          halt 503, "Definition Store unavailable." unless definition_store
+          halt 503, 'Definition Store unavailable.' unless definition_store
           agent_definition = definition_store.get_definition(name)
-          halt 404, "Agent not found" unless agent_definition
+          halt 404, 'Agent not found' unless agent_definition
 
           agent_data = {
             name: name, description: agent_definition[:description], model: agent_definition[:model],
@@ -351,7 +351,7 @@ module ADK
           configured_tool_syms = configured_tool_names.map(&:to_sym)
 
           all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map { |tm|
-            tm.merge(source: :native, source_detail: "Native")
+            tm.merge(source: :native, source_detail: 'Native')
           }
 
           mcp_configs_list = []
@@ -372,7 +372,7 @@ module ADK
                                       'properties') || {}, mcp_tool_schema.dig(:inputSchema, 'required') || []
                 )
                 fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
-                                                description: mcp_tool_schema[:description] || "", parameters: parameters, source: :mcp, source_detail: "MCP (#{result[:server]})" }
+                                                description: mcp_tool_schema[:description] || '', parameters: parameters, source: :mcp, source_detail: "MCP (#{result[:server]})" }
               end
             end
           end
@@ -404,7 +404,7 @@ module ADK
           halt 404, "Updating field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           active_agents_hash = self.instance_variable_get(:@agents)
-          halt 503, "Definition Store unavailable." unless definition_store
+          halt 503, 'Definition Store unavailable.' unless definition_store
 
           field_to_update_in_store = case field
                                      when 'fallback' then 'fallback_mode'
@@ -417,7 +417,7 @@ module ADK
           case field
           when 'tools'
             current_definition = definition_store.get_definition(name)
-            halt 404, "Agent not found for tool update." unless current_definition
+            halt 404, 'Agent not found for tool update.' unless current_definition
             mcp_json = current_definition[:mcp_servers_json]
             native_tool_names = ADK::GlobalToolManager.list_all_tools.map { |t| t[:name].to_s }
             mcp_configs = JSON.parse(mcp_json) rescue []
@@ -440,7 +440,7 @@ module ADK
                   params_array << { name: pn, type: d[:type], description: d[:description], required: d[:required] }
                 }
               end
-              tm.merge(parameters: params_array, source: :native, source_detail: "Native")
+              tm.merge(parameters: params_array, source: :native, source_detail: 'Native')
             end
             fetched_mcp_meta = []
             mcp_results.each do |res|
@@ -449,7 +449,7 @@ module ADK
                   params = ADK::Mcp::Util::SchemaConverter.json_to_adk(
                     schema.dig(:inputSchema, 'properties') || {}, schema.dig(:inputSchema, 'required') || []
                   )
-                  fetched_mcp_meta << { name: schema[:name].to_sym, description: schema[:description] || "",
+                  fetched_mcp_meta << { name: schema[:name].to_sym, description: schema[:description] || '',
                                         parameters: params, source: :mcp, source_detail: "MCP (#{res[:server]})" }
                 end
               end
@@ -466,7 +466,7 @@ module ADK
             new_value_for_store = (submitted_json.nil? || submitted_json.empty?) ? '[]' : submitted_json
             begin
               parsed = JSON.parse(new_value_for_store)
-              raise JSON::ParserError, "Input must be a valid JSON array." unless parsed.is_a?(Array)
+              raise JSON::ParserError, 'Input must be a valid JSON array.' unless parsed.is_a?(Array)
             rescue JSON::ParserError => e
               current_def = definition_store.get_definition(name)
               edit_locals = {
@@ -477,7 +477,7 @@ module ADK
             end
             agent_data_for_display_partial[:mcp_servers_json] = new_value_for_store
             agent_data_for_display_partial[:mcp_display_string] =
-              (JSON.parse(new_value_for_store).empty?) ? "No MCP Server(s) Configured." : pretty_json(JSON.parse(new_value_for_store))
+              (JSON.parse(new_value_for_store).empty?) ? 'No MCP Server(s) Configured.' : pretty_json(JSON.parse(new_value_for_store))
 
           when 'fallback'
             submitted_value = params['value']&.strip
@@ -485,14 +485,14 @@ module ADK
               current_def = definition_store.get_definition(name)
               edit_locals = {
                 agent_data: { name: name,
-                              fallback_mode: current_def ? current_def[:fallback_mode] : :error }, error_message: "Invalid fallback."
+                              fallback_mode: current_def ? current_def[:fallback_mode] : :error }, error_message: 'Invalid fallback.'
               }
               halt 400, slim(:_edit_agent_fallback, layout: false, locals: edit_locals)
             end
             new_value_for_store = submitted_value.to_sym
             agent_data_for_display_partial[:fallback_mode] = new_value_for_store
           when 'instruction', 'description', 'model'
-            new_value_for_store = params['value']&.strip || (field == 'instruction' ? "" : nil)
+            new_value_for_store = params['value']&.strip || (field == 'instruction' ? '' : nil)
             if new_value_for_store.nil? && field != 'instruction' # Description and model cannot be nil (empty is ok for description)
               current_def = definition_store.get_definition(name)
               edit_locals = {
@@ -507,7 +507,7 @@ module ADK
           begin
             update_success = definition_store.update_definition(name,
                                                                 { field_to_update_in_store.to_sym => new_value_for_store })
-            halt 404, "Agent not found for update." unless update_success
+            halt 404, 'Agent not found for update.' unless update_success
             logger.info("Agent '#{name}' field '#{field_to_update_in_store}' updated (from AgentDefinitionRoutes).")
 
             was_running = active_agents_hash.key?(name)
@@ -530,7 +530,7 @@ module ADK
             )
             # Ensure mcp_display_string is set if field was 'mcp'
             if field == 'mcp'
-              agent_data_for_display_partial[:mcp_display_string] ||= (JSON.parse(new_value_for_store).empty?) ? "No MCP Server(s) Configured." : pretty_json(JSON.parse(new_value_for_store))
+              agent_data_for_display_partial[:mcp_display_string] ||= (JSON.parse(new_value_for_store).empty?) ? 'No MCP Server(s) Configured.' : pretty_json(JSON.parse(new_value_for_store))
             end
 
             response_locals_for_display = { agent_data: agent_data_for_display_partial, show_edit_button: true }
@@ -546,7 +546,7 @@ module ADK
             end
           rescue ADK::DefinitionStore::StoreError => e
             logger.error("Store error updating agent '#{name}' (from AgentDefinitionRoutes): #{e.message}")
-            halt 500, "Error updating agent definition."
+            halt 500, 'Error updating agent definition.'
           rescue ArgumentError => e # From store validation
             halt 400, "Invalid input: #{e.message}"
           end

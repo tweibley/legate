@@ -107,7 +107,7 @@ module ADK
                       if @consecutive_parse_errors >= PARSE_ERROR_THRESHOLD # Use >= for clarity
                         ADK.logger.fatal("Too many consecutive JSON parse errors (#{PARSE_ERROR_THRESHOLD} reached). Assuming MCP connection broken.")
                         @connected = false # Mark connection as broken
-                        @last_error = "Too many consecutive JSON parse errors."
+                        @last_error = 'Too many consecutive JSON parse errors.'
                         break # Stop reading from stdout
                       end
                     end
@@ -117,7 +117,7 @@ module ADK
                     # Do not increment parse error count for these lines
                   end
                 end
-                ADK.logger.info("MCP Server stdout stream ended.")
+                ADK.logger.info('MCP Server stdout stream ended.')
               rescue IOError => e
                 ADK.logger.info("MCP Server stdout pipe closed: #{e.message}")
               ensure
@@ -127,7 +127,7 @@ module ADK
             end
 
             @connected = true
-            Mcp.logger.info("MCP STDIO connection established.")
+            Mcp.logger.info('MCP STDIO connection established.')
             true
           rescue Errno::ENOENT => e
             @last_error = "Command not found: #{@command}"
@@ -210,7 +210,7 @@ module ADK
                       return nil # Timeout reached
                     end
                     # Check connection status inside loop
-                    raise ConnectionError, "Connection lost while waiting for message" unless connected?
+                    raise ConnectionError, 'Connection lost while waiting for message' unless connected?
 
                     sleep(0.01) # Small sleep
                   end
@@ -271,7 +271,7 @@ module ADK
           # Clear queues
           @response_queue.clear
           @notification_queue.clear
-          Mcp.logger.info("MCP STDIO connection closed.")
+          Mcp.logger.info('MCP STDIO connection closed.')
         end
 
         # Generates the next unique request ID.

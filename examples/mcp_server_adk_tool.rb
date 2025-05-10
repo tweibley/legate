@@ -46,7 +46,7 @@ end
 # Use the AdkToolAdapter to create a fast-mcp compatible class
 begin
   AdaptedCalculator = ADK::Mcp::Server::AdkToolAdapter.wrap(ADK::Tools::Calculator)
-  ADK.logger.info("Successfully wrapped ADK::Tools::Calculator for MCP.")
+  ADK.logger.info('Successfully wrapped ADK::Tools::Calculator for MCP.')
 rescue StandardError => e
   ADK.logger.fatal("Failed to wrap ADK Tool: #{e.message}")
   exit(1)
@@ -61,22 +61,22 @@ mcp_server = FastMcp::Server::Stdio.new(
   },
   logger: ADK.logger # Integrate with ADK's logger
 )
-ADK.logger.info("Initialized FastMcp::Server::Stdio.")
+ADK.logger.info('Initialized FastMcp::Server::Stdio.')
 
 # --- 3. Register the Wrapped Tool ---
 mcp_server.register_tool(AdaptedCalculator)
 ADK.logger.info("Registered adapted '#{AdaptedCalculator.tool_name}' tool with fast-mcp server.")
 
 # --- 4. Start the Server ---
-ADK.logger.info("Starting MCP server on STDIO. Waiting for requests...")
-puts "--- ADK MCP Tool Server (STDIO) Ready --- " # Signal readiness besides logs
+ADK.logger.info('Starting MCP server on STDIO. Waiting for requests...')
+puts '--- ADK MCP Tool Server (STDIO) Ready --- ' # Signal readiness besides logs
 begin
   mcp_server.start # This method typically blocks, listening on STDIN
 rescue Interrupt
-  ADK.logger.info("Received interrupt, shutting down server.")
+  ADK.logger.info('Received interrupt, shutting down server.')
 rescue StandardError => e
   ADK.logger.fatal("MCP server crashed: #{e.class} - #{e.message}")
   ADK.logger.fatal(e.backtrace.join("\n"))
 ensure
-  ADK.logger.info("MCP server stopped.")
+  ADK.logger.info('MCP server stopped.')
 end

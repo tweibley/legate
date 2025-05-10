@@ -32,7 +32,7 @@ module ADK
         # DSL method for defining a parameter
         def parameter(name, options = {})
           initialize_dsl_storage # Ensure hash exists
-          raise ArgumentError, "Parameter name must be a Symbol" unless name.is_a?(Symbol)
+          raise ArgumentError, 'Parameter name must be a Symbol' unless name.is_a?(Symbol)
 
           @parameters_definition[name] = options
         end
@@ -49,7 +49,7 @@ module ADK
           inferred = inferred.dup
           inferred.gsub!(/([A-Z]+)([A-Z][a-z])/, '\1_\2')
           inferred.gsub!(/([a-z\d])([A-Z])/, '\1_\2')
-          inferred.tr!("-", "_")
+          inferred.tr!('-', '_')
           inferred.downcase!
           inferred.to_sym
         end
