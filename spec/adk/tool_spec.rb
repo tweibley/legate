@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 # File: spec/adk/tool_spec.rb
 require 'spec_helper'
 

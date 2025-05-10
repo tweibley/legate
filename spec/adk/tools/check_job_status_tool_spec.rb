@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 # File: spec/adk/tools/check_job_status_tool_spec.rb
 require 'spec_helper'
 require 'sidekiq/api'

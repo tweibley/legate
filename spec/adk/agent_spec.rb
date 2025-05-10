@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 # File: spec/adk/agent_spec.rb
 require 'spec_helper'
 require 'adk/agent'

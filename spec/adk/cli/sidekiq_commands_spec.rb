@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 # # File: spec/adk/cli/sidekiq_commands_spec.rb
 # # frozen_string_literal: true
 

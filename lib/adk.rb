@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 # File: lib/adk.rb
 require 'dotenv/load' if File.exist?('.env') # Load early for ENV vars
 

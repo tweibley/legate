@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 # File: spec/adk/session_service/redis_spec.rb
 require 'spec_helper'
 require 'redis' # Ensure Redis is required for errors like Redis::CannotConnectError

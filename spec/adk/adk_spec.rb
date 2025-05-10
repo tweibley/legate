@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require 'spec_helper'
 require 'adk' # Load the file under test
 require 'adk/configuration' # Ensure configuration class is loaded for stubbing
