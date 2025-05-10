@@ -353,19 +353,19 @@ RSpec.describe ADK::Agent do
       it 'adds a valid tool class' do
         expect(agent.add_tool(new_tool_class)).to be true
         expect(agent.find_tool_class(new_tool_name)).to eq(new_tool_class)
-        expect(logger_double).to have_received(:debug).with(/Agent \'#{agent_name}\' add_tool: Registering tool_name=:#{new_tool_name}/)
+        expect(logger_double).to have_received(:debug).with(/Agent '#{agent_name}' add_tool: Registering tool_name=:#{new_tool_name}/)
       end
 
       it 'adds a valid tool instance' do
         expect(agent.add_tool(new_tool_instance)).to be true
         expect(agent.find_tool_class(new_tool_name)).to eq(new_tool_class)
-        expect(logger_double).to have_received(:debug).with(/Agent \'#{agent_name}\' add_tool: Registering tool_name=:#{new_tool_name}/)
+        expect(logger_double).to have_received(:debug).with(/Agent '#{agent_name}' add_tool: Registering tool_name=:#{new_tool_name}/)
       end
 
       it 'warns and overwrites when adding a duplicate tool' do
         agent.add_tool(new_tool_class) # Add first time
         # Expect warning from ToolRegistry (adjust regex/message as needed)
-        expect(logger_double).to receive(:warn).with(/ToolRegistry: Tool \'#{new_tool_name}\' is already registered/).at_least(:once)
+        expect(logger_double).to receive(:warn).with(/ToolRegistry: Tool '#{new_tool_name}' is already registered/).at_least(:once)
         expect(agent.add_tool(new_tool_class)).to be true # Add again
         expect(agent.find_tool_class(new_tool_name)).to eq(new_tool_class) # Should still be there
       end
@@ -515,7 +515,7 @@ RSpec.describe ADK::Agent do
       it 'warns and overwrites when registering a duplicate tool class in agent' do
         agent.register_tool_class(new_tool_class) # First time
         # Expect warning from ToolRegistry
-        expect(logger_double).to receive(:warn).with(/ToolRegistry: Tool \'#{new_tool_name}\' is already registered/).at_least(:once)
+        expect(logger_double).to receive(:warn).with(/ToolRegistry: Tool '#{new_tool_name}' is already registered/).at_least(:once)
         expect(agent.register_tool_class(new_tool_class)).to be true # Second time
         expect(agent.find_tool_class(new_tool_name)).to eq(new_tool_class)
       end
