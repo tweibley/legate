@@ -21,7 +21,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
   # Sample definition data
   let(:agent_name) { 'test_agent' }
   let(:description) { 'A test agent description' }
-  let(:tools) { ['tool_a', 'tool_b'] }
+  let(:tools) { %w[tool_a tool_b] }
   let(:tools_json) { tools.to_json }
   let(:model) { 'gpt-4o' }
   let(:fallback_mode) { :error }
@@ -287,7 +287,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         description: 'A test agent description',
         model: 'gpt-4o',
         instruction: '', # Expect default empty string
-        tools: [:tool_a, :tool_b], # Symbolized
+        tools: %i[tool_a tool_b], # Symbolized
         fallback_mode: :error,
         mcp_servers_json: JSON.generate([{ url: 'http://localhost:8080' }]),
         webhook_enabled: false,
@@ -666,7 +666,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         expect(ADK.logger).to receive(:debug).with('Listed 2 agent definitions.')
         definitions = @store.list_definitions
         expect(definitions).to eq(expected_list)
-        expect(definitions.map { |d| d[:name] }).to eq([:agent1, :agent2]) # Verify sorting
+        expect(definitions.map { |d| d[:name] }).to eq(%i[agent1 agent2]) # Verify sorting
       end
     end
 
@@ -685,7 +685,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
     context 'handles inconsistencies where agent hash is missing and logs warning' do
       before do
         # Mock setup for inconsistency test
-        agent_names_inc = ['agent1', 'agent2'] # Use different var name
+        agent_names_inc = %w[agent1 agent2] # Use different var name
         agent_key_1_inc = "#{ADK::DefinitionStore::RedisStore::AGENT_HASH_PREFIX}agent1"
         agent_key_2_inc = "#{ADK::DefinitionStore::RedisStore::AGENT_HASH_PREFIX}agent2"
         all_fields_inc = ADK::DefinitionStore::RedisStore::AGENT_DEFINITION_FIELDS

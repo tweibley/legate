@@ -310,9 +310,9 @@ RSpec.describe ADK::Session do
   describe 'Private Methods' do
     describe '#parse_key' do
       it 'returns [prefix, key] for prefixed keys' do
-        expect(session.send(:parse_key, 'user:my_key')).to eq(['user', 'my_key'])
+        expect(session.send(:parse_key, 'user:my_key')).to eq(%w[user my_key])
         expect(session.send(:parse_key, 'app:settings:nested')).to eq(['app', 'settings:nested'])
-        expect(session.send(:parse_key, :'temp:data')).to eq(['temp', 'data']) # Symbol key
+        expect(session.send(:parse_key, :'temp:data')).to eq(%w[temp data]) # Symbol key
       end
 
       it 'returns [nil, key] for non-prefixed keys' do

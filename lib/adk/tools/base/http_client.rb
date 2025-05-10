@@ -92,7 +92,7 @@ module ADK
 
             # Store default *request* options and headers separately
             @http_default_request_options = final_options.reject { |k, _|
-              [:headers, :instrumentor, :instrumentor_params].include?(k)
+              %i[headers instrumentor instrumentor_params].include?(k)
             }
             @http_default_headers = merged_headers
           rescue Excon::Error::Socket => e
@@ -167,7 +167,7 @@ module ADK
             } || 'Content-Type'
 
             # 4. Handle Request Body and Content-Type logic
-            if body.is_a?(Hash) && [:post, :put, :patch].include?(method)
+            if body.is_a?(Hash) && %i[post put patch].include?(method)
               # Only default to application/json if Content-Type was not explicitly provided
               unless custom_content_type_provided
                 request_params[:headers][content_type_key] = 'application/json; charset=utf-8'

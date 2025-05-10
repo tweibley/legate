@@ -222,7 +222,7 @@ module ADK
       # Sets the fallback mode for the agent.
       # @param mode [Symbol] :error or :echo.
       def fallback_mode(mode)
-        valid_modes = [:error, :echo]
+        valid_modes = %i[error echo]
         unless valid_modes.include?(mode)
           raise ArgumentError, "Invalid fallback_mode '#{mode}'. Must be one of: #{valid_modes.join(', ')}."
         end
@@ -834,7 +834,7 @@ module ADK
         current_params.transform_values! do |value|
           injection_value = nil
           if value.is_a?(String) && value.match?(/\[Result from step \d+\]|\[Result from previous step\]/i)
-            if previous_step_result_hash && [:success, :pending].include?(previous_step_result_hash[:status])
+            if previous_step_result_hash && %i[success pending].include?(previous_step_result_hash[:status])
               # Prioritize :result, then :job_id (was workflow_id), then :message
               if previous_step_result_hash.key?(:result)
                 prev_result = previous_step_result_hash[:result]
@@ -972,8 +972,8 @@ module ADK
 
           # Validate tool's success/pending return format.
           # Tools should now RAISE ADK::ToolError on failure, not return {status: :error}.
-          unless result_hash.is_a?(Hash) && result_hash.key?(:status) && [:success,
-                                                                          :pending].include?(result_hash[:status])
+          unless result_hash.is_a?(Hash) && result_hash.key?(:status) && %i[success
+                                                                          pending].include?(result_hash[:status])
             ADK.logger.error("Tool '#{tool_name}' returned invalid hash or status (expected success/pending): #{result_hash.inspect}")
             # Raise a ToolError if the format is wrong, even on expected success/pending path.
             raise ADK::ToolError, "Tool '#{tool_name}' failed to return standard hash format (status: success/pending)."
@@ -1025,7 +1025,7 @@ module ADK
         ADK.logger.info("Attempting to connect to MCP server: #{symbolized_config.inspect}")
         begin
           # --- FIXED: Check using STRING key 'type' --- >
-          unless ['stdio', 'sse'].include?(symbolized_config[:type])
+          unless %w[stdio sse].include?(symbolized_config[:type])
             # --- FIXED: Log the actual value found using string key ---\
             ADK.logger.error("Unsupported MCP server type specified: #{symbolized_config[:type].inspect}. Skipping configuration: #{symbolized_config.inspect}")
             next # Skip to the next server config

@@ -308,7 +308,7 @@ module ADK
           method, path = method_path.split(' ', 2)
           http_method = method.downcase.to_sym
 
-          unless [:get, :post, :put, :patch, :delete, :head, :options].include?(http_method)
+          unless %i[get post put patch delete head options].include?(http_method)
             logger.error("WebhookListener: Invalid HTTP method '#{method}' specified for static route '#{path}'. Skipping.")
             next
           end

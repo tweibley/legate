@@ -232,7 +232,7 @@ module ADK
 
         # GET /agents/:name/edit/:field - Show edit form for a specific agent field.
         app.get '/agents/:name/edit/:field' do |name, field|
-          supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp', 'instruction']
+          supported_fields = %w[description model tools fallback mcp instruction]
           halt 404, "Editing field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
@@ -285,7 +285,7 @@ module ADK
 
         # GET /agents/:name/display/:field - Display an agent field (after edit cancel).
         app.get '/agents/:name/display/:field' do |name, field|
-          supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp', 'instruction']
+          supported_fields = %w[description model tools fallback mcp instruction]
           halt 404, "Displaying field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
@@ -400,7 +400,7 @@ module ADK
 
         # PUT /agents/:name/update/:field - Update a specific field of an agent definition.
         app.put '/agents/:name/update/:field' do |name, field|
-          supported_fields = ['description', 'model', 'tools', 'fallback', 'mcp', 'instruction']
+          supported_fields = %w[description model tools fallback mcp instruction]
           halt 404, "Updating field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           active_agents_hash = self.instance_variable_get(:@agents)
@@ -481,7 +481,7 @@ module ADK
 
           when 'fallback'
             submitted_value = params['value']&.strip
-            unless ['error', 'echo'].include?(submitted_value)
+            unless %w[error echo].include?(submitted_value)
               current_def = definition_store.get_definition(name)
               edit_locals = {
                 agent_data: { name: name,
