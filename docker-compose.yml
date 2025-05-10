@@ -1,0 +1,12 @@
+services:
+  adk-redis:
+    image: docker.io/redis:8.0-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - cache:/data
+volumes:
+  cache:
+    driver: local

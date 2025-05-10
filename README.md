@@ -2,7 +2,7 @@
 
 [![Gem Version](https://badge.fury.io/rb/adk-ruby.svg)](https://badge.fury.io/rb/adk-ruby)
 
-**Author:** Taylor Weibley  
+**Author:** Taylor Weibley
 **Repository:** [https://github.com/tweibley/adk-ruby](https://github.com/tweibley/adk-ruby)
 
 ADK (Agent Development Kit) for Ruby is a framework for building AI agents with dynamic tool selection, multi-step planning, and session management.
@@ -78,6 +78,13 @@ brew services start redis
 
 # Linux
 sudo service redis-server start
+
+# Docker Compose
+docker compose up
+
+# Docker
+docker run --name adk-redis -d -v cache:/data docker.io/library/redis:8.0-alpine redis-server --save 60 1 --loglevel warning
+
 ```
 
 ### Sidekiq Setup
@@ -462,11 +469,11 @@ If your custom tool needs to make HTTP requests to external APIs, you can levera
 
 ```ruby
 require_relative '../tool'
-require_relative 'base/http_client' 
+require_relative 'base/http_client'
 
 class MyApiTool < ADK::Tool
   include ADK::Tools::Base::HttpClient
-  
+
   # ... tool metadata ...
 
   API_BASE_URL = 'https://api.my_service.com/v2/'
@@ -476,13 +483,13 @@ class MyApiTool < ADK::Tool
     # Setup the client in initialize
     setup_http_client(
       base_url: API_BASE_URL,
-      headers: { 'Accept' => 'application/vnd.api+json' }, 
+      headers: { 'Accept' => 'application/vnd.api+json' },
       options: { read_timeout: 10, connect_timeout: 3 }
     )
   end
-  
+
   private
-  
+
   def perform_execution(params, context)
     # ... use helper methods ...
   end
@@ -520,7 +527,7 @@ def perform_execution(params, context)
   create_payload = { name: params[:name], value: params[:value] }
   # Override read timeout for this specific request
   post_response = http_post("items", body: create_payload, options: { read_timeout: 5 })
-  
+
   # POST with string payload (e.g., XML) and custom headers
   xml_payload = "<data><name>#{params[:name]}</name></data>"
   xml_headers = { 'Content-Type' => 'application/xml', 'X-API-Key' => context.get_credential(:api_key) }
