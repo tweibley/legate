@@ -156,16 +156,15 @@ require_relative 'adk/agent'
 require_relative 'adk/cli'
 
 # Tools
-require_relative 'adk/tools/base/http_client'
-require_relative 'adk/tools/webhook_tool'
-require_relative 'adk/tools/agent_tool'
 require_relative 'adk/tools/echo'
 require_relative 'adk/tools/calculator'
 require_relative 'adk/tools/cat_facts'
 require_relative 'adk/tools/random_number_tool'
-require_relative 'adk/tools/base_async_job_tool'
-require_relative 'adk/tools/check_job_status_tool'
-require_relative 'adk/tools/sleepy_tool'
+require_relative 'adk/tools/agent_tool' # Tool that allows an agent to call another agent
+require_relative 'adk/tools/base_async_job_tool' # Base class for tools that run asynchronously
+require_relative 'adk/tools/check_job_status_tool' # Tool to check the status of async jobs
+require_relative 'adk/tools/sleepy_tool' # Example async tool
+require_relative 'adk/tools/webhook_tool' # Added webhook_tool here
 
 # <<< ADDED: Require the webhook worker >>>
 require_relative 'adk/webhook_job_worker'
@@ -184,3 +183,23 @@ module ADK
   # class Error < StandardError; end # Already defined
   module SessionService; end
 end
+
+ADK.logger.info "Explicitly registering built-in ADK tools..."
+[
+  ADK::Tools::Echo,
+  ADK::Tools::Calculator,
+  ADK::Tools::CatFacts,
+  ADK::Tools::RandomNumberTool,
+  ADK::Tools::AgentTool, # Ensure this is registered
+  ADK::Tools::CheckJobStatusTool,
+  ADK::Tools::SleepyTool,
+  ADK::Tools::WebhookTool
+  # ADK::Tools::BaseAsyncJobTool should NOT be registered as it's abstract
+].each do |tool_klass|
+  unless tool_klass.respond_to?(:abstract?) && tool_klass.abstract?
+    ADK::GlobalToolManager.register_tool(tool_klass)
+  else
+    ADK.logger.debug "Skipping explicit registration of abstract tool: #{tool_klass}"
+  end
+end
+ADK.logger.info "Explicit tool registration complete. Current global tools: #{ADK::GlobalToolManager.registered_tool_names.inspect}"
