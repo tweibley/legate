@@ -107,10 +107,10 @@ module ADK
     current_logger = ADK.logger
     Sidekiq.configure_client do |config|
       config.redis = @redis_options.dup
-      current_logger.info("Sidekiq client configured with Redis: #{@redis_options[:url]}") if current_logger
+      current_logger&.info("Sidekiq client configured with Redis: #{@redis_options[:url]}")
     end
   rescue Redis::CannotConnectError => e
-    current_logger.error("Sidekiq failed to configure Redis client: #{e.message}") if current_logger
+    current_logger&.error("Sidekiq failed to configure Redis client: #{e.message}")
   rescue => e # Catch potential NoMethodError if logger is somehow still nil
     puts "[WARN] Error configuring Sidekiq, logger might not be available: #{e.message}"
   end

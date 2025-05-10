@@ -45,7 +45,7 @@ RSpec.describe ADK::Tools::Base::HttpClient do
     original_log_device = ADK.logger.instance_variable_get(:@logdev)&.dev
     original_level = ADK.logger.level
     logdev = ADK.logger.instance_variable_get(:@logdev)
-    logdev.instance_variable_set(:@dev, logger_output) if logdev
+    logdev&.instance_variable_set(:@dev, logger_output)
     ADK.logger.level = Logger::DEBUG # Ensure logs are captured
 
     example.run

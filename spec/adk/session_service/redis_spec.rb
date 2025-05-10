@@ -471,7 +471,7 @@ RSpec.describe ADK::SessionService::Redis do
         # First 2 attempts fail, 3rd succeeds
         allow(mock_redis).to receive(:multi) do |&block|
           call_count += 1
-          block.call(mock_redis) if block
+          block&.call(mock_redis)
           if call_count < 3
             nil # Watch conflicts
           else

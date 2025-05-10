@@ -167,8 +167,7 @@ module ADK
 
           # Deserialize events
           events = []
-          if event_json_list
-            event_json_list.each_with_index do |event_json, index|
+          event_json_list&.each_with_index do |event_json, index|
               begin
                 event_hash = JSON.parse(event_json, symbolize_names: true)
                 event = ADK::Event.from_h(event_hash)
@@ -178,7 +177,6 @@ module ADK
                 # Optionally add a placeholder event? Or just skip. Skipping for now.
               end
             end
-          end
 
           # Reconstruct Session object
           # Manually build hash for Session.new to match its expected keys
@@ -409,13 +407,11 @@ module ADK
 
             # Deserialize events
             events = []
-            if events_list
-              events_list.each do |event_json|
+            events_list&.each do |event_json|
                 begin;
  event_h = JSON.parse(event_json, symbolize_names: true);
  ev = ADK::Event.from_h(event_h); events << ev if ev; rescue JSON::ParserError; end
               end
-            end
 
             # Reconstruct Session object
             session_data_for_init = {

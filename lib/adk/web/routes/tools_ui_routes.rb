@@ -59,7 +59,7 @@ module ADK
                 parameters = []
                 begin
                   input_schema = mcp_tool_schema[:inputSchema]
-                  if input_schema && input_schema.is_a?(Hash)
+                  if input_schema&.is_a?(Hash)
                     properties = input_schema['properties'] || {}
                     required_props = input_schema['required'] || []
                     parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required_props)
@@ -149,7 +149,7 @@ module ADK
                   parameters = []
                   begin
                     input_schema = tool_data[:inputSchema]
-                    if input_schema && input_schema.is_a?(Hash)
+                    if input_schema&.is_a?(Hash)
                       properties = input_schema['properties'] || {}
                       required_props = input_schema['required'] || []
                       parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required_props)

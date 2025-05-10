@@ -52,7 +52,7 @@ module ADK
     def create_instance(name_symbol)
       klass = find_class(name_symbol)
       ADK.logger.debug("[ToolRegistry #{@object_id}] create_instance(#{name_symbol.inspect}): Found class: #{klass.inspect}")
-      klass ? klass.new : nil
+      klass&.new
     end
 
     # Get a list of available tools registered in this instance with basic info.

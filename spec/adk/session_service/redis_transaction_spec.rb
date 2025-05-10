@@ -92,7 +92,7 @@ RSpec.describe ADK::SessionService::Redis, 'Transaction Tests' do
 
         allow(mock_redis).to receive(:multi) do |&block|
           call_count += 1
-          block.call(mock_redis) if block
+          block&.call(mock_redis)
 
           if call_count < 3
             nil # Return nil to simulate watch failure
@@ -110,7 +110,7 @@ RSpec.describe ADK::SessionService::Redis, 'Transaction Tests' do
       it 'fails after max retries' do
         # Always return nil from multi to simulate persistent watch failures
         allow(mock_redis).to receive(:multi) do |&block|
-          block.call(mock_redis) if block
+          block&.call(mock_redis)
           nil
         end
 
