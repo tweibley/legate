@@ -1,4 +1,4 @@
-/ File: lib/adk/web/views/layout.slim
+# File: lib/adk/web/views/layout.slim
 doctype html
 html(class="has-navbar-fixed-top is-clipped-touch")
   head
@@ -24,10 +24,10 @@ html(class="has-navbar-fixed-top is-clipped-touch")
     script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/ruby.min.js"
     script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"
     script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"
-    / Add Mermaid.js library from CDN
+    /! Add Mermaid.js library from CDN
     script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"
 
-    / Determine current section for nav highlighting
+    /! Determine current section for nav highlighting
     - current_path = request.path_info
     - is_agents_section = current_path.start_with?('/agents')
     - is_tools_section = current_path.start_with?('/tools')
@@ -66,7 +66,7 @@ html(class="has-navbar-fixed-top is-clipped-touch")
           p.has-text-grey Attempting to reconnect...
           progress.progress.is-small.is-warning.mt-4 max="100"
 
-    /! --- NEW: Reusable Mermaid Modal Structure ---
+    /! --- MERMAID MODAL STRUCTURE ---
     #mermaid-modal.modal
       .modal-background.modal-close-button
       .modal-card style="width: 80%; max-width: 1000px;"
@@ -74,17 +74,16 @@ html(class="has-navbar-fixed-top is-clipped-touch")
           p.modal-card-title Agent Execution Flow
           button.delete.modal-close-button aria-label="close"
         section.modal-card-body
-          #mermaid-modal-content style="text-align: center;"
-            /! Mermaid definition will be injected here by JS
-            pre.mermaid
-              /! Initial placeholder or empty content
+          /! Content area for the Mermaid diagram
+          #mermaid-modal-content style="text-align: center; min-height: 200px;"
+            /! The pre.mermaid tag will be dynamically inserted here by JavaScript
         footer.modal-card-foot
           button.button.modal-close-button Close
-    /! --- END NEW MODAL STRUCTURE ---
+    /! --- END MERMAID MODAL ---
 
     footer.footer.mt-6
       .content.has-text-centered
-        p.is-size-7.has-text-grey-light
+        p.is-size-7.has_text-grey-light
           strong Ruby ADK Web UI
 
     /! Moved all JavaScript to the end of the body for better performance and DOM availability
@@ -194,10 +193,6 @@ html(class="has-navbar-fixed-top is-clipped-touch")
             } catch (e) {
               // console.error("Error converting CodeMirror to TextArea for ID " + elementId + ":", e);
             }
-            // It's safer to just hide or let HTMX replace, rather than removing child manually if HTMX is also managing it.
-            // if (wrapper && wrapper.parentNode) {
-            //    wrapper.parentNode.removeChild(wrapper);
-            // }
             delete window.codeMirrorInstances[elementId];
           }
         }
@@ -205,25 +200,22 @@ html(class="has-navbar-fixed-top is-clipped-touch")
         // Initialize CodeMirror for relevant textareas on the page or within a target element
         function initializeRelevantEditors(targetElement = document.body) {
           const editorsToInit = [
-            { id: 'mcp_servers_json', options: {} },        // Agent create form
-            { id: 'instruction', options: { mode: 'text/plain'} }, // Agent create form
-            { id: 'mcp-json-editor', options: {} },       // MCP edit field
-            { id: 'mcp-json-display', options: { readOnly: true } }, // MCP display field (might not be needed)
-            { id: 'task-json-editor', options: {} },      // Agent execute task field
-            { id: 'edit-instruction-textarea', options: { mode: 'text/plain'} } // Instruction edit field
+            { id: 'mcp_servers_json', options: {} },
+            { id: 'instruction', options: { mode: 'text/plain'} },
+            { id: 'mcp-json-editor', options: {} },
+            { id: 'mcp-json-display', options: { readOnly: true } },
+            { id: 'task-json-editor', options: {} },
+            { id: 'edit-instruction-textarea', options: { mode: 'text/plain'} }
           ];
 
           editorsToInit.forEach(editor => {
             let element = null;
-            // Try finding within the targetElement first (e.g., after an HTMX swap)
             if (targetElement && targetElement !== document.body && typeof targetElement.querySelector === 'function') {
                element = targetElement.querySelector(`#${editor.id}`);
             }
-            // If not found in target, or target is body, search the whole document
             if (!element) {
               element = document.getElementById(editor.id);
             }
-            
             if (element) {
                initCodeMirrorEditor(element, editor.options);
             }
@@ -283,7 +275,6 @@ html(class="has-navbar-fixed-top is-clipped-touch")
         if (!window.healthCheckInitialized) {
           const healthCheckModal = document.getElementById('health-check-modal');
           let isServerUnavailable = false;
-          // Ensure healthCheckIntervalId is declared to be accessible by checkServerHealth
           let healthCheckIntervalId = null;
 
           window.checkServerHealth = function() {
@@ -305,41 +296,35 @@ html(class="has-navbar-fixed-top is-clipped-touch")
                 }
               });
           }
-          // Start health check
           if (typeof window.checkServerHealth === 'function') {
-            window.checkServerHealth(); // Initial check
-            healthCheckIntervalId = setInterval(window.checkServerHealth, 5000); // Store interval ID
+            window.checkServerHealth();
+            healthCheckIntervalId = setInterval(window.checkServerHealth, 5000);
           }
           window.healthCheckInitialized = true;
         }
 
-        // --- NEW: Mermaid Modal Handling Setup ---
+        // --- Mermaid Modal Handling Setup ---
         function setupMermaidModal() {
           const modal = document.getElementById('mermaid-modal');
-          const modalContentArea = document.getElementById('mermaid-modal-content'); // The div that will contain the pre
-          // const mermaidTargetInModal = modalContentArea.querySelector('pre.mermaid'); // This is the pre tag
+          const modalContentArea = document.getElementById('mermaid-modal-content');
           const closeButtons = modal.querySelectorAll('.modal-close-button, .modal-background');
 
-          if (!modal || !modalContentArea) { // Removed mermaidTargetInModal from check as it's created dynamically
-            console.error("Mermaid modal main elements not found.");
+          if (!modal || !modalContentArea) {
+            console.error("Mermaid modal main elements not found for setup.");
             return;
           }
 
           function closeModal() {
             modal.classList.remove('is-active');
             document.documentElement.classList.remove('is-clipped');
-            // Clear the content of the pre tag when modal closes
-            const currentMermaidPre = modalContentArea.querySelector('pre.mermaid');
-            if (currentMermaidPre) {
-              currentMermaidPre.textContent = '';
-              currentMermaidPre.removeAttribute('data-processed');
-            }
+            modalContentArea.innerHTML = ''; // Clear content when modal closes
           }
 
           closeButtons.forEach(button => {
             button.addEventListener('click', closeModal);
           });
 
+          // Listen for clicks on the body to catch .show-mermaid-flow-btn
           document.body.addEventListener('click', function(event) {
             const triggerButton = event.target.closest('.show-mermaid-flow-btn');
             if (triggerButton) {
@@ -347,26 +332,19 @@ html(class="has-navbar-fixed-top is-clipped-touch")
               const mermaidDefinition = triggerButton.dataset.mermaidDefinition;
 
               if (mermaidDefinition && mermaidDefinition.trim() !== '') {
-                // Ensure pre.mermaid exists or create it
-                let mermaidTargetPre = modalContentArea.querySelector('pre.mermaid');
-                if (!mermaidTargetPre) {
-                    mermaidTargetPre = document.createElement('pre');
-                    mermaidTargetPre.className = 'mermaid';
-                    modalContentArea.innerHTML = ''; // Clear previous content if any
-                    modalContentArea.appendChild(mermaidTargetPre);
-                }
-
+                modalContentArea.innerHTML = ''; // Clear previous
+                const mermaidTargetPre = document.createElement('pre');
+                mermaidTargetPre.className = 'mermaid';
                 mermaidTargetPre.textContent = mermaidDefinition;
-                mermaidTargetPre.removeAttribute('data-processed');
+                modalContentArea.appendChild(mermaidTargetPre);
 
                 modal.classList.add('is-active');
                 document.documentElement.classList.add('is-clipped');
 
+                // Delay rendering slightly to ensure modal is visible and DOM updated
                 setTimeout(() => {
                   try {
-                     console.log("Rendering Mermaid in modal for element:", mermaidTargetPre);
                      mermaid.run({ nodes: [mermaidTargetPre] });
-                     console.log("Mermaid rendering attempt complete in modal.");
                    } catch (e) {
                      console.error("Error rendering Mermaid in modal:", e);
                      mermaidTargetPre.textContent = `Error rendering diagram:\n${e.message}\n\n${mermaidDefinition}`;
@@ -379,25 +357,21 @@ html(class="has-navbar-fixed-top is-clipped-touch")
             }
           });
         }
-        setupMermaidModal(); // Call the setup function
-        // --- END NEW MODAL HANDLING ---
-      }); // End DOMContentLoaded for main JS block
+        setupMermaidModal();
+        // --- END Mermaid Modal Handling ---
+      }); // End DOMContentLoaded
 
       // HTMX Event Listener for afterSwap
       document.body.addEventListener('htmx:afterSwap', function(event) {
         const targetElement = event.detail.target;
-        const newElement = event.detail.elt; // The new content that was swapped in
-        let elementToScan = newElement || targetElement; // Prefer the new content for scanning
+        const newElement = event.detail.elt;
+        let elementToScan = newElement || targetElement;
 
         if (elementToScan) {
-          // Re-initialize CodeMirror, Highlight.js, and Mermaid for the new/updated content
-          // Assuming initializeRelevantEditors, initializeHighlighting, prepareMermaidContainers are defined globally or within this scope
           if (typeof initializeRelevantEditors === 'function') initializeRelevantEditors(elementToScan);
           if (typeof initializeHighlighting === 'function') initializeHighlighting(elementToScan);
           if (typeof prepareMermaidContainers === 'function') prepareMermaidContainers(elementToScan);
-          
           try {
-             // Run mermaid specifically on nodes within the swapped content (excluding the modal)
              const mermaidNodesInSwap = elementToScan.querySelectorAll ? elementToScan.querySelectorAll('.mermaid:not(#mermaid-modal-content .mermaid)') : [];
              if (mermaidNodesInSwap.length > 0) {
                 mermaid.run({ nodes: mermaidNodesInSwap });
@@ -406,11 +380,9 @@ html(class="has-navbar-fixed-top is-clipped-touch")
              console.error("Error running mermaid.run() after htmx swap on specific nodes:", e);
           }
         } else {
-           // Fallback if no specific element found (less ideal)
            if (typeof initializeHighlighting === 'function') initializeHighlighting(document.body);
            if (typeof prepareMermaidContainers === 'function') prepareMermaidContainers(document.body);
            try {
-              // Global run, excluding modal
               const nonModalMermaidNodes = document.querySelectorAll('.mermaid:not(#mermaid-modal-content .mermaid)');
               if (nonModalMermaidNodes.length > 0) {
                  mermaid.run({ nodes: Array.from(nonModalMermaidNodes) });
@@ -420,7 +392,6 @@ html(class="has-navbar-fixed-top is-clipped-touch")
            }
         }
 
-        // Toast notification logic (remains the same)
         const triggerHeader = event.detail.xhr.getResponseHeader('HX-Trigger-After-Swap');
         if (triggerHeader) {
           try {
@@ -449,40 +420,35 @@ html(class="has-navbar-fixed-top is-clipped-touch")
         }
       });
 
-      // HTMX Event Listener for beforeSwap (remains the same)
+      // HTMX Event Listener for beforeSwap
       document.body.addEventListener('htmx:beforeSwap', function(event) {
           const swapTarget = event.detail.target;
           if (swapTarget && swapTarget.id === 'agent-mcp-display-container') {
               const editorId = 'mcp-json-editor';
               if (typeof destroyCodeMirrorInstance === 'function') destroyCodeMirrorInstance(editorId);
           }
-          // Add similar logic for other CodeMirror instances if they are swapped out
           if (swapTarget && swapTarget.id === 'agent-instruction-display-container') {
               const editorId = 'edit-instruction-textarea';
               if (typeof destroyCodeMirrorInstance === 'function') destroyCodeMirrorInstance(editorId);
           }
       });
 
-      // HTMX Event Listener for afterRequest (remains the same)
+      // HTMX Event Listener for afterRequest
       document.body.addEventListener('htmx:afterRequest', function(event) {
         const config = event.detail.requestConfig;
         const xhr = event.detail.xhr;
         const elt = config.elt;
 
-        // Example Task Generation
         if (elt && elt.id === 'generate-example-task-btn') {
-           const editorId = 'task-json-editor'; // Assumes the direct execution task editor has this ID
+           const editorId = 'task-json-editor';
            const editorInstance = window.codeMirrorInstances[editorId];
-
            if (!editorInstance) {
                if (typeof showToast === 'function') showToast("Task editor is not ready. Please wait.", "is-warning");
                return;
            }
-
            if (event.detail.successful) {
              try {
                const responseJson = xhr.responseText;
-               // Assuming responseJson is already a pretty-printed JSON string
                editorInstance.setValue(responseJson);
                if (typeof showToast === 'function') showToast("Example task generated.", "is-info", 2000);
              } catch (e) {
@@ -493,7 +459,6 @@ html(class="has-navbar-fixed-top is-clipped-touch")
            }
          }
 
-         // Error display for direct task execution
          const triggerHeader = xhr.getResponseHeader('HX-Trigger-After-Swap');
          if (config.path && config.path.includes('/execute') && triggerHeader && triggerHeader.startsWith('showTaskError')) {
              try {
@@ -506,7 +471,7 @@ html(class="has-navbar-fixed-top is-clipped-touch")
                       <strong>Execution Error:</strong><br>
                       <pre style="white-space: pre-wrap; word-break: break-all;">${errorMessage}</pre>
                     </div>`;
-                 const targetElement = document.getElementById('task-result'); // Assumes result div has this ID
+                 const targetElement = document.getElementById('task-result');
                  if (targetElement) {
                      targetElement.innerHTML = errorHtml;
                  }
@@ -519,11 +484,10 @@ html(class="has-navbar-fixed-top is-clipped-touch")
          }
       });
 
-      // Function to show toast notifications (remains the same)
+      // Function to show toast notifications
       function showToast(message, type = 'is-info', duration = 4000) {
           const toastContainer = document.getElementById('toast-container');
           if (!toastContainer) {
-              // console.error("Toast container not found!");
               return;
           }
           const toast = document.createElement('div');
@@ -550,16 +514,16 @@ html(class="has-navbar-fixed-top is-clipped-touch")
           deleteButton.addEventListener('click', () => clearTimeout(timeoutId));
       }
 
-      // General notification closer (remains the same)
+      // General notification closer
       document.body.addEventListener('click', function(event) {
         if (event.target.matches('.notification > .delete')) {
-          if (!event.target.closest('#toast-container')) { // Don't self-close toasts here
+          if (!event.target.closest('#toast-container')) {
              event.target.parentElement.remove();
           }
         }
       });
 
-      // Dropdown adjustment logic (remains the same)
+      // Dropdown adjustment logic
       function adjustDropdownDirection(dropdownId) {
         const dropdown = document.getElementById(dropdownId);
         if (!dropdown) return;

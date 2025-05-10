@@ -274,50 +274,65 @@ module ADK
         # Helper for formatting tool/agent execution results into HTML
         def format_execution_result_html(result_data)
           html_parts = []
-          notification_class = 'is-info'
-          overall_status = :unknown
+          notification_class = 'is-info' # Default
+          overall_status = :unknown # Default
 
+          # --- Determine overall status ---
+          # Handle ADK::Event first
           if result_data.is_a?(ADK::Event)
-            result_data = result_data.content
+            result_data = result_data.content # Extract content hash
           end
 
+          # Now work with the hash
           if result_data.is_a?(Hash) && result_data.key?(:status)
             overall_status = result_data[:status]
           elsif result_data.is_a?(Array) && result_data.all? { |h| h.is_a?(Hash) && h.key?(:status) }
-            if result_data.any? { |h| h[:status] == :error } then overall_status = :error
-            elsif result_data.any? { |h| h[:status] == :pending } then overall_status = :pending
-            elsif result_data.empty? then overall_status = :warning
-            else overall_status = :success end
-          else
+            # Multi-step array - determine overall status
+            if result_data.any? { |h| h[:status] == :error }
+              overall_status = :error
+            elsif result_data.any? { |h| h[:status] == :pending }
+              overall_status = :pending
+            elsif result_data.empty? # Empty plan result
+              overall_status = :warning # Or treat as error?
+            else # All success
+              overall_status = :success
+            end
+          else # Unexpected format, treat as error
             overall_status = :error
+            # Wrap the unexpected data into a standard error hash for consistent handling below
             result_data = { status: :error, error_message: "Unexpected result format: #{result_data.inspect}" }
           end
+          # --- End determine overall status ---
 
+          # Set notification class based on status
           notification_class = case overall_status
                                when :success then 'is-success'
                                when :error then 'is-danger'
-                               when :pending then 'is-warning'
-                               else 'is-info' end
+                               when :pending then 'is-warning' # Use warning for pending
+                               else 'is-info' # includes :unknown, :warning (empty plan)
+                               end
 
+          # --- Generate HTML content ---
           if result_data.is_a?(Array) # Multi-step result array
             html_parts << "<p><strong>Multi-step Result:</strong></p><ol>"
             result_data.each_with_index do |step_hash, index|
               html_parts << "<li>"
-              if step_hash.is_a?(Hash)
+              if step_hash.is_a?(Hash) # Ensure it's a hash before checking status
                 case step_hash[:status]
                 when :success
                   step_result_content = step_hash[:result]
+                  # Handle potential nested result from AgentTool for display
                   if step_result_content.is_a?(Hash) && step_result_content.key?(:status)
                     html_parts << "<strong>Step #{index + 1} (Success - Delegated):</strong>"
                     html_parts << "<blockquote style='margin-left: 1em; border-left: 3px solid #dbdbdb; padding-left: 1em;'>"
-                    html_parts << format_execution_result_html(step_result_content)
+                    html_parts << format_execution_result_html(step_result_content) # Recursive call
                     html_parts << "</blockquote>"
                   else
                     html_parts << "<strong>Step #{index + 1} (Success):</strong> <pre>#{Rack::Utils.escape_html(step_result_content.to_s)}</pre>"
                   end
-                when :pending
+                when :pending # <-- ADDED Pending Case for Multi-step
                   html_parts << "<strong>Step #{index + 1} (Pending):</strong>"
-                  html_parts << "<pre>Job ID: #{Rack::Utils.escape_html(step_hash[:job_id].to_s)}"
+                  html_parts << "<pre>Job ID: #{Rack::Utils.escape_html(step_hash[:job_id].to_s)}" # Changed workflow_id to job_id
                   html_parts << "\nMessage: #{Rack::Utils.escape_html(step_hash[:message].to_s)}" if step_hash[:message]
                   html_parts << "</pre>"
                 when :error
@@ -326,26 +341,29 @@ module ADK
                   html_parts << "<strong>Step #{index + 1} (Unknown Status):</strong> <pre>#{Rack::Utils.escape_html(step_hash.inspect)}</pre>"
                 end
               else
+                # Handle case where an element in the array isn't a hash
                 html_parts << "<strong>Step #{index + 1} (Invalid format):</strong> <pre>#{Rack::Utils.escape_html(step_hash.inspect)}</pre>"
               end
               html_parts << "</li>"
             end
             html_parts << "</ol>"
+
           elsif result_data.is_a?(Hash) # Single result/error/pending hash
             case result_data[:status]
             when :success
               result_content = result_data[:result]
+              # Handle potential nested result from AgentTool
               if result_content.is_a?(Hash) && result_content.key?(:status)
                 html_parts << "<p><strong>Result (from delegated agent):</strong></p>"
                 html_parts << "<blockquote style='margin-left: 1em; border-left: 3px solid #dbdbdb; padding-left: 1em;'>"
-                html_parts << format_execution_result_html(result_content)
+                html_parts << format_execution_result_html(result_content) # Recursive call
                 html_parts << "</blockquote>"
               else
                 html_parts << "<p><strong>Result:</strong></p><pre>#{Rack::Utils.escape_html(result_content.to_s)}</pre>"
               end
-            when :pending
+            when :pending # <-- ADDED Pending Case for Single Step
               html_parts << "<p><strong>Status: Pending</strong></p>"
-              html_parts << "<pre>Job ID: #{Rack::Utils.escape_html(result_data[:job_id].to_s)}"
+              html_parts << "<pre>Job ID: #{Rack::Utils.escape_html(result_data[:job_id].to_s)}" # Changed workflow_id to job_id
               html_parts << "\nMessage: #{Rack::Utils.escape_html(result_data[:message].to_s)}" if result_data[:message]
               html_parts << "\n(Use tool 'check_job_status' with this ID to get the final result)</pre>"
             when :error
@@ -353,9 +371,12 @@ module ADK
             else # Unknown status within hash
               html_parts << "<p><strong>Result (Unknown Status):</strong></p><pre>#{Rack::Utils.escape_html(result_data.inspect)}</pre>"
             end
-          end
+          end # End if result_data.is_a?(Hash)
+          # --- End Generate HTML ---
+
+          # Return final HTML structure
           "<div class='notification #{notification_class} mt-4'>#{html_parts.join}</div>"
-        end
+        end # end format_execution_result_html
 
         def process_agent_response(agent_result)
           response_data = {
@@ -386,7 +407,7 @@ module ADK
                   end
                 when :pending
                   response_data[:msg_class] = 'is-warning'
-                  response_data[:display_content] = "Task pending... Job ID: #{content[:job_id]}"
+                  response_data[:display_content] = "Task pending... Job ID: #{content[:job_id]}" # Changed workflow_id to job_id
                   if content[:message] then response_data[:display_content] << " - #{content[:message]}"; end
                 else
                   response_data[:display_content] = "Agent response has unknown status: #{content[:status]}"
@@ -459,7 +480,7 @@ module ADK
                 display_content = original_error
               end
             when :pending
-              display_content = "Task pending... Job ID: #{content[:job_id]}"
+              display_content = "Task pending... Job ID: #{content[:job_id]}" # Changed workflow_id to job_id
               if content[:message] then display_content << " - #{content[:message]}"; end
             else
               display_content = "Agent response (unknown status): #{content.inspect}"
@@ -521,111 +542,241 @@ module ADK
           end
         end
 
-        # --- START: MERMAID HELPERS (with more robust summarization and escaping) ---
+        # --- START: MERMAID HELPERS (Corrected for delegate_task rich result) ---
         def generate_mermaid_sequence_diagram(final_agent_event_content, original_user_input)
           return "" unless final_agent_event_content.is_a?(Hash)
 
           mermaid_def = ["sequenceDiagram"]
-          participants = Set.new(['User', 'Agent'])
+          participants = Set.new
+          # Initial call: current_agent_name is just "Agent"
+          collect_participants_recursive(final_agent_event_content, participants, "Agent")
 
-          plan_details = final_agent_event_content[:plan_details]
-          plan_details = [] unless plan_details.is_a?(Array)
-
-          plan_details.each do |step|
-            tool_name_str = step[:tool_name]&.to_s
-            participants.add("Tool(#{tool_name_str})") if tool_name_str && !tool_name_str.empty?
-          end
           participants.each { |p| mermaid_def << "  participant #{p}" }
 
           mermaid_def << "  User->>Agent: #{escape_mermaid_label(original_user_input)}"
-
-          plan_details.each_with_index do |step, index|
-            tool_name_str = step[:tool_name]&.to_s || "UnknownTool"
-            tool_participant = "Tool(#{tool_name_str})"
-            # Pass the raw params hash to summarize_for_mermaid
-            params_summary = summarize_for_mermaid(step[:params])
-            mermaid_def << "  Agent->>#{tool_participant}: Call #{tool_name_str} with #{params_summary}"
-
-            result_data = step[:result]
-            if result_data.is_a?(Hash)
-              status = result_data[:status]&.to_s || "unknown"
-              case status.to_sym
-              when :success
-                result_summary = summarize_for_mermaid(result_data[:result])
-                mermaid_def << "  #{tool_participant}-->>Agent: Result: #{result_summary}"
-              when :error
-                error_summary = summarize_for_mermaid(result_data[:error_message] || "Unknown Error")
-                mermaid_def << "  #{tool_participant}-->>Agent: Error: #{error_summary}"
-              when :pending
-                job_id_summary = summarize_for_mermaid(result_data[:job_id] || "N/A")
-                message_summary = result_data[:message] ? " (#{summarize_for_mermaid(result_data[:message])})" : ""
-                mermaid_def << "  #{tool_participant}-->>Agent: Pending (Job ID: #{job_id_summary})#{message_summary}"
-              else
-                mermaid_def << "  #{tool_participant}-->>Agent: Result (Status: #{status}): #{summarize_for_mermaid(result_data)}"
-              end
-            else
-              mermaid_def << "  #{tool_participant}-->>Agent: Malformed Result: #{summarize_for_mermaid(result_data)}"
-            end
-          end
-
-          final_response_summary = ""
-          if final_agent_event_content[:status] == :success
-            final_response_summary = "Final Result: #{summarize_for_mermaid(final_agent_event_content[:result])}"
-          elsif final_agent_event_content[:status] == :error
-            final_response_summary = "Final Error: #{summarize_for_mermaid(final_agent_event_content[:error_message])}"
-          elsif final_agent_event_content[:status] == :pending
-            job_id_summary = summarize_for_mermaid(final_agent_event_content[:job_id])
-            message_summary = final_agent_event_content[:message] ? " - #{summarize_for_mermaid(final_agent_event_content[:message])}" : ""
-            final_response_summary = "Task Pending: Job ID #{job_id_summary}#{message_summary}"
-          else
-            final_response_summary = "Final Response (Status: #{final_agent_event_content[:status]}): #{summarize_for_mermaid(final_agent_event_content)}"
-          end
-          mermaid_def << "  Agent-->>User: #{final_response_summary}"
+          # Initial call: current_agent_is "Agent", final_recipient_is "User"
+          append_plan_to_mermaid_recursive(final_agent_event_content, "Agent", "User", mermaid_def)
 
           mermaid_def.join("\n")
         end
 
-        # Helper to create a summarized string for Mermaid labels, then escape, then truncate.
-        def summarize_for_mermaid(data, max_length = 70)
+        def collect_participants_recursive(event_content, participants_set, current_agent_alias = "Agent")
+          participants_set.add('User')
+          participants_set.add(current_agent_alias)
+
+          plan_details = event_content[:plan_details]
+          return unless plan_details.is_a?(Array)
+
+          plan_details.each do |step_in_plan|
+            tool_name_str = step_in_plan[:tool_name]&.to_s
+            participants_set.add("Tool(#{tool_name_str})") if tool_name_str && !tool_name_str.empty?
+
+            if step_in_plan[:tool_name]&.to_sym == :delegate_task &&
+               step_in_plan == plan_details.last &&
+               event_content.dig(:result, :status) == :success &&
+               event_content.dig(:result, :result).is_a?(Hash) &&
+               event_content.dig(:result, :result, :plan_details)
+
+              delegated_agent_full_content = event_content.dig(:result, :result)
+              target_agent_name_param = step_in_plan.dig(:params,
+                                                         :target_agent_name) || step_in_plan.dig(:params,
+                                                                                                 "target_agent_name")
+              delegated_agent_actual_name = delegated_agent_full_content.dig(:name)&.to_s || target_agent_name_param || "DelegatedAgent"
+              delegated_agent_participant_alias = "Agent(#{delegated_agent_actual_name})"
+
+              participants_set.add(delegated_agent_participant_alias)
+              collect_participants_recursive(delegated_agent_full_content, participants_set,
+                                             delegated_agent_participant_alias)
+            end
+          end
+        end
+
+        def append_plan_to_mermaid_recursive(event_content, current_agent_participant_name, final_recipient_name,
+                                             mermaid_def_array)
+          plan_details = event_content[:plan_details]
+          return unless plan_details.is_a?(Array)
+
+          plan_details.each_with_index do |step_in_plan, index|
+            tool_name_str = step_in_plan[:tool_name]&.to_s || "UnknownTool"
+            tool_participant = "Tool(#{tool_name_str})"
+
+            params_summary = summarize_for_mermaid(step_in_plan[:params]) # Removed max_length override
+            mermaid_def_array << "  #{current_agent_participant_name}->>#{tool_participant}: Call #{tool_name_str} with #{params_summary}"
+
+            original_tool_output_for_this_step = step_in_plan[:result]
+
+            if step_in_plan == plan_details.last &&
+               step_in_plan[:tool_name]&.to_sym == :delegate_task &&
+               event_content.dig(:result, :status) == :success &&
+               event_content.dig(:result, :result).is_a?(Hash) &&
+               event_content.dig(:result, :result, :plan_details)
+
+              original_tool_output_for_this_step = event_content[:result][:result]
+            end
+
+            if original_tool_output_for_this_step.is_a?(Hash) &&
+               original_tool_output_for_this_step.key?(:plan_details) &&
+               step_in_plan[:tool_name]&.to_sym == :delegate_task
+
+              delegated_agent_content = original_tool_output_for_this_step
+              target_agent_name_param = step_in_plan.dig(:params,
+                                                         :target_agent_name) || step_in_plan.dig(:params,
+                                                                                                 "target_agent_name")
+              effective_delegated_name = delegated_agent_content[:name]&.to_s || target_agent_name_param&.to_s || "DelegatedAgent"
+              delegated_agent_participant = "Agent(#{effective_delegated_name})"
+              task_for_delegated = summarize_for_mermaid(step_in_plan.dig(:params,
+                                                                          :task) || step_in_plan.dig(:params, "task"))
+              mermaid_def_array << "  #{tool_participant}->>#{delegated_agent_participant}: Run task: #{task_for_delegated || 'Delegated Task'}"
+              append_plan_to_mermaid_recursive(delegated_agent_content, delegated_agent_participant, tool_participant,
+                                               mermaid_def_array)
+              delegated_outcome_summary = if delegated_agent_content[:status] == :success
+                                            "Delegated success: #{summarize_for_mermaid(delegated_agent_content[:result])}"
+                                          elsif delegated_agent_content[:status] == :error
+                                            "Delegated error: #{summarize_for_mermaid(delegated_agent_content[:error_message])}"
+                                          else
+                                            "Delegated status: #{delegated_agent_content[:status]}"
+                                          end
+              mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: #{delegated_outcome_summary}"
+            elsif original_tool_output_for_this_step.is_a?(Hash)
+              status = original_tool_output_for_this_step[:status]&.to_s || "unknown"
+              case status.to_sym
+              when :success
+                result_value = original_tool_output_for_this_step[:result]
+                if result_value.is_a?(String) && result_value == "[Complex Result Structure]"
+                  actual_result = event_content[:result][:result]
+                  if actual_result.is_a?(String)
+                    mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Result: \"#{actual_result}\""
+                  else
+                    mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Result: [Complex Result Structure]"
+                  end
+                else
+                  result_summary = summarize_for_mermaid(original_tool_output_for_this_step[:result])
+                  mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Result: #{result_summary}"
+                end
+              when :error
+                error_summary = summarize_for_mermaid(original_tool_output_for_this_step[:error_message] || "Unknown Error")
+                mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Error: #{error_summary}"
+              when :pending
+                job_id_summary = summarize_for_mermaid(original_tool_output_for_this_step[:job_id] || "N/A") # Changed from workflow_id
+                message_summary = original_tool_output_for_this_step[:message] ? " (#{summarize_for_mermaid(original_tool_output_for_this_step[:message])})" : ""
+                mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Pending (Job ID: #{job_id_summary})#{message_summary}"
+              else
+                mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Result (Status: #{status}): #{summarize_for_mermaid(original_tool_output_for_this_step)}"
+              end
+            else
+              mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Malformed Result: #{summarize_for_mermaid(original_tool_output_for_this_step)}"
+            end
+          end
+
+          final_response_summary = ""
+          if event_content[:status] == :success
+            core_result = if event_content[:result].is_a?(Hash) && event_content[:result][:status] == :success && event_content[:result].key?(:result)
+                            event_content[:result][:result]
+                          else
+                            event_content[:result]
+                          end
+            if core_result.is_a?(String) && core_result == "[Complex Result Structure]"
+              actual_result = event_content[:result][:result]
+              if actual_result.is_a?(String)
+                final_response_summary = "Final Result: \"#{actual_result}\""
+              else
+                final_response_summary = "Final Result: [Complex Result Structure]"
+              end
+            else
+              final_response_summary = "Final Result: #{summarize_for_mermaid(core_result)}"
+            end
+          elsif event_content[:status] == :error
+            final_response_summary = "Final Error: #{summarize_for_mermaid(event_content[:error_message])}"
+          elsif event_content[:status] == :pending
+            job_id_summary = summarize_for_mermaid(event_content[:job_id]) # Changed from workflow_id
+            message_summary = event_content[:message] ? " - #{summarize_for_mermaid(event_content[:message])}" : ""
+            final_response_summary = "Task Pending: Job ID #{job_id_summary}#{message_summary}"
+          else
+            final_response_summary = "Final Response (Status: #{event_content[:status]}): #{summarize_for_mermaid(event_content)}"
+          end
+          mermaid_def_array << "  #{current_agent_participant_name}-->>#{final_recipient_name}: #{final_response_summary}"
+        end
+
+        def summarize_for_mermaid(data, max_length = 700)
           return "nil" if data.nil?
 
           raw_summary_str = ""
           if data.is_a?(Hash)
-            # For hashes (like parameters), show all key-value pairs.
-            # Individual values are inspected to get quotes around strings etc.
-            items = data.map do |k, v_raw|
-              # For string values in a hash, don't use .inspect if they are short, to avoid double quotes in the label.
-              # For other types or long strings, .inspect is safer.
-              v_str = if v_raw.is_a?(String) && v_raw.length <= 20
-                        v_raw # Use raw string if short
-                      else
-                        v_raw.inspect # Use inspect for numbers, booleans, long strings, other types
-                      end
-              "#{k}: #{v_str}"
+            if data.key?(:result) && data[:result].is_a?(Hash) && data[:result].key?(:content)
+              content_str = data[:result][:content].to_s
+              content_preview = content_str.length > 50 ? "#{content_str[0..50]}..." : content_str
+              raw_summary_str = "{status: #{data[:status]}, result: {content: \"#{content_preview}\"}}"
+            else
+              items = data.map do |k, v_raw|
+                v_str = if v_raw.is_a?(Hash)
+                          "{#{v_raw.keys.take(3).join(', ')}#{v_raw.keys.size > 3 ? ', ...' : ''}}"
+                        elsif v_raw.is_a?(String) && v_raw.length <= 30 && !v_raw.match?(/[:;()`"'\n\\]/)
+                          v_raw
+                        elsif v_raw.is_a?(Array) && v_raw.size <= 3
+                          v_raw.inspect
+                        elsif v_raw.is_a?(Array)
+                          "[#{v_raw.size} items]"
+                        else
+                          v_raw.inspect
+                        end
+                "#{k}: #{v_str}"
+              end
+              raw_summary_str = "{#{items.join(', ')}}"
             end
-            raw_summary_str = "{#{items.join(', ')}}"
           elsif data.is_a?(Array)
-            # For arrays, show a few items, inspected.
-            items_str = data.take(3).map(&:inspect).join(', ')
-            raw_summary_str = "[#{items_str}#{data.size > 3 ? ', ...' : ''}]"
+            if data.size <= 5
+              items_str = data.map do |item|
+                if item.is_a?(Hash)
+                  "{#{item.keys.take(2).join(', ')}#{item.keys.size > 2 ? ', ...' : ''}}"
+                else
+                  item.inspect
+                end
+              end.join(', ')
+              raw_summary_str = "[#{items_str}]"
+            else
+              items_str = data.take(3).map do |item|
+                if item.is_a?(Hash)
+                  "{#{item.keys.take(2).join(', ')}#{item.keys.size > 2 ? ', ...' : ''}}"
+                else
+                  item.inspect
+                end
+              end.join(', ')
+              raw_summary_str = "[#{items_str}, ... (#{data.size} total items)]"
+            end
           else
-            raw_summary_str = data.to_s # For simple types like strings, numbers directly
+            raw_summary_str = data.to_s
           end
-
-          logger.debug "summarize_for_mermaid: raw_summary_str: #{raw_summary_str}"
-
-          # Now, truncate the *escaped* summary if it's too long.
-          if raw_summary_str.length > max_length
-            final_summary = raw_summary_str[0...(max_length - 3)] + "..."
+          escaped_summary = escape_mermaid_label(raw_summary_str)
+          if escaped_summary.length > max_length
+            final_summary = escaped_summary[0...(max_length - 3)] + "..."
           else
-            final_summary = raw_summary_str
+            final_summary = escaped_summary
           end
-
           final_summary
         end
 
-        # Helper to escape characters problematic for Mermaid labels
+        # MODIFIED: Simplified escape_mermaid_label
+        def escape_mermaid_label(text)
+          return "" if text.nil?
 
+          s = text.to_s
+          s = s.gsub(/#/, '#hash;') # Escape # to prevent it being a comment/directive
+          s = s.gsub(/"/, '#quot;') # For quoted strings within messages; Mermaid prefers this over "
+          s = s.gsub(/;/, '#semi;') # Semicolons can end Mermaid statements
+
+          # Replace newlines with <br> for explicit line breaks in Mermaid labels
+          s = s.gsub(/\n/, '<br>')
+
+          # Escape sequences that might be misinterpreted as Mermaid diagram arrows/lines
+          s = s.gsub(/->>/, '->>')
+          s = s.gsub(/-->>/, '-->>')
+          s = s.gsub(/->/, '->')
+          s = s.gsub(/--/, '- -') # also to prevent '--' being parsed as start of solid line in some contexts
+
+          # Parentheses and backticks are often fine in message text, remove aggressive escaping for them for now.
+          # Colons are fine.
+          s
+        end
         # --- END MERMAID HELPERS ---
       end # end helpers
 
