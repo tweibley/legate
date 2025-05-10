@@ -40,12 +40,12 @@ require 'adk/tools/check_job_status_tool' # Tool to check job status
 require 'adk/mcp/server/adk_tool_adapter' # The adapter itself
 
 # --- Create the FastMcp Server Instance ---
-ADK.logger.info("Creating fast-mcp server...")
+ADK.logger.info('Creating fast-mcp server...')
 # Use the logger from ADK for consistency
 mcp_server = FastMcp::Server.new(name: 'adk-async-mcp-server', version: '1.0.0')
 
 # --- Wrap the ADK Tools using the Adapter ---
-ADK.logger.info("Wrapping ADK tools for MCP...")
+ADK.logger.info('Wrapping ADK tools for MCP...')
 
 begin
   # Wrap the asynchronous tool (SleepyTool)
@@ -57,12 +57,12 @@ begin
   ADK.logger.info("Wrapped CheckJobStatusTool as: #{wrapped_check_job_tool.tool_name}")
 
   # --- Register Wrapped Tools with the FastMcp Server ---
-  ADK.logger.info("Registering wrapped tools with fast-mcp server...")
+  ADK.logger.info('Registering wrapped tools with fast-mcp server...')
   mcp_server.register_tool(wrapped_sleepy_tool)
   mcp_server.register_tool(wrapped_check_job_tool)
 rescue ArgumentError => e
   ADK.logger.fatal("Failed to wrap ADK tools: #{e.message}")
-  ADK.logger.fatal("Ensure the ADK::Tool classes have complete metadata.")
+  ADK.logger.fatal('Ensure the ADK::Tool classes have complete metadata.')
   exit(1)
 rescue StandardError => e
   ADK.logger.fatal("An unexpected error occurred during setup: #{e.message}")
@@ -71,8 +71,8 @@ rescue StandardError => e
 end
 
 # --- Start the Server (using STDIO transport) ---
-ADK.logger.info("Starting fast-mcp server with STDIO transport...")
+ADK.logger.info('Starting fast-mcp server with STDIO transport...')
 # This will block and listen for JSON-RPC messages on STDIN/STDOUT
 mcp_server.start
 
-ADK.logger.info("Server finished.")
+ADK.logger.info('Server finished.')

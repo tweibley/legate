@@ -61,7 +61,7 @@ module ADK
           begin
             @http_base_url = URI.parse(base_url.to_s)
             unless @http_base_url.is_a?(URI::HTTP) || @http_base_url.is_a?(URI::HTTPS)
-              raise URI::InvalidURIError, "Scheme must be http or https"
+              raise URI::InvalidURIError, 'Scheme must be http or https'
             end
           rescue URI::InvalidURIError => e
             raise ADK::ToolError, "Invalid base_url provided: #{base_url} - #{e.message}", cause: e

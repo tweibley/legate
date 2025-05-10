@@ -26,7 +26,7 @@ module ADK
                                 end
                 {
                   name: agent_name,
-                  description: summary[:description] || "N/A",
+                  description: summary[:description] || 'N/A',
                   running: is_running,
                   model: current_model
                 }
@@ -36,7 +36,7 @@ module ADK
               agents_data = []
             end
           else
-            logger.error("Definition Store unavailable during GET /api/agents (from ApiRoutes)")
+            logger.error('Definition Store unavailable during GET /api/agents (from ApiRoutes)')
           end
           json agents: agents_data.sort_by { |a| a[:name] }
         end

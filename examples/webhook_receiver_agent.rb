@@ -10,8 +10,8 @@ require 'json'
 # Example Agent designed to be triggered by an inbound webhook
 ADK::Agent.define do |a|
   a.name(:webhook_receiver)
-  a.description("Receives simple webhook POSTs and logs the message.")
-  a.instruction("You will receive a simple text message. Log it clearly.")
+  a.description('Receives simple webhook POSTs and logs the message.')
+  a.instruction('You will receive a simple text message. Log it clearly.')
 
   # Tools - maybe just use logger, or add echo for explicitness?
   # For simplicity, the worker will just log the result, no tools needed here.
@@ -40,6 +40,6 @@ ADK::Agent.define do |a|
   # 3. Session Extractor: Use a static session ID for all triggers to this agent
   #   Alternatively, could extract based on payload, e.g., request_body['source']
   a.webhook_session_extractor(->(request_body) do
-    "webhook_receiver_test_session"
+    'webhook_receiver_test_session'
   end)
 end 

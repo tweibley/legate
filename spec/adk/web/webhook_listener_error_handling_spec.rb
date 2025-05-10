@@ -19,7 +19,7 @@ RSpec.describe ADK::Web::WebhookListener do
   let(:agent_definition) { instance_double(ADK::AgentDefinition) }
   let(:agent_name) { :test_error_agent }
   let(:trigger_path) { "/agents/#{agent_name}/trigger" }
-  let(:request_payload) { { "message" => "Test webhook payload" } }
+  let(:request_payload) { { 'message' => 'Test webhook payload' } }
   let(:request_json) { request_payload.to_json }
 
   before(:each) do
@@ -131,7 +131,7 @@ RSpec.describe ADK::Web::WebhookListener do
     end
 
     context 'when validator raises an unexpected error' do
-      let(:error_validator) { ->(req, secret) { raise StandardError, "Unexpected validator error" } }
+      let(:error_validator) { ->(req, secret) { raise StandardError, 'Unexpected validator error' } }
 
       before do
         allow(agent_definition).to receive(:webhook_validator).and_return(error_validator)

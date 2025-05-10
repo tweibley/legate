@@ -40,7 +40,7 @@ module ADK
     # Clears the registry (primarily for testing).
     def self.clear!
       @registry = {}
-      ADK.logger.debug("GlobalDefinitionRegistry: Cleared.")
+      ADK.logger.debug('GlobalDefinitionRegistry: Cleared.')
     end
 
     # Returns the current registry hash (primarily for debugging/inspection).

@@ -67,7 +67,7 @@ module ADK
           missing << ':description' if @description.nil? || @description.empty?
           ADK.logger.warn("Tool class #{self.class} initialized with missing metadata: [#{missing.join(', ')}] using #{self.class.tool_metadata}. Tool may not function correctly.")
         end
-        @description ||= ""
+        @description ||= ''
       end
     end
 
@@ -101,7 +101,7 @@ module ADK
     # @param context [ADK::ToolContext, nil] Contextual information (session details).
     # @return [Object] The result of the execution
     def perform_execution(params, context)
-      raise NotImplementedError, "Subclasses must implement #perform_execution(params, context)"
+      raise NotImplementedError, 'Subclasses must implement #perform_execution(params, context)'
     end
   end
 end

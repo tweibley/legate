@@ -4,7 +4,7 @@
 # If running from project root: bundle exec ruby examples/multi_tool_agent.rb
 require_relative '../lib/adk'
 
-puts "--- Multi-Tool Agent Example ---"
+puts '--- Multi-Tool Agent Example ---'
 
 # 1. --- Agent Setup ---
 # Add required tool classes directly during initialization
@@ -55,11 +55,11 @@ puts "\nCreated session: #{session_id}"
 
 # 5. --- Task Execution Examples ---
 tasks = [
-  "Echo this message: Hello from multi-tool agent!",
-  "Calculate 15 * 7",
-  "Get me a cat fact",
-  "Generate a random number between 1 and 10",
-  "Delegate this task to calculator_agent: what is 20 / 4"
+  'Echo this message: Hello from multi-tool agent!',
+  'Calculate 15 * 7',
+  'Get me a cat fact',
+  'Generate a random number between 1 and 10',
+  'Delegate this task to calculator_agent: what is 20 / 4'
 ]
 
 # Array to store results for summary table
@@ -67,11 +67,11 @@ task_results = []
 
 tasks.each_with_index do |task, index|
   task_num = index + 1
-  puts "\n" + "=" * 40
+  puts "\n" + '=' * 40
   puts "--- Task #{task_num}: '#{task}' ---"
-  puts "=" * 40
+  puts '=' * 40
 
-  outcome_message = "[Execution Error]"
+  outcome_message = '[Execution Error]'
   begin
     result_event = agent.run_task(
       session_id: session_id,
@@ -106,13 +106,13 @@ tasks.each_with_index do |task, index|
   end
   # Store the result
   task_results << { task: task, outcome: outcome_message }
-  puts "=" * 40 # End separator for this task's logs
+  puts '=' * 40 # End separator for this task's logs
 end
 
 # 6. --- Print Summary Table --- #
-puts "\n" + "#" * 50
-puts "### Task Execution Summary ###"
-puts "#" * 50
+puts "\n" + '#' * 50
+puts '### Task Execution Summary ###'
+puts '#' * 50
 # Determine column width (simple approach)
 max_task_len = task_results.map { |r| r[:task].length }.max || 40
 puts "
@@ -121,7 +121,7 @@ puts "|#{'-' * (max_task_len + 2)}|---------------------------------|"
 task_results.each do |r|
   puts "| #{r[:task].ljust(max_task_len)} | #{r[:outcome]} "
 end
-puts ""
+puts ''
 
 # 7. --- Stop Agent --- #
 agent.stop

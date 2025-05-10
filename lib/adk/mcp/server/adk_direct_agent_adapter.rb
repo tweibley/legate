@@ -25,10 +25,10 @@ module ADK
         # @return [Class<AdkDirectAgentAdapter>] A new anonymous class inheriting from AdkDirectAgentAdapter.
         def self.wrap(agent_instance, session_service_instance)
           unless agent_instance.is_a?(ADK::Agent)
-            raise ArgumentError, "Provided object is not a valid ADK::Agent instance."
+            raise ArgumentError, 'Provided object is not a valid ADK::Agent instance.'
           end
           unless session_service_instance.is_a?(ADK::SessionService::Base)
-            raise ArgumentError, "Session service instance must inherit from ADK::SessionService::Base."
+            raise ArgumentError, 'Session service instance must inherit from ADK::SessionService::Base.'
           end
 
           agent_name = agent_instance.name
@@ -65,7 +65,7 @@ module ADK
           agent = self.class.adk_agent_instance
           session_service = self.class.session_service
           raise NotImplementedError,
-                "AdkDirectAgentAdapter must be configured using .wrap first." unless agent && session_service
+                'AdkDirectAgentAdapter must be configured using .wrap first.' unless agent && session_service
 
           agent_name = agent.name
           Mcp.logger.info("Executing ADK Agent '#{agent_name}' via direct MCP adapter with prompt: '#{prompt}'")
@@ -74,14 +74,14 @@ module ADK
           was_agent_already_running = agent.running?
           begin
             # 1. Create Temporary Session
-            Mcp.logger.debug("Creating temporary session...")
+            Mcp.logger.debug('Creating temporary session...')
             temp_session = session_service.create_session(app_name: agent_name,
                                                           user_id: "mcp_direct_#{SecureRandom.hex(4)}")
             Mcp.logger.debug("Temporary session created: #{temp_session.id}")
 
             # 2. Ensure Agent is Running
             unless was_agent_already_running
-              Mcp.logger.debug("Starting ephemeral agent runtime...")
+              Mcp.logger.debug('Starting ephemeral agent runtime...')
               agent.start
             end
 
@@ -105,12 +105,12 @@ module ADK
             when :success
               return result_content[:result] # Return result payload
             when :error
-              err_msg = result_content[:error_message] || "Agent execution failed."
+              err_msg = result_content[:error_message] || 'Agent execution failed.'
               Mcp.logger.error("Agent '#{agent_name}' execution failed: #{err_msg}")
               raise StandardError, "Agent Error: #{err_msg}"
             when :pending
               job_id = result_content[:job_id]
-              msg = result_content[:message] || "Agent task resulted in a pending job."
+              msg = result_content[:message] || 'Agent task resulted in a pending job.'
               Mcp.logger.warn("Agent '#{agent_name}' execution ended with pending status (Job: #{job_id}). Returning as structured data.")
               return { status: 'pending', job_id: job_id, message: msg }
             else
@@ -125,7 +125,7 @@ module ADK
             unless was_agent_already_running
               if agent&.running?
                 begin
-                  Mcp.logger.debug("Stopping ephemeral agent runtime...")
+                  Mcp.logger.debug('Stopping ephemeral agent runtime...')
                   agent.stop
                 rescue StandardError => stop_e
                   Mcp.logger.error("Error stopping agent runtime during cleanup: #{stop_e.message}")

@@ -30,10 +30,10 @@ module ADK
     # 4. Retries the operation on conflicts up to a configured maximum
     class Redis < Base
       # Key Definitions
-      REDIS_SESSION_HASH_PREFIX = "adk:session:"
-      REDIS_SESSION_EVENTS_LIST_PREFIX = "adk:session:events:"
-      REDIS_SESSIONS_SET_KEY = "adk:sessions:all_ids"
-      REDIS_SCOPED_STATE_PREFIX = "adk:state:"
+      REDIS_SESSION_HASH_PREFIX = 'adk:session:'
+      REDIS_SESSION_EVENTS_LIST_PREFIX = 'adk:session:events:'
+      REDIS_SESSIONS_SET_KEY = 'adk:sessions:all_ids'
+      REDIS_SCOPED_STATE_PREFIX = 'adk:state:'
 
       # Default TTL for session keys (in seconds). Set to nil or 0 for no expiry.
       # Example: 7 days = 7 * 24 * 60 * 60 = 604800
@@ -103,17 +103,17 @@ module ADK
           unless results.all?
             ADK.logger.error("Redis MULTI command failed during session creation for ID: #{session.id}. Results: #{results.inspect}")
             # Consider cleanup or raising an error
-            raise ADK::Error, "Failed to create session in Redis."
+            raise ADK::Error, 'Failed to create session in Redis.'
           end
 
           ADK.logger.info("Created session in Redis: #{session.id} for app:#{app_name}, user:#{user_id}")
           session
         rescue JSON::GeneratorError => e
           ADK.logger.error("Failed to serialize session state for #{session.id}: #{e.message}")
-          raise ADK::Error, "Failed to serialize session state."
+          raise ADK::Error, 'Failed to serialize session state.'
         rescue ::Redis::BaseError => e
           ADK.logger.error("Redis error creating session #{session.id}: #{e.class} - #{e.message}")
-          raise ADK::Error, "Redis error during session creation."
+          raise ADK::Error, 'Redis error during session creation.'
         end
       end
 
@@ -202,7 +202,7 @@ module ADK
           session
         rescue ::Redis::BaseError => e
           ADK.logger.error("Redis error getting session #{session_id}: #{e.class} - #{e.message}")
-          raise ADK::Error, "Redis error during session retrieval."
+          raise ADK::Error, 'Redis error during session retrieval.'
         rescue ArgumentError, TypeError => e # Catch potential errors in Time.iso8601 or Session init
           ADK.logger.error("Error reconstructing session object for #{session_id}: #{e.class} - #{e.message}")
           nil # Return nil if reconstruction fails
@@ -403,7 +403,7 @@ module ADK
             state = {}
             if hash_data['state']
               begin; state = JSON.parse(hash_data['state'], symbolize_names: true); rescue JSON::ParserError;
-                                                                                      state = { _parse_error: "Failed to load state" };
+                                                                                      state = { _parse_error: 'Failed to load state' };
               end
             end
 
@@ -463,10 +463,10 @@ module ADK
           end
         rescue JSON::GeneratorError => e
           ADK.logger.error("Failed to serialize scoped state value: #{e.message}")
-          raise ADK::Error, "Failed to serialize scoped state value."
+          raise ADK::Error, 'Failed to serialize scoped state value.'
         rescue ::Redis::BaseError => e
           ADK.logger.error("Redis error saving scoped state: #{e.class} - #{e.message}")
-          raise ADK::Error, "Redis error saving scoped state."
+          raise ADK::Error, 'Redis error saving scoped state.'
         end
       end
 

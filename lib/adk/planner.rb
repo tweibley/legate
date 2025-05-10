@@ -19,7 +19,7 @@ module ADK
       @configured_model_name = model_name && !model_name.empty? ? model_name : ADK::Agent::DEFAULT_MODEL
 
       if @api_key.nil? || @api_key.empty?
-        @logger.error("GOOGLE_API_KEY not found. GeminiPlanner requires an API key.")
+        @logger.error('GOOGLE_API_KEY not found. GeminiPlanner requires an API key.')
       else
         begin
           @client = Gemini.new(
@@ -47,8 +47,8 @@ module ADK
     # @return [Array] The plan (array of step hashes) or a fallback plan on error
     def plan(task)
       unless @client
-        logger.error("Gemini client not initialized. Falling back to default plan.")
-        return fallback_plan(task, "Gemini client not available.")
+        logger.error('Gemini client not initialized. Falling back to default plan.')
+        return fallback_plan(task, 'Gemini client not available.')
       end
 
       # Get available tools metadata from the agent's registry
@@ -84,7 +84,7 @@ module ADK
         unless raw_response_text
           logger.warn("Gemini response was empty or couldn't find text.")
           logger.debug("Raw Gemini Response Object: #{response.inspect}")
-          return fallback_plan(task, "Gemini response was empty or unparseable.")
+          return fallback_plan(task, 'Gemini response was empty or unparseable.')
         end
 
         # logger.debug("Gemini Raw Response Text:\n#{raw_response_text}")
@@ -93,7 +93,7 @@ module ADK
         validated_plan = validate_and_format_multi_step_plan(parsed_plan) # New validation method
 
         if validated_plan.empty?
-          logger.warn("Failed to get a valid multi-step plan from Gemini response. Falling back.")
+          logger.warn('Failed to get a valid multi-step plan from Gemini response. Falling back.')
           # logger.debug("Parsed plan before validation: #{parsed_plan.inspect}") # Debugging line
           return fallback_plan(task, "Could not parse or validate Gemini's multi-step plan.")
         else
@@ -103,7 +103,7 @@ module ADK
       rescue JSON::ParserError => e
         logger.error("Failed to parse Gemini response as JSON: #{e.message}")
         logger.error("Raw response text was: #{raw_response_text}")
-        return fallback_plan(task, "Invalid JSON response from Gemini.")
+        return fallback_plan(task, 'Invalid JSON response from Gemini.')
       rescue StandardError => e
         logger.error("Error during planning with gemini-ai: #{e.class}: #{e.message}")
         logger.error(e.backtrace.join("\n"))
@@ -117,7 +117,7 @@ module ADK
     # Fetches metadata from the agent instance directly.
     def format_tools_for_prompt
       tools_metadata = agent.available_tools_metadata # Fetch metadata here
-      return "No tools available." if tools_metadata.empty?
+      return 'No tools available.' if tools_metadata.empty?
 
       tools_metadata.map do |metadata|
         # Use metadata hash directly
@@ -126,7 +126,7 @@ module ADK
         parameters = metadata[:parameters] || {}
 
         params_desc = parameters.map do |name, info|
-          req = info[:required] ? "required" : "optional"
+          req = info[:required] ? 'required' : 'optional'
           # Ensure type is displayed, default to 'any' if missing
           type = info[:type] || 'any'
           "- #{name} (#{type}, #{req}): #{info[:description]}"
@@ -143,7 +143,7 @@ module ADK
     # --- NEW: Build the multi-step prompt ---
     def build_multi_step_gemini_prompt(task, tools_description)
       instruction = @agent.instruction
-      instruction_block = ""
+      instruction_block = ''
       if instruction && !instruction.strip.empty?
         instruction_block = <<~INSTRUCTION
           AGENT_INSTRUCTION: #{instruction.strip}
@@ -220,7 +220,7 @@ module ADK
 
         # Otherwise, it's likely invalid format
         logger.error("Gemini response does not appear to be a JSON array: #{clean_text}")
-        raise JSON::ParserError, "Response is not a JSON array."
+        raise JSON::ParserError, 'Response is not a JSON array.'
       end
 
       JSON.parse(clean_text)
@@ -295,7 +295,7 @@ module ADK
           }
         ]
       else
-        logger.error("Fallback failed: Echo tool not available to the agent.")
+        logger.error('Fallback failed: Echo tool not available to the agent.')
         [] # Return empty plan if echo isn't available
       end
     end

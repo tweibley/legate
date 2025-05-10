@@ -30,13 +30,13 @@ module ADK
 
         say "Found #{sessions.length} session(s):", :bold
         sessions.each do |session|
-          created_at = Time.parse(session.created_at).strftime("%Y-%m-%d %H:%M:%S")
+          created_at = Time.parse(session.created_at).strftime('%Y-%m-%d %H:%M:%S')
           say "  ID: #{session.id}", :cyan
           say "    App: #{session.app_name}"
           say "    User: #{session.user_id}"
           say "    Created: #{created_at}"
           say "    Events: #{session.events.length}"
-          say ""
+          say ''
         end
       end
 
@@ -50,8 +50,8 @@ module ADK
           return
         end
 
-        created_at = Time.parse(session.created_at).strftime("%Y-%m-%d %H:%M:%S")
-        say "Session Details:", :bold
+        created_at = Time.parse(session.created_at).strftime('%Y-%m-%d %H:%M:%S')
+        say 'Session Details:', :bold
         say "  ID: #{session.id}", :cyan
         say "  App: #{session.app_name}"
         say "  User: #{session.user_id}"
@@ -88,7 +88,7 @@ module ADK
             say "Failed to delete session '#{session_id}'.", :red
           end
         else
-          say "Deletion cancelled.", :yellow
+          say 'Deletion cancelled.', :yellow
         end
       end
 

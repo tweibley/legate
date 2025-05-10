@@ -161,11 +161,11 @@ mcp_server.register_tools(
 )
 
 # Start the server using STDIO transport
-STDERR.puts "--- Starting ADK Master Agent MCP Server (STDIO) ---"
+STDERR.puts '--- Starting ADK Master Agent MCP Server (STDIO) ---'
 STDERR.puts "Resources: #{[RandomNumberResource.uri, CatFactResource.uri].join(', ')}"
 STDERR.puts "Tools Available: #{[AdaptedMasterAgentTool.tool_name, GetNewRandomNumberTool.tool_name,
                                  GetNewCatFactTool.tool_name].join(', ')}"
-STDERR.puts "Waiting for MCP client requests on STDIN..."
+STDERR.puts 'Waiting for MCP client requests on STDIN...'
 begin
   mcp_server.start
 rescue Interrupt

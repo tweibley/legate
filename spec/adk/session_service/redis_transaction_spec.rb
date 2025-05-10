@@ -4,7 +4,7 @@ require 'spec_helper'
 require 'redis'
 require_relative '../../../lib/adk/session_service/redis'
 
-RSpec.describe ADK::SessionService::Redis, "Transaction Tests" do
+RSpec.describe ADK::SessionService::Redis, 'Transaction Tests' do
   # Mock Redis client
   let(:mock_redis) { instance_double(Redis) }
   let(:session_ttl) { 3600 } # 1 hour for testing
@@ -17,7 +17,7 @@ RSpec.describe ADK::SessionService::Redis, "Transaction Tests" do
   let(:initial_state_json) { JSON.generate(initial_state) }
   let(:state_delta) { { delta_key: 'delta_value' } }
   let(:event_with_delta) { ADK::Event.new(role: :agent, content: 'response', state_delta: state_delta) }
-  let(:now) { Time.parse("2024-01-01T10:00:00Z") }
+  let(:now) { Time.parse('2024-01-01T10:00:00Z') }
 
   # Redis keys
   let(:session_key) { service.send(:redis_session_key, session_id) }
@@ -153,7 +153,7 @@ RSpec.describe ADK::SessionService::Redis, "Transaction Tests" do
       it 'handles errors parsing current state' do
         allow(mock_redis).to receive(:hget).with(session_key, 'state').and_return('invalid json')
         allow(JSON).to receive(:parse).with('invalid json',
-                                            symbolize_names: true).and_raise(JSON::ParserError.new("Invalid JSON"))
+                                            symbolize_names: true).and_raise(JSON::ParserError.new('Invalid JSON'))
         allow(ADK.logger).to receive(:error)
 
         expect(ADK.logger).to receive(:error).with(/Failed to parse current state JSON/)
@@ -165,7 +165,7 @@ RSpec.describe ADK::SessionService::Redis, "Transaction Tests" do
   describe 'transaction error handling' do
     context 'with Redis errors' do
       it 'handles Redis::BaseError during transaction' do
-        allow(mock_redis).to receive(:multi).and_raise(Redis::ConnectionError.new("Connection lost"))
+        allow(mock_redis).to receive(:multi).and_raise(Redis::ConnectionError.new('Connection lost'))
         allow(ADK.logger).to receive(:error)
         allow(mock_redis).to receive(:unwatch)
 
@@ -176,7 +176,7 @@ RSpec.describe ADK::SessionService::Redis, "Transaction Tests" do
       end
 
       it 'handles errors during WATCH' do
-        allow(mock_redis).to receive(:watch).and_raise(Redis::CommandError.new("ERR WATCH inside MULTI"))
+        allow(mock_redis).to receive(:watch).and_raise(Redis::CommandError.new('ERR WATCH inside MULTI'))
         allow(ADK.logger).to receive(:error)
 
         expect(ADK.logger).to receive(:error).with(/Redis error appending event/)
@@ -244,7 +244,7 @@ RSpec.describe ADK::SessionService::Redis, "Transaction Tests" do
 
       expect {
         service.create_session(app_name: app_name, user_id: user_id, initial_state: initial_state)
-      }.to raise_error(ADK::Error, "Failed to create session in Redis.")
+      }.to raise_error(ADK::Error, 'Failed to create session in Redis.')
     end
   end
 
@@ -276,7 +276,7 @@ RSpec.describe ADK::SessionService::Redis, "Transaction Tests" do
     end
 
     it 'handles Redis errors during deletion' do
-      allow(mock_redis).to receive(:multi).and_raise(Redis::ConnectionError.new("Connection lost"))
+      allow(mock_redis).to receive(:multi).and_raise(Redis::ConnectionError.new('Connection lost'))
       allow(ADK.logger).to receive(:error)
 
       expect(ADK.logger).to receive(:error).with(/Redis error deleting session/)

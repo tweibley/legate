@@ -50,7 +50,7 @@ mcp_server_config = {
 ADK.logger.info("Using MCP Server Config: #{mcp_server_config}")
 
 # --- 2. Initialize ADK::Agent with MCP Config ---
-ADK.logger.info("Initializing agent...")
+ADK.logger.info('Initializing agent...')
 agent = ADK::Agent.new(
   name: 'mcp_client_example_agent',
   description: 'This agent connects to an external MCP server.',
@@ -60,9 +60,9 @@ agent = ADK::Agent.new(
 
 # --- 3. Start Agent Runtime (Connects to MCP) ---
 begin
-  ADK.logger.info("Starting agent runtime...")
+  ADK.logger.info('Starting agent runtime...')
   agent.start # This connects to the MCP server and registers tools
-  ADK.logger.info("Agent started.")
+  ADK.logger.info('Agent started.')
 
   # Log available tools (should include those from the MCP server)
   available_tools = agent.available_tools_metadata.map { |t| t[:name].to_s }.sort
@@ -97,12 +97,12 @@ rescue StandardError => e
   finally
   # --- 5. Stop Agent Runtime (Disconnects MCP) ---
   if agent&.running?
-    ADK.logger.info("Stopping agent runtime...")
+    ADK.logger.info('Stopping agent runtime...')
     agent.stop
-    ADK.logger.info("Agent stopped.")
+    ADK.logger.info('Agent stopped.')
   else
-    ADK.logger.info("Agent runtime was not running or failed to start.")
+    ADK.logger.info('Agent runtime was not running or failed to start.')
   end
 end
 
-puts "MCP Client Agent Example Finished."
+puts 'MCP Client Agent Example Finished.'

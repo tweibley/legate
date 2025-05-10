@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 # File: lib/adk.rb
 require 'dotenv/load' if File.exist?('.env') # Load early for ENV vars
 
@@ -184,7 +185,7 @@ module ADK
   module SessionService; end
 end
 
-ADK.logger.info "Explicitly registering built-in ADK tools..."
+ADK.logger.info 'Explicitly registering built-in ADK tools...'
 [
   ADK::Tools::Echo,
   ADK::Tools::Calculator,

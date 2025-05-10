@@ -34,7 +34,7 @@ module ADK
               ADK.logger.error "Error initializing WebhookListener: #{e.message}. Listener will not be mounted."
             end
           else
-            ADK.logger.debug "Webhook listener is disabled."
+            ADK.logger.debug 'Webhook listener is disabled.'
           end
 
           # Mount the main ADK Web App at the root

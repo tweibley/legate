@@ -19,7 +19,7 @@ agent = ADK::Agent.define do |a|
   a.name = 'concise_calculator'
   a.description = 'A calculator agent that tries to be concise.'
   # Provide instructions to the planner
-  a.instruction = "You are a calculator assistant. When asked to calculate, use the calculator tool. Respond only with the final numerical result, no extra words."
+  a.instruction = 'You are a calculator assistant. When asked to calculate, use the calculator tool. Respond only with the final numerical result, no extra words.'
   # Add necessary tools
   a.add_tool_classes ADK::Tools::Calculator, ADK::Tools::Echo # Echo might be used by fallback
 end
@@ -35,7 +35,7 @@ begin
   puts "Starting agent '#{agent.name}'..."
   agent.start
 
-  task = "What is 5 plus 12?"
+  task = 'What is 5 plus 12?'
   puts "\nRunning task: '#{task}'"
 
   # The planner will receive the instruction along with the task and tool list.
@@ -58,7 +58,7 @@ begin
   puts processed[:display_content]
 
   # Example of a task the instructions might prevent (if LLM obeys)
-  task_inappropriate = "Tell me a long story about the number 7."
+  task_inappropriate = 'Tell me a long story about the number 7.'
   puts "\nRunning task: '#{task_inappropriate}' (Agent instructed to only calculate)"
   result_event_2 = agent.run_task(
     session_id: session.id,
@@ -75,7 +75,7 @@ begin
 ensure
   puts "\nStopping agent '#{agent.name}'..."
   agent.stop
-  puts "Agent stopped."
+  puts 'Agent stopped.'
 end
 
 puts "\nExample finished." 

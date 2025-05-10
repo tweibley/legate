@@ -185,12 +185,12 @@ RSpec.describe ADK::Mcp::Util::SchemaConverter do
         schema = build_schema_from_proc(schema_proc)
 
         # Test coercion from string
-        result_coerced = schema.call({ num_val: "123.45" })
+        result_coerced = schema.call({ num_val: '123.45' })
         expect(result_coerced).to be_success
         expect(result_coerced.to_h[:num_val]).to eq(123.45)
 
         # Test failure for non-numeric string
-        result_fail = schema.call({ num_val: "abc" })
+        result_fail = schema.call({ num_val: 'abc' })
         expect(result_fail).to be_failure
         expect(result_fail.errors[:num_val]).to include('must be a float') # Dry::Types specific message
       end

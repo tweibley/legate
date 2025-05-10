@@ -25,7 +25,7 @@ class GtmMockToolWithError < ADK::Tool
   self.explicit_tool_name = :gtm_error_tool
   tool_description 'Errors on init'
   def initialize
-    raise StandardError, "Initialization Error"
+    raise StandardError, 'Initialization Error'
   end
 
   def perform_execution(params, context); { status: :success, result: 'Should not reach' }; end

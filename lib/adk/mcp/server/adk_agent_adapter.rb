@@ -30,7 +30,7 @@ module ADK
           def agent_redis_key(name)
             # Constants need to be defined or accessed carefully
             # Assuming default prefix for now
-            redis_prefix = ENV.fetch('ADK_REDIS_AGENT_PREFIX', "adk:agent:")
+            redis_prefix = ENV.fetch('ADK_REDIS_AGENT_PREFIX', 'adk:agent:')
             "#{redis_prefix}#{name}"
           end
 
@@ -60,10 +60,10 @@ module ADK
         # @return [Class<AdkAgentAdapter>] A new anonymous class inheriting from AdkAgentAdapter.
         def self.wrap(agent_definition_name, session_service_instance)
           unless agent_definition_name.is_a?(String) && !agent_definition_name.empty?
-            raise ArgumentError, "Agent definition name must be a non-empty String."
+            raise ArgumentError, 'Agent definition name must be a non-empty String.'
           end
           unless session_service_instance.is_a?(ADK::SessionService::Base)
-            raise ArgumentError, "Session service instance must inherit from ADK::SessionService::Base."
+            raise ArgumentError, 'Session service instance must inherit from ADK::SessionService::Base.'
           end
 
           # Create the anonymous adapter class
@@ -99,7 +99,7 @@ module ADK
           agent_name = self.class.agent_definition_name
           session_service = self.class.session_service
           raise NotImplementedError,
-                "AdkAgentAdapter must be configured using .wrap first." unless agent_name && session_service
+                'AdkAgentAdapter must be configured using .wrap first.' unless agent_name && session_service
 
           Mcp.logger.info("Executing ADK Agent '#{agent_name}' via MCP adapter with prompt: '#{prompt}'")
 
@@ -122,7 +122,7 @@ module ADK
             Mcp.logger.debug("Agent definition loaded: Model=#{model_name}")
 
             # 2. Create Temporary Session
-            Mcp.logger.debug("Creating temporary session...")
+            Mcp.logger.debug('Creating temporary session...')
             temp_session = session_service.create_session(app_name: agent_name,
                                                           user_id: "mcp_temp_#{SecureRandom.hex(4)}")
             Mcp.logger.debug("Temporary session created: #{temp_session.id}")
@@ -147,7 +147,7 @@ module ADK
             )
 
             # 4. Start Agent & Run Task
-            Mcp.logger.debug("Starting ephemeral agent runtime...")
+            Mcp.logger.debug('Starting ephemeral agent runtime...')
             agent.start
             Mcp.logger.debug("Running task in temp session #{temp_session.id}...")
             final_event = agent.run_task(
@@ -168,12 +168,12 @@ module ADK
             when :success
               return result_content[:result] # Return result payload
             when :error
-              err_msg = result_content[:error_message] || "Agent execution failed."
+              err_msg = result_content[:error_message] || 'Agent execution failed.'
               Mcp.logger.error("Agent '#{agent_name}' execution failed: #{err_msg}")
               raise StandardError, "Agent Error: #{err_msg}"
             when :pending
               job_id = result_content[:job_id] # Assuming key is :job_id
-              msg = result_content[:message] || "Agent task resulted in a pending job."
+              msg = result_content[:message] || 'Agent task resulted in a pending job.'
               Mcp.logger.warn("Agent '#{agent_name}' execution ended with pending status (Job: #{job_id}). Returning as structured data.")
               # Return pending structure similar to AdkToolAdapter for consistency
               return { status: 'pending', job_id: job_id, message: msg }
@@ -190,7 +190,7 @@ module ADK
             # 6. Cleanup: Stop Agent & Delete Session
             if agent&.running?
               begin
-                Mcp.logger.debug("Stopping ephemeral agent runtime...")
+                Mcp.logger.debug('Stopping ephemeral agent runtime...')
                 agent.stop
               rescue StandardError => stop_e
                 Mcp.logger.error("Error stopping agent runtime during cleanup: #{stop_e.message}")

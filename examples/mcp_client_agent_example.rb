@@ -70,14 +70,14 @@ mcp_server_config = {
 }
 # Check if args include a placeholder path and warn if so
 if mcp_server_config[:args].any? { |arg| arg.include?('path/to/') || arg.include?('tmp/mcp_fs_test_dir') }
-  ADK.logger.warn("MCP server config in example still uses a placeholder directory.")
-  ADK.logger.warn("Please edit examples/mcp_client_agent_example.rb and set a real directory path in `mcp_server_config[:args]`.")
+  ADK.logger.warn('MCP server config in example still uses a placeholder directory.')
+  ADK.logger.warn('Please edit examples/mcp_client_agent_example.rb and set a real directory path in `mcp_server_config[:args]`.')
   # Optionally exit if you want to enforce configuration
   # exit(1)
 end
 
 # --- 3. Initialize the ADK Agent ---
-ADK.logger.info("Initializing agent...")
+ADK.logger.info('Initializing agent...')
 my_agent = ADK::Agent.new(
   name: 'mcp_client_agent',
   description: 'An agent using native and external MCP tools.',
@@ -89,7 +89,7 @@ my_agent = ADK::Agent.new(
 
 # --- 4. Start the Agent Runtime ---
 # This connects to the MCP server and registers its tools.
-ADK.logger.info("Starting agent runtime...")
+ADK.logger.info('Starting agent runtime...')
 my_agent.start
 ADK.logger.info("Agent started. Available tool names: #{my_agent.tool_registry.tools.keys}")
 ADK.logger.info("Full metadata: #{my_agent.available_tools_metadata.inspect}")
@@ -109,11 +109,11 @@ begin
   # Ensure the directory matches the one in mcp_server_config[:args]
   dummy_file_path = "#{dirname}/hello.txt"
   begin
-    File.write(dummy_file_path, "Hello from ADK client example!")
+    File.write(dummy_file_path, 'Hello from ADK client example!')
     puts "Created dummy file: #{dummy_file_path}"
   rescue => e
     puts "Warning: Could not create dummy file '#{dummy_file_path}': #{e.message}"
-    puts "Filesystem tool example might fail."
+    puts 'Filesystem tool example might fail.'
   end
 
   # Input asking to use a tool likely provided by the filesystem server
@@ -127,7 +127,7 @@ begin
     session_service: session_service
   )
 
-  puts "Final Agent Event:"
+  puts 'Final Agent Event:'
   require 'pp' # Pretty print
   pp final_event
 rescue => e
@@ -141,6 +141,6 @@ File.delete(dummy_file_path) if File.exist?(dummy_file_path)
 
 #--- 6. Stop the Agent Runtime ---
 # This disconnects from the MCP server.
-ADK.logger.info("Stopping agent runtime...")
+ADK.logger.info('Stopping agent runtime...')
 my_agent.stop
-ADK.logger.info("Agent stopped.")
+ADK.logger.info('Agent stopped.')

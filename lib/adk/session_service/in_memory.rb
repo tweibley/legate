@@ -16,7 +16,7 @@ module ADK
       def initialize
         @sessions = Concurrent::Map.new
         @scoped_states = Concurrent::Map.new
-        ADK.logger.info("InMemorySessionService initialized.")
+        ADK.logger.info('InMemorySessionService initialized.')
       end
 
       def persistent?
@@ -65,7 +65,7 @@ module ADK
       def save_session(session:)
         if @sessions.key?(session.id)
           session.updated_at = Time.now.utc # Ensure timestamp reflects save attempt
-          ADK.logger.warn("InMemorySessionService#save_session called (likely unnecessary). Use append_event.")
+          ADK.logger.warn('InMemorySessionService#save_session called (likely unnecessary). Use append_event.')
           true
         else
           ADK.logger.error("Attempted to save non-existent session: #{session.id}")

@@ -74,7 +74,7 @@ mcp_middleware = FastMcp.rack_middleware(
 ) do |server|
   # Register the wrapped tool with the server instance managed by the middleware
   server.register_tool(AdaptedCalculator)
-  ADK.logger.info("Registered adapted tools with fast-mcp middleware server.")
+  ADK.logger.info('Registered adapted tools with fast-mcp middleware server.')
 end
 
 # --- Run the Rack Application with Puma ---
@@ -86,4 +86,4 @@ puts 'Press Ctrl+C to stop'
 
 Rack::Handler::Puma.run mcp_middleware, Port: 9292
 
-ADK.logger.info("Server finished.")
+ADK.logger.info('Server finished.')

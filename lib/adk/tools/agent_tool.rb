@@ -33,10 +33,10 @@ module ADK
 
       def perform_execution(params, context) # context is the ToolContext of the calling agent
         target_agent_name_str = params.fetch(:target_agent_name) do
-          raise ADK::ToolArgumentError, "Missing required parameter: target_agent_name"
+          raise ADK::ToolArgumentError, 'Missing required parameter: target_agent_name'
         end.to_s # Ensure it's a string for store lookup
 
-        task_to_delegate = params.fetch(:task) { raise ADK::ToolArgumentError, "Missing required parameter: task" }
+        task_to_delegate = params.fetch(:task) { raise ADK::ToolArgumentError, 'Missing required parameter: task' }
 
         ADK.logger.info("AgentTool: Attempting to delegate task '#{task_to_delegate}' to agent '#{target_agent_name_str}'")
 

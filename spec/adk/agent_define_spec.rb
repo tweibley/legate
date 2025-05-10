@@ -19,11 +19,11 @@ end
 
 # Second mock tool for multi-class test
 class AnotherMockTool < ADK::Tool
-  tool_description "Another mock tool."
+  tool_description 'Another mock tool.'
   self.explicit_tool_name = :another_mock_tool
 end
 
-RSpec.describe ADK::Agent, ".define" do
+RSpec.describe ADK::Agent, '.define' do
   let(:agent_name) { :test_definer_agent }
   let(:agent_description) { 'An agent created via the define DSL' }
   let(:agent_instruction) { 'Follow the DSL instructions.' }
@@ -56,7 +56,7 @@ RSpec.describe ADK::Agent, ".define" do
     allow(ADK::GlobalToolManager).to receive(:find_class).with(:mock_define_tool).and_return(MockDefineTool)
   end
 
-  it "creates an agent instance with the configured attributes" do
+  it 'creates an agent instance with the configured attributes' do
     # Capture let variables
     local_agent_name = agent_name
     local_agent_description = agent_description
@@ -83,7 +83,7 @@ RSpec.describe ADK::Agent, ".define" do
     expect(agent.tool_names).to contain_exactly(:mock_define_tool)
   end
 
-  it "uses defaults if optional attributes are not set" do
+  it 'uses defaults if optional attributes are not set' do
     # Capture let variables
     local_agent_name = agent_name
     local_agent_description = agent_description
@@ -105,11 +105,11 @@ RSpec.describe ADK::Agent, ".define" do
     expect(agent.tool_names).to be_empty
   end
 
-  it "raises ArgumentError if block is not provided" do
+  it 'raises ArgumentError if block is not provided' do
     expect { ADK::Agent.define }.to raise_error(ArgumentError, /requires a block/)
   end
 
-  it "raises ArgumentError if name is not set in the block" do
+  it 'raises ArgumentError if name is not set in the block' do
     # Capture let variables
     local_agent_description = agent_description
     local_agent_instruction = agent_instruction
@@ -122,7 +122,7 @@ RSpec.describe ADK::Agent, ".define" do
     end.to raise_error(ArgumentError, /Agent definition must have a name/)
   end
 
-  it "raises ArgumentError if description is not set in the block" do
+  it 'raises ArgumentError if description is not set in the block' do
     # Capture let variables
     local_agent_name = agent_name
     local_agent_instruction = agent_instruction
@@ -141,7 +141,7 @@ RSpec.describe ADK::Agent, ".define" do
     expect(mock_registry).to have_received(:register)
   end
 
-  it "handles multiple calls to add_tool_classes" do
+  it 'handles multiple calls to add_tool_classes' do
     # Define a local class for this test scope
     class AnotherMockToolForTest < ADK::Tool
       tool_description 'Local mock tool'
@@ -386,11 +386,11 @@ RSpec.describe ADK::Agent, ".define" do
 
       expect do
         ADK::Agent.define do |a|
-          a.name "string_name"
+          a.name 'string_name'
           a.description local_agent_description
           a.instruction local_agent_instruction
         end
-      end.to raise_error(ArgumentError, "Agent name must be a Symbol.")
+      end.to raise_error(ArgumentError, 'Agent name must be a Symbol.')
     end
   end
 
@@ -402,7 +402,7 @@ RSpec.describe ADK::Agent, ".define" do
       local_failing_inst = 'Save instruction'
 
       # Simulate store failure
-      allow(mock_store).to receive(:save_definition).and_raise(ADK::StoreError, "Redis connection failed")
+      allow(mock_store).to receive(:save_definition).and_raise(ADK::StoreError, 'Redis connection failed')
 
       expect do
         ADK::Agent.define do |a|
@@ -410,7 +410,7 @@ RSpec.describe ADK::Agent, ".define" do
           a.description local_failing_desc
           a.instruction local_failing_inst
         end
-      end.to raise_error(ADK::StoreError, "Redis connection failed")
+      end.to raise_error(ADK::StoreError, 'Redis connection failed')
 
       # Registry should not be called if saving fails
       expect(mock_registry).not_to have_received(:register)

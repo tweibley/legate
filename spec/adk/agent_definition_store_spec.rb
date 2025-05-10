@@ -33,7 +33,7 @@ RSpec.describe ADK::AgentDefinitionStore do
     # Mock Redis commands used by the store
     allow(mock_redis).to receive(:multi).and_yield(mock_redis) # Simulate multi block
     allow(mock_redis).to receive(:pipelined).and_yield(mock_redis)
-    allow(mock_redis).to receive(:hmset).and_return("OK")
+    allow(mock_redis).to receive(:hmset).and_return('OK')
     allow(mock_redis).to receive(:sadd).and_return(1)
     allow(mock_redis).to receive(:hmget).and_return([])
     allow(mock_redis).to receive(:smembers).and_return([])
@@ -128,13 +128,13 @@ RSpec.describe ADK::AgentDefinitionStore do
     end
 
     it 'saves the definition hash and agent name to Redis' do
-      expect(mock_redis).to receive(:hmset).with(redis_key, expected_redis_data).and_return("OK")
+      expect(mock_redis).to receive(:hmset).with(redis_key, expected_redis_data).and_return('OK')
       expect(mock_redis).to receive(:sadd).with(redis_set_key, test_agent_name_str).and_return(1)
       expect(described_class.save_to_redis(test_agent_name, test_agent_def)).to be true
     end
 
     it 'returns false and logs error on Redis failure' do
-      expect(mock_redis).to receive(:hmset).and_raise(Redis::BaseError, "Connection failed")
+      expect(mock_redis).to receive(:hmset).and_raise(Redis::BaseError, 'Connection failed')
       expect(ADK.logger).to receive(:error).with(/Failed to save .* to Redis: Connection failed/)
       expect(described_class.save_to_redis(test_agent_name, test_agent_def)).to be false
     end
@@ -170,7 +170,7 @@ RSpec.describe ADK::AgentDefinitionStore do
     end
 
     it 'returns nil and logs error on Redis connection failure' do
-      expect(mock_redis).to receive(:hmget).and_raise(Redis::BaseError, "Connection refused")
+      expect(mock_redis).to receive(:hmget).and_raise(Redis::BaseError, 'Connection refused')
       expect(ADK.logger).to receive(:error).with(/Failed to load .* from Redis: Connection refused/)
       expect(described_class.load_from_redis(test_agent_name)).to be_nil
     end
@@ -206,7 +206,7 @@ RSpec.describe ADK::AgentDefinitionStore do
     end
 
     it 'handles errors during loading gracefully' do
-      allow(mock_redis).to receive(:smembers).and_raise(Redis::BaseError, "SMEMBERS failed")
+      allow(mock_redis).to receive(:smembers).and_raise(Redis::BaseError, 'SMEMBERS failed')
       expect(ADK.logger).to receive(:error).with(/Failed to load all definitions from Redis: SMEMBERS failed/)
       expect(described_class.load_all_from_redis).to eq(0)
       expect(described_class.all).to be_empty
@@ -221,7 +221,7 @@ RSpec.describe ADK::AgentDefinitionStore do
     end
 
     it 'returns false and logs error on Redis failure' do
-      expect(mock_redis).to receive(:del).and_raise(Redis::BaseError, "Connection failed")
+      expect(mock_redis).to receive(:del).and_raise(Redis::BaseError, 'Connection failed')
       expect(ADK.logger).to receive(:error).with(/Failed to delete .* from Redis: Connection failed/)
       expect(described_class.delete_from_redis(test_agent_name)).to be false
     end

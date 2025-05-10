@@ -76,7 +76,7 @@ RSpec.describe ADK::Tools::SleepyTool do
         expect(ADK::Tools::BaseAsyncJobTool).to have_received(:store_job_pending).with(anything) # JID is generated
         # Cannot easily test sleep was "called" with allow(...).to receive(:sleep)
         expect(ADK::Tools::BaseAsyncJobTool).to have_received(:store_job_result).with(anything,
-                                                                                      "Slept for 5 seconds. Your message: Hello Sleepy")
+                                                                                      'Slept for 5 seconds. Your message: Hello Sleepy')
       end
     end
 

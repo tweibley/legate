@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 # File: spec/adk/tools/echo_spec.rb
 require 'spec_helper' # Loads 'adk'
 
@@ -89,7 +90,7 @@ RSpec.describe ADK::Tools::Echo do
         expect { tool.execute(params) }
           .to raise_error(ADK::ToolError, /Unexpected error in Echo tool: Something broke!/)
 
-        expect(ADK.logger).to have_received(:error).with("Echo Tool: Unexpected error: StandardError - Something broke!")
+        expect(ADK.logger).to have_received(:error).with('Echo Tool: Unexpected error: StandardError - Something broke!')
       end
     end
     # --- End perform_execution specific error handling ---

@@ -18,7 +18,7 @@ require 'json'
 # export WEBHOOK_RECEIVER_SECRET='a-very-secret-key'
 webhook_secret = ENV['WEBHOOK_RECEIVER_SECRET']
 unless webhook_secret
-  puts "Error: WEBHOOK_RECEIVER_SECRET environment variable must be set."
+  puts 'Error: WEBHOOK_RECEIVER_SECRET environment variable must be set.'
   exit(1)
 end
 
@@ -50,9 +50,9 @@ end
 begin 
   retrieved_def = ADK.config.definition_store.get_definition(:webhook_receiver)
   unless retrieved_def && retrieved_def[:name] == :webhook_receiver
-    raise "Failed to retrieve :webhook_receiver definition from the Redis store after loading."
+    raise 'Failed to retrieve :webhook_receiver definition from the Redis store after loading.'
   end
-  puts "Verified :webhook_receiver definition exists in Redis store."
+  puts 'Verified :webhook_receiver definition exists in Redis store.'
 rescue => e
   puts "Error verifying agent definition in Redis: #{e.message}"
   exit(1)
@@ -64,7 +64,7 @@ sidekiq_pid = nil
 
 begin
   puts "Starting ADK Web Server (with Webhook Listener) on port #{ADK.config.webhooks.listen_port}..."
-  puts "--- ADK Web Server Output START ---"
+  puts '--- ADK Web Server Output START ---'
   # Use rackup with the new config.ru
   port = ADK.config.webhooks.listen_port
   web_server_pid = Process.spawn("bundle exec rackup config.ru -p #{port}") 
@@ -74,7 +74,7 @@ begin
   puts "Starting Sidekiq worker for 'adk_webhooks' queue..."
   # Run in background, redirect output
   # Ensure the worker can load the ADK environment (hence bundle exec)
-  sidekiq_pid = Process.spawn("bundle exec sidekiq -q adk_webhooks -r ./lib/adk.rb") 
+  sidekiq_pid = Process.spawn('bundle exec sidekiq -q adk_webhooks -r ./lib/adk.rb') 
   # Wait briefly for worker to start
   sleep 2
 
@@ -88,8 +88,8 @@ begin
     'ADK_WEBHOOK_BASE_PATH' => ADK.config.webhooks.base_path,
     'WEBHOOK_RECEIVER_SECRET' => webhook_secret # Ensure sender uses the same secret
   }
-  sender_success = system(sender_env, "bundle exec ruby examples/webhook-example.rb")
-  puts "---"
+  sender_success = system(sender_env, 'bundle exec ruby examples/webhook-example.rb')
+  puts '---'
   
   unless sender_success
     puts "\nWebhook sender script failed! Check output above."
@@ -104,8 +104,8 @@ begin
   # or checking specific output files/databases.
   # For this example, we just inform the user to check the Sidekiq logs.
   puts "\nVerification:" 
-  puts "Please check the console output where Sidekiq is running (or its log file)."
-  puts "You should see log messages from WebhookJobWorker indicating the job started"
+  puts 'Please check the console output where Sidekiq is running (or its log file).'
+  puts 'You should see log messages from WebhookJobWorker indicating the job started'
   puts "and finished, potentially including a log from the agent's run_task method"
   puts "(though the example receiver agent doesn't log explicitly from run_task)."
   puts "Look for logs like: 'WebhookJobWorker starting job:' and 'Agent task finished successfully'"
@@ -120,13 +120,13 @@ ensure
   puts "\nCleaning up background processes..."
   if sidekiq_pid
     puts "Stopping Sidekiq worker (PID: #{sidekiq_pid})..."
-    Process.kill("TERM", sidekiq_pid) rescue nil
+    Process.kill('TERM', sidekiq_pid) rescue nil
     Process.wait(sidekiq_pid) rescue nil # Wait briefly
   end
   if web_server_pid
     puts "Stopping Web server (PID: #{web_server_pid})..."
-    Process.kill("TERM", web_server_pid) rescue nil
+    Process.kill('TERM', web_server_pid) rescue nil
     Process.wait(web_server_pid) rescue nil # Wait briefly
   end
-  puts "Cleanup complete."
+  puts 'Cleanup complete.'
 end 

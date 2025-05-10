@@ -112,7 +112,7 @@ module ADK
         redis = Redis.new(redis_options || ADK.redis_options)
         key = "#{JOB_RESULT_REDIS_PREFIX}#{jid}"
         # Store pending status hash. Use the same TTL as results.
-        result_data = { status: :pending, message: "Job processing started." }
+        result_data = { status: :pending, message: 'Job processing started.' }
         redis.setex(key, JOB_RESULT_TTL, result_data.to_json)
         ADK.logger.debug("Stored pending status for job #{jid} at key #{key}")
       rescue StandardError => e

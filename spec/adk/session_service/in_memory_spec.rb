@@ -32,7 +32,7 @@ RSpec.describe ADK::SessionService::InMemory do
     end
 
     it 'logs initialization' do
-      expect(ADK.logger).to have_received(:info).with("InMemorySessionService initialized.")
+      expect(ADK.logger).to have_received(:info).with('InMemorySessionService initialized.')
     end
   end
 
@@ -84,7 +84,7 @@ RSpec.describe ADK::SessionService::InMemory do
     end
 
     it 'logs session not found' do
-      expect(ADK.logger).to receive(:warn).with("Session not found: nonexistent_id")
+      expect(ADK.logger).to receive(:warn).with('Session not found: nonexistent_id')
       service.get_session(session_id: 'nonexistent_id')
     end
   end
@@ -99,7 +99,7 @@ RSpec.describe ADK::SessionService::InMemory do
     it 'returns true for an existing session and updates timestamp' do
       original_updated_at = session.updated_at
       sleep(0.01) # Ensure time progresses
-      expect(ADK.logger).to receive(:warn).with("InMemorySessionService#save_session called (likely unnecessary). Use append_event.")
+      expect(ADK.logger).to receive(:warn).with('InMemorySessionService#save_session called (likely unnecessary). Use append_event.')
       expect(service.save_session(session: session)).to be true
       expect(session.updated_at).to be > original_updated_at
     end
@@ -139,7 +139,7 @@ RSpec.describe ADK::SessionService::InMemory do
     end
 
     it 'returns false if the session ID does not exist' do
-      expect(ADK.logger).to receive(:warn).with("Attempted to delete non-existent session: nonexistent_id")
+      expect(ADK.logger).to receive(:warn).with('Attempted to delete non-existent session: nonexistent_id')
       expect(service.delete_session(session_id: 'nonexistent_id')).to be false
     end
   end
@@ -173,9 +173,9 @@ RSpec.describe ADK::SessionService::InMemory do
     end
 
     it 'logs the count of listed sessions' do
-      expect(ADK.logger).to receive(:debug).with("Listing 3 sessions.")
+      expect(ADK.logger).to receive(:debug).with('Listing 3 sessions.')
       service.list_sessions # No filters
-      expect(ADK.logger).to receive(:debug).with("Listing 1 sessions.")
+      expect(ADK.logger).to receive(:debug).with('Listing 1 sessions.')
       service.list_sessions(app_name: 'app1', user_id: 'user1')
     end
   end

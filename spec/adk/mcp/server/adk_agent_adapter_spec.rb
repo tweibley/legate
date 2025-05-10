@@ -119,19 +119,19 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
   describe '#call' do
     let(:adapter_class) { described_class.wrap(agent_name, session_service_instance) }
     let(:adapter_instance) { adapter_class.new } # Instance of the *generated* class
-    let(:prompt) { "What is the weather?" }
+    let(:prompt) { 'What is the weather?' }
     let(:success_event) do
       ADK::Event.new(role: :agent, content: { status: :success, result: { weather: 'sunny' } })
     end
     let(:error_event) do
-      ADK::Event.new(role: :agent, content: { status: :error, error_message: "API limit reached" })
+      ADK::Event.new(role: :agent, content: { status: :error, error_message: 'API limit reached' })
     end
     let(:pending_event) do
-      ADK::Event.new(role: :agent, content: { status: :pending, job_id: "job_567", message: "Processing..." })
+      ADK::Event.new(role: :agent, content: { status: :pending, job_id: 'job_567', message: 'Processing...' })
     end
-    let(:malformed_event) { ADK::Event.new(role: :user, content: "Wrong role") }
+    let(:malformed_event) { ADK::Event.new(role: :user, content: 'Wrong role') }
     let(:unknown_status_event) do
-      ADK::Event.new(role: :agent, content: { status: :weird, data: "something" })
+      ADK::Event.new(role: :agent, content: { status: :weird, data: 'something' })
     end
 
     # Helper to set expectation for agent execution
@@ -154,7 +154,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
         expect(Redis).to have_received(:new).at_least(:once) # Called by class method + instance method
         expect(mock_redis).to have_received(:hmget).with(/adk:agent:#{agent_name}/, 'description', 'tools', 'model')
         expect(session_service_instance).to have_received(:create_session)
-          .with(app_name: agent_name, user_id: "mcp_temp_abcd")
+          .with(app_name: agent_name, user_id: 'mcp_temp_abcd')
         expect(global_tool_manager_double).to have_received(:find_class).with(:tool_a)
         expect(agent_class_double).to have_received(:new)
           .with(hash_including(name: agent_name, tool_classes: [instance_of(Class)]))
@@ -172,7 +172,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
           .and_return(['Test Agent Desc', '[]', nil]) # No model specified
 
         # Need to stub DEFAULT_MODEL here as well, as hmget is mocked differently
-        stub_const("ADK::Agent::DEFAULT_MODEL", "stubbed-default-model") if defined?(ADK::Agent)
+        stub_const('ADK::Agent::DEFAULT_MODEL', 'stubbed-default-model') if defined?(ADK::Agent)
 
         expect_agent_run_task(success_event)
         adapter_instance.call(prompt: prompt)
@@ -215,7 +215,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
           .and_return([nil, nil, nil]) # Simulate not found
         # Stub the constant temporarily for this specific context to avoid uninitialized constant error
         # Ensure ADK::Agent is loaded before stubbing its constant
-        stub_const("ADK::Agent::DEFAULT_MODEL", "stubbed-default-model") if defined?(ADK::Agent)
+        stub_const('ADK::Agent::DEFAULT_MODEL', 'stubbed-default-model') if defined?(ADK::Agent)
       end
 
       it 'raises an error and does not attempt session creation or agent run' do
@@ -236,7 +236,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     context 'when Redis connection fails during definition load' do
       before do
         # This error happens in the class method connect_redis
-        allow(Redis).to receive(:new).and_raise(Redis::CannotConnectError, "Connection refused")
+        allow(Redis).to receive(:new).and_raise(Redis::CannotConnectError, 'Connection refused')
       end
 
       it 'raises an error' do
@@ -273,7 +273,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     context 'when session creation fails' do
       before do
         allow(session_service_instance).to receive(:create_session)
-          .and_raise(StandardError, "Session service unavailable")
+          .and_raise(StandardError, 'Session service unavailable')
       end
 
       it 'raises an error and does not run the agent' do
@@ -325,11 +325,11 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
       end
 
       it 'returns pending status with default message if not provided' do
-        pending_event_no_msg = ADK::Event.new(role: :agent, content: { status: :pending, job_id: "job_567" })
+        pending_event_no_msg = ADK::Event.new(role: :agent, content: { status: :pending, job_id: 'job_567' })
         expect_agent_run_task(pending_event_no_msg)
 
         result = adapter_instance.call(prompt: prompt)
-        expect(result[:message]).to eq("Agent task resulted in a pending job.")
+        expect(result[:message]).to eq('Agent task resulted in a pending job.')
       end
     end
 
@@ -361,7 +361,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
 
     context 'when agent start fails' do
       before do
-        allow(agent_instance_double).to receive(:start).and_raise("Start failed")
+        allow(agent_instance_double).to receive(:start).and_raise('Start failed')
       end
 
       it 'raises an error and ensures cleanup is attempted' do
@@ -379,7 +379,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     context 'when agent run_task fails with an exception' do
       before do
         # Override the default allow for run_task to raise error
-        allow(agent_instance_double).to receive(:run_task).and_raise("Run task failed")
+        allow(agent_instance_double).to receive(:run_task).and_raise('Run task failed')
         allow(agent_instance_double).to receive(:running?).and_return(true) # Assume it was running
       end
 
@@ -398,14 +398,14 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     context 'when agent stop fails during cleanup' do
       before do
         expect_agent_run_task(success_event) # Normal execution first
-        allow(agent_instance_double).to receive(:stop).and_raise("Stop error")
+        allow(agent_instance_double).to receive(:stop).and_raise('Stop error')
       end
 
       it 'logs the stop error but still attempts session deletion and returns result' do
         result = adapter_instance.call(prompt: prompt)
 
         expect(result).to eq({ weather: 'sunny' }) # Original result should still return
-        expect(logger_spy).to have_received(:error).with("Error stopping agent runtime during cleanup: Stop error")
+        expect(logger_spy).to have_received(:error).with('Error stopping agent runtime during cleanup: Stop error')
         # Ensure session deletion was still attempted
         expect(session_service_instance).to have_received(:delete_session).with(session_id: session_double.id)
       end
@@ -414,7 +414,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     context 'when session deletion fails during cleanup' do
       before do
         expect_agent_run_task(success_event) # Normal execution first
-        allow(session_service_instance).to receive(:delete_session).and_raise("Deletion error")
+        allow(session_service_instance).to receive(:delete_session).and_raise('Deletion error')
       end
 
       it 'logs the deletion error but still returns the result' do
@@ -430,15 +430,15 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     context 'when both agent stop and session deletion fail during cleanup' do
       before do
         expect_agent_run_task(success_event) # Normal execution first
-        allow(agent_instance_double).to receive(:stop).and_raise("Stop error")
-        allow(session_service_instance).to receive(:delete_session).and_raise("Deletion error")
+        allow(agent_instance_double).to receive(:stop).and_raise('Stop error')
+        allow(session_service_instance).to receive(:delete_session).and_raise('Deletion error')
       end
 
       it 'logs both errors and returns the result' do
         result = adapter_instance.call(prompt: prompt)
 
         expect(result).to eq({ weather: 'sunny' }) # Original result should still return
-        expect(logger_spy).to have_received(:error).with("Error stopping agent runtime during cleanup: Stop error")
+        expect(logger_spy).to have_received(:error).with('Error stopping agent runtime during cleanup: Stop error')
         expect(logger_spy).to have_received(:error).with("Error deleting temporary session #{session_double.id}: Deletion error")
       end
     end

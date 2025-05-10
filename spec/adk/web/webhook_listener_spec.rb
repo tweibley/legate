@@ -164,7 +164,7 @@ RSpec.describe ADK::Web::WebhookListener do
     end
 
     context 'when transformation fails' do
-      let(:transformer_proc) { ->(payload) { raise StandardError, "Transform boom!" } }
+      let(:transformer_proc) { ->(payload) { raise StandardError, 'Transform boom!' } }
       before { allow(agent_definition).to receive(:webhook_transformer).and_return(transformer_proc) }
 
       it 'returns status 500 Internal Server Error' do
@@ -176,7 +176,7 @@ RSpec.describe ADK::Web::WebhookListener do
     end
 
     context 'when transformation raises WebhookConfigurationError' do
-      let(:transformer_proc) { ->(payload) { raise ADK::WebhookConfigurationError, "Bad payload for transform" } }
+      let(:transformer_proc) { ->(payload) { raise ADK::WebhookConfigurationError, 'Bad payload for transform' } }
       before { allow(agent_definition).to receive(:webhook_transformer).and_return(transformer_proc) }
 
       it 'returns status 400 Bad Request' do
@@ -188,7 +188,7 @@ RSpec.describe ADK::Web::WebhookListener do
     end
 
     context 'when session extraction fails' do
-      let(:extractor_proc) { ->(payload) { raise StandardError, "Extract boom!" } }
+      let(:extractor_proc) { ->(payload) { raise StandardError, 'Extract boom!' } }
       before { allow(agent_definition).to receive(:webhook_session_extractor).and_return(extractor_proc) }
 
       it 'returns status 500 Internal Server Error' do
@@ -200,7 +200,7 @@ RSpec.describe ADK::Web::WebhookListener do
     end
 
     context 'when session extraction raises WebhookConfigurationError' do
-      let(:extractor_proc) { ->(payload) { raise ADK::WebhookConfigurationError, "Missing ID for session" } }
+      let(:extractor_proc) { ->(payload) { raise ADK::WebhookConfigurationError, 'Missing ID for session' } }
       before { allow(agent_definition).to receive(:webhook_session_extractor).and_return(extractor_proc) }
 
       it 'returns status 400 Bad Request' do
@@ -212,7 +212,7 @@ RSpec.describe ADK::Web::WebhookListener do
     end
 
     context 'when enqueuing fails' do
-      before { allow(Sidekiq::Client).to receive(:push).and_raise(Redis::CannotConnectError, "Queue down") }
+      before { allow(Sidekiq::Client).to receive(:push).and_raise(Redis::CannotConnectError, 'Queue down') }
 
       it 'returns status 503 Service Unavailable' do
         header 'Content-Type', 'application/json'

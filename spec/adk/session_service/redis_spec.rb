@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 # File: spec/adk/session_service/redis_spec.rb
 require 'spec_helper'
 require 'redis' # Ensure Redis is required for errors like Redis::CannotConnectError
@@ -18,7 +19,7 @@ RSpec.describe ADK::SessionService::Redis do
   let(:state_delta) { { delta_key: 'delta_value' } }
   let(:event_no_delta) { ADK::Event.new(role: :user, content: 'test content') }
   let(:event_with_delta) { ADK::Event.new(role: :agent, content: 'response', state_delta: state_delta) }
-  let(:now) { Time.parse("2024-01-01T10:00:00Z") } # Use a fixed time
+  let(:now) { Time.parse('2024-01-01T10:00:00Z') } # Use a fixed time
   let(:now_iso) { now.iso8601(3) }
   let(:created_at_time) { now - 10 }
   let(:updated_at_time) { now } # No addition needed if stubbing Time.now
@@ -125,7 +126,7 @@ RSpec.describe ADK::SessionService::Redis do
     context 'when Redis connection fails during initialization' do
       before do
         # Simulate Redis.new raising an error
-        allow(Redis).to receive(:new).and_raise(::Redis::CannotConnectError.new("Connection failed"))
+        allow(Redis).to receive(:new).and_raise(::Redis::CannotConnectError.new('Connection failed'))
       end
 
       it 'raises an ADK::Error' do
@@ -226,13 +227,13 @@ RSpec.describe ADK::SessionService::Redis do
         ).and_return(instance_double(ADK::Session, id: session_id, app_name: app_name, user_id: user_id,
                                                    state_to_h: bad_state, created_at: now, updated_at: now))
         # Simulate JSON failure
-        allow(JSON).to receive(:generate).with(bad_state).and_raise(JSON::GeneratorError.new("Serialization failed"))
+        allow(JSON).to receive(:generate).with(bad_state).and_raise(JSON::GeneratorError.new('Serialization failed'))
       end
 
       it 'raises ADK::Error' do
         expect {
           service.create_session(app_name: app_name, user_id: user_id, initial_state: bad_state)
-        }.to raise_error(ADK::Error, "Failed to serialize session state.")
+        }.to raise_error(ADK::Error, 'Failed to serialize session state.')
       end
     end
 
@@ -248,10 +249,10 @@ RSpec.describe ADK::SessionService::Redis do
         allow(ADK::Session).to receive(:new).and_return(mock_session)
 
         # Mock JSON generation
-        allow(JSON).to receive(:generate).and_return("{}")
+        allow(JSON).to receive(:generate).and_return('{}')
 
         # Mock multi directly raising error
-        allow(mock_redis).to receive(:multi).and_raise(::Redis::BaseError, "Redis MULTI failed")
+        allow(mock_redis).to receive(:multi).and_raise(::Redis::BaseError, 'Redis MULTI failed')
       end
 
       it 'handles Redis errors gracefully' do
@@ -374,7 +375,7 @@ RSpec.describe ADK::SessionService::Redis do
 
     context 'when Redis error occurs' do
       before do
-        allow(mock_redis).to receive(:pipelined).and_raise(::Redis::BaseError.new("Connection error"))
+        allow(mock_redis).to receive(:pipelined).and_raise(::Redis::BaseError.new('Connection error'))
       end
 
       it 'raises ADK::Error' do
@@ -408,7 +409,7 @@ RSpec.describe ADK::SessionService::Redis do
     end
 
     it 'returns false if event is not an ADK::Event' do
-      expect(service.append_event(session_id: session_id, event: "invalid")).to be false
+      expect(service.append_event(session_id: session_id, event: 'invalid')).to be false
     end
 
     it 'returns false if session key does not exist' do
@@ -652,7 +653,7 @@ RSpec.describe ADK::SessionService::Redis do
     end
 
     context 'when Redis error occurs' do
-      before { allow(mock_redis).to receive(:multi).and_raise(::Redis::BaseError.new("Deletion failed")) }
+      before { allow(mock_redis).to receive(:multi).and_raise(::Redis::BaseError.new('Deletion failed')) }
       it 'returns false' do
         expect(service.delete_session(session_id: session_id)).to be false
       end
@@ -729,8 +730,8 @@ RSpec.describe ADK::SessionService::Redis do
 
       # Handle JSON parsing for both sessions
       allow(JSON).to receive(:parse).with(any_args, symbolize_names: true).and_return({})
-      allow(JSON).to receive(:parse).with("{\"s1\":true}", symbolize_names: true).and_return({ s1: true })
-      allow(JSON).to receive(:parse).with("{\"s2\":true}", symbolize_names: true).and_return({ s2: true })
+      allow(JSON).to receive(:parse).with('{"s1":true}', symbolize_names: true).and_return({ s1: true })
+      allow(JSON).to receive(:parse).with('{"s2":true}', symbolize_names: true).and_return({ s2: true })
       allow(JSON).to receive(:parse).with(session_1_events.first,
                                           symbolize_names: true).and_return({ role: :user, content: 's1' })
 

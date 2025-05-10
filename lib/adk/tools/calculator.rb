@@ -64,7 +64,7 @@ module ADK
           end
 
           if (%w[divide /].include?(operation)) && op2.zero?
-            err_msg = "Division by zero is not allowed."
+            err_msg = 'Division by zero is not allowed.'
             ADK.logger.error("Calculator Tool Argument Error: #{err_msg}")
             raise ADK::ToolArgumentError, err_msg
           end

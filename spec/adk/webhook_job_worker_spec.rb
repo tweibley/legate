@@ -72,7 +72,7 @@ RSpec.describe ADK::WebhookJobWorker do
     allow(ADK).to receive(:logger).and_return(logger_double)
 
     # Stub Redis ping for service/store initialization
-    allow(mock_redis).to receive(:ping).and_return("PONG") # Add ping back
+    allow(mock_redis).to receive(:ping).and_return('PONG') # Add ping back
 
     # Sidekiq specific testing mode
     Sidekiq::Testing.fake! # Use fake mode for job inspection
@@ -176,7 +176,7 @@ RSpec.describe ADK::WebhookJobWorker do
         allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(agent_name.to_sym).and_return(nil)
         # Mock DefinitionStore get to raise error
         allow(mock_definition_store).to receive(:get_definition).with(agent_name.to_sym).and_raise(
-          ADK::DefinitionStore::DefinitionNotFound, "Not found"
+          ADK::DefinitionStore::DefinitionNotFound, 'Not found'
         )
 
         expect { worker.perform(valid_payload) }.to raise_error(ADK::DefinitionStore::DefinitionNotFound)
@@ -191,7 +191,7 @@ RSpec.describe ADK::WebhookJobWorker do
         # Mock the Redis session service instantiation to raise the expected error
         # This prevents Agent initialization checks from running unnecessarily
         allow(ADK::SessionService::Redis).to receive(:new).and_raise(NotImplementedError,
-                                                                     "Unsupported session service type: unsupported")
+                                                                     'Unsupported session service type: unsupported')
 
         payload_bad_service = valid_payload.merge('session_service_type' => 'unsupported')
         # Expect the error directly from the worker's logic when it tries to create the service
@@ -205,7 +205,7 @@ RSpec.describe ADK::WebhookJobWorker do
         # Mock definition registry
         allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(agent_name.to_sym).and_return(mock_agent_definition)
         # Mock Redis.new to raise connection error
-        allow(Redis).to receive(:new).and_raise(Redis::CannotConnectError, "connection refused")
+        allow(Redis).to receive(:new).and_raise(Redis::CannotConnectError, 'connection refused')
 
         expect { worker.perform(valid_payload) }.to raise_error(Redis::CannotConnectError)
       end
@@ -215,10 +215,10 @@ RSpec.describe ADK::WebhookJobWorker do
       it 'raises the error' do
         # Mock Agent instantiation to fail
         allow(ADK::Agent).to receive(:new).with(definition: mock_agent_definition, session_service: mock_session_service).and_raise(
-          StandardError, "Agent init boom"
+          StandardError, 'Agent init boom'
         )
         # No run_task mock needed
-        expect { worker.perform(valid_payload) }.to raise_error(StandardError, "Agent init boom")
+        expect { worker.perform(valid_payload) }.to raise_error(StandardError, 'Agent init boom')
       end
     end
 
@@ -233,10 +233,10 @@ RSpec.describe ADK::WebhookJobWorker do
         allow(mock_agent).to receive(:start)
         # Mock run_task to fail specifically for this test - ensure correct signature
         allow(mock_agent).to receive(:run_task).with(session_id: session_id, user_input: valid_payload['transformed_user_input'], session_service: mock_session_service).and_raise(
-          StandardError, "Task run boom"
+          StandardError, 'Task run boom'
         )
 
-        expect { worker.perform(valid_payload) }.to raise_error(StandardError, "Task run boom")
+        expect { worker.perform(valid_payload) }.to raise_error(StandardError, 'Task run boom')
       end
     end
 
@@ -245,7 +245,7 @@ RSpec.describe ADK::WebhookJobWorker do
 
       before do
         # Successful setup until run_task
-        allow(mock_redis).to receive(:ping).and_return("PONG")
+        allow(mock_redis).to receive(:ping).and_return('PONG')
         allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(agent_name.to_sym).and_return(mock_agent_definition)
         allow(mock_definition_store).to receive(:get_definition).with(agent_name.to_sym).and_return(mock_agent_definition)
         allow(ADK::SessionService::Redis).to receive(:new).and_return(mock_session_service)
@@ -259,7 +259,7 @@ RSpec.describe ADK::WebhookJobWorker do
           session_id: session_id,
           user_input: valid_payload['transformed_user_input'],
           session_service: mock_session_service
-        ).and_raise(ADK::SessionError, "Failed to access session")
+        ).and_raise(ADK::SessionError, 'Failed to access session')
 
         expect { worker.perform(valid_payload) }.to raise_error(ADK::SessionError, /Failed to access session/)
       end
@@ -270,7 +270,7 @@ RSpec.describe ADK::WebhookJobWorker do
           session_id: session_id,
           user_input: valid_payload['transformed_user_input'],
           session_service: mock_session_service
-        ).and_raise(ADK::Error, "General ADK error")
+        ).and_raise(ADK::Error, 'General ADK error')
 
         expect { worker.perform(valid_payload) }.to raise_error(ADK::Error, /General ADK error/)
       end

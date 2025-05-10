@@ -177,7 +177,7 @@ RSpec.describe ADK::Mcp::Connection::Stdio do
 
         expect {
           connection.read_message(1)
-        }.to raise_error(ADK::Mcp::ConnectionError, "Connection lost while waiting for message")
+        }.to raise_error(ADK::Mcp::ConnectionError, 'Connection lost while waiting for message')
       end
     end
 
@@ -242,7 +242,7 @@ RSpec.describe ADK::Mcp::Connection::Stdio do
 
       # StandardError test
       RSpec::Mocks.space.proxy_for(Process).reset
-      allow(Process).to receive(:kill).with('TERM', pid).and_raise(StandardError, "Boom")
+      allow(Process).to receive(:kill).with('TERM', pid).and_raise(StandardError, 'Boom')
       allow(mock_wait_thr).to receive(:join).with(any_args)
       connection.instance_variable_set(:@connected, true) # Reset connected for second run
       connection.instance_variable_set(:@wait_thr, mock_wait_thr)
@@ -312,7 +312,7 @@ RSpec.describe ADK::Mcp::Connection::Stdio do
               consecutive_errors += 1
               if consecutive_errors >= threshold
                 connected = false
-                last_err = "Too many consecutive JSON parse errors."
+                last_err = 'Too many consecutive JSON parse errors.'
                 break # Stop processing
               end
             end
@@ -352,11 +352,11 @@ RSpec.describe ADK::Mcp::Connection::Stdio do
 
     context 'stderr processing' do
       it 'stores the last error line' do
-        stderr_io.puts "First error"
-        stderr_io.puts "Last error line"
+        stderr_io.puts 'First error'
+        stderr_io.puts 'Last error line'
         stderr_io.rewind # IMPORTANT for StringIO
         process_stderr(connection, stderr_io)
-        expect(connection.last_error).to eq("Last error line")
+        expect(connection.last_error).to eq('Last error line')
       end
     end
 
@@ -397,8 +397,8 @@ RSpec.describe ADK::Mcp::Connection::Stdio do
       end
 
       it 'ignores empty lines' do
-        stdout_io.puts ""
-        stdout_io.puts "  "
+        stdout_io.puts ''
+        stdout_io.puts '  '
         stdout_io.puts({ id: 1, result: 'good' }.to_json)
         stdout_io.rewind
         final_state = run_stdout_logic(stdout_io, true, response_queue, notify_queue)
@@ -408,7 +408,7 @@ RSpec.describe ADK::Mcp::Connection::Stdio do
       end
 
       it 'skips lines not starting with { or [' do
-        stdout_io.puts "INFO: Server starting..."
+        stdout_io.puts 'INFO: Server starting...'
         stdout_io.puts({ id: 2, result: 'real' }.to_json)
         stdout_io.rewind
         final_state = run_stdout_logic(stdout_io, true, response_queue, notify_queue)
@@ -418,7 +418,7 @@ RSpec.describe ADK::Mcp::Connection::Stdio do
       end
 
       it 'handles invalid JSON and continues' do
-        stdout_io.puts "{ invalid json "
+        stdout_io.puts '{ invalid json '
         stdout_io.puts({ id: 3, result: 'after_error' }.to_json)
         stdout_io.rewind
         final_state = run_stdout_logic(stdout_io, true, response_queue, notify_queue)
@@ -429,9 +429,9 @@ RSpec.describe ADK::Mcp::Connection::Stdio do
       end
 
       it 'stops processing and sets state after PARSE_ERROR_THRESHOLD errors' do
-        stub_const("ADK::Mcp::Connection::Stdio::PARSE_ERROR_THRESHOLD", 2)
-        stdout_io.puts "{ invalid1"
-        stdout_io.puts "{ invalid2"
+        stub_const('ADK::Mcp::Connection::Stdio::PARSE_ERROR_THRESHOLD', 2)
+        stdout_io.puts '{ invalid1'
+        stdout_io.puts '{ invalid2'
         stdout_io.puts({ id: 4, result: 'should not arrive' }.to_json)
         stdout_io.rewind
         final_state = run_stdout_logic(stdout_io, true, response_queue, notify_queue)
@@ -443,11 +443,11 @@ RSpec.describe ADK::Mcp::Connection::Stdio do
       end
 
       it 'resets parse error count on valid JSON' do
-        stub_const("ADK::Mcp::Connection::Stdio::PARSE_ERROR_THRESHOLD", 3)
-        stdout_io.puts "{ invalid 1"
-        stdout_io.puts "{ invalid 2"
+        stub_const('ADK::Mcp::Connection::Stdio::PARSE_ERROR_THRESHOLD', 3)
+        stdout_io.puts '{ invalid 1'
+        stdout_io.puts '{ invalid 2'
         stdout_io.puts({ id: 5, result: 'valid' }.to_json) # Reset
-        stdout_io.puts "{ invalid 3"
+        stdout_io.puts '{ invalid 3'
         stdout_io.puts({ id: 6, result: 'valid 2' }.to_json)
         stdout_io.rewind
         final_state = run_stdout_logic(stdout_io, true, response_queue, notify_queue)

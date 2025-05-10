@@ -47,7 +47,7 @@ class MockAdkExecuteErrorTool < ADK::Tool
   tool_description 'Raises an error during execution'
 
   def perform_execution(params, context)
-    raise ArgumentError, "Execution failed!"
+    raise ArgumentError, 'Execution failed!'
   end
 end
 
@@ -224,7 +224,7 @@ RSpec.describe ADK::Mcp::Server::AdkToolAdapter do
       before do
         allow(MockAdkExecuteErrorTool).to receive(:new).and_return(mock_execute_error_instance)
         # Stub execute to raise the error
-        allow(mock_execute_error_instance).to receive(:execute).and_raise(ArgumentError, "Execution failed!")
+        allow(mock_execute_error_instance).to receive(:execute).and_raise(ArgumentError, 'Execution failed!')
       end
 
       it 'rescues the error and raises a generic StandardError' do

@@ -60,7 +60,7 @@ ADK.logger.info("Using session service: #{session_service.class}")
 begin
   # Check Redis connection early (optional but recommended)
   ADK::Mcp::Server::AdkAgentAdapter.connect_redis
-  ADK.logger.info("Redis connection check successful.")
+  ADK.logger.info('Redis connection check successful.')
 
   AdaptedAgent = ADK::Mcp::Server::AdkAgentAdapter.wrap(AGENT_NAME_IN_REDIS, session_service)
   ADK.logger.info("Successfully wrapped ADK Agent definition '#{AGENT_NAME_IN_REDIS}' for MCP.")
@@ -82,7 +82,7 @@ mcp_server = FastMcp::Server::Stdio.new(
   },
   logger: ADK.logger
 )
-ADK.logger.info("Initialized FastMcp::Server::Stdio.")
+ADK.logger.info('Initialized FastMcp::Server::Stdio.')
 
 # --- 4. Register the Wrapped Agent Tool ---
 mcp_server.register_tool(AdaptedAgent)
@@ -94,10 +94,10 @@ puts "--- ADK MCP Agent Server (#{AGENT_NAME_IN_REDIS}) Ready --- "
 begin
   mcp_server.start
 rescue Interrupt
-  ADK.logger.info("Received interrupt, shutting down server.")
+  ADK.logger.info('Received interrupt, shutting down server.')
 rescue StandardError => e
   ADK.logger.fatal("MCP server crashed: #{e.class} - #{e.message}")
   ADK.logger.fatal(e.backtrace.join("\n"))
 ensure
-  ADK.logger.info("MCP server stopped.")
+  ADK.logger.info('MCP server stopped.')
 end

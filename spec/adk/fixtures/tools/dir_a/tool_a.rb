@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 # spec/adk/fixtures/tools/dir_a/tool_a.rb
 require 'adk/tool'
 

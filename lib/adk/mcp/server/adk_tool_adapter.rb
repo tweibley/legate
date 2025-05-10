@@ -67,7 +67,7 @@ module ADK
         def call(**args)
           # Access the class instance variable via the reader
           tool_class = self.class.adk_tool_class
-          raise NotImplementedError, "AdkToolAdapter cannot be used directly, use .wrap first." unless tool_class
+          raise NotImplementedError, 'AdkToolAdapter cannot be used directly, use .wrap first.' unless tool_class
 
           adk_instance = tool_class.new
 

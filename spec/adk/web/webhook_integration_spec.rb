@@ -13,7 +13,7 @@ require 'adk/configuration'
 require 'adk/errors'
 require 'adk/session_service/redis' # For mocking
 
-RSpec.describe "Webhook Integration" do
+RSpec.describe 'Webhook Integration' do
   include Rack::Test::Methods
 
   # --- Configure Rack App Stack (similar to web_commands.rb) ---
@@ -64,8 +64,8 @@ RSpec.describe "Webhook Integration" do
     local_agent_name = agent_name # Capture from outer scope
     ADK::Agent.define do |a|
       a.name local_agent_name
-      a.description "Integration test agent"
-      a.instruction "Process webhook"
+      a.description 'Integration test agent'
+      a.instruction 'Process webhook'
       a.webhook_enabled true
       a.webhook_session_extractor ->(payload) { payload['session_marker'] }
       a.webhook_transformer ->(payload) { { message: "Transformed: #{payload['data']}" } }
@@ -85,7 +85,7 @@ RSpec.describe "Webhook Integration" do
 
     # 2. Mock Redis client (used by worker potentially, not needed for define anymore)
     allow(Redis).to receive(:new).and_return(mock_redis)
-    allow(mock_redis).to receive(:ping).and_return("PONG")
+    allow(mock_redis).to receive(:ping).and_return('PONG')
     # Remove multi/hset/sadd mocks for define as it happens in let!
     # allow(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([true] * 9)
     # allow(mock_redis).to receive(:hset)
@@ -127,10 +127,10 @@ RSpec.describe "Webhook Integration" do
     })
     # Add methods needed by Agent#initialize if worker runs inline
     allow(agent_definition_double).to receive(:name).and_return(agent_name)
-    allow(agent_definition_double).to receive(:description).and_return("desc")
-    allow(agent_definition_double).to receive(:instruction).and_return("instr")
+    allow(agent_definition_double).to receive(:description).and_return('desc')
+    allow(agent_definition_double).to receive(:instruction).and_return('instr')
     allow(agent_definition_double).to receive(:tool_names).and_return([])
-    allow(agent_definition_double).to receive(:model_name).and_return("default-model")
+    allow(agent_definition_double).to receive(:model_name).and_return('default-model')
     allow(agent_definition_double).to receive(:fallback_mode).and_return(:error)
     allow(agent_definition_double).to receive(:mcp_servers).and_return([])
 
@@ -151,7 +151,7 @@ RSpec.describe "Webhook Integration" do
     )
 
     # 8. Return a job_id when Sidekiq::Client.push is called
-    allow(Sidekiq::Client).to receive(:push).and_return("fake-jid-123")
+    allow(Sidekiq::Client).to receive(:push).and_return('fake-jid-123')
   end
 
   # Clean up agent definition after each test

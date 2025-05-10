@@ -68,7 +68,7 @@ module ADK
         end
 
         def generate_summary(markdown_content, max_lines = 5)
-          return "" if markdown_content.nil? || markdown_content.empty?
+          return '' if markdown_content.nil? || markdown_content.empty?
 
           lines = markdown_content.lines
           summary_lines = []
@@ -94,7 +94,7 @@ module ADK
 
         # Route for Documentation Index (GET /docs)
         app.get '/docs' do
-          logger.debug("--- GET /docs --- (DocumentationRoutes)")
+          logger.debug('--- GET /docs --- (DocumentationRoutes)')
           docs_root_path = Pathname.new(File.join(settings.root, 'public', 'docs'))
           logger.debug("Docs root resolved to: #{docs_root_path}")
 
@@ -177,7 +177,7 @@ module ADK
 
           if sane_path.empty?
             logger.warn("Attempt to access doc with invalid path: '#{path_splat}'")
-            halt 404, slim(:error_404, locals: { title: "Document Not Found", message: "Invalid document path." })
+            halt 404, slim(:error_404, locals: { title: 'Document Not Found', message: 'Invalid document path.' })
           end
 
           # Construct the full file path
@@ -196,7 +196,7 @@ module ADK
               logger.warn("Documentation file not found or rendering failed: #{full_file_path}")
               halt 404,
                    slim(:error_404,
-                        locals: { title: "Document Not Found",
+                        locals: { title: 'Document Not Found',
                                   message: "Document '#{sane_path}' not found or could not be rendered." })
             end
 
@@ -217,7 +217,7 @@ module ADK
           rescue => e
             logger.error("Error processing document #{sane_path}: #{e.message}")
             logger.error(e.backtrace.join("\n"))
-            halt 500, "Error displaying document."
+            halt 500, 'Error displaying document.'
           end
         end
       end

@@ -11,8 +11,8 @@ module ADK
     # Redis-backed implementation for storing and retrieving agent definitions.
     class RedisStore
       # Define Redis keys
-      AGENT_HASH_PREFIX = "adk:agent:"
-      AGENTS_SET_KEY = "adk:agents:all_names"
+      AGENT_HASH_PREFIX = 'adk:agent:'
+      AGENTS_SET_KEY = 'adk:agents:all_names'
 
       # Note: Validator, Transformer, Extractor are Procs and cannot be directly serialized to Redis easily.
       # They are handled by the AgentDefinition object in memory, not persisted here by default.
@@ -25,7 +25,7 @@ module ADK
       def initialize(redis_client:)
         @redis = redis_client
         @logger = ADK.logger
-        @logger.info("ADK::DefinitionStore::RedisStore initialized.")
+        @logger.info('ADK::DefinitionStore::RedisStore initialized.')
       rescue => e
         # Log initialization error but allow potential recovery if client is provided later or fixed
         ADK.logger&.error("Failed to initialize RedisStore: #{e.message}")
@@ -50,8 +50,8 @@ module ADK
       # @raise [StoreError] for Redis errors during save.
       def save_definition(name:, description:, tools:, model:, fallback_mode:, mcp_servers_json:, instruction: nil,
                           webhook_enabled: false, webhook_secret: nil)
-        raise ConfigurationError, "Redis client not available." unless @redis
-        raise ArgumentError, "Agent name cannot be empty." if name.nil? || name.strip.empty?
+        raise ConfigurationError, 'Redis client not available.' unless @redis
+        raise ArgumentError, 'Agent name cannot be empty.' if name.nil? || name.strip.empty?
 
         # Optional: Add more validation for other fields if needed
 
@@ -63,7 +63,7 @@ module ADK
           # Validate MCP JSON before saving
           unless mcp_json_to_save == '[]'
             parsed_mcp = JSON.parse(mcp_json_to_save)
-            raise ArgumentError, "MCP configuration must be a JSON array." unless parsed_mcp.is_a?(Array)
+            raise ArgumentError, 'MCP configuration must be a JSON array.' unless parsed_mcp.is_a?(Array)
           end
 
           tools_json = tools.is_a?(Array) ? tools.to_json : '[]'
@@ -71,14 +71,14 @@ module ADK
           # Use MULTI/EXEC to ensure atomicity
           result = @redis.multi do |multi|
             multi.hset(agent_key, 'name', name) # Store name in hash too for easier retrieval
-            multi.hset(agent_key, 'description', description || "")
+            multi.hset(agent_key, 'description', description || '')
             multi.hset(agent_key, 'tools', tools_json)
             multi.hset(agent_key, 'model', model || ADK::Agent::DEFAULT_MODEL) # Use default if nil
             multi.hset(agent_key, 'fallback_mode', fallback_str)
             multi.hset(agent_key, 'mcp_servers_json', mcp_json_to_save)
-            multi.hset(agent_key, 'instruction', instruction || "") # Save instruction (empty string if nil)
+            multi.hset(agent_key, 'instruction', instruction || '') # Save instruction (empty string if nil)
             multi.hset(agent_key, 'webhook_enabled', webhook_enabled.to_s) # Store boolean as string ('true'/'false')
-            multi.hset(agent_key, 'webhook_secret', webhook_secret || "") # Store secret (empty if nil)
+            multi.hset(agent_key, 'webhook_secret', webhook_secret || '') # Store secret (empty if nil)
             multi.hset(agent_key, 'persistent_status', 'stopped') # Default new agents to 'stopped'
             multi.sadd(AGENTS_SET_KEY, name)
           end
@@ -130,7 +130,7 @@ module ADK
       def get_definition(agent_name)
         # Convert symbol to string if needed
         agent_name_str = agent_name.to_s
-        raise ConfigurationError, "Redis client not available." unless @redis
+        raise ConfigurationError, 'Redis client not available.' unless @redis
         return nil if agent_name_str.nil? || agent_name_str.strip.empty?
 
         agent_key = agent_redis_key(agent_name_str) # Use string key
@@ -165,7 +165,7 @@ module ADK
           # Ensure MCP JSON is present (defaults to '[]' if nil)
           definition_hash['mcp_servers_json'] ||= '[]'
           # Ensure instruction is present (defaults to '' if nil)
-          definition_hash['instruction'] ||= "" # Ensure instruction defaults to empty string if missing in Redis
+          definition_hash['instruction'] ||= '' # Ensure instruction defaults to empty string if missing in Redis
           # --- Process Webhook Fields ---
           definition_hash['webhook_enabled'] = (definition_hash['webhook_enabled'] == 'true') # Convert string back to boolean
           definition_hash['webhook_secret'] = definition_hash['webhook_secret'] # Already string (or empty string)
@@ -201,12 +201,12 @@ module ADK
       # @raise [ConfigurationError] if Redis client is not available.
       # @raise [StoreError] for Redis errors or other issues.
       def update_definition(agent_name, updates_hash)
-        raise ConfigurationError, "Redis client not available." unless @redis
+        raise ConfigurationError, 'Redis client not available.' unless @redis
 
         # Convert agent_name to string before calling strip
         agent_name_str = agent_name.to_s
-        raise ArgumentError, "Agent name cannot be empty." if agent_name_str.nil? || agent_name_str.strip.empty?
-        raise ArgumentError, "Updates hash cannot be empty." if updates_hash.nil? || updates_hash.empty?
+        raise ArgumentError, 'Agent name cannot be empty.' if agent_name_str.nil? || agent_name_str.strip.empty?
+        raise ArgumentError, 'Updates hash cannot be empty.' if updates_hash.nil? || updates_hash.empty?
 
         agent_key = agent_redis_key(agent_name_str) # Use stringified name for key
 
@@ -249,7 +249,7 @@ module ADK
               redis_updates[field_str] = value.is_a?(Array) ? value.to_json : '[]'
             rescue JSON::GeneratorError => e
               @logger.error("Failed to serialize tools array to JSON for updating agent '#{agent_name}': #{e.message}")
-              raise StoreError, "Internal error serializing tool data for agent update."
+              raise StoreError, 'Internal error serializing tool data for agent update.'
             end
           when 'mcp_servers_json'
             # Defensive check for non-string types remains:
@@ -265,7 +265,7 @@ module ADK
             begin
               unless mcp_json_to_save == '[]'
                 parsed_mcp = JSON.parse(mcp_json_to_save)
-                raise ArgumentError, "MCP configuration must be a JSON array." unless parsed_mcp.is_a?(Array)
+                raise ArgumentError, 'MCP configuration must be a JSON array.' unless parsed_mcp.is_a?(Array)
               end
               redis_updates[field_str] = mcp_json_to_save
             rescue JSON::ParserError => e
@@ -278,7 +278,7 @@ module ADK
             @logger.warn("Attempted to update agent name for '#{agent_name}', which is not allowed.")
             next # Skip this update
           when 'instruction' # Added instruction case
-            redis_updates[field_str] = value || "" # Store empty string if value is nil
+            redis_updates[field_str] = value || '' # Store empty string if value is nil
           when 'persistent_status'
             # This branch is still needed for multi-field updates
             status_val = value.to_s
@@ -294,7 +294,7 @@ module ADK
               if field_str == 'webhook_enabled'
                 redis_updates[field_str] = value.to_s
               elsif field_str == 'webhook_secret'
-                redis_updates[field_str] = value || ""
+                redis_updates[field_str] = value || ''
               else
                 redis_updates[field_str] = value
               end
@@ -325,7 +325,7 @@ module ADK
       # @raise [ConfigurationError] if Redis client is not available.
       # @raise [StoreError] for Redis errors.
       def delete_definition(agent_name)
-        raise ConfigurationError, "Redis client not available." unless @redis
+        raise ConfigurationError, 'Redis client not available.' unless @redis
         return true if agent_name.nil? || agent_name.strip.empty? # No name, nothing to delete
 
         agent_key = agent_redis_key(agent_name)
@@ -367,7 +367,7 @@ module ADK
       # @raise [ConfigurationError] if Redis client is not available.
       # @raise [StoreError] for Redis errors.
       def list_definitions
-        raise ConfigurationError, "Redis client not available." unless @redis
+        raise ConfigurationError, 'Redis client not available.' unless @redis
 
         definitions = []
         begin
@@ -388,7 +388,7 @@ module ADK
           # (though typically it should return an array of results or raise an error)
           unless pipeline_results.is_a?(Array)
             @logger.error("Redis pipeline returned unexpected type: #{pipeline_results.class}. Expected Array. Agent Names: #{agent_names.inspect}")
-            raise StoreError, "Unexpected result type from Redis pipeline."
+            raise StoreError, 'Unexpected result type from Redis pipeline.'
           end
 
           agent_names.zip(pipeline_results).each do |name, values|
@@ -413,7 +413,7 @@ module ADK
               fb_mode_str = summary_hash['fallback_mode']
               summary_hash['fallback_mode'] = (fb_mode_str == 'echo') ? :echo : :error
               summary_hash['mcp_servers_json'] ||= '[]' # Use '[]' if nil/missing
-              summary_hash['instruction'] ||= "" # Use empty string if nil/missing
+              summary_hash['instruction'] ||= '' # Use empty string if nil/missing
               # Convert agent name to symbol before transforming keys
               summary_hash['name'] = summary_hash['name'].to_sym if summary_hash['name']
               definitions << summary_hash.transform_keys(&:to_sym)
@@ -444,7 +444,7 @@ module ADK
       # @raise [ConfigurationError] if Redis client is not available.
       # @raise [StoreError] for Redis errors.
       def definition_exists?(agent_name)
-        raise ConfigurationError, "Redis client not available." unless @redis
+        raise ConfigurationError, 'Redis client not available.' unless @redis
 
         # Convert to string before stripping
         agent_name_str = agent_name.to_s
@@ -468,11 +468,11 @@ module ADK
       # @return [Boolean] true if the connection is active (ping successful), false otherwise.
       # @raise [ConfigurationError] if Redis client has not been initialized.
       def check_connection
-        raise ConfigurationError, "Redis client not available." unless @redis
+        raise ConfigurationError, 'Redis client not available.' unless @redis
 
         begin
           result = @redis.ping
-          is_ok = (result == "PONG")
+          is_ok = (result == 'PONG')
           # Silence because it's too noisy
           # @logger.debug("Redis connection check (PING): #{is_ok ? 'OK' : 'Failed'}")
           is_ok

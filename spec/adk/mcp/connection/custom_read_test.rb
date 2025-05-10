@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 require 'thread'
 
 # Simple module structure to match our class hierarchy
@@ -54,7 +55,7 @@ puts "Result: #{result.inspect}"
 puts "Queue empty after test? #{connection.notification_queue.empty?}"
 
 if result == notification
-  puts "TEST PASSED: Notification retrieved correctly"
+  puts 'TEST PASSED: Notification retrieved correctly'
 else
   puts "TEST FAILED: Expected #{notification.inspect}, got #{result.inspect}"
 end

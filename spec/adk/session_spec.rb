@@ -272,13 +272,13 @@ RSpec.describe ADK::Session do
 
       it '#set_state allows nil, basic types, and nested serializable structures' do
         expect { session.set_state(:ok_nil, nil) }.not_to raise_error
-        expect { session.set_state(:ok_str, "string") }.not_to raise_error
+        expect { session.set_state(:ok_str, 'string') }.not_to raise_error
         expect { session.set_state(:ok_int, 123) }.not_to raise_error
         expect { session.set_state(:ok_float, 1.23) }.not_to raise_error
         expect { session.set_state(:ok_true, true) }.not_to raise_error
         expect { session.set_state(:ok_false, false) }.not_to raise_error
         expect { session.set_state(:ok_hash, { a: 1, b: [true, nil] }) }.not_to raise_error
-        expect { session.set_state(:ok_array, [1, "s", { k: false }]) }.not_to raise_error
+        expect { session.set_state(:ok_array, [1, 's', { k: false }]) }.not_to raise_error
       end
 
       it '#set_state raises InvalidPrefixError for invalid prefixes' do

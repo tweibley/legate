@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 require 'spec_helper'
 require 'adk/tool_registry'
 require 'adk/tool'
@@ -16,7 +17,7 @@ class RegistryMockToolNoMeta < ADK::Tool; end
 class RegistryErrorTool < ADK::Tool
   self.explicit_tool_name = :registry_error_tool
   def initialize
-    raise StandardError, "Init error!"
+    raise StandardError, 'Init error!'
   end
 
   def perform_execution(params, context); end

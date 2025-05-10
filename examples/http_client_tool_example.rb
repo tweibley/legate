@@ -31,7 +31,7 @@ class JsonPlaceholderTool < ADK::Tool
       headers: { 'Accept' => 'application/json' }
       # options: { read_timeout: 5 } # Example: Override default timeout
     )
-    ADK.logger.info "JsonPlaceholderTool initialized."
+    ADK.logger.info 'JsonPlaceholderTool initialized.'
   end
 
   private
@@ -83,7 +83,7 @@ class JsonPlaceholderTool < ADK::Tool
     ADK.logger.info "Creating post with data: #{post_data.inspect}"
     # Use the http_post helper. Payload is a Hash, HttpClient handles JSON encoding
     # and sets Content-Type: application/json automatically.
-    response = http_post("posts", body: post_data)
+    response = http_post('posts', body: post_data)
 
     # Check response status (optional, HttpClient raises ToolHttpError for 4xx/5xx)
     # Here we just return the parsed response body which includes the new ID
@@ -137,14 +137,14 @@ puts "Result: #{create_result.inspect}" # Expects :success with new post data (i
 
 # Example 3: Invalid action
 puts "\n--- Invalid Action (Expected Error) ---"
-puts "(This demonstrates the tool raising ToolArgumentError for unsupported actions)"
+puts '(This demonstrates the tool raising ToolArgumentError for unsupported actions)'
 invalid_params = { action: 'delete', post_id: 1 } # Action not supported by our tool
 invalid_result = placeholder_tool.execute(invalid_params, context: dummy_context)
 puts "Result: #{invalid_result.inspect}" # Expects :error status
 
 # Example 4: Missing required param
 puts "\n--- Missing Parameter (Expected Error) ---"
-puts "(This demonstrates the tool raising ToolArgumentError for missing required params)"
+puts '(This demonstrates the tool raising ToolArgumentError for missing required params)'
 missing_params = { action: 'get' } # Missing post_id
 missing_result = placeholder_tool.execute(missing_params, context: dummy_context)
 puts "Result: #{missing_result.inspect}" # Expects :error status

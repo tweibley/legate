@@ -26,8 +26,8 @@ module ADK
                 # Potentially add other fields from definition if needed by partials
               }
             else # Should not happen if agent started, but as a fallback
-              agent_data_for_view = { name: name, description: "Started (Def error)", running: is_running,
-                                      model: "N/A" }
+              agent_data_for_view = { name: name, description: 'Started (Def error)', running: is_running,
+                                      model: 'N/A' }
             end
           else # Agent failed to start, fetch definition for display
             if definition_store
@@ -39,17 +39,17 @@ module ADK
                     running: false, model: definition[:model]
                   }
                 else
-                  agent_data_for_view = { name: name, description: "Error: Definition not found", running: false,
-                                          model: "N/A" }
+                  agent_data_for_view = { name: name, description: 'Error: Definition not found', running: false,
+                                          model: 'N/A' }
                 end
               rescue ADK::DefinitionStore::StoreError => e
                 logger.error("Store error fetching definition after failed start for '#{name}' (from AgentRuntimeRoutes): #{e.message}")
-                agent_data_for_view = { name: name, description: "Error retrieving definition", running: false,
-                                        model: "N/A" }
+                agent_data_for_view = { name: name, description: 'Error retrieving definition', running: false,
+                                        model: 'N/A' }
               end
             else
-              agent_data_for_view = { name: name, description: "Error: Store unavailable", running: false,
-                                      model: "N/A" }
+              agent_data_for_view = { name: name, description: 'Error: Store unavailable', running: false,
+                                      model: 'N/A' }
             end
           end
 
@@ -71,7 +71,7 @@ module ADK
           chat_button_oob_html = %(<button class="button is-link" id="send-button" type="submit" #{disabled_attr_string} hx-swap-oob="outerHTML"><span>Send</span><span class="icon is-small htmx-indicator ml-2" id="send-button-indicator"><i class="fas fa-spinner fa-pulse"></i></span></button>)
 
           # --- MODIFIED: Determine content for chat-status-help-container ---
-          new_chat_status_help_content = ""
+          new_chat_status_help_content = ''
           if is_running # is_running reflects the new state of the agent
             # Agent is running, attempt to ensure an active session for the help text
             web_user_id = session[:web_user_id]
@@ -184,17 +184,17 @@ module ADK
                   model: agent_definition[:model]
                 }
               else
-                agent_data_for_view = { name: name, description: "Error: Definition not found", running: is_running,
-                                        model: "N/A" }
+                agent_data_for_view = { name: name, description: 'Error: Definition not found', running: is_running,
+                                        model: 'N/A' }
               end
             rescue ADK::DefinitionStore::StoreError => e
               logger.error("Store error fetching definition after stop detail for '#{name}' (from AgentRuntimeRoutes): #{e.message}")
-              agent_data_for_view = { name: name, description: "Error retrieving definition", running: is_running,
-                                      model: "N/A" }
+              agent_data_for_view = { name: name, description: 'Error retrieving definition', running: is_running,
+                                      model: 'N/A' }
             end
           else
-            agent_data_for_view = { name: name, description: "Error: Store unavailable", running: is_running,
-                                    model: "N/A" }
+            agent_data_for_view = { name: name, description: 'Error: Store unavailable', running: is_running,
+                                    model: 'N/A' }
           end
 
           status_controls_html = slim(:_agent_status_controls, layout: false,
@@ -206,7 +206,7 @@ module ADK
 
           # --- MODIFIED: Determine content for chat-status-help-container ---
           # is_running is false in this context (agent stop)
-          new_chat_status_help_content = ""
+          new_chat_status_help_content = ''
           if is_running # This will be false
             # This block should ideally not be reached if is_running is false,
             # but keeping structure for clarity, will be optimized by the 'else'.
@@ -268,7 +268,7 @@ module ADK
           agent_data_for_view = if agent_definition_for_view
                                   agent_definition_for_view.dup # Make a mutable copy
                                 else
-                                  { name: name, description: "N/A", model: "N/A", tools: [] } # Minimal fallback with all expected keys by _agent_row or its fragments
+                                  { name: name, description: 'N/A', model: 'N/A', tools: [] } # Minimal fallback with all expected keys by _agent_row or its fragments
                                 end
 
           agent_data_for_view[:running] = !agent.nil? # Update running status based on actual start
@@ -303,7 +303,7 @@ module ADK
           agent_data_for_view = if agent_definition_for_view
                                   agent_definition_for_view.dup
                                 else
-                                  { name: name, description: "N/A", model: "N/A", tools: [] }
+                                  { name: name, description: 'N/A', model: 'N/A', tools: [] }
                                 end
 
           agent_data_for_view[:running] = false # After a stop action, it should be marked as not running

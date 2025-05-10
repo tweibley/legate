@@ -14,9 +14,9 @@ module ADK
       def list
         tools = ADK::ToolRegistry.list_tools
         if tools.empty?
-          say "No tools registered."
+          say 'No tools registered.'
         else
-          say "Available tools:", :bold
+          say 'Available tools:', :bold
           tools.each do |tool_info|
             say "- #{tool_info[:name]}: #{tool_info[:description]}"
           end
@@ -111,21 +111,21 @@ module ADK
           if result_hash.is_a?(Hash) && result_hash.key?(:status)
             case result_hash[:status]
             when :success
-              say "Success:", :green
+              say 'Success:', :green
               say "  Output: #{result_hash[:result]}"
             when :pending
-              say "Pending:", :yellow
+              say 'Pending:', :yellow
               say "  Job ID: #{result_hash[:job_id]}"
               say "  Message: #{result_hash[:message]}" if result_hash[:message]
             when :error
-              say "Error:", :red
+              say 'Error:', :red
               say "  Message: #{result_hash[:error_message]}"
             else
-              say "Unknown Status:", :yellow
+              say 'Unknown Status:', :yellow
               say "  Data: #{result_hash.inspect}"
             end
           else
-            say "Unknown Result Format:", :yellow
+            say 'Unknown Result Format:', :yellow
             say "  Data: #{result_hash.inspect}"
           end
         rescue ADK::Error, ArgumentError => e

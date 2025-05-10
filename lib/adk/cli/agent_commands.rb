@@ -34,7 +34,7 @@ module ADK
           content_to_display = nil
           is_error = false
           is_pending = false
-          status_prefix = ""
+          status_prefix = ''
 
           # Determine what kind of result we got
           if result_data.is_a?(ADK::Event)
@@ -43,7 +43,7 @@ module ADK
               if content_to_display.is_a?(Hash) && content_to_display.key?(:status)
                 is_error = (content_to_display[:status] == :error)
                 is_pending = (content_to_display[:status] == :pending)
-                status_prefix = "(Nested Result) " if result_data.role == :agent
+                status_prefix = '(Nested Result) ' if result_data.role == :agent
               end
             end
           elsif result_data.is_a?(Hash) && result_data.key?(:status)
@@ -139,23 +139,23 @@ module ADK
         definitions = ADK::AgentDefinitionStore.all
 
         if definitions.empty?
-          say "No agent definitions found."
+          say 'No agent definitions found.'
           return
         end
 
-        say "Defined Agents:", :bold
+        say 'Defined Agents:', :bold
         definitions.sort_by { |name, _| name.to_s }.each do |name, data|
-          description = data[:description] || "[No description]"
+          description = data[:description] || '[No description]'
           tools = data[:tools] # Already an array from store
           model = data[:model] || "#{ADK::Agent::DEFAULT_MODEL} (Default)"
-          tools_str = tools.empty? ? "None" : tools.join(', ')
+          tools_str = tools.empty? ? 'None' : tools.join(', ')
           say "- #{name}: #{description} (Model: #{model}, Tools: #{tools_str})"
         end
       end
 
       desc 'save NAME', 'Create or update an agent definition'
       method_option :description, type: :string, required: true, desc: 'Agent description'
-      method_option :tools, type: :string, aliases: "-t",
+      method_option :tools, type: :string, aliases: '-t',
                             desc: 'Comma-separated list of tool names (e.g., "echo,calculator")'
       method_option :model, type: :string, desc: "LLM model name (default: #{ADK::Agent::DEFAULT_MODEL})"
       def save(name)
@@ -187,14 +187,14 @@ module ADK
 
         # Save to Redis first (for persistence)
         unless ADK::AgentDefinitionStore.save_to_redis(name_sym, definition)
-          say "Error saving definition to Redis. Aborting.", :red
+          say 'Error saving definition to Redis. Aborting.', :red
           exit(1)
         end
 
         # Register in memory for current process
         ADK::AgentDefinitionStore.register(name_sym, definition)
 
-        tools_msg = selected_tools.empty? ? "None" : selected_tools.join(', ')
+        tools_msg = selected_tools.empty? ? 'None' : selected_tools.join(', ')
         say "Agent definition '#{name}' saved (Model: #{model_to_save}, Tools: #{tools_msg}).", :green
       end
 
@@ -225,12 +225,12 @@ module ADK
           if redis_deleted
             say "Agent definition '#{name}' deleted successfully.", :green
           else
-            say "Error deleting definition from Redis. It has been removed from memory, but may still exist in Redis.",
+            say 'Error deleting definition from Redis. It has been removed from memory, but may still exist in Redis.',
                 :red
             exit(1)
           end
         else
-          say "Deletion cancelled.", :yellow
+          say 'Deletion cancelled.', :yellow
         end
       end
 
@@ -241,7 +241,7 @@ module ADK
                                   desc: 'Agent instruction (system prompt)'
       method_option :tools, type: :string, aliases: '-t', default: '',
                             desc: 'Comma-separated list of tool names (e.g., "echo,calculator")'
-      method_option :model, type: :string, desc: "LLM model name (uses framework default if blank)"
+      method_option :model, type: :string, desc: 'LLM model name (uses framework default if blank)'
       method_option :dir, type: :string, default: './agents', desc: 'Directory to save the agent definition file'
       method_option :force, type: :boolean, default: false, desc: 'Overwrite existing file without prompting'
       method_option :webhook_enabled, type: :boolean, default: false, desc: 'Include webhook configuration placeholders'
@@ -253,7 +253,7 @@ module ADK
         # Check if file exists
         if File.exist?(file_path) && !options[:force]
           unless yes?("Agent file '#{file_path}' already exists. Overwrite? [y/N]", :yellow)
-            say "Generation cancelled.", :yellow
+            say 'Generation cancelled.', :yellow
             exit(0)
           end
         end
@@ -349,7 +349,7 @@ module ADK
           if webhook_enabled
             say "\nWebhook configuration placeholders added. Please implement the required transformer and extractor procs.",
                 :yellow
-            say "Remember to configure validation and secrets for production use!", :yellow
+            say 'Remember to configure validation and secrets for production use!', :yellow
           end
         rescue SystemCallError => e
           say "Error: Could not write file '#{file_path}': #{e.message}", :red
@@ -406,9 +406,9 @@ module ADK
           say "  - Loaded tools: [#{agent.tools.map(&:name).join(', ')}]", :cyan
 
           # Start Agent Runtime
-          say "  - Starting agent runtime...", :cyan, false
+          say '  - Starting agent runtime...', :cyan, false
           agent.start
-          say "started.", :cyan
+          say 'started.', :cyan
           say "\nAgent '#{name}' is ready.", :green
         rescue StandardError => e
           say "\nError during agent setup: #{e.class} - #{e.message}", :red
@@ -416,9 +416,9 @@ module ADK
           exit(1)
         ensure
           if agent&.running?
-            say "  - Stopping agent runtime...", :cyan, false
+            say '  - Stopping agent runtime...', :cyan, false
             agent.stop
-            say "stopped.", :cyan
+            say 'stopped.', :cyan
           end
         end
       end
@@ -499,14 +499,14 @@ module ADK
           say "  - Loaded tools: [#{agent.tools.map(&:name).join(', ')}]", :cyan
 
           # Start Agent Runtime & Execute Task
-          say "  - Starting agent runtime...", :cyan, false; agent.start; say "started.", :cyan
+          say '  - Starting agent runtime...', :cyan, false; agent.start; say 'started.', :cyan
           say "  - Running task in session #{session_id}: '#{task}'...", :cyan, false;
           final_event_or_error = agent.run_task(
             session_id: session_id,
             user_input: task,
             session_service: session_service
           )
-          say "finished.", :cyan
+          say 'finished.', :cyan
 
           # Format and Print Result
           say "\nTask Result:", :bold
@@ -516,7 +516,7 @@ module ADK
           puts e.backtrace.first(5).join("\n")
         ensure
           if agent&.running?
-            say "  - Stopping agent runtime...", :cyan, false; agent.stop; say "stopped.", :cyan
+            say '  - Stopping agent runtime...', :cyan, false; agent.stop; say 'stopped.', :cyan
           end
           exit(1) if e
         end

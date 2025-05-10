@@ -9,14 +9,14 @@ require 'adk' # For logger
 require 'stringio' # For mocking streams
 
 RSpec.describe ADK::Mcp::Connection::Sse do
-  let(:base_url) { "http://localhost:9292/mcp" } # Note: No trailing slash
+  let(:base_url) { 'http://localhost:9292/mcp' } # Note: No trailing slash
   # URIs used for mocking Net::HTTP calls
-  let(:sse_uri) { URI.parse("http://localhost:9292/mcp/sse") } # Correct expected URI
-  let(:message_uri) { URI.parse("http://localhost:9292/mcp/messages") } # Correct expected URI
+  let(:sse_uri) { URI.parse('http://localhost:9292/mcp/sse') } # Correct expected URI
+  let(:message_uri) { URI.parse('http://localhost:9292/mcp/messages') } # Correct expected URI
   let(:connection) { described_class.new(url: base_url) }
   let(:logger_spy) { spy('Logger') }
   let(:mock_http) { instance_double(Net::HTTP) }
-  let(:mock_response) { instance_double(Net::HTTPResponse, code: "200", message: "OK") }
+  let(:mock_response) { instance_double(Net::HTTPResponse, code: '200', message: 'OK') }
 
   before do
     allow(ADK).to receive(:logger).and_return(logger_spy)
@@ -31,7 +31,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
 
   describe '#initialize' do
     it 'parses the base URL and sets SSE/message URIs correctly' do # Renamed test
-      expect(connection.instance_variable_get(:@base_uri).to_s).to eq("http://localhost:9292/mcp/") # Should end with slash now
+      expect(connection.instance_variable_get(:@base_uri).to_s).to eq('http://localhost:9292/mcp/') # Should end with slash now
       expect(connection.instance_variable_get(:@sse_uri).to_s).to eq(sse_uri.to_s)
       expect(connection.instance_variable_get(:@message_uri).to_s).to eq(message_uri.to_s)
     end
@@ -45,7 +45,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
   describe '#connect' do
     let(:sse_get_request) { instance_double(Net::HTTP::Get) }
     # Use a generic double for the response and mock needed methods
-    let(:sse_ok_response) { instance_double("SSE Response", is_a?: true, :[] => 'text/event-stream', code: "200") }
+    let(:sse_ok_response) { instance_double('SSE Response', is_a?: true, :[] => 'text/event-stream', code: '200') }
 
     before do
       allow(Net::HTTP::Get).to receive(:new).with(sse_uri.request_uri).and_return(sse_get_request)
@@ -53,7 +53,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
 
       # Don't set expectations here, just stub the behavior
       allow(mock_http).to receive(:request).with(sse_get_request).and_yield(sse_ok_response)
-      allow(sse_ok_response).to receive(:read_body).and_yield("")
+      allow(sse_ok_response).to receive(:read_body).and_yield('')
       allow(sse_ok_response).to receive(:is_a?).with(Net::HTTPOK).and_return(true)
 
       # Prevent thread from actually joining in tests
@@ -69,7 +69,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
     end
 
     it 'raises ConnectionError if SSE connection fails (non-200)' do
-      bad_response = instance_double("SSE Response", is_a?: false, code: "404", message: "Not Found",
+      bad_response = instance_double('SSE Response', is_a?: false, code: '404', message: 'Not Found',
                                                      :[] => 'text/html')
       allow(bad_response).to receive(:is_a?).with(Net::HTTPOK).and_return(false)
       # Mock the http.request block yield for the error case
@@ -83,7 +83,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
     end
 
     it 'raises ConnectionError if SSE connection has wrong content type' do
-      wrong_type_response = instance_double("SSE Response", is_a?: true, code: "200", :[] => 'application/json')
+      wrong_type_response = instance_double('SSE Response', is_a?: true, code: '200', :[] => 'application/json')
       allow(wrong_type_response).to receive(:is_a?).with(Net::HTTPOK).and_return(true)
       # Mock the http.request block yield for the error case
       allow(mock_http).to receive(:request).with(sse_get_request).and_yield(wrong_type_response)
@@ -94,7 +94,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
     end
 
     it 'raises ConnectionError on network errors' do
-      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED, "Connection refused")
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED, 'Connection refused')
       expect { connection.connect }.to raise_error(ADK::Mcp::ConnectionError, /Connection refused/)
       expect(connection.connected?).to be false
     end
@@ -127,7 +127,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
       expect(connection.instance_variable_get(:@sse_reader_thread)).to be_nil
       expect(connection.instance_variable_get(:@http_client)).to be_nil
       expect(connection.notification_queue.empty?).to be true
-      expect(logger_spy).to have_received(:info).with("Disconnecting SSE connection...")
+      expect(logger_spy).to have_received(:info).with('Disconnecting SSE connection...')
     end
 
     it 'does nothing if not connected' do
@@ -136,7 +136,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
       thread_spy = instance_double(Thread)
       expect(thread_spy).not_to receive(:kill)
       connection.disconnect
-      expect(logger_spy).not_to have_received(:info).with("Disconnecting SSE connection...")
+      expect(logger_spy).not_to have_received(:info).with('Disconnecting SSE connection...')
     end
   end
 
@@ -158,7 +158,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
 
     it 'sends a POST request and returns the parsed successful response' do
       # Mock the response object from http.request
-      mock_success_response = instance_double("HTTP Response", is_a?: true, body: success_response_body)
+      mock_success_response = instance_double('HTTP Response', is_a?: true, body: success_response_body)
       allow(mock_success_response).to receive(:is_a?).with(Net::HTTPOK).and_return(true)
       allow(mock_http).to receive(:request).with(post_request).and_return(mock_success_response)
 
@@ -170,8 +170,8 @@ RSpec.describe ADK::Mcp::Connection::Sse do
     end
 
     it 'raises ConnectionError for non-200 HTTP responses' do
-      mock_fail_response = instance_double("HTTP Response", is_a?: false, code: "500",
-                                                            message: "Internal Server Error", body: "Server exploded")
+      mock_fail_response = instance_double('HTTP Response', is_a?: false, code: '500',
+                                                            message: 'Internal Server Error', body: 'Server exploded')
       allow(mock_fail_response).to receive(:is_a?).with(Net::HTTPOK).and_return(false)
       allow(mock_http).to receive(:request).with(post_request).and_return(mock_fail_response)
 
@@ -181,7 +181,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
     end
 
     it 'raises RemoteToolError if non-200 response contains MCP error structure' do
-      mock_mcp_error_response = instance_double("HTTP Response", is_a?: false, code: "400", message: "Bad Request",
+      mock_mcp_error_response = instance_double('HTTP Response', is_a?: false, code: '400', message: 'Bad Request',
                                                                  body: mcp_error_response_body)
       allow(mock_mcp_error_response).to receive(:is_a?).with(Net::HTTPOK).and_return(false)
       allow(mock_http).to receive(:request).with(post_request).and_return(mock_mcp_error_response)
@@ -191,7 +191,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
     end
 
     it 'raises ProtocolError if the successful response body is not valid JSON' do
-      mock_bad_json_response = instance_double("HTTP Response", is_a?: true, body: "not json")
+      mock_bad_json_response = instance_double('HTTP Response', is_a?: true, body: 'not json')
       allow(mock_bad_json_response).to receive(:is_a?).with(Net::HTTPOK).and_return(true)
       allow(mock_http).to receive(:request).with(post_request).and_return(mock_bad_json_response)
 
@@ -203,7 +203,7 @@ RSpec.describe ADK::Mcp::Connection::Sse do
     end
 
     it 'raises ConnectionError on network errors' do
-      allow(mock_http).to receive(:request).with(post_request).and_raise(Errno::ECONNREFUSED, "Connection refused")
+      allow(mock_http).to receive(:request).with(post_request).and_raise(Errno::ECONNREFUSED, 'Connection refused')
       expect {
         connection.send_request(mcp_request_hash)
       }.to raise_error(ADK::Mcp::ConnectionError, /Connection refused/)

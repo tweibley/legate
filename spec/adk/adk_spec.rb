@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 require 'spec_helper'
 require 'adk' # Load the file under test
 require 'adk/configuration' # Ensure configuration class is loaded for stubbing
@@ -35,14 +36,14 @@ RSpec.describe ADK do
       it 'defaults to WARN level' do
         ENV['RACK_ENV'] = 'production' # Ensure not development
         # TODO: This test needs rework for eager initialization
-        pending("Eager init makes testing initial default level hard")
+        pending('Eager init makes testing initial default level hard')
         expect(logger_instance.level).to eq(Logger::WARN)
       end
 
       it 'defaults to DEBUG level when RACK_ENV is development' do
         ENV['RACK_ENV'] = 'development'
         # TODO: This test needs rework for eager initialization
-        pending("Eager init makes testing initial default level hard")
+        pending('Eager init makes testing initial default level hard')
         expect(logger_instance.level).to eq(Logger::DEBUG)
       end
     end
@@ -83,7 +84,7 @@ RSpec.describe ADK do
       it 'defaults to WARN for unrecognized levels' do
         ENV['ADK_LOG_LEVEL'] = 'INVALID'
         # TODO: This test needs rework for eager initialization
-        pending("Eager init makes testing initial default level hard")
+        pending('Eager init makes testing initial default level hard')
         expect(logger_instance.level).to eq(Logger::WARN)
       end
 
@@ -102,11 +103,11 @@ RSpec.describe ADK do
           ADK.logger.level = Logger::FATAL + 1 # NONE is FATAL + 1
 
           # Log messages at all levels
-          ADK.logger.debug("Test debug")
-          ADK.logger.info("Test info")
-          ADK.logger.warn("Test warn")
-          ADK.logger.error("Test error")
-          ADK.logger.fatal("Test fatal")
+          ADK.logger.debug('Test debug')
+          ADK.logger.info('Test info')
+          ADK.logger.warn('Test warn')
+          ADK.logger.error('Test error')
+          ADK.logger.fatal('Test fatal')
 
           # Verify nothing was output
           expect(test_io.string).to be_empty
@@ -132,11 +133,11 @@ RSpec.describe ADK do
           ADK.logger.level = Logger::FATAL + 1 # SILENT is FATAL + 1
 
           # Log messages at all levels
-          ADK.logger.debug("Test debug")
-          ADK.logger.info("Test info")
-          ADK.logger.warn("Test warn")
-          ADK.logger.error("Test error")
-          ADK.logger.fatal("Test fatal")
+          ADK.logger.debug('Test debug')
+          ADK.logger.info('Test info')
+          ADK.logger.warn('Test warn')
+          ADK.logger.error('Test error')
+          ADK.logger.fatal('Test fatal')
 
           # Verify nothing was output
           expect(test_io.string).to be_empty

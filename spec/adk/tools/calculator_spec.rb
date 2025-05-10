@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 # File: spec/adk/tools/calculator_spec.rb
 require 'spec_helper'
 

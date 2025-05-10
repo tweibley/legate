@@ -4,7 +4,7 @@
 # If running from project root: bundle exec ruby examples/random_calculator.rb
 require_relative '../lib/adk'
 
-puts "--- Random Calculator Agent Example (Multi-Step Planner w/ Hash Results) ---"
+puts '--- Random Calculator Agent Example (Multi-Step Planner w/ Hash Results) ---'
 
 # 1. --- Agent Setup ---
 # Add tools directly during initialization
@@ -39,7 +39,7 @@ session_id = session.id
 puts "\nCreated session: #{session_id}"
 
 # 5. --- Task Execution ---
-task = "Get a random number between 10 and 20, then multiply it by 3."
+task = 'Get a random number between 10 and 20, then multiply it by 3.'
 puts "\nRunning high-level task via agent.run_task: '#{task}'"
 
 # Set log level to DEBUG to see planner details if needed
@@ -57,12 +57,12 @@ begin
   # --- Updated Result Handling ---
   puts "\nInterpreted Result:"
   if result_event.is_a?(ADK::Event)
-    puts " Status: Event Received"
+    puts ' Status: Event Received'
     puts " Role: #{result_event.role}"
 
     content = result_event.content
     if content.is_a?(Array)
-      puts " Content Type: Multi-Step Plan Results"
+      puts ' Content Type: Multi-Step Plan Results'
       any_errors = false
       content.each_with_index do |step_hash, index|
         print "  Step #{index + 1}: "
@@ -80,18 +80,18 @@ begin
     elsif content.is_a?(Hash) && content.key?(:status)
       # Single step plan or a planning error
       if content[:status] == :success
-        puts " Content Type: Single Step Success"
+        puts ' Content Type: Single Step Success'
         puts " Result: #{content[:result]}"
       else # status == :error or other
-        puts " Content Type: Error (or Single Step Error)"
+        puts ' Content Type: Error (or Single Step Error)'
         puts " Message: #{content[:error_message]}"
       end
     else
-      puts " Content Type: String or Other Format"
+      puts ' Content Type: String or Other Format'
       puts " Content: #{content}"
     end
   else
-    puts " Status: Unknown (Unexpected Format)"
+    puts ' Status: Unknown (Unexpected Format)'
     puts " Raw Data: #{result_event.inspect}"
   end
   # --- End Updated Result Handling ---
