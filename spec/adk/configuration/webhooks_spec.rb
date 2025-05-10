@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require 'spec_helper'
 require 'adk/configuration/webhooks'
 require 'adk/session_service/in_memory' # Corrected path

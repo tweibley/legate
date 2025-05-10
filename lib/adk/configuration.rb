@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require 'adk/agent'
 require 'redis' # Required for RedisStore
 require_relative 'definition_store/redis_store' # Require the actual store

@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 # File: spec/adk/tools/base_async_job_tool_spec.rb
 require 'spec_helper'
 require 'sidekiq/testing' # Use Sidekiq testing helpers

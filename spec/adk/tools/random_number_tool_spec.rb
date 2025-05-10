@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 # File: spec/adk/tools/random_number_tool_spec.rb
 require 'spec_helper'
 
