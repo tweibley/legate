@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |spec|
   spec.name          = 'adk-ruby'
-  spec.version       = '0.6.2'
+  spec.version       = '0.6.3'
   spec.authors       = ['Taylor Weibley']
   spec.email         = ['taylor@taylorw.com']
 

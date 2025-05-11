@@ -168,15 +168,15 @@ module ADK
           # Deserialize events
           events = []
           event_json_list&.each_with_index do |event_json, index|
-              begin
-                event_hash = JSON.parse(event_json, symbolize_names: true)
-                event = ADK::Event.from_h(event_hash)
-                events << event if event # from_h returns nil on error
-              rescue JSON::ParserError => e
-                ADK.logger.error("Failed to parse event JSON at index #{index} for session #{session_id}: #{e.message}. Data: #{event_json}")
-                # Optionally add a placeholder event? Or just skip. Skipping for now.
-              end
+            begin
+              event_hash = JSON.parse(event_json, symbolize_names: true)
+              event = ADK::Event.from_h(event_hash)
+              events << event if event # from_h returns nil on error
+            rescue JSON::ParserError => e
+              ADK.logger.error("Failed to parse event JSON at index #{index} for session #{session_id}: #{e.message}. Data: #{event_json}")
+              # Optionally add a placeholder event? Or just skip. Skipping for now.
             end
+          end
 
           # Reconstruct Session object
           # Manually build hash for Session.new to match its expected keys
@@ -408,10 +408,10 @@ module ADK
             # Deserialize events
             events = []
             events_list&.each do |event_json|
-                begin;
+              begin;
  event_h = JSON.parse(event_json, symbolize_names: true);
  ev = ADK::Event.from_h(event_h); events << ev if ev; rescue JSON::ParserError; end
-              end
+            end
 
             # Reconstruct Session object
             session_data_for_init = {

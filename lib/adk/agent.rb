@@ -973,7 +973,7 @@ module ADK
           # Validate tool's success/pending return format.
           # Tools should now RAISE ADK::ToolError on failure, not return {status: :error}.
           unless result_hash.is_a?(Hash) && result_hash.key?(:status) && %i[success
-                                                                          pending].include?(result_hash[:status])
+                                                                            pending].include?(result_hash[:status])
             ADK.logger.error("Tool '#{tool_name}' returned invalid hash or status (expected success/pending): #{result_hash.inspect}")
             # Raise a ToolError if the format is wrong, even on expected success/pending path.
             raise ADK::ToolError, "Tool '#{tool_name}' failed to return standard hash format (status: success/pending)."

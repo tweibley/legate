@@ -44,5 +44,9 @@ gem 'mustermann', '~> 3.0'
 # Async job processing (Consider making optional?)
 # gem "temporalio"
 
+# for cli ui
+gem 'cli-ui'
+gem 'reline'
+
 gem 'kramdown' # For Markdown rendering in Web UI Docs
 gem 'kramdown-parser-gfm' # For GitHub Flavored Markdown support

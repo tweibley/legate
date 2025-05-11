@@ -5,45 +5,38 @@ require 'thor'
 require 'redis'
 require 'json'
 require 'fileutils' # For creating directories
+require 'cli/ui'    # Correct require
 require_relative '../tool_registry'
 require_relative '../agent'
-require_relative '../event'   # Need Event for result formatting understanding
-require_relative '../session' # Need Session for session service context
-require_relative '../session_service/in_memory' # Need Service implementation
-require_relative '../session_service/redis' # Add Redis session service
-require_relative '../agent_definition_store' # Added require
+require_relative '../event'
+require_relative '../session'
+require_relative '../session_service/in_memory'
+require_relative '../session_service/redis'
+require_relative '../agent_definition_store'
+require_relative '../global_tool_manager'
 
 module ADK
   module CLI
     # CLI commands for agent definition management AND temporary execution
     class AgentCommands < Thor
-      # --- Session Service Instance ---
-      # For the CLI, InMemorySessionService is suitable as state is lost anyway on exit.
-      # A shared instance allows reusing session ID across multiple execute calls if needed.
-      @@session_service = ADK::SessionService::InMemory.new
+      # Keep existing @@session_service_for_execute for 'execute' command's default in-memory usage
+      @@session_service_for_execute = ADK::SessionService::InMemory.new
 
       no_commands do
-        # REMOVED: agent_redis_key helper
-
-        # REMOVED: connect_redis helper (assume AgentDefinitionStore handles connections)
-
-        # REMOVED: parse_tools helper (AgentDefinitionStore handles tool format)
-
-        # --- Updated format_cli_result to handle Event/Error/Pending Hash ---
+        # --- Existing format_cli_result (for 'execute' command) ---
         def format_cli_result(result_data)
           content_to_display = nil
           is_error = false
           is_pending = false
-          status_prefix = ''
+          status_prefix = ""
 
-          # Determine what kind of result we got
           if result_data.is_a?(ADK::Event)
             if result_data.role == :agent || result_data.role == :tool_result
               content_to_display = result_data.content
               if content_to_display.is_a?(Hash) && content_to_display.key?(:status)
                 is_error = (content_to_display[:status] == :error)
                 is_pending = (content_to_display[:status] == :pending)
-                status_prefix = '(Nested Result) ' if result_data.role == :agent
+                status_prefix = "(Nested Result) " if result_data.role == :agent
               end
             end
           elsif result_data.is_a?(Hash) && result_data.key?(:status)
@@ -56,13 +49,12 @@ module ADK
             is_pending = false
           end
 
-          # Now format based on the determined content and status
-          if content_to_display.is_a?(Array) && !is_error && !is_pending # Multi-Step Plan Result
+          if content_to_display.is_a?(Array) && !is_error && !is_pending
             say "#{status_prefix}Multi-Step Result:", :cyan
             any_step_errors = false
             any_step_pending = false
             content_to_display.each_with_index do |step_hash, index|
-              if step_hash.is_a?(Hash) # Ensure it's a hash before checking status
+              if step_hash.is_a?(Hash) && step_hash.key?(:status)
                 case step_hash[:status]
                 when :success
                   say "  Step #{index + 1} (Success):", :green
@@ -90,7 +82,6 @@ module ADK
                 any_step_errors = true
               end
             end
-            # --- UPDATED Overall Status ---
             overall_msg = if any_step_errors then 'Completed with errors'
                           elsif any_step_pending then 'Completed with pending steps'
                           else 'Completed successfully' end
@@ -98,9 +89,7 @@ module ADK
                             elsif any_step_pending then :yellow
                             else :green end
             say "Overall Plan Status: #{overall_msg}", overall_color
-
           elsif content_to_display.is_a?(Hash) && content_to_display.key?(:status)
-            # Single step result or error/pending
             case content_to_display[:status]
             when :success
               say "#{status_prefix}Success:", :green
@@ -117,51 +106,133 @@ module ADK
               say "  Data: #{content_to_display.inspect}"
             end
           else
-            # Simple response (like a string) - Treat as success
             say "#{status_prefix}Success:", :green
             say "  Result: #{content_to_display}"
           end
         end
         # --- End format_cli_result ---
+
+        # Recursively extract the innermost :result value for nested :success hashes
+        def deep_result_value(val)
+          # Always normalize keys to symbols
+          if val.is_a?(Hash)
+            val = val.transform_keys(&:to_sym)
+            # Prefer to recurse into :result if present
+            if val.key?(:result)
+              return deep_result_value(val[:result])
+            elsif val.key?(:plan_details) && val[:plan_details].is_a?(Array) && !val[:plan_details].empty?
+              return deep_result_value(val[:plan_details].last)
+            end
+          end
+          val
+        end
+
+        # --- formatting helper for CLI UI Chat ---
+        def _format_chat_turn_output_cli_ui(event_or_hash, role_override = nil, timestamp = nil)
+          event_obj = event_or_hash.is_a?(ADK::Event) ? event_or_hash : nil
+          data_to_format = event_obj ? event_obj.content : event_or_hash
+          current_role = role_override || (event_obj ? event_obj.role : :agent)
+
+          # Use provided timestamp or create one if not provided
+          formatted_time = timestamp || Time.now.strftime("%H:%M:%S")
+
+          # Normalize keys to symbols
+          if data_to_format.is_a?(Hash)
+            data_to_format = data_to_format.transform_keys(&:to_sym)
+          end
+
+          if current_role == :user
+            # Add extra line break for spacing and show timestamp
+            ::CLI::UI::puts "\n{{blue:You}} {{gray:(#{formatted_time})}}:"
+            ::CLI::UI::puts "  #{data_to_format}\n"
+            return
+          end
+
+          if data_to_format.is_a?(Hash) && data_to_format.key?(:status) &&
+             data_to_format[:status].to_s.downcase == "success"
+            actual_result = deep_result_value(data_to_format)
+            # Add timestamp to the header for agent responses
+            ::CLI::UI::Frame.open("Agent Response (#{formatted_time})", color: :green) do
+              ::CLI::UI::puts actual_result.to_s
+            end
+            ::CLI::UI::puts "" # Add extra line break after the response
+            return
+          end
+
+          unless data_to_format.is_a?(Hash) && data_to_format.key?(:status)
+            ::CLI::UI::Frame.open("Agent Response (#{formatted_time})", color: :cyan) do
+              ::CLI::UI::puts data_to_format.inspect
+            end
+            ::CLI::UI::puts "" # Add extra line break after the response
+            return
+          end
+
+          case data_to_format[:status]
+          when :error
+            title_color = :red
+            title_prefix = "Agent Error"
+            message_body_content = data_to_format[:error_message]
+            ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
+              ::CLI::UI::puts message_body_content
+            end
+          when :pending
+            title_color = :yellow
+            title_prefix = "Agent Pending"
+            message_body_content = "Job ID [#{data_to_format[:job_id]}] - #{data_to_format[:message]}"
+            ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
+              ::CLI::UI::puts message_body_content
+            end
+          else
+            title_color = :magenta
+            title_prefix = "Agent (Status: #{data_to_format[:status]})"
+            message_body_content = data_to_format.inspect
+            ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
+              ::CLI::UI::puts message_body_content
+            end
+          end
+          ::CLI::UI::puts "" # Add extra line break after any response
+        end
+        # --- END _format_chat_turn_output_cli_ui ---
       end # end no_commands
 
-      # --- Definition Management Commands ---
+      # --- Definition Management Commands (Existing - no changes shown for brevity) ---
       desc 'list', 'List all defined agents'
       def list
-        # Load from Redis into memory first
         begin
           ADK::AgentDefinitionStore.load_all_from_redis
         rescue Redis::BaseError => e
           say "Error: Could not connect to Redis to load agent definitions. Is it running? (#{e.message})", :red
           exit(1)
         end
-
         definitions = ADK::AgentDefinitionStore.all
-
         if definitions.empty?
-          say 'No agent definitions found.'
+          say "No agent definitions found."
           return
         end
-
-        say 'Defined Agents:', :bold
+        say "Defined Agents:", :bold
         definitions.sort_by { |name, _| name.to_s }.each do |name, data|
-          description = data[:description] || '[No description]'
-          tools = data[:tools] # Already an array from store
+          description = data[:description] || "[No description]"
+          tools = data[:tools]
           model = data[:model] || "#{ADK::Agent::DEFAULT_MODEL} (Default)"
-          tools_str = tools.empty? ? 'None' : tools.join(', ')
+          tools_str = tools.empty? ? "None" : tools.join(', ')
           say "- #{name}: #{description} (Model: #{model}, Tools: #{tools_str})"
         end
       end
 
       desc 'save NAME', 'Create or update an agent definition'
       method_option :description, type: :string, required: true, desc: 'Agent description'
-      method_option :tools, type: :string, aliases: '-t',
-                            desc: 'Comma-separated list of tool names (e.g., "echo,calculator")'
+      method_option :tools, type: :string, aliases: "-t", desc: 'Comma-separated list of tool names (e.g., "echo,calculator")'
       method_option :model, type: :string, desc: "LLM model name (default: #{ADK::Agent::DEFAULT_MODEL})"
+      method_option :instruction, type: :string, desc: "Core instructions for the agent's behavior (system prompt)."
+      method_option :webhook_enabled, type: :boolean, default: false, desc: "Enable webhook triggering for this agent."
+      method_option :webhook_secret, type: :string, desc: "Secret key for webhook validation (if webhook_enabled)."
+      method_option :mcp_servers_json, type: :string, desc: "JSON string of MCP server configurations array."
+
       def save(name)
         name_sym = name.to_sym
         description = options[:description]
         model_to_save = options[:model] && !options[:model].empty? ? options[:model] : ADK::Agent::DEFAULT_MODEL
+        instruction_to_save = options[:instruction]
 
         selected_tools = []
         valid_tools = ADK::GlobalToolManager.registered_tool_names.map(&:to_s)
@@ -171,9 +242,6 @@ module ADK
             if valid_tools.include?(tool_name)
               selected_tools << tool_name unless selected_tools.include?(tool_name)
             else
-              # Check if it's a valid tool name even if not globally registered (could be agent-specific)
-              # For simplicity, we'll only check against globally known tools here.
-              # A more robust check might involve loading agent definitions.
               say "Warning: Unknown globally registered tool '#{tool_name}', ignoring.", :yellow
             end
           end
@@ -182,28 +250,27 @@ module ADK
         definition = {
           description: description,
           tools: selected_tools,
-          model: model_to_save
+          model: model_to_save,
+          instruction: instruction_to_save,
+          fallback_mode: :error,
+          mcp_servers_json: options[:mcp_servers_json] || '[]',
+          webhook_enabled: options[:webhook_enabled],
+          webhook_secret: options[:webhook_secret]
         }
 
-        # Save to Redis first (for persistence)
         unless ADK::AgentDefinitionStore.save_to_redis(name_sym, definition)
-          say 'Error saving definition to Redis. Aborting.', :red
+          say "Error saving definition to Redis. Aborting.", :red
           exit(1)
         end
-
-        # Register in memory for current process
         ADK::AgentDefinitionStore.register(name_sym, definition)
-
-        tools_msg = selected_tools.empty? ? 'None' : selected_tools.join(', ')
-        say "Agent definition '#{name}' saved (Model: #{model_to_save}, Tools: #{tools_msg}).", :green
+        tools_msg = selected_tools.empty? ? "None" : selected_tools.join(', ')
+        say "Agent definition '#{name}' saved (Model: #{model_to_save}, Tools: #{tools_msg}, Instruction: #{instruction_to_save ? 'Set' : 'Not Set'}).", :green
       end
 
       desc 'delete NAME', "Delete an agent's definition"
       def delete(name)
         name_sym = name.to_sym
-        # Check if it exists in memory first (might have been loaded)
         unless ADK::AgentDefinitionStore.find(name_sym)
-          # If not in memory, check Redis before prompting
           begin
             definition_from_redis = ADK::AgentDefinitionStore.load_from_redis(name_sym)
             unless definition_from_redis
@@ -215,33 +282,25 @@ module ADK
             exit(1)
           end
         end
-
         if yes?("Are you sure you want to permanently delete agent definition '#{name}'? [y/N]", :yellow)
-          # Delete from Redis
           redis_deleted = ADK::AgentDefinitionStore.delete_from_redis(name_sym)
-          # Remove from memory
           ADK::AgentDefinitionStore.remove(name_sym)
-
           if redis_deleted
             say "Agent definition '#{name}' deleted successfully.", :green
           else
-            say 'Error deleting definition from Redis. It has been removed from memory, but may still exist in Redis.',
-                :red
+            say "Error deleting definition from Redis. It has been removed from memory, but may still exist in Redis.", :red
             exit(1)
           end
         else
-          say 'Deletion cancelled.', :yellow
+          say "Deletion cancelled.", :yellow
         end
       end
 
-      # --- NEW: Generate Agent Definition File ---
       desc 'generate NAME', 'Generate a new agent definition file'
       method_option :description, type: :string, default: 'A new ADK agent.', desc: 'Agent description'
-      method_option :instruction, type: :string, default: 'You are a helpful assistant.',
-                                  desc: 'Agent instruction (system prompt)'
-      method_option :tools, type: :string, aliases: '-t', default: '',
-                            desc: 'Comma-separated list of tool names (e.g., "echo,calculator")'
-      method_option :model, type: :string, desc: 'LLM model name (uses framework default if blank)'
+      method_option :instruction, type: :string, default: 'You are a helpful assistant.', desc: 'Agent instruction (system prompt)'
+      method_option :tools, type: :string, aliases: '-t', default: '', desc: 'Comma-separated list of tool names (e.g., "echo,calculator")'
+      method_option :model, type: :string, desc: "LLM model name (uses framework default if blank)"
       method_option :dir, type: :string, default: './agents', desc: 'Directory to save the agent definition file'
       method_option :force, type: :boolean, default: false, desc: 'Overwrite existing file without prompting'
       method_option :webhook_enabled, type: :boolean, default: false, desc: 'Include webhook configuration placeholders'
@@ -249,32 +308,24 @@ module ADK
         agent_name_sym = name.to_sym
         dir_path = File.expand_path(options[:dir])
         file_path = File.join(dir_path, "#{name}_agent.rb")
-
-        # Check if file exists
         if File.exist?(file_path) && !options[:force]
           unless yes?("Agent file '#{file_path}' already exists. Overwrite? [y/N]", :yellow)
-            say 'Generation cancelled.', :yellow
+            say "Generation cancelled.", :yellow
             exit(0)
           end
         end
-
-        # Ensure directory exists
         begin
           FileUtils.mkdir_p(dir_path)
         rescue SystemCallError => e
           say "Error: Could not create directory '#{dir_path}': #{e.message}", :red
           exit(1)
         end
-
-        # Prepare template variables
         agent_name_str = name
         description = options[:description]
         instruction = options[:instruction]
         tools_list = options[:tools].split(',').map(&:strip).reject(&:empty?).map(&:to_sym)
-        model_str = options[:model] # Keep as string or nil
+        model_str = options[:model]
         webhook_enabled = options[:webhook_enabled]
-
-        # --- Build Agent Definition Code ---
         code = <<~RUBY
           require 'adk'
 
@@ -284,16 +335,12 @@ module ADK
             a.instruction = "#{instruction}"
           #{'  '}
         RUBY
-
-        # Add optional model
         if model_str && !model_str.empty?
           code += "  # Optional: Specify model (defaults to ADK.config.default_model_name)\n"
           code += "  a.model_name = '#{model_str}'\n\n"
         else
           code += "  # Model will use framework default: #{ADK.config.default_model_name}\n\n"
         end
-
-        # Add tools
         code += "  # Define tools the agent can use\n"
         if tools_list.empty?
           code += "  # a.use_tool :echo # Example\n"
@@ -301,8 +348,6 @@ module ADK
           tools_list.each { |tool| code += "  a.use_tool :#{tool}\n" }
         end
         code += "\n"
-
-        # Add webhook config if requested
         if webhook_enabled
           code += <<~WEBHOOK
             # --- Webhook Configuration ---#{' '}
@@ -311,119 +356,77 @@ module ADK
 
             a.webhook_enabled true
 
-            # Required: Convert incoming request body to the user_input for run_task
-            # Example: Extract data from a GitHub push payload
             a.webhook_transformer ->(request_body) do#{' '}
-              # commits = request_body.fetch('commits', []
-              # pusher = request_body.dig('pusher', 'name') || 'Unknown'
-              # commit_messages = commits.map { |c| "- #{c['message']} (by #{c.dig('author', 'name')})" }.join("\n")
-              # raise ADK::WebhookConfigurationError, "Missing commits in payload." if commits.empty? && pusher == 'Unknown' # Example validation
-              # "New push by #{pusher}. Summarize commits:\n#{commit_messages}\"\n              raise NotImplementedError, "Please implement the webhook_transformer proc to convert request_body into agent user_input."
+              raise NotImplementedError, "Please implement the webhook_transformer proc to convert request_body into agent user_input."
             end
 
-            # Required: Extract a session ID string from the incoming request
-            # Example: Use repository ID for session grouping
             a.webhook_session_extractor ->(request_body) do
-              # repo_id = request_body.dig('repository', 'id')#{' '}
-              # raise ADK::WebhookConfigurationError, "Missing repository ID in payload." unless repo_id
-              # "github_repo_#{repo_id}\" # Return the session_id string
-              # Or, for unique tasks: require 'securerandom'; SecureRandom.hex(8)
               raise NotImplementedError, "Please implement the webhook_session_extractor proc to extract a session ID."
             end
-
-            # Optional: Validate incoming requests (recommended)
-            # See docs/webhooks.md for examples using :hmac_sha256 or custom procs.
-            # a.webhook_validator :hmac_sha256 # Reference a validator defined in ADK.configure
-            # a.webhook_secret ENV['AGENT_#{agent_name_str.upcase}_SECRET'] # Secret for the validator
-
           WEBHOOK
         end
-
-        code += "end\n" # Close ADK::Agent.define block
-        # --- End Build Code ---
-
-        # Write file
+        code += "end\n"
         begin
           File.write(file_path, code)
           say "Agent definition file created at '#{file_path}'", :green
           if webhook_enabled
-            say "\nWebhook configuration placeholders added. Please implement the required transformer and extractor procs.",
-                :yellow
-            say 'Remember to configure validation and secrets for production use!', :yellow
+            say "\nWebhook configuration placeholders added. Please implement the required transformer and extractor procs.", :yellow
+            say "Remember to configure validation and secrets for production use!", :yellow
           end
         rescue SystemCallError => e
           say "Error: Could not write file '#{file_path}': #{e.message}", :red
           exit(1)
         end
       end
-      # --- END Generate Agent ---
-
-      # --- Runtime/Execution Commands (Using Redis Definition) ---
 
       desc 'start NAME', 'Verify agent definition loading and start (Ephemeral)'
       long_desc <<-LONGDESC
         Loads agent definition, instantiates agent, starts agent runtime state,
         verifies all components loaded correctly, prints details & exits.
         This is a diagnostic tool to verify agent definition loads properly.
-        Use 'execute' command to run an actual task with the agent.
+        Use 'execute' or 'chat' command to run an actual task with the agent.
       LONGDESC
       def start(name)
         name_sym = name.to_sym
         say "Loading agent '#{name}'..."
-
-        # Load definition using the store
         definition = ADK::AgentDefinitionStore.find(name_sym)
         definition ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
-
         unless definition
           say "Error: Agent definition '#{name}' not found.", :red
           exit(1)
         end
-
         description = definition[:description]
         tool_names_to_load = definition[:tools].map(&:to_sym)
         model_name = definition[:model]
-
+        instruction_val = definition[:instruction]
         agent = nil
         begin
-          # Instantiate Agent (pass tool classes directly)
-          tool_classes = tool_names_to_load.map do |t_name|
-            ADK::GlobalToolManager.find_class(t_name)
-          end.compact
+          tool_classes = tool_names_to_load.map { |t_name| ADK::GlobalToolManager.find_class(t_name) }.compact
           missing_tools = tool_names_to_load - tool_classes.map { |tc| tc.tool_metadata[:name] }
-
-          agent = ADK::Agent.new(
-            name: name,
-            description: description,
-            model_name: model_name,
-            tool_classes: tool_classes
-          )
+          agent = ADK::Agent.new(name: name, description: description, model_name: model_name, instruction: instruction_val, tool_classes: tool_classes)
           say "  - Agent uses model: #{agent.model_name}", :cyan
-
+          say "  - Agent instruction: #{agent.instruction.inspect}", :cyan
           unless missing_tools.empty?
             say "  - Warning: Tools defined but not found in GlobalToolManager: [#{missing_tools.join(', ')}]", :yellow
           end
           say "  - Loaded tools: [#{agent.tools.map(&:name).join(', ')}]", :cyan
-
-          # Start Agent Runtime
-          say '  - Starting agent runtime...', :cyan, false
+          say "  - Starting agent runtime...", :cyan, false
           agent.start
-          say 'started.', :cyan
+          say "started.", :cyan
           say "\nAgent '#{name}' is ready.", :green
         rescue StandardError => e
           say "\nError during agent setup: #{e.class} - #{e.message}", :red
-          puts e.backtrace.first(5).join("\n") # Print some backtrace for debug
+          puts e.backtrace.first(5).join("\n")
           exit(1)
         ensure
           if agent&.running?
-            say '  - Stopping agent runtime...', :cyan, false
+            say "  - Stopping agent runtime...", :cyan, false
             agent.stop
-            say 'stopped.', :cyan
+            say "stopped.", :cyan
           end
         end
       end
 
-      # --- Updated 'execute' command for Session Handling and Pending Status ---
       desc 'execute NAME TASK', 'Execute a task using agent definition (ephemeral)'
       long_desc <<-LONGDESC
         Loads agent definition, instantiates agent, runs TASK within a session context,
@@ -444,83 +447,217 @@ module ADK
       def execute(name, task)
         name_sym = name.to_sym
         say("Loading agent '#{name}' to execute task: \"#{task}\"...")
-
-        # Load definition using the store
         definition = ADK::AgentDefinitionStore.find(name_sym)
         definition ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
-
         unless definition
           say "Error: Agent definition '#{name}' not found.", :red
           exit(1)
         end
-
         description = definition[:description]
         tool_names_to_load = definition[:tools].map(&:to_sym)
         model_name = definition[:model]
+        instruction_val = definition[:instruction]
 
-        # --- Session Handling ---
-        session_service = options[:redis] ? ADK::SessionService::Redis.new : @@session_service
-        session_id = options[:session_id]
+        session_service_instance = options[:redis] ? ADK::SessionService::Redis.new : @@session_service_for_execute
+        session_id_opt = options[:session_id]
         adk_session = nil
-        if session_id
-          adk_session = session_service.get_session(session_id: session_id)
-          if adk_session then say "Continuing session: #{session_id}", :cyan
-          else say "Warning: Session ID '#{session_id}' provided but not found. Starting a new session.", :yellow;
-               session_id = nil end
+        if session_id_opt
+          adk_session = session_service_instance.get_session(session_id: session_id_opt)
+          if adk_session then say "Continuing session: #{session_id_opt}", :cyan
+          else say "Warning: Session ID '#{session_id_opt}' provided but not found. Starting a new session.", :yellow;
+               session_id_opt = nil end
         end
         unless adk_session
-          adk_session = session_service.create_session(app_name: name, user_id: 'cli_user')
-          session_id = adk_session.id
-          say "Started new session: #{session_id}", :cyan
+          adk_session = session_service_instance.create_session(app_name: name, user_id: 'cli_user')
+          session_id_opt = adk_session.id
+          say "Started new session: #{session_id_opt}", :cyan
           say "  (Using #{options[:redis] ? 'Redis' : 'in-memory'} session storage)", :cyan
         end
-        # --- End Session Handling ---
 
         agent = nil
-        e = nil
+        e_outer = nil
         begin
-          # Instantiate Agent (pass tool classes directly)
-          tool_classes = tool_names_to_load.map do |t_name|
-            ADK::GlobalToolManager.find_class(t_name)
-          end.compact
+          tool_classes = tool_names_to_load.map { |t_name| ADK::GlobalToolManager.find_class(t_name) }.compact
           missing_tools = tool_names_to_load - tool_classes.map { |tc| tc.tool_metadata[:name] }
-
-          agent = ADK::Agent.new(
-            name: name,
-            description: description,
-            model_name: model_name,
-            tool_classes: tool_classes
-          )
+          agent = ADK::Agent.new(name: name, description: description, model_name: model_name, instruction: instruction_val, tool_classes: tool_classes)
           say "  - Agent uses model: #{agent.model_name}", :cyan
-
           unless missing_tools.empty?
             say "  - Warning: Tools defined but not found in GlobalToolManager: [#{missing_tools.join(', ')}]", :yellow
           end
           say "  - Loaded tools: [#{agent.tools.map(&:name).join(', ')}]", :cyan
-
-          # Start Agent Runtime & Execute Task
-          say '  - Starting agent runtime...', :cyan, false; agent.start; say 'started.', :cyan
-          say "  - Running task in session #{session_id}: '#{task}'...", :cyan, false;
+          say "  - Starting agent runtime...", :cyan, false; agent.start; say "started.", :cyan
+          say "  - Running task in session #{session_id_opt}: '#{task}'...", :cyan, false;
           final_event_or_error = agent.run_task(
-            session_id: session_id,
+            session_id: session_id_opt,
             user_input: task,
-            session_service: session_service
+            session_service: session_service_instance
           )
-          say 'finished.', :cyan
-
-          # Format and Print Result
+          say "finished.", :cyan
           say "\nTask Result:", :bold
           format_cli_result(final_event_or_error)
         rescue StandardError => e
+          e_outer = e
           say "\nError during agent execution: #{e.class} - #{e.message}", :red
           puts e.backtrace.first(5).join("\n")
         ensure
           if agent&.running?
-            say '  - Stopping agent runtime...', :cyan, false; agent.stop; say 'stopped.', :cyan
+            say "  - Stopping agent runtime...", :cyan, false; agent.stop; say "stopped.", :cyan
           end
-          exit(1) if e
+          exit(1) if e_outer
         end
       end # End 'execute' command
+
+      # --- CHAT COMMAND ---
+      desc 'chat AGENT_NAME', 'Interactively chat with an agent definition'
+      long_desc <<-LONGDESC
+        Starts an interactive chat session with the specified agent.
+        The agent definition is loaded from the configured store (usually Redis).
+
+        Session Handling:
+        - By default, uses an in-memory session that is lost when the chat ends.
+        - Use `--session-service redis` to use persistent Redis-backed sessions.
+        - Use `--session-id <ID>` to resume a specific existing session. If the ID
+          is not found with the specified service, a new session will be created.
+
+        Type "exit" or "quit" to end the chat.
+      LONGDESC
+      method_option :session_id, type: :string, desc: 'ID of an existing session to resume.'
+      method_option :session_service, type: :string, default: 'memory', enum: %w[memory redis],
+                                      desc: 'Session service to use (memory or redis).'
+      def chat(agent_name_str)
+        ::CLI::UI::StdoutRouter.enable
+        agent_name_sym = agent_name_str.to_sym
+
+        definition = ADK::AgentDefinitionStore.load_from_redis(agent_name_sym)
+        unless definition
+          ::CLI::UI::puts "{{red:Error: Agent definition '#{agent_name_str}' not found in Redis.}}"
+          exit(1)
+        end
+
+        session_service_instance = if options[:session_service] == 'redis'
+                                     ADK::SessionService::Redis.new
+                                   else
+                                     ADK::SessionService::InMemory.new
+                                   end
+
+        current_session_id = options[:session_id]
+        adk_session = nil # Will hold the loaded ADK::Session object
+
+        ::CLI::UI::Frame.open("Chat Session with #{agent_name_str}", color: :blue) do
+          ::CLI::UI::puts "{{bold:Agent Description:}} #{definition[:description]}"
+          if current_session_id
+            adk_session = session_service_instance.get_session(session_id: current_session_id)
+            if adk_session
+              ::CLI::UI::puts "{{green:Resuming session:}} #{current_session_id} (#{options[:session_service]})"
+              # --- MODIFIED: Display history if session is loaded and has events ---
+              if adk_session.events && !adk_session.events.empty?
+                ::CLI::UI::puts "\n{{bold:━━━ Recent Conversation History ━━━}}"
+
+                # Group events by conversation turns
+                history_events = adk_session.events.last(20) # Show more history items
+                current_date = nil
+
+                history_events.each do |event|
+                  # Extract timestamp from event and format it
+                  event_time = event.timestamp ? Time.at(event.timestamp) : Time.now
+                  formatted_time = event_time.strftime("%H:%M:%S")
+
+                  # Show date separator if this is a new day
+                  event_date = event_time.strftime("%Y-%m-%d")
+                  if current_date != event_date
+                    current_date = event_date
+                    ::CLI::UI::puts "\n{{bold:┅┅┅ #{event_time.strftime('%B %d, %Y')} ┅┅┅}}"
+                  end
+
+                  if event.role == :user
+                    # For user role, event.content is the string message
+                    _format_chat_turn_output_cli_ui(event.content, :user, formatted_time)
+                  elsif event.role == :agent
+                    # For agent role, event.content is the hash {status:, result:, ...}
+                    _format_chat_turn_output_cli_ui(event.content, :agent, formatted_time)
+                  end
+                  # Tool events are generally not shown in simple chat history
+                end
+                ::CLI::UI::puts "{{bold:━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━}}\n"
+              else
+                ::CLI::UI::puts "{{italic:No previous messages in this session.}}"
+              end
+              # --- END MODIFICATION ---
+            else
+              ::CLI::UI::puts "{{yellow:Warning: Session ID '#{current_session_id}' not found. Starting new session.}}"
+              current_session_id = nil # Force new session creation
+            end
+          end
+          unless adk_session # If still no session (either not provided, or provided but not found)
+            adk_session = session_service_instance.create_session(app_name: agent_name_str, user_id: "cli_chat_user_#{SecureRandom.hex(3)}")
+            current_session_id = adk_session.id # Update current_session_id with the new one
+            ::CLI::UI::puts "{{green:Started new session:}} #{current_session_id} (#{options[:session_service]})"
+          end
+          ::CLI::UI::puts "{{gray:Type 'exit' or 'quit' to end the chat.}}"
+        end
+        ::CLI::UI::puts "---"
+
+        agent = nil
+        begin
+          tool_classes_for_agent = definition[:tools].map do |tn|
+            ADK::GlobalToolManager.find_class(tn.to_sym)
+          end.compact
+
+          agent = ADK::Agent.new(
+            name: agent_name_sym,
+            description: definition[:description],
+            instruction: definition[:instruction],
+            model_name: definition[:model],
+            tool_classes: tool_classes_for_agent,
+            fallback_mode: definition[:fallback_mode]&.to_sym || :error,
+            mcp_servers: definition[:mcp_servers_json] ? JSON.parse(definition[:mcp_servers_json]) : [],
+            session_service: session_service_instance
+          )
+          agent.start
+        rescue => e
+          ::CLI::UI::puts "{{red:Error initializing or starting agent: #{e.message}}}"
+          exit(1)
+        end
+
+        loop do
+          user_input = ::CLI::UI::Prompt.ask('You')
+          break if user_input.nil?
+
+          user_input.strip!
+          break if ['exit', 'quit'].include?(user_input.downcase)
+          next if user_input.empty?
+
+          final_event = nil
+          session_lost_flag = false
+          begin
+            ::CLI::UI::Spinner.spin('Agent thinking...') do |_spinner|
+              current_adk_session_for_task = session_service_instance.get_session(session_id: current_session_id)
+              unless current_adk_session_for_task
+                ::CLI::UI::puts "{{red:Error: Session '#{current_session_id}' lost. Please restart chat.}}"
+                session_lost_flag = true
+                break
+              end
+
+              final_event = agent.run_task(
+                session_id: current_session_id,
+                user_input: user_input,
+                session_service: session_service_instance
+              )
+            end
+            break if session_lost_flag
+
+            _format_chat_turn_output_cli_ui(final_event)
+          rescue StandardError => e
+            ::CLI::UI::Frame.open("Error During Task", color: :red) do
+              ::CLI::UI::puts e.message
+            end
+          end
+        end
+      ensure
+        agent&.stop if agent&.running?
+        ::CLI::UI::puts "{{yellow:Chat ended.}}"
+      end
+      # --- END CHAT COMMAND ---
     end # End AgentCommands class
   end # End CLI module
 end # End ADK module
