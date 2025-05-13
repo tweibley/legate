@@ -827,4 +827,80 @@ RSpec.describe ADK::CLI::AgentCommands do
   #     expect(output.string)... # Check StringIO output
   #   end
   # end
+
+  let(:starter_agent_def_hash) do
+    {
+      name: :starter_agent,
+      description: 'Starter Desc',
+      instruction: 'This is a valid instruction for starter_agent.',
+      tools: ['mock_tool'], # from_hash expects :tool_names, but will handle :tools if present via logic
+      model: 'gemini-flash'
+    }
+  end
+
+  let(:executor_agent_def_hash) do
+    {
+      name: :executor_agent,
+      description: 'Executor Desc',
+      instruction: 'This is a valid instruction for executor_agent.',
+      tools: ['mock_tool'],
+      model: 'gemini-pro'
+    }
+  end
+
+  let(:starter_agent_def_with_missing_tool_hash) do
+    {
+      name: :starter_agent,
+      description: 'Starter Desc',
+      instruction: 'Valid instruction here.',
+      tools: [:forgotten_tool],
+      model: 'gemini-flash'
+    }
+  end
+
+  before do
+    allow(ADK::AgentDefinitionStore).to receive(:find).with(:starter_agent).and_return(starter_agent_def_with_missing_tool_hash)
+    allow(ADK::AgentDefinitionStore).to receive(:find).with(:starter_agent)
+                                                      .and_return(starter_agent_def_hash.merge(instruction: nil))
+    allow(ADK::AgentDefinitionStore).to receive(:find).with(:starter_agent).and_return(starter_agent_def_hash)
+  end
+
+  let(:mock_execute_tool_class) { MockTool } # Assuming MockTool is defined
+  let(:executor_agent_def_hash) do # Redefined here, ensure instruction
+    {
+      name: :executor_agent,
+      description: 'Executor agent for testing commands',
+      instruction: 'This is a valid instruction for executor_agent_for_commands.',
+      tools: ['mock_tool'],
+      model: 'gemini-pro'
+    }
+  end
+
+  let(:mock_session_id) { 'clispec-session-123' }
+
+  before do
+    allow(ADK::AgentDefinitionStore).to receive(:find).with(:executor_agent).and_return(executor_agent_def_hash)
+    allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(:executor_agent).and_return(executor_agent_def_hash)
+    allow(ADK::AgentDefinitionStore).to receive(:find).with(:executor_agent).and_return(nil)
+    allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(:executor_agent).and_return(nil)
+    allow(ADK::AgentDefinitionStore).to receive(:find).with(:executor_agent)
+                                                      .and_return(executor_agent_def_hash.merge(instruction: '')) # Empty instruction
+    allow(ADK::AgentDefinitionStore).to receive(:find).with(:executor_agent).and_return(executor_agent_def_hash)
+    allow(ADK::AgentDefinitionStore).to receive(:find).with(:executor_agent).and_return(executor_agent_def_hash)
+  end
+
+  let(:agent_def_missing_tool_hash) do
+    {
+      name: :executor_agent,
+      description: 'Agent with a tool not in global manager',
+      instruction: 'Valid instruction even with missing tool.',
+      tools: [:unregistered_tool],
+      model: 'gemini-pro'
+    }
+  end
+
+  before do
+    allow(ADK::AgentDefinitionStore).to receive(:find).with(:executor_agent)
+                                                      .and_return(agent_def_missing_tool_hash)
+  end
 end

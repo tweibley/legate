@@ -43,6 +43,36 @@ RSpec.describe ADK::Tools::AgentTool do
   }
   # --- End Context Mocking ---
 
+  let(:calculator_agent_def_hash) do
+    {
+      name: :calculator_agent,
+      description: 'A simple calculator agent',
+      instruction: 'You are a calculator. Perform calculations.', # Added instruction
+      tools: ['calculator'], # or :calculator, from_hash handles symbols
+      model: 'gemini-flash'
+    }
+  end
+
+  let(:agent_def_no_tools_hash) do
+    {
+      name: :calculator_agent,
+      description: 'A calculator agent with no tools specified in hash',
+      instruction: 'You are a calculator. Perform calculations even if you think you have no tools.', # Added instruction
+      tools: [],
+      model: 'gemini-flash'
+    }
+  end
+
+  let(:agent_def_missing_tool_hash) do
+    {
+      name: :calculator_agent,
+      description: 'Calculator with a tool not in global manager',
+      instruction: 'You are a calculator. One of your tools is missing.', # Added instruction
+      tools: [:non_existent_tool, :calculator],
+      model: 'gemini-flash'
+    }
+  end
+
   before do
     # Mock GlobalToolManager to find the calculator tool
     allow(ADK::GlobalToolManager).to receive(:find_class).with(:calculator).and_return(ADK::Tools::Calculator)
@@ -104,6 +134,8 @@ RSpec.describe ADK::Tools::AgentTool do
 
     context 'when delegation is successful' do
       before do
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(:calculator_agent).and_return(calculator_agent_def_hash)
+        allow(ADK::GlobalToolManager).to receive(:find_class).with(:calculator).and_return(ADK::Tools::Calculator)
         # Stub definition store to return the definition, expect symbol name
         allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_sym).and_return(target_definition_hash)
       end
@@ -141,6 +173,9 @@ RSpec.describe ADK::Tools::AgentTool do
 
     context 'when definition is loaded from Redis (not memory)' do
       before do
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(:calculator_agent).and_return(nil)
+        allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(:calculator_agent).and_return(calculator_agent_def_hash)
+        allow(ADK::GlobalToolManager).to receive(:find_class).with(:calculator).and_return(ADK::Tools::Calculator)
         # Stub find to return nil, load_from_redis to return definition
         allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_sym).and_return(nil)
         allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(target_agent_name.to_s).and_return(target_definition_hash)
@@ -158,10 +193,8 @@ RSpec.describe ADK::Tools::AgentTool do
 
     context 'when target agent definition is not found' do
       before do
-        # Default mocks already handle not found case (return nil)
-        # Ensure mocks expect symbol for find and string for load_from_redis
-        allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_sym).and_return(nil)
-        allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(target_agent_name.to_s).and_return(nil)
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(:calculator_agent).and_return(nil)
+        allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(:calculator_agent).and_return(nil)
       end
 
       it 'raises ToolArgumentError' do
@@ -174,6 +207,8 @@ RSpec.describe ADK::Tools::AgentTool do
     context 'when target agent task execution raises an error' do
       let(:target_error) { StandardError.new('Target agent failed!') }
       before do
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(:calculator_agent).and_return(calculator_agent_def_hash)
+        allow(ADK::GlobalToolManager).to receive(:find_class).with(:calculator).and_return(ADK::Tools::Calculator)
         # Stub definition store to return the definition, expect symbol name for find
         allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_sym).and_return(target_definition_hash)
         # Stub run_task to raise error
@@ -204,11 +239,9 @@ RSpec.describe ADK::Tools::AgentTool do
     end
 
     context 'when target agent definition has no tools listed' do
-      let(:definition_no_tools) { target_definition_hash.merge(tools: []) }
       before do
-        allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_sym).and_return(definition_no_tools)
-        # Ensure agent mock doesn't expect tool registration
-        allow(mock_target_agent).to receive(:register_tool_class) # Allow 0 calls
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(:calculator_agent).and_return(agent_def_no_tools_hash)
+        # No tools expected to be found by GlobalToolManager for this test agent's definition
       end
 
       it 'warns but proceeds successfully' do
@@ -221,12 +254,12 @@ RSpec.describe ADK::Tools::AgentTool do
     end
 
     context 'when a needed tool is not found in the executing registry' do
-      let(:definition_missing_tool) { target_definition_hash.merge(tools: %w[calculator missing_tool]) }
       before do
-        allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_sym).and_return(definition_missing_tool)
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(:calculator_agent).and_return(agent_def_missing_tool_hash)
+        allow(ADK::GlobalToolManager).to receive(:find_class).with(:non_existent_tool).and_return(nil)
+        allow(ADK::GlobalToolManager).to receive(:find_class).with(:calculator).and_return(ADK::Tools::Calculator)
         # Make GlobalToolManager return nil for the missing tool
         # (AgentTool uses GlobalToolManager, not the calling agent's registry, to find tool classes for the target agent)
-        allow(ADK::GlobalToolManager).to receive(:find_class).with(:calculator).and_return(ADK::Tools::Calculator)
         allow(ADK::GlobalToolManager).to receive(:find_class).with(:missing_tool).and_return(nil)
       end
 

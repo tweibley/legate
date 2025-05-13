@@ -204,7 +204,7 @@ module ADK
       # Sets the secret key for webhook validation.
       # @param secret [String]
       def webhook_secret(secret)
-        @definition.instance_variable_set(:@webhook_secret, secret.to_s)
+        @definition.instance_variable_set(:@webhook_secret, secret)
       end
 
       # Sets the transformer proc for webhook payloads.
@@ -304,7 +304,7 @@ module ADK
       elsif hash_data.key?(:webhook_validator) && hash_data[:webhook_validator].nil?
         proxy.webhook_validator(nil)
       end
-      proxy.webhook_secret(hash_data[:webhook_secret].to_s) if hash_data.key?(:webhook_secret)
+      proxy.webhook_secret(hash_data[:webhook_secret]) if hash_data.key?(:webhook_secret)
 
       proxy.fallback_mode(hash_data[:fallback_mode].to_sym) if hash_data[:fallback_mode]
 

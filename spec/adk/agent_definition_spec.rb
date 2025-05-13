@@ -246,6 +246,9 @@ RSpec.describe ADK::AgentDefinition do
     # Use a shared context for defining a complex agent to reduce duplication
     shared_context 'with a complex original definition' do
       before do
+        # Assign procs to local variables to ensure they are in scope for the define block
+        tp = transformer_proc
+        ep = extractor_proc
         original_definition.define do |a|
           a.name :complex_agent
           a.description 'A complex agent with all bells and whistles'
@@ -257,8 +260,8 @@ RSpec.describe ADK::AgentDefinition do
           a.webhook_enabled true
           a.webhook_validator :my_custom_validator # Symbol validator
           a.webhook_secret 'super-secret-key-123'
-          a.webhook_transformer transformer_proc
-          a.webhook_session_extractor extractor_proc
+          a.webhook_transformer tp
+          a.webhook_session_extractor ep
           a.fallback_mode :echo
           a.mcp_servers({ type: 'stdio', command: 'mcp_server_exec' }, { type: 'sse', url: 'http://localhost:8080/sse' })
           a.sub_agents_define :sub_agent_alpha, :sub_agent_beta
@@ -346,10 +349,12 @@ RSpec.describe ADK::AgentDefinition do
 
     context 'when webhook_validator is a Proc in original definition' do
       before do
+        # Assign proc to local variable to ensure it's in scope for the define block
+        vp = validator_proc
         original_definition.define do |a|
           a.name :proc_validator_agent
           a.instruction 'Validates with a proc'
-          a.webhook_validator validator_proc # Assign the actual Proc object
+          a.webhook_validator vp # Assign the actual Proc object
         end
       end
 

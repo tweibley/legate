@@ -30,6 +30,39 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
   let(:redis_store_double) { instance_double(ADK::DefinitionStore::RedisStore) }
   let(:adk_config_double) { instance_double(ADK::Configuration, definition_store: redis_store_double) }
 
+  let(:mock_redis_definition_hash) do
+    {
+      'name' => agent_name.to_s, # Redis returns string keys
+      'description' => 'Test Agent Description from Redis',
+      'instruction' => 'Perform tasks based on Redis definition.', # Added instruction
+      'tools' => [:mock_tool].to_json, # Stored as JSON string of symbols/strings
+      'model' => 'gemini-pro-redis',
+      'mcp_servers_json' => [{ type: 'test' }].to_json # Example for mcp_servers
+    }
+  end
+
+  let(:mock_redis_definition_hash_no_model) do
+    mock_redis_definition_hash.reject { |k, _| k == 'model' }
+  end
+
+  let(:mock_redis_definition_hash_no_tools) do
+    mock_redis_definition_hash.merge({'tools' => [].to_json})
+  end
+
+  let(:mock_redis_definition_hash_invalid_tools_json) do
+    mock_redis_definition_hash.merge({'tools' => 'invalid_json['})
+  end
+
+  let(:mock_redis_definition_hash_tool_not_found) do
+    {
+      'name' => agent_name.to_s,
+      'description' => 'Test Agent Description',
+      'instruction' => 'Perform tasks, one tool is missing.',
+      'tools' => [:mock_tool, :missing_tool].to_json,
+      'model' => 'gemini-pro'
+    }
+  end
+
   before do
     allow(ADK).to receive(:logger).and_return(logger_spy)
     allow(ADK).to receive(:config).and_return(adk_config_double)
@@ -145,7 +178,11 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     end
 
     context 'when execution is successful' do
-      before { expect_agent_run_task(success_event) }
+      before do
+        expect_agent_run_task(success_event)
+        # Mock Redis to return the definition hash via hgetall
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash)
+      end
 
       it 'loads definition, creates session, runs agent, cleans up, and returns result' do
         result = adapter_instance.call(prompt: prompt)
@@ -167,10 +204,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
       end
 
       it 'uses default model if not specified in Redis' do
-        allow(mock_redis).to receive(:hmget)
-          .with(/adk:agent:#{agent_name}/, 'description', 'tools', 'model')
-          .and_return(['Test Agent Desc', '[]', nil]) # No model specified
-
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash_no_model)
         # Need to stub DEFAULT_MODEL here as well, as hmget is mocked differently
         stub_const('ADK::Agent::DEFAULT_MODEL', 'stubbed-default-model') if defined?(ADK::Agent)
 
@@ -182,9 +216,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
       end
 
       it 'handles empty tool list from Redis' do
-        allow(mock_redis).to receive(:hmget)
-          .with(/adk:agent:#{agent_name}/, 'description', 'tools', 'model')
-          .and_return(['Test Agent Desc', '[]', 'test-model'])
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash_no_tools)
 
         expect_agent_run_task(success_event)
         expect(global_tool_manager_double).not_to receive(:find_class) # Should not be called for empty list
@@ -195,9 +227,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
       end
 
       it 'handles invalid JSON tool list from Redis' do
-        allow(mock_redis).to receive(:hmget)
-          .with(/adk:agent:#{agent_name}/, 'description', 'tools', 'model')
-          .and_return(['Test Agent Desc', 'invalid json', 'test-model'])
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash_invalid_tools_json)
 
         expect_agent_run_task(success_event)
         expect(global_tool_manager_double).not_to receive(:find_class) # Should not be called for invalid JSON
@@ -210,9 +240,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
 
     context 'when agent definition is not found' do
       before do
-        allow(mock_redis).to receive(:hmget)
-          .with(/adk:agent:#{agent_name}/, 'description', 'tools', 'model')
-          .and_return([nil, nil, nil]) # Simulate not found
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return({}) # Empty hash for not found
         # Stub the constant temporarily for this specific context to avoid uninitialized constant error
         # Ensure ADK::Agent is loaded before stubbing its constant
         stub_const('ADK::Agent::DEFAULT_MODEL', 'stubbed-default-model') if defined?(ADK::Agent)
@@ -255,6 +283,9 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     context 'when a defined tool is not found in the registry' do
       before do
         allow(global_tool_manager_double).to receive(:find_class).with(:tool_a).and_return(nil) # Correct mock
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash_tool_not_found)
+        allow(ADK::GlobalToolManager).to receive(:find_class).with(:mock_tool).and_return(MockTool)
+        allow(ADK::GlobalToolManager).to receive(:find_class).with(:missing_tool).and_return(nil)
         expect_agent_run_task(success_event) # Agent run should still happen, but with fewer tools
       end
 
@@ -272,6 +303,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
 
     context 'when session creation fails' do
       before do
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash)
         allow(session_service_instance).to receive(:create_session)
           .and_raise(StandardError, 'Session service unavailable')
       end
@@ -289,7 +321,10 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     end
 
     context 'when agent execution returns an error status' do
-      before { expect_agent_run_task(error_event) }
+      before do
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash)
+        expect_agent_run_task(error_event)
+      end
 
       it 'raises an error with the message from the event' do
         expect { adapter_instance.call(prompt: prompt) }
@@ -312,7 +347,10 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     end
 
     context 'when agent execution returns a pending status' do
-      before { expect_agent_run_task(pending_event) }
+      before do
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash)
+        expect_agent_run_task(pending_event)
+      end
 
       it 'returns the pending status structure' do
         result = adapter_instance.call(prompt: prompt)
@@ -334,7 +372,10 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     end
 
     context 'when agent execution returns an unexpected event format' do
-      before { expect_agent_run_task(malformed_event) }
+      before do
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash)
+        expect_agent_run_task(malformed_event)
+      end
 
       it 'raises an error' do
         expect { adapter_instance.call(prompt: prompt) }
@@ -347,7 +388,10 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
     end
 
     context 'when agent execution returns an unknown status' do
-      before { expect_agent_run_task(unknown_status_event) }
+      before do
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash)
+        expect_agent_run_task(unknown_status_event)
+      end
 
       it 'raises an error' do
         expect { adapter_instance.call(prompt: prompt) }
@@ -361,6 +405,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
 
     context 'when agent start fails' do
       before do
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash)
         allow(agent_instance_double).to receive(:start).and_raise('Start failed')
       end
 
@@ -378,6 +423,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
 
     context 'when agent run_task fails with an exception' do
       before do
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash)
         # Override the default allow for run_task to raise error
         allow(agent_instance_double).to receive(:run_task).and_raise('Run task failed')
         allow(agent_instance_double).to receive(:running?).and_return(true) # Assume it was running
@@ -397,6 +443,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
 
     context 'when agent stop fails during cleanup' do
       before do
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash)
         expect_agent_run_task(success_event) # Normal execution first
         allow(agent_instance_double).to receive(:stop).and_raise('Stop error')
       end
@@ -413,6 +460,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
 
     context 'when session deletion fails during cleanup' do
       before do
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash)
         expect_agent_run_task(success_event) # Normal execution first
         allow(session_service_instance).to receive(:delete_session).and_raise('Deletion error')
       end
@@ -429,6 +477,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
 
     context 'when both agent stop and session deletion fail during cleanup' do
       before do
+        allow(mock_redis).to receive(:hgetall).with(/adk:agent:#{agent_name}/).and_return(mock_redis_definition_hash)
         expect_agent_run_task(success_event) # Normal execution first
         allow(agent_instance_double).to receive(:stop).and_raise('Stop error')
         allow(session_service_instance).to receive(:delete_session).and_raise('Deletion error')

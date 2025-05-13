@@ -27,7 +27,7 @@ RSpec.describe 'Agent MCP Fix' do
       allow(session_service).to receive(:get_session)
       allow(session_service).to receive(:append_event)
 
-      agent_def = ADK::AgentDefinition.new.tap do |d|
+      agent_def = ADK::AgentDefinition.new.define do |d|
         d.name :test_agent
         d.description 'Test agent'
         d.instruction 'Test instruction'
@@ -72,7 +72,7 @@ RSpec.describe 'Agent MCP Fix' do
       allow(session_service).to receive(:get_session)
       allow(session_service).to receive(:append_event)
 
-      agent_def = ADK::AgentDefinition.new.tap do |d|
+      agent_def = ADK::AgentDefinition.new.define do |d|
         d.name :test_agent
         d.description 'Test agent'
         d.instruction 'Test instruction'
