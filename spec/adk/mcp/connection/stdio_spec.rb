@@ -316,7 +316,7 @@ RSpec.describe ADK::Mcp::Connection::Stdio do
                 break # Stop processing
               end
             end
-          # Skip non-json line
+            # Skip non-json line
           end
         end
       rescue IOError

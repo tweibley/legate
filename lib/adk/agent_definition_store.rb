@@ -23,12 +23,17 @@ module ADK
     # @param definition_hash [Hash] The definition data ({ description:, tools:, model: }).
     def self.register(name, definition_hash)
       name_sym = name.to_sym
-      unless definition_hash.is_a?(Hash) && definition_hash[:description]
+      unless definition_hash.is_a?(Hash) && definition_hash.key?(:description)
         ADK.logger.warn("AgentDefinitionStore: Invalid definition hash provided for '#{name_sym}'. Skipping registration.")
         return false
       end
       # Ensure tools is an array of strings/symbols
       definition_hash[:tools] = Array(definition_hash[:tools]).map(&:to_s)
+      definition_hash[:fallback_mode] = definition_hash[:fallback_mode].to_sym if definition_hash[:fallback_mode].is_a?(String)
+      # Convert webhook_enabled from string to boolean if necessary
+      if ['true', 'false'].include?(definition_hash[:webhook_enabled].to_s.downcase)
+        definition_hash[:webhook_enabled] = definition_hash[:webhook_enabled].to_s.downcase == 'true'
+      end
       @@definitions[name_sym] = definition_hash
       ADK.logger.debug("AgentDefinitionStore: Registered/updated definition for '#{name_sym}' in memory.")
       true
@@ -81,7 +86,12 @@ module ADK
       redis_data = {
         'description' => definition_hash[:description].to_s,
         'tools' => Array(definition_hash[:tools]).map(&:to_s).to_json,
-        'model' => definition_hash[:model].to_s
+        'model' => definition_hash[:model].to_s,
+        'instruction' => definition_hash[:instruction].to_s, # Convert nil to empty string
+        'fallback_mode' => definition_hash[:fallback_mode].to_s, # Convert symbol to string
+        'mcp_servers_json' => definition_hash[:mcp_servers_json].to_s, # Should be JSON string already or empty
+        'webhook_enabled' => definition_hash[:webhook_enabled].to_s, # Convert boolean to string 'true'/'false'
+        'webhook_secret' => definition_hash[:webhook_secret].to_s # Convert nil to empty string
       }
 
       redis.multi do |multi|
@@ -105,21 +115,36 @@ module ADK
       key = agent_redis_key(name_str)
       redis = Redis.new(ADK.redis_options)
 
-      data = redis.hmget(key, 'description', 'tools', 'model')
+      fields = ['description', 'tools', 'model', 'instruction', 'fallback_mode', 'mcp_servers_json', 'webhook_enabled', 'webhook_secret']
+      data = redis.hmget(key, *fields)
       return nil unless data[0] # Return nil if description (and thus agent) not found
 
       {
         description: data[0],
         tools: JSON.parse(data[1] || '[]'), # Parse tools JSON, default to empty array
-        model: data[2] || ADK::Agent::DEFAULT_MODEL # Use default model if not set
+        model: data[2] || ADK::Agent::DEFAULT_MODEL, # Use default model if not set
+        instruction: data[3], # Will be nil if not set, or empty string
+        fallback_mode: data[4] ? data[4].to_sym : :error, # Convert to symbol, default to :error
+        mcp_servers_json: data[5] || '[]', # Default to empty JSON array string
+        webhook_enabled: data[6] == 'true', # Convert 'true' string to true, others to false
+        webhook_secret: data[7] # Will be nil if not set, or empty string
       }
     rescue Redis::BaseError => e
       ADK.logger.error("AgentDefinitionStore: Failed to load '#{name_str}' from Redis: #{e.message}")
       nil
     rescue JSON::ParserError => e
       ADK.logger.error("AgentDefinitionStore: Failed to parse tools JSON for '#{name_str}' from Redis: #{e.message}. Data: #{data[1]}")
-      # Return definition but with empty tools array
-      { description: data[0], tools: [], model: data[2] || ADK::Agent::DEFAULT_MODEL }
+      # Return definition but with empty tools array and other fields defaulted
+      {
+        description: data[0],
+        tools: [],
+        model: data[2] || ADK::Agent::DEFAULT_MODEL,
+        instruction: data[3],
+        fallback_mode: data[4] ? data[4].to_sym : :error,
+        mcp_servers_json: data[5] || '[]',
+        webhook_enabled: data[6] == 'true',
+        webhook_secret: data[7]
+      }
     ensure
       redis&.close
     end
@@ -134,7 +159,8 @@ module ADK
 
       # Use pipelining for efficiency
       definitions_data = redis.pipelined do |pipe|
-        agent_names.each { |name| pipe.hmget(agent_redis_key(name), 'description', 'tools', 'model') }
+        fields = ['description', 'tools', 'model', 'instruction', 'fallback_mode', 'mcp_servers_json', 'webhook_enabled', 'webhook_secret']
+        agent_names.each { |name| pipe.hmget(agent_redis_key(name), *fields) }
       end
 
       agent_names.zip(definitions_data).each do |name, data|
@@ -143,7 +169,12 @@ module ADK
             definition = {
               description: data[0],
               tools: JSON.parse(data[1] || '[]'),
-              model: data[2] || ADK::Agent::DEFAULT_MODEL
+              model: data[2] || ADK::Agent::DEFAULT_MODEL,
+              instruction: data[3],
+              fallback_mode: data[4] ? data[4].to_sym : :error,
+              mcp_servers_json: data[5] || '[]',
+              webhook_enabled: data[6] == 'true',
+              webhook_secret: data[7]
             }
             register(name, definition) # Register in memory
             loaded_count += 1

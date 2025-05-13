@@ -150,14 +150,38 @@ RSpec.describe ADK do
       end
 
       it 'ensures logger has valid output device for normal log levels' do
-        # Since we can't test initial logger creation, we'll verify the current
-        # logger doesn't use a /dev/null target when at normal levels
-        expect(ADK.logger.instance_variable_get(:@logdev).dev).not_to be_nil
+        original_adk_logger = ADK.instance_variable_get(:@logger)
+        original_level_env = ENV['ADK_LOG_LEVEL']
 
-        # Alternatively, we could verify it responds to expected methods
-        logger_dev = ADK.logger.instance_variable_get(:@logdev).dev
-        expect(logger_dev).to respond_to(:write)
-        expect(logger_dev).to respond_to(:flush)
+        begin
+          ENV['ADK_LOG_LEVEL'] = 'INFO' # For a "normal" level logger
+
+          # Manually create a new logger instance based on ADK's typical setup logic
+          # This bypasses issues with the shared ADK.logger state.
+          # Target for INFO level should be $stdout as per lib/adk/adk.rb.
+          # The formatter is also copied from lib/adk/adk.rb.
+          fresh_logger = Logger.new($stdout)
+          fresh_logger.level = Logger::INFO
+          fresh_logger.formatter = proc { |severity, _datetime, _progname, msg| "#{severity}: #{msg}\n" }
+
+          ADK.instance_variable_set(:@logger, fresh_logger)
+          current_logger_for_test = ADK.logger # Should now be fresh_logger
+
+          expect(current_logger_for_test).to be_a(Logger), "ADK.logger should be a Logger instance, got #{current_logger_for_test.class}"
+
+          log_device_obj = current_logger_for_test.instance_variable_get(:@logdev)
+          expect(log_device_obj).to be_a(Logger::LogDevice), "Logger's @logdev should be Logger::LogDevice, got #{log_device_obj.class} (val: #{log_device_obj.inspect})"
+
+          expect(log_device_obj.dev).to eq($stdout), "Expected log device to be $stdout for fresh INFO logger, got #{log_device_obj.dev.inspect}"
+          expect(log_device_obj.dev).not_to be_nil, "Logger's @logdev.dev should not be nil"
+          expect(log_device_obj.dev).not_to eq(IO::NULL), "Log device should not be IO::NULL for a normal INFO logger"
+
+          expect(log_device_obj.dev).to respond_to(:write)
+          expect(log_device_obj.dev).to respond_to(:flush)
+        ensure
+          ADK.instance_variable_set(:@logger, original_adk_logger)
+          ENV['ADK_LOG_LEVEL'] = original_level_env
+        end
       end
     end
   end
