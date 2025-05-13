@@ -165,11 +165,15 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'saves the definition to Redis and registers it in memory' do
         expect(ADK::AgentDefinitionStore).to receive(:save_to_redis).with(
           :my_agent,
-          { description: description, tools: %w[mock_cli_tool echo], model: ADK::Agent::DEFAULT_MODEL }
+          { description: description, tools: %w[mock_cli_tool echo], model: ADK::Agent::DEFAULT_MODEL,
+            instruction: nil, fallback_mode: :error, mcp_servers_json: '[]',
+            webhook_enabled: false, webhook_secret: nil }
         ).and_return(true)
         expect(ADK::AgentDefinitionStore).to receive(:register).with(
           :my_agent,
-          { description: description, tools: %w[mock_cli_tool echo], model: ADK::Agent::DEFAULT_MODEL }
+          { description: description, tools: %w[mock_cli_tool echo], model: ADK::Agent::DEFAULT_MODEL,
+            instruction: nil, fallback_mode: :error, mcp_servers_json: '[]',
+            webhook_enabled: false, webhook_secret: nil }
         )
 
         invoke_command(:save, agent_name, description: description, tools: valid_tools)
@@ -183,11 +187,15 @@ RSpec.describe ADK::CLI::AgentCommands do
         model_name = 'gemini-1.5-flash'
         expect(ADK::AgentDefinitionStore).to receive(:save_to_redis).with(
           :my_agent,
-          { description: description, tools: [], model: model_name }
+          { description: description, tools: [], model: model_name,
+            instruction: nil, fallback_mode: :error, mcp_servers_json: '[]',
+            webhook_enabled: false, webhook_secret: nil }
         ).and_return(true)
         expect(ADK::AgentDefinitionStore).to receive(:register).with(
           :my_agent,
-          { description: description, tools: [], model: model_name }
+          { description: description, tools: [], model: model_name,
+            instruction: nil, fallback_mode: :error, mcp_servers_json: '[]',
+            webhook_enabled: false, webhook_secret: nil }
         )
 
         invoke_command(:save, agent_name, description: description, model: model_name)
@@ -199,7 +207,9 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'saves with no tools specified' do
         expect(ADK::AgentDefinitionStore).to receive(:save_to_redis).with(
           :my_agent,
-          { description: description, tools: [], model: ADK::Agent::DEFAULT_MODEL }
+          { description: description, tools: [], model: ADK::Agent::DEFAULT_MODEL,
+            instruction: nil, fallback_mode: :error, mcp_servers_json: '[]',
+            webhook_enabled: false, webhook_secret: nil }
         ).and_return(true)
         expect(ADK::AgentDefinitionStore).to receive(:register)
 
@@ -213,7 +223,9 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'warns about unknown tools but saves valid ones' do
         expect(ADK::AgentDefinitionStore).to receive(:save_to_redis).with(
           :my_agent,
-          { description: description, tools: ['mock_cli_tool'], model: ADK::Agent::DEFAULT_MODEL }
+          { description: description, tools: ['mock_cli_tool'], model: ADK::Agent::DEFAULT_MODEL,
+            instruction: nil, fallback_mode: :error, mcp_servers_json: '[]',
+            webhook_enabled: false, webhook_secret: nil }
         ).and_return(true)
         expect(ADK::AgentDefinitionStore).to receive(:register)
 
@@ -473,20 +485,27 @@ RSpec.describe ADK::CLI::AgentCommands do
       instance_double(ADK::Agent, name: agent_name, model_name: 'gemini-exec', tools: [MockCliTool.new],
                                   running?: false)
     }
-    let(:session_service_in_memory) { ADK::SessionService::InMemory.new }
-    let(:session_service_redis) { ADK::SessionService::Redis.new(redis_client: redis_mock) }
 
     around(:each) do |example|
       # Store original class variable
-      original_session_service = ADK::CLI::AgentCommands.class_variable_get(:@@session_service)
+      original_session_service = nil
+      if ADK::CLI::AgentCommands.class_variable_defined?(:@@session_service)
+        original_session_service = ADK::CLI::AgentCommands.class_variable_get(:@@session_service)
+      end
       # Replace with our test instance
       ADK::CLI::AgentCommands.class_variable_set(:@@session_service, session_service_in_memory)
 
       # Run the example
       example.run
 
-      # Restore original class variable
-      ADK::CLI::AgentCommands.class_variable_set(:@@session_service, original_session_service)
+      # Restore original class variable or a default if it wasn't originally defined
+      if original_session_service
+        ADK::CLI::AgentCommands.class_variable_set(:@@session_service, original_session_service)
+      else
+        # If it wasn't defined (which shouldn't happen with current main code),
+        # set to a new default to ensure the class variable exists post-test.
+        ADK::CLI::AgentCommands.class_variable_set(:@@session_service, ADK::SessionService::InMemory.new)
+      end
     end
 
     before do

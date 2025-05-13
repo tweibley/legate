@@ -14,12 +14,19 @@ require_relative '../session_service/in_memory'
 require_relative '../session_service/redis'
 require_relative '../agent_definition_store'
 require_relative '../global_tool_manager'
+require_relative '../../adk' # For ADK.config, ADK.logger
 
 module ADK
   module CLI
     # CLI commands for agent definition management AND temporary execution
     class AgentCommands < Thor
+      # Default session service can be overridden in tests or specific command options
+      @@session_service = ADK::SessionService::InMemory.new
+
       # Keep existing @@session_service_for_execute for 'execute' command's default in-memory usage
+      # This seems to be an older or differently purposed variable. Let's ensure it's distinct.
+      # If it's truly redundant after initializing @@session_service, it might be removable later,
+      # but for now, we will keep it to avoid breaking other logic that might rely on it.
       @@session_service_for_execute = ADK::SessionService::InMemory.new
 
       no_commands do
@@ -458,7 +465,7 @@ module ADK
         model_name = definition[:model]
         instruction_val = definition[:instruction]
 
-        session_service_instance = options[:redis] ? ADK::SessionService::Redis.new : @@session_service_for_execute
+        session_service_instance = options[:redis] ? ADK::SessionService::Redis.new : @@session_service
         session_id_opt = options[:session_id]
         adk_session = nil
         if session_id_opt
@@ -658,6 +665,10 @@ module ADK
         ::CLI::UI::puts "{{yellow:Chat ended.}}"
       end
       # --- END CHAT COMMAND ---
+
+      def self.exit_on_failure?
+        true
+      end
     end # End AgentCommands class
   end # End CLI module
 end # End ADK module
