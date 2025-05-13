@@ -40,58 +40,46 @@ module ADK
 
         ADK.logger.info("AgentTool: Attempting to delegate task '#{task_to_delegate}' to agent '#{target_agent_name_str}'")
 
-        target_definition = ADK::AgentDefinitionStore.find(target_agent_name_str.to_sym) # Try memory first
-        target_definition ||= ADK::AgentDefinitionStore.load_from_redis(target_agent_name_str)
+        # Load definition hash from the store
+        definition_hash = ADK::AgentDefinitionStore.find(target_agent_name_str.to_sym) # Try memory first
+        definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(target_agent_name_str)
 
-        unless target_definition
-          msg = "Target agent definition '#{target_agent_name_str}' not found."
-          ADK.logger.error("AgentTool: #{msg}") # Log before raising
+        unless definition_hash
+          msg = "Target agent definition '#{target_agent_name_str}' could not be loaded from store."
+          ADK.logger.error("AgentTool: #{msg}")
           raise ADK::ToolArgumentError, msg
         end
 
-        target_description = target_definition[:description]
-        target_tool_names = target_definition[:tools].map(&:to_sym) # From store, ensure symbols
-        target_model = target_definition[:model]
-        target_instruction = target_definition[:instruction] # Get instruction
+        # Convert hash to an ADK::AgentDefinition object
+        target_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
 
-        ADK.logger.debug("AgentTool: Instantiating target agent '#{target_agent_name_str}' with model '#{target_model}'")
-
-        # Create the ephemeral agent. It will get its own fresh ToolRegistry.
-        # Pass instruction to the new agent instance.
-        target_agent = ADK::Agent.new(
-          name: "#{target_agent_name_str}_delegated_#{SecureRandom.hex(4)}",
-          description: target_description,
-          model_name: target_model,
-          instruction: target_instruction # Pass instruction here
-          # Do NOT pass tool_classes or selected_tool_names here initially,
-          # tools will be added from its definition below.
-        )
-
-        ADK.logger.debug("AgentTool: Adding tools #{target_tool_names.inspect} to target agent '#{target_agent.name}'")
-        if target_tool_names.empty?
-          ADK.logger.warn("AgentTool: Target agent '#{target_agent_name_str}' has no tools configured in its definition.")
-        else
-          target_tool_names.each do |tool_name_sym|
-            # --- MODIFICATION: Look up tool class in GlobalToolManager ---
-            tool_class = ADK::GlobalToolManager.find_class(tool_name_sym)
-            if tool_class
-              # Register the class with the target_agent's specific registry
-              target_agent.register_tool_class(tool_class)
-              ADK.logger.debug("AgentTool: Added tool '#{tool_name_sym}' (class: #{tool_class}) to target agent '#{target_agent.name}'.")
-            else
-              ADK.logger.warn("AgentTool: Tool '#{tool_name_sym}' (needed by '#{target_agent_name_str}') not found in GlobalToolManager. Skipping for target agent.")
-            end
-            # --- END MODIFICATION ---
-          end
+        unless target_definition_object
+          msg = "Failed to create a valid AgentDefinition object for target '#{target_agent_name_str}' from loaded hash."
+          ADK.logger.error("AgentTool: #{msg} Hash was: #{definition_hash.inspect}")
+          raise ADK::ToolError, msg # More generic error as it's post-load
         end
 
-        session_service = ADK::SessionService::InMemory.new
-        delegate_session = session_service.create_session(
-          app_name: target_agent_name_str, # Use string name for app_name consistency
+        ADK.logger.debug("AgentTool: Instantiating target agent '#{target_definition_object.name}' using its definition object.")
+
+        # Create the ephemeral agent using its definition object.
+        # The new ADK::Agent#initialize will handle setting up tools from the definition.
+        # A unique session service is created for this delegation.
+        delegate_session_service = ADK::SessionService::InMemory.new
+
+        target_agent = ADK::Agent.new(
+          definition: target_definition_object,
+          session_service: delegate_session_service
+          # The ephemeral name like "_delegated_" is no longer part of agent instantation.
+          # The agent will use the name from its definition.
+        )
+
+        # Use the already created delegate_session_service
+        delegate_session = delegate_session_service.create_session(
+          app_name: target_definition_object.name.to_s, # Use definition name for app_name
           user_id: "delegation_#{SecureRandom.hex(4)}"
         )
         session_id = delegate_session.id
-        ADK.logger.debug("AgentTool: Created delegation session #{session_id} for target agent")
+        ADK.logger.debug("AgentTool: Created delegation session #{session_id} for target agent '#{target_agent.name}'")
 
         target_agent.start
         ADK.logger.info("AgentTool: Running task '#{task_to_delegate}' on target agent '#{target_agent.name}'")
@@ -99,7 +87,7 @@ module ADK
         agent_event = target_agent.run_task(
           session_id: session_id,
           user_input: task_to_delegate,
-          session_service: session_service
+          session_service: delegate_session_service # Pass the correct service
         )
 
         target_result = agent_event.respond_to?(:content) ? agent_event.content : agent_event

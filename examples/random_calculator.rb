@@ -4,15 +4,24 @@
 # If running from project root: bundle exec ruby examples/random_calculator.rb
 require_relative '../lib/adk'
 
+# Ensure tool classes are loaded so GlobalToolManager can find them by name.
+# ADK::Tools::Calculator is standard.
+# Assuming ADK::Tools::RandomNumberTool is also discoverable or standard.
+# require 'adk/tools/random_number_tool' # If it's a custom path and not auto-loaded
+
 puts '--- Random Calculator Agent Example (Multi-Step Planner w/ Hash Results) ---'
 
-# 1. --- Agent Setup ---
-# Add tools directly during initialization
-agent = ADK::Agent.new(
-  name: 'multi_step_hash_agent_001',
-  description: 'An agent that uses multiple tools and returns structured results.',
-  tool_classes: [ADK::Tools::RandomNumberTool, ADK::Tools::Calculator]
-)
+# 1. --- Agent Definition ---
+random_calculator_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :random_calculator_agent # Changed from multi_step_hash_agent_001 for clarity
+  a.description 'An agent that uses random number and calculator tools.'
+  a.instruction 'Your goal is to follow multi-step instructions involving random numbers and calculations. Use the random_number tool first, then the calculator tool with the result.'
+  a.use_tool :random_number # Provided by ADK::Tools::RandomNumberTool
+  a.use_tool :calculator    # Provided by ADK::Tools::Calculator
+end
+
+# 2. --- Agent Instantiation ---
+agent = ADK::Agent.new(definition: random_calculator_definition)
 
 # REMOVED: Manual tool lookup and addition
 # random_tool = ADK::ToolRegistry.create_instance(:random_number)

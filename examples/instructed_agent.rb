@@ -9,20 +9,25 @@
 $LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
 
 require 'adk'
-require 'adk/tools/echo'
-require 'adk/tools/calculator'
+require 'adk/tools/echo'       # Ensure tool classes are loaded for GlobalToolManager
+require 'adk/tools/calculator' # to find them by name.
 
 # 1. Define the Agent with Instructions
 # =====================================
 
-agent = ADK::Agent.define do |a|
-  a.name = 'concise_calculator'
-  a.description = 'A calculator agent that tries to be concise.'
+# Create the AgentDefinition object first
+concise_calculator_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :concise_calculator # Use symbol for name
+  a.description 'A calculator agent that tries to be concise.'
   # Provide instructions to the planner
-  a.instruction = 'You are a calculator assistant. When asked to calculate, use the calculator tool. Respond only with the final numerical result, no extra words.'
-  # Add necessary tools
-  a.add_tool_classes ADK::Tools::Calculator, ADK::Tools::Echo # Echo might be used by fallback
+  a.instruction 'You are a calculator assistant. When asked to calculate, use the calculator tool. Respond only with the final numerical result, no extra words.'
+  # Add necessary tools by name
+  a.use_tool :calculator
+  a.use_tool :echo # Echo might be used by fallback or if planner chooses it
 end
+
+# Instantiate the Agent using the definition
+agent = ADK::Agent.new(definition: concise_calculator_definition)
 
 # 2. Setup Session Service
 # ========================

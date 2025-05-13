@@ -13,8 +13,10 @@ puts '3. Run this script: bundle exec ruby examples/async_job_example.rb'
 # Load ADK and necessary components
 require_relative '../lib/adk'
 
-# Load the custom tool class
-require_relative 'tools/sleepy_tool'
+# Load the custom tool class. Its definition (name, params) will be used by the GlobalToolManager.
+require_relative 'tools/sleepy_tool' # Provides :start_sleepy_job
+# ADK::Tools::CheckJobStatusTool (providing :check_job_status) is loaded by ADK core.
+
 # NOTE: The worker itself (sleepy_worker.rb) needs to be loaded by the Sidekiq process,
 # not necessarily by this script, unless you are using Sidekiq inline testing.
 
@@ -25,14 +27,18 @@ puts '--- Async Job Example ---'
 #   config.redis_url = ENV['REDIS_URL'] || 'redis://localhost:6379/1'
 # end
 
-# --- Agent Setup ---
-puts "\nSetting up agent..."
-agent = ADK::Agent.new(
-  name: 'async_job_runner',
-  description: 'An agent that can start and check background jobs.',
-  # Add SleepyTool and CheckJobStatusTool classes
-  tool_classes: [ADK::Tools::SleepyTool, ADK::Tools::CheckJobStatusTool]
-)
+# --- Agent Definition ---
+puts "\nSetting up agent definition..."
+async_job_runner_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :async_job_runner
+  a.description 'An agent that can start and check background jobs.'
+  a.instruction 'You manage asynchronous jobs. Use start_sleepy_job to initiate them and check_job_status to monitor.'
+  a.use_tool :start_sleepy_job     # Provided by SleepyTool
+  a.use_tool :check_job_status # Provided by CheckJobStatusTool
+end
+
+# --- Agent Instantiation ---
+agent = ADK::Agent.new(definition: async_job_runner_definition)
 
 # The check_job_status tool is now added via tool_classes
 puts "Agent Tools: #{agent.tools.map(&:name)}"

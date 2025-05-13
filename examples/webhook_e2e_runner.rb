@@ -44,17 +44,16 @@ ADK.configure do |config|
   # NOTE: This specific instance isn't used directly, but aligns config with worker behavior.
 end
 
-# --- Verify Agent Definition Was Saved --- 
-# The `require_relative 'webhook_receiver_agent'` should have triggered ADK::Agent.define,
-# which saves the definition to the configured store (ADK.config.definition_store).
+# --- Verify Agent Definition Was Loaded and Registered Globally --- 
+# The `require_relative 'webhook_receiver_agent'` should have defined and globally registered the definition.
 begin 
-  retrieved_def = ADK.config.definition_store.get_definition(:webhook_receiver)
-  unless retrieved_def && retrieved_def[:name] == :webhook_receiver
-    raise 'Failed to retrieve :webhook_receiver definition from the Redis store after loading.'
+  retrieved_def_obj = ADK::GlobalDefinitionRegistry.find(:webhook_receiver)
+  unless retrieved_def_obj && retrieved_def_obj.is_a?(ADK::AgentDefinition) && retrieved_def_obj.name == :webhook_receiver
+    raise 'Failed to retrieve :webhook_receiver definition object from ADK::GlobalDefinitionRegistry after loading.'
   end
-  puts 'Verified :webhook_receiver definition exists in Redis store.'
+  puts 'Verified :webhook_receiver definition object exists in GlobalDefinitionRegistry.'
 rescue => e
-  puts "Error verifying agent definition in Redis: #{e.message}"
+  puts "Error verifying agent definition in GlobalDefinitionRegistry: #{e.message}"
   exit(1)
 end
 

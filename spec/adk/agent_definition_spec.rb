@@ -236,4 +236,185 @@ RSpec.describe ADK::AgentDefinition do
       expect(local_definition.to_h[:webhook_secret]).to be_nil
     end
   end
+
+  describe '.from_hash and #to_h serialization/deserialization' do
+    let(:original_definition) { described_class.new }
+    let(:transformer_proc) { ->(data) { data } } # Dummy proc for testing assignment
+    let(:extractor_proc) { ->(req) { req[:id] } }   # Dummy proc for testing assignment
+    let(:validator_proc) { ->(req) { true } }    # Dummy proc for testing assignment
+
+    # Use a shared context for defining a complex agent to reduce duplication
+    shared_context 'with a complex original definition' do
+      before do
+        original_definition.define do |a|
+          a.name :complex_agent
+          a.description 'A complex agent with all bells and whistles'
+          a.instruction 'Perform complex tasks meticulously.'
+          a.use_tool :tool_one
+          a.use_tool :tool_two
+          a.model_name 'gemini-pro-max'
+          a.temperature 0.88
+          a.webhook_enabled true
+          a.webhook_validator :my_custom_validator # Symbol validator
+          a.webhook_secret 'super-secret-key-123'
+          a.webhook_transformer transformer_proc
+          a.webhook_session_extractor extractor_proc
+          a.fallback_mode :echo
+          a.mcp_servers({ type: 'stdio', command: 'mcp_server_exec' }, { type: 'sse', url: 'http://localhost:8080/sse' })
+          a.sub_agents_define :sub_agent_alpha, :sub_agent_beta
+        end
+      end
+    end
+
+    let(:definition_hash) { original_definition.to_h }
+    # Reconstruct immediately after to_h for round trip testing
+    let(:reconstructed_definition) { described_class.from_hash(definition_hash) }
+
+    context 'when all attributes are set' do
+      include_context 'with a complex original definition'
+
+      it 'reconstructs the name correctly' do
+        expect(reconstructed_definition.name).to eq(:complex_agent)
+      end
+
+      it 'reconstructs the description correctly' do
+        expect(reconstructed_definition.description).to eq('A complex agent with all bells and whistles')
+      end
+
+      it 'reconstructs the instruction correctly' do
+        expect(reconstructed_definition.instruction).to eq('Perform complex tasks meticulously.')
+      end
+
+      it 'reconstructs the tool_names correctly' do
+        expect(reconstructed_definition.tool_names).to match_array([:tool_one, :tool_two])
+      end
+
+      it 'reconstructs the model_name correctly' do
+        expect(reconstructed_definition.model_name).to eq(:'gemini-pro-max')
+      end
+
+      it 'reconstructs the temperature correctly' do
+        expect(reconstructed_definition.temperature).to eq(0.88)
+      end
+
+      it 'reconstructs webhook_enabled correctly' do
+        expect(reconstructed_definition.webhook_enabled).to be true
+      end
+
+      it 'reconstructs webhook_validator (Symbol) correctly' do
+        expect(reconstructed_definition.webhook_validator).to eq(:my_custom_validator)
+      end
+
+      it 'reconstructs webhook_secret as the string <present> (due to to_h behavior)' do
+        # original_definition.webhook_secret is 'super-secret-key-123'
+        # original_definition.to_h makes :webhook_secret '<present>'
+        # ADK::AgentDefinition.from_hash receives '<present>' and sets it.
+        expect(reconstructed_definition.webhook_secret).to eq('<present>')
+      end
+
+      it 'reconstructs webhook_transformer as nil (Procs are not serialized by to_h)' do
+        # original_definition.webhook_transformer is a Proc
+        # original_definition.to_h makes :webhook_transformer '<Proc>'
+        # ADK::AgentDefinition.from_hash cannot reconstruct the Proc from this string.
+        expect(reconstructed_definition.webhook_transformer).to be_nil
+      end
+
+      it 'reconstructs webhook_session_extractor as nil (Procs are not serialized by to_h)' do
+        expect(reconstructed_definition.webhook_session_extractor).to be_nil
+      end
+
+      it 'reconstructs fallback_mode correctly' do
+        expect(reconstructed_definition.fallback_mode).to eq(:echo)
+      end
+
+      it 'reconstructs mcp_servers correctly' do
+        expected_mcp_servers = [
+          { type: 'stdio', command: 'mcp_server_exec' },
+          { type: 'sse', url: 'http://localhost:8080/sse' }
+        ]
+        # from_hash should convert symbol keys if they were strings in the hash
+        # For mcp_servers, to_h provides them as an array of hashes with symbol keys already.
+        # from_hash directly uses this array if it's an array.
+        reconstructed_servers = reconstructed_definition.mcp_servers.map { |s| s.transform_keys(&:to_sym) }
+        expect(reconstructed_servers).to eq(expected_mcp_servers)
+      end
+
+      it 'reconstructs sub_agent_names correctly' do
+        expect(reconstructed_definition.sub_agent_names).to match_array([:sub_agent_alpha, :sub_agent_beta])
+      end
+    end
+
+    context 'when webhook_validator is a Proc in original definition' do
+      before do
+        original_definition.define do |a|
+          a.name :proc_validator_agent
+          a.instruction 'Validates with a proc'
+          a.webhook_validator validator_proc # Assign the actual Proc object
+        end
+      end
+
+      # This re-uses the `definition_hash` and `reconstructed_definition` which are based on the new `original_definition`
+      let(:definition_hash_for_proc_validator) { original_definition.to_h } # Recalculate based on this context's original_definition
+      let(:reconstructed_definition_for_proc_validator) { described_class.from_hash(definition_hash_for_proc_validator) }
+
+      it 'reconstructs webhook_validator as nil (Procs are not serialized by to_h)' do
+        # original_definition.webhook_validator is a Proc
+        # original_definition.to_h makes :webhook_validator '<Proc>'
+        # ADK::AgentDefinition.from_hash cannot reconstruct the Proc from this string.
+        expect(reconstructed_definition_for_proc_validator.webhook_validator).to be_nil
+      end
+    end
+
+    context 'when mcp_servers is a JSON string in the input hash to from_hash' do
+      include_context 'with a complex original definition' # To have an original_definition with mcp_servers
+
+      let(:hash_with_json_mcp) do
+        # Get the hash from the original definition
+        temp_hash = original_definition.to_h.dup
+        # Convert its mcp_servers (which is an array of hashes) to a JSON string
+        temp_hash[:mcp_servers] = original_definition.mcp_servers.to_json
+        temp_hash
+      end
+      let(:reconstructed_from_json_mcp) { described_class.from_hash(hash_with_json_mcp) }
+
+      it 'reconstructs mcp_servers correctly from JSON string' do
+        expected_mcp_servers = [
+          { type: 'stdio', command: 'mcp_server_exec' },
+          { type: 'sse', url: 'http://localhost:8080/sse' }
+        ]
+        # from_hash parses the JSON string and should produce symbol-keyed hashes
+        reconstructed_servers = reconstructed_from_json_mcp.mcp_servers.map { |s| s.transform_keys(&:to_sym) }
+        expect(reconstructed_servers).to eq(expected_mcp_servers)
+      end
+    end
+
+    context 'when optional fields are not set in the original definition' do
+      before do
+        original_definition.define do |a|
+          a.name :minimal_agent
+          a.instruction 'Minimal instruction'
+          # No other fields set
+        end
+      end
+
+      # This re-uses the `definition_hash` and `reconstructed_definition`
+      let(:minimal_definition_hash) { original_definition.to_h }
+      let(:reconstructed_minimal_definition) { described_class.from_hash(minimal_definition_hash) }
+
+      it 'reconstructs with defaults or nil for optional fields' do
+        expect(reconstructed_minimal_definition.description).to eq('') # Default from DefinitionProxy
+        expect(reconstructed_minimal_definition.tool_names).to be_empty
+        expect(reconstructed_minimal_definition.model_name).to be_nil
+        expect(reconstructed_minimal_definition.temperature).to be_nil
+        expect(reconstructed_minimal_definition.webhook_enabled).to be false
+        expect(reconstructed_minimal_definition.webhook_validator).to be_nil
+        expect(reconstructed_minimal_definition.webhook_secret).to be_nil
+        expect(reconstructed_minimal_definition.webhook_transformer).to be_nil
+        expect(reconstructed_minimal_definition.webhook_session_extractor).to be_nil
+        expect(reconstructed_minimal_definition.fallback_mode).to eq(:error) # Default
+        expect(reconstructed_minimal_definition.mcp_servers).to eq([]) # Default
+        expect(reconstructed_minimal_definition.sub_agent_names).to be_empty
+      end
+    end
+  end
 end

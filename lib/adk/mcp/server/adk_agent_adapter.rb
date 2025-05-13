@@ -106,20 +106,40 @@ module ADK
           agent = nil
           temp_session = nil
           begin
-            # 1. Load Agent Definition from Redis
-            Mcp.logger.debug("Loading agent definition '#{agent_name}' from Redis...")
+            # 1. Load Full Agent Definition Hash from Redis
+            Mcp.logger.debug("Loading full agent definition hash '#{agent_name}' from Redis...")
             redis = self.class.connect_redis
             key = self.class.agent_redis_key(agent_name)
-            redis_agent_data = redis.hmget(key, 'description', 'tools', 'model')
-            description = redis_agent_data[0]
-            tools_json_string = redis_agent_data[1]
-            model_name = redis_agent_data[2] || ADK::Agent::DEFAULT_MODEL
+            definition_hash_from_redis = redis.hgetall(key)
 
-            unless description
-              raise ADK::Mcp::Error, "Agent definition '#{agent_name}' not found in Redis."
+            if definition_hash_from_redis.empty?
+              raise ADK::Mcp::Error, "Agent definition hash '#{agent_name}' not found in Redis or is empty."
             end
 
-            Mcp.logger.debug("Agent definition loaded: Model=#{model_name}")
+            # Ensure all keys in the hash are symbols for from_hash consistency
+            # and handle potential stringified JSON for mcp_servers or tools array.
+            # Note: ADK::AgentDefinitionStore.load_from_redis likely does this already.
+            # For direct hgetall, manual conversion is safer.
+            definition_hash = definition_hash_from_redis.transform_keys(&:to_sym)
+            if definition_hash[:tools].is_a?(String)
+              definition_hash[:tools] = JSON.parse(definition_hash[:tools]) rescue []
+            end
+            # ADK::AgentDefinition.from_hash expects :tool_names, not :tools
+            definition_hash[:tool_names] = definition_hash.delete(:tools) if definition_hash.key?(:tools)
+            # mcp_servers might be stored as mcp_servers_json
+            if definition_hash.key?(:mcp_servers_json) && !definition_hash.key?(:mcp_servers)
+                definition_hash[:mcp_servers] = definition_hash.delete(:mcp_servers_json) # from_hash handles parsing if string
+            end
+
+            Mcp.logger.debug("Agent definition hash loaded. Creating AgentDefinition object for '#{agent_name}'.")
+            agent_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
+
+            unless agent_definition_object
+              Mcp.logger.error("Failed to create AgentDefinition object for '#{agent_name}'. Hash was: #{definition_hash.inspect}")
+              raise ADK::Mcp::Error, "Could not create a valid AgentDefinition object for '#{agent_name}'."
+            end
+
+            Mcp.logger.debug("AgentDefinition object created: #{agent_definition_object.name}, Model=#{agent_definition_object.model_name}")
 
             # 2. Create Temporary Session
             Mcp.logger.debug('Creating temporary session...')
@@ -127,24 +147,14 @@ module ADK
                                                           user_id: "mcp_temp_#{SecureRandom.hex(4)}")
             Mcp.logger.debug("Temporary session created: #{temp_session.id}")
 
-            # 3. Instantiate Agent & Add Tools
-            Mcp.logger.debug("Instantiating agent '#{agent_name}'...")
-            # Extract tool classes from the definition
-            tool_names_to_load = self.class.parse_tools(tools_json_string).map(&:to_sym)
-            tool_classes_for_init = tool_names_to_load.map do |t_name|
-              ADK::GlobalToolManager.find_class(t_name) # Use global registry to find classes
-            end.compact
-
-            if tool_classes_for_init.size != tool_names_to_load.size
-              Mcp.logger.warn("Some tools defined for agent '#{agent_name}' were not found in the global ToolRegistry.")
-            end
+            # 3. Instantiate Agent
+            Mcp.logger.debug("Instantiating agent '#{agent_definition_object.name}' with its definition object and session service...")
 
             agent = ADK::Agent.new(
-              name: agent_name,
-              description: description,
-              model_name: model_name,
-              tool_classes: tool_classes_for_init # Pass classes to agent initializer
+              definition: agent_definition_object,
+              session_service: session_service # Pass the session_service from adapter config
             )
+            # Tool loading is handled by ADK::Agent#initialize based on the definition object.
 
             # 4. Start Agent & Run Task
             Mcp.logger.debug('Starting ephemeral agent runtime...')

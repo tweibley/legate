@@ -36,6 +36,33 @@ module ADK
       def clear_scoped_state(scope, key)
         raise NotImplementedError, "#{self.class} must implement #clear_scoped_state"
       end
+
+      def append_event(session_id:, event:)
+        raise NotImplementedError, "#{self.class.name} must implement #append_event."
+      end
+
+      # Sets a key-value pair in the state associated with the session.
+      # This typically involves finding the session and then calling the session object's
+      # own state management methods (e.g., session.set_state(key, value)).
+      # @param session_id [String] The ID of the session.
+      # @param key [Symbol] The key for the state entry (should not have service-level prefixes like user: or app:).
+      # @param value [Object] The value to store.
+      # @return [void]
+      # @raise [NotImplementedError] If the subclass does not implement this method.
+      def set_state(session_id:, key:, value:)
+        raise NotImplementedError, "#{self.class.name} must implement #set_state."
+      end
+
+      # Retrieves a value from the state associated with the session.
+      # This typically involves finding the session and then calling the session object's
+      # own state management methods (e.g., session.get_state(key)).
+      # @param session_id [String] The ID of the session.
+      # @param key [Symbol] The key for the state entry (should not have service-level prefixes).
+      # @return [Object, nil] The value if found, or nil.
+      # @raise [NotImplementedError] If the subclass does not implement this method.
+      def get_state(session_id:, key:)
+        raise NotImplementedError, "#{self.class.name} must implement #get_state."
+      end
     end
   end
 end

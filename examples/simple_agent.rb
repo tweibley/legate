@@ -6,14 +6,26 @@ require_relative '../lib/adk'
 
 puts '--- Simple Echo Agent Example (Session-Based) ---'
 
-# 1. --- Agent Setup ---
-agent = ADK::Agent.new(
-  name: 'simple_echo_agent',
-  description: 'A simple agent that can echo messages',
-  tool_classes: [ADK::Tools::Echo]
-)
+# 1. --- Agent Definition Setup ---
+simple_echo_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :simple_echo_agent # Agent name as a Symbol
+  a.description 'A simple agent that can echo messages'
+  a.instruction 'You are an echo agent. Your task is to repeat the user\'s input exactly.' # Instruction is required
+  a.use_tool :echo # Tool name as a Symbol, ADK::Tools::Echo should be globally discoverable
+end
 
-puts "\nAgent '#{agent.name}' created with tool: #{agent.tools.first.name}"
+# Optional: Register with GlobalDefinitionRegistry if this definition needs to be found by name later
+# ADK::GlobalDefinitionRegistry.register(simple_echo_definition)
+
+# Ensure the tool is globally available (ADK::Tools::Echo should be by default)
+# If ADK::Tools::Echo wasn't automatically registered, you might need:
+# ADK::GlobalToolManager.register_tool(ADK::Tools::Echo)
+
+# 2. --- Agent Instantiation ---
+# Initialize the agent with the definition object
+agent = ADK::Agent.new(definition: simple_echo_definition)
+
+puts "\nAgent '#{agent.name}' created with tool: #{agent.tools.first&.name || 'none'}"
 
 # 3. --- Start Agent ---
 agent.start

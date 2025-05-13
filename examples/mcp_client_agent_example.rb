@@ -53,6 +53,9 @@ class NativeEchoTool < ADK::Tool
   end
 end
 
+# Register the native tool globally so it can be found by its name.
+ADK::GlobalToolManager.register_tool(NativeEchoTool)
+
 # --- 2. Configure the External MCP Server Connection ---
 # NOTE: Adjust the command and args based on how you run *your* external server.
 # This example assumes the filesystem server.
@@ -78,14 +81,19 @@ end
 
 # --- 3. Initialize the ADK Agent ---
 ADK.logger.info('Initializing agent...')
-my_agent = ADK::Agent.new(
-  name: 'mcp_client_agent',
-  description: 'An agent using native and external MCP tools.',
-  tool_classes: [NativeEchoTool], # Add native tools here
-  mcp_servers: [mcp_server_config], # Add MCP server configs here
-  selected_tool_names: [:read_file] # <<< CHANGED: Match actual tool name from server logs
-  # model_name: 'gemini-pro-1.5' # Optional: Specify model
-)
+
+mcp_client_agent_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :mcp_client_agent
+  a.description 'An agent using native and external MCP tools.'
+  a.instruction 'You can echo messages natively and use filesystem tools from an MCP server, such as reading files.'
+  a.use_tool :native_echo # Native tool defined above
+  a.use_tool :read_file   # Tool expected from the MCP server (e.g., from server-filesystem)
+  # Add MCP server configuration
+  a.mcp_servers mcp_server_config
+  # model_name: 'gemini-pro-1.5' # Optional: Specify model via a.model_name 'gemini-pro-1.5'
+end
+
+my_agent = ADK::Agent.new(definition: mcp_client_agent_definition)
 
 # --- 4. Start the Agent Runtime ---
 # This connects to the MCP server and registers its tools.

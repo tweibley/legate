@@ -2,37 +2,33 @@
 # frozen_string_literal: true
 
 require_relative '../lib/adk'
-# Require the specific tool class if not automatically loaded
+# Require the specific tool class if not automatically loaded. SleepyTool provides :start_sleepy_job.
 require_relative 'tools/sleepy_tool'
+# ADK::Tools::CheckJobStatusTool (providing :check_job_status) is loaded by ADK core.
 
 puts '--- Async Job Agent Example (Polling Status) ---'
 
-# 1. --- Agent Setup ---
-# Define agent and add the async tool via tool_classes
-agent = ADK::Agent.new(
-  name: 'async_job_demo_agent',
-  description: 'An agent that starts a background job and waits for it.',
-  tool_classes: [ADK::Tools::SleepyTool]
-)
+# 1. --- Agent Definition ---
+async_job_demo_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :async_job_demo_agent
+  a.description 'An agent that starts a background job and can check its status.'
+  a.instruction 'You can start sleepy jobs and check their status. Use start_sleepy_job to initiate, and the system might use check_job_status for monitoring.'
+  a.use_tool :start_sleepy_job   # Provided by ADK::Tools::SleepyTool
+  a.use_tool :check_job_status # Provided by ADK::Tools::CheckJobStatusTool
+end
 
-# REMOVED: Manual tool lookup and addition for SleepyTool
-# sleepy_tool = ADK::ToolRegistry.create_instance(:start_sleepy_job)
-# unless sleepy_tool
-#   puts "Error: Sleepy tool (:start_sleepy_job) not found in registry."
-#   exit 1
-# end
-# agent.add_tool(sleepy_tool)
+# 2. --- Agent Instantiation ---
+agent = ADK::Agent.new(definition: async_job_demo_definition)
 
-# Get an instance of the status checker tool directly (needed for manual polling)
-# ADK::Tools::CheckJobStatusTool should be automatically registered by the framework
+# Get an instance of the status checker tool directly (needed for manual polling in this example script)
 status_checker_tool = ADK::GlobalToolManager.create_instance(:check_job_status)
 unless status_checker_tool
   puts 'Error: Status checker tool (:check_job_status) not found in GlobalToolManager.'
   exit 1
 end
 
-puts "\nAgent '#{agent.name}' created with tool: #{agent.tools.map(&:name).join(', ')}"
-puts "Status checker tool loaded: #{status_checker_tool.name}"
+puts "\nAgent '#{agent.name}' created with tools: #{agent.tools.map(&:name).join(', ')}"
+puts "Status checker tool for manual polling: #{status_checker_tool.name}"
 
 # 3. --- Start Agent (Needed for the initial task) ---
 agent.start

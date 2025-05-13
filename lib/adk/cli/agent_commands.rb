@@ -395,28 +395,42 @@ module ADK
       LONGDESC
       def start(name)
         name_sym = name.to_sym
-        say "Loading agent '#{name}'..."
-        definition = ADK::AgentDefinitionStore.find(name_sym)
-        definition ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
-        unless definition
-          say "Error: Agent definition '#{name}' not found.", :red
+        say "Loading agent definition '#{name}'..."
+        definition_hash = ADK::AgentDefinitionStore.find(name_sym)
+        definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
+
+        unless definition_hash
+          say "Error: Agent definition hash '#{name}' not found in store.", :red
           exit(1)
         end
-        description = definition[:description]
-        tool_names_to_load = definition[:tools].map(&:to_sym)
-        model_name = definition[:model]
-        instruction_val = definition[:instruction]
+
+        say "Creating agent '#{name}' from definition object..."
+        agent_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
+
+        unless agent_definition_object
+          say "Error: Could not create a valid AgentDefinition object for '#{name}' from the loaded hash.", :red
+          exit(1)
+        end
+
         agent = nil
         begin
-          tool_classes = tool_names_to_load.map { |t_name| ADK::GlobalToolManager.find_class(t_name) }.compact
-          missing_tools = tool_names_to_load - tool_classes.map { |tc| tc.tool_metadata[:name] }
-          agent = ADK::Agent.new(name: name, description: description, model_name: model_name, instruction: instruction_val, tool_classes: tool_classes)
+          # Pass the definition object directly. Session service will use global default.
+          agent = ADK::Agent.new(definition: agent_definition_object)
+
           say "  - Agent uses model: #{agent.model_name}", :cyan
           say "  - Agent instruction: #{agent.instruction.inspect}", :cyan
+
+          # Tool loading is now handled by ADK::Agent#initialize via the definition.
+          # We can check which tools the agent *actually* loaded for verification.
+          loaded_tool_names = agent.tool_registry.tools.keys
+          defined_tool_names = agent_definition_object.tool_names.to_a
+          missing_tools = defined_tool_names - loaded_tool_names
+
           unless missing_tools.empty?
-            say "  - Warning: Tools defined but not found in GlobalToolManager: [#{missing_tools.join(', ')}]", :yellow
+            say "  - Warning: Tools defined but not loaded/found: [#{missing_tools.join(', ')}]", :yellow
           end
-          say "  - Loaded tools: [#{agent.tools.map(&:name).join(', ')}]", :cyan
+          say "  - Loaded tools: [#{loaded_tool_names.join(', ')}]", :cyan
+
           say "  - Starting agent runtime...", :cyan, false
           agent.start
           say "started.", :cyan
@@ -453,19 +467,24 @@ module ADK
       method_option :redis, type: :boolean, default: false, desc: 'Use Redis for session storage instead of in-memory.'
       def execute(name, task)
         name_sym = name.to_sym
-        say("Loading agent '#{name}' to execute task: \"#{task}\"...")
-        definition = ADK::AgentDefinitionStore.find(name_sym)
-        definition ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
-        unless definition
-          say "Error: Agent definition '#{name}' not found.", :red
+        say("Loading agent definition '#{name}' to execute task: \"#{task}\"...")
+        definition_hash = ADK::AgentDefinitionStore.find(name_sym)
+        definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
+
+        unless definition_hash
+          say "Error: Agent definition hash '#{name}' not found in store.", :red
           exit(1)
         end
-        description = definition[:description]
-        tool_names_to_load = definition[:tools].map(&:to_sym)
-        model_name = definition[:model]
-        instruction_val = definition[:instruction]
 
-        session_service_instance = options[:redis] ? ADK::SessionService::Redis.new : @@session_service
+        say "Creating agent '#{name}' from definition object..."
+        agent_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
+
+        unless agent_definition_object
+          say "Error: Could not create a valid AgentDefinition object for '#{name}' from the loaded hash.", :red
+          exit(1)
+        end
+
+        session_service_instance = options[:redis] ? ADK::SessionService::Redis.new : @@session_service_for_execute
         session_id_opt = options[:session_id]
         adk_session = nil
         if session_id_opt
@@ -484,14 +503,25 @@ module ADK
         agent = nil
         e_outer = nil
         begin
-          tool_classes = tool_names_to_load.map { |t_name| ADK::GlobalToolManager.find_class(t_name) }.compact
-          missing_tools = tool_names_to_load - tool_classes.map { |tc| tc.tool_metadata[:name] }
-          agent = ADK::Agent.new(name: name, description: description, model_name: model_name, instruction: instruction_val, tool_classes: tool_classes)
+          # Pass the definition object. Session service for the agent instance itself will use global default
+          # or the one passed if ADK::Agent.new supported it directly for its own session_service attr.
+          # The run_task method will use the session_service_instance passed to it for actual session operations.
+          agent = ADK::Agent.new(
+            definition: agent_definition_object,
+            session_service: session_service_instance
+          )
+
           say "  - Agent uses model: #{agent.model_name}", :cyan
+
+          # Tool loading is now handled by ADK::Agent#initialize via the definition.
+          loaded_tool_names = agent.tool_registry.tools.keys
+          defined_tool_names = agent_definition_object.tool_names.to_a
+          missing_tools = defined_tool_names - loaded_tool_names
+
           unless missing_tools.empty?
-            say "  - Warning: Tools defined but not found in GlobalToolManager: [#{missing_tools.join(', ')}]", :yellow
+            say "  - Warning: Tools defined but not loaded/found: [#{missing_tools.join(', ')}]", :yellow
           end
-          say "  - Loaded tools: [#{agent.tools.map(&:name).join(', ')}]", :cyan
+          say "  - Loaded tools: [#{loaded_tool_names.join(', ')}]", :cyan
           say "  - Starting agent runtime...", :cyan, false; agent.start; say "started.", :cyan
           say "  - Running task in session #{session_id_opt}: '#{task}'...", :cyan, false;
           final_event_or_error = agent.run_task(
@@ -606,20 +636,22 @@ module ADK
 
         agent = nil
         begin
-          tool_classes_for_agent = definition[:tools].map do |tn|
-            ADK::GlobalToolManager.find_class(tn.to_sym)
-          end.compact
+          # The definition hash is already loaded as `definition` variable earlier in this command.
+          # Convert hash to an ADK::AgentDefinition object
+          agent_definition_object = ADK::AgentDefinition.from_hash(definition)
 
+          unless agent_definition_object
+            ::CLI::UI::puts "{{red:Error: Could not create a valid AgentDefinition object for '#{agent_name_str}' from the loaded hash.}}"
+            exit(1)
+          end
+
+          # Instantiate the agent with its definition object and the selected session service
           agent = ADK::Agent.new(
-            name: agent_name_sym,
-            description: definition[:description],
-            instruction: definition[:instruction],
-            model_name: definition[:model],
-            tool_classes: tool_classes_for_agent,
-            fallback_mode: definition[:fallback_mode]&.to_sym || :error,
-            mcp_servers: definition[:mcp_servers_json] ? JSON.parse(definition[:mcp_servers_json]) : [],
-            session_service: session_service_instance
+            definition: agent_definition_object,
+            session_service: session_service_instance # Pass the already determined session service
           )
+          # Tool setup is now handled within ADK::Agent#initialize based on the definition object.
+
           agent.start
         rescue => e
           ::CLI::UI::puts "{{red:Error initializing or starting agent: #{e.message}}}"

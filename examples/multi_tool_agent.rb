@@ -6,38 +6,43 @@ require_relative '../lib/adk'
 
 puts '--- Multi-Tool Agent Example ---'
 
-# 1. --- Agent Setup ---
-# Add required tool classes directly during initialization
-agent = ADK::Agent.new(
-  name: 'multi_tool_agent',
-  description: 'An agent that can use multiple tools including echo, calculator, cat facts, random numbers, and task delegation',
-  tool_classes: [
-    ADK::Tools::Echo,
-    ADK::Tools::Calculator,
-    ADK::Tools::CatFacts,
-    ADK::Tools::RandomNumberTool,
-    ADK::Tools::AgentTool # NOTE: AgentTool provides :delegate_task
-  ]
-)
+# 1. --- Agent Definitions ---
 
-# Create definition for the calculator agent that will be used for delegation
-calculator_agent_def = {
-  name: :calculator_agent,
-  description: 'A calculator agent that can perform basic arithmetic operations',
-  model: 'gemini-2.0-flash',
-  tools: ['calculator'] # Tool names as strings
-}
-
-# --- Register Calculator Agent Definition In-Memory for this run --- >
-# This makes it findable by the AgentTool without needing Redis persistence for the example.
-# In a real application, definitions would typically be saved/loaded via CLI or other means.
-if ADK::AgentDefinitionStore.register(calculator_agent_def[:name], calculator_agent_def)
-  puts "\nRegistered definition for '#{calculator_agent_def[:name]}' in memory for this execution."
-else
-  puts "\nFailed to register definition for '#{calculator_agent_def[:name]}'."
-  exit 1
+# Definition for the main multi-tool agent
+multi_tool_agent_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :multi_tool_agent
+  a.description 'An agent that can use multiple tools including echo, calculator, cat facts, random numbers, and task delegation'
+  a.instruction 'You are a versatile assistant. Use the appropriate tool for the user\'s request. For calculations, use the calculator. For cat facts, use cat_facts. For random numbers, use random_number. To delegate, use delegate_task.'
+  a.use_tool :echo
+  a.use_tool :calculator
+  a.use_tool :cat_facts      # Assumes a CatFactsTool providing :cat_facts is available
+  a.use_tool :random_number  # Assumes a RandomNumberTool providing :random_number is available
+  a.use_tool :delegate_task  # Provided by ADK::Tools::AgentTool
 end
-# <--------------------------------------------------------------------------
+
+# Definition for the calculator agent that will be used for delegation
+calculator_agent_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :calculator_agent
+  a.description 'A calculator agent that can perform basic arithmetic operations'
+  a.instruction 'You are a calculator. Perform the requested calculation.'
+  a.model_name 'gemini-2.0-flash' # Optional: specify model for this agent
+  a.use_tool :calculator
+end
+
+# --- Register Calculator Agent Definition for AgentTool --- >
+# AgentTool will look up definitions in the GlobalDefinitionRegistry.
+ADK::GlobalDefinitionRegistry.register(calculator_agent_definition)
+puts "\nRegistered definition for '#{calculator_agent_definition.name}' in ADK::GlobalDefinitionRegistry."
+# <----------------------------------------------------------
+
+# Ensure all necessary tools are globally available/registered.
+# Standard tools like Echo, Calculator, AgentTool (delegate_task) are usually auto-registered.
+# For custom tools like CatFactsTool and RandomNumberTool, ensure they are loaded and registered
+# e.g., via `require` and `ADK::GlobalToolManager.register_tool(CatFactsTool)` if not already.
+# This example assumes they are available to the GlobalToolManager.
+
+# 2. --- Agent Instantiation ---
+agent = ADK::Agent.new(definition: multi_tool_agent_definition)
 
 puts "\nAgent '#{agent.name}' created with tools:"
 agent.tools.each { |tool| puts " - #{tool.name}" }

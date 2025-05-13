@@ -135,6 +135,42 @@ module ADK
           @scoped_states.delete(state_key)
         end
       end
+
+      # Sets a key-value pair in the state associated with the session.
+      # Delegates to the ADK::Session instance's set_state method.
+      # @param session_id [String] The ID of the session.
+      # @param key [Symbol] The key for the state entry.
+      # @param value [Object] The value to store.
+      # @return [void]
+      def set_state(session_id:, key:, value:)
+        session = get_session(session_id: session_id)
+        if session
+          begin
+            session.set_state(key, value) # ADK::Session#set_state handles its own logging
+          rescue ADK::SerializationError => e # Catch potential serialization errors from session.set_state
+            ADK.logger.error("InMemorySessionService: Error setting state for session '#{session_id}', key '#{key}': #{e.message}")
+            # Depending on desired behavior, could re-raise or just log
+          end
+        else
+          ADK.logger.warn("InMemorySessionService: Session not found '#{session_id}' when trying to set state for key '#{key}'.")
+        end
+        nil # Return void consistent with base
+      end
+
+      # Retrieves a value from the state associated with the session.
+      # Delegates to the ADK::Session instance's get_state method.
+      # @param session_id [String] The ID of the session.
+      # @param key [Symbol] The key for the state entry.
+      # @return [Object, nil] The value if found, or nil.
+      def get_state(session_id:, key:)
+        session = get_session(session_id: session_id)
+        if session
+          session.get_state(key) # ADK::Session#get_state handles its own logic
+        else
+          ADK.logger.warn("InMemorySessionService: Session not found '#{session_id}' when trying to get state for key '#{key}'.")
+          nil
+        end
+      end
     end
   end
 end

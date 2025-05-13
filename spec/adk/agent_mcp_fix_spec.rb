@@ -27,15 +27,18 @@ RSpec.describe 'Agent MCP Fix' do
       allow(session_service).to receive(:get_session)
       allow(session_service).to receive(:append_event)
 
-      agent_def = instance_double(ADK::AgentDefinition,
-                                  name: :test_agent,
-                                  description: 'Test agent',
-                                  instruction: 'Test instruction',
-                                  model_name: 'gemini-pro',
-                                  tool_names: [],
-                                  mcp_servers: nil,
-                                  webhook_enabled: true,
-                                  webhook_secret: nil)
+      agent_def = ADK::AgentDefinition.new.tap do |d|
+        d.name :test_agent
+        d.description 'Test agent'
+        d.instruction 'Test instruction'
+        d.model_name 'gemini-pro'
+        # mcp_servers defaults to [] in AgentDefinition,
+        # but this test specifically checks behavior when it's nil.
+        # We will stub it to return nil after creation.
+        d.webhook_enabled true # Assuming this is a valid attribute to set
+      end
+      # Stub mcp_servers to return nil for this specific test case.
+      allow(agent_def).to receive(:mcp_servers).and_return(nil)
 
       # Allow configuration
       allow(ADK).to receive(:config).and_return(
@@ -69,15 +72,14 @@ RSpec.describe 'Agent MCP Fix' do
       allow(session_service).to receive(:get_session)
       allow(session_service).to receive(:append_event)
 
-      agent_def = instance_double(ADK::AgentDefinition,
-                                  name: :test_agent,
-                                  description: 'Test agent',
-                                  instruction: 'Test instruction',
-                                  model_name: 'gemini-pro',
-                                  tool_names: [],
-                                  mcp_servers: [],
-                                  webhook_enabled: true,
-                                  webhook_secret: nil)
+      agent_def = ADK::AgentDefinition.new.tap do |d|
+        d.name :test_agent
+        d.description 'Test agent'
+        d.instruction 'Test instruction'
+        d.model_name 'gemini-pro'
+        d.mcp_servers [] # Explicitly set to empty array
+        d.webhook_enabled true # Assuming this is a valid attribute to set
+      end
 
       # Allow configuration
       allow(ADK).to receive(:config).and_return(

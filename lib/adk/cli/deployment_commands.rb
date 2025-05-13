@@ -448,16 +448,24 @@ module ADK
                 end
 
                 # 3. Instantiate an ephemeral Echo agent
-                #    (No need to load a saved definition for this simple case)
-                echo_agent = ADK::Agent.new(
-                  name: :ephemeral_echo,
-                  description: 'Temporary Echo Agent',
-                  tool_classes: [ADK::Tools::Echo]
-                  # No instruction or model needed for just echo
-                )
+                #    Create an ephemeral definition for the echo agent.
+                echo_agent_definition = ADK::AgentDefinition.new
+                echo_agent_definition.define do |def_proxy|
+                  def_proxy.name :ephemeral_echo_sample # Ensure a unique name if needed, or just :ephemeral_echo
+                  def_proxy.description 'Temporary Echo Agent for sample endpoint'
+                  def_proxy.instruction 'You are an echo agent. You will use the echo tool to repeat the input.'
+                  def_proxy.use_tool :echo # Assumes EchoTool is globally registered
+                  # Model, fallback_mode, etc., will use defaults from AgentDefinition
+                end
+
+                # ADK::GlobalToolManager.register(ADK::Tools::Echo) unless ADK::GlobalToolManager.find_class(:echo)
+                # Ensure EchoTool is globally available if not already (though ADK typically handles this for built-ins)
+
+                echo_agent = ADK::Agent.new(definition: echo_agent_definition)
+                # The agent will use the session_service from ADK.config for its internal @session_service,
+                # but run_task below will use the specific session_service instance.
 
                 # 4. Create a temporary session for this request
-                #    (You might want persistent sessions for real agents)
                 temp_session = session_service.create_session(app_name: :echo_service, user_id: "web_#{SecureRandom.hex(4)}")
                 session_id = temp_session.id
 
@@ -731,7 +739,7 @@ module ADK
           }
 
           error() {
-            echo "[ERROR] $1" >&2
+            echo "[ERROR] $1 >&2
             exit 1
           }
 

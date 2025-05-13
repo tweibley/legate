@@ -51,12 +51,18 @@ ADK.logger.info("Using MCP Server Config: #{mcp_server_config}")
 
 # --- 2. Initialize ADK::Agent with MCP Config ---
 ADK.logger.info('Initializing agent...')
-agent = ADK::Agent.new(
-  name: 'mcp_client_example_agent',
-  description: 'This agent connects to an external MCP server.',
-  mcp_servers: [mcp_server_config]
-  # Optionally add native tools: tools: [ADK::Tools::Calculator.new]
-)
+
+mcp_client_agent_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :mcp_client_example_agent
+  a.description 'This agent connects to an external MCP server.'
+  a.instruction 'You are an agent that can leverage tools from an MCP server. Please use them as needed.'
+  # Pass the single mcp_server_config hash to the mcp_servers DSL method
+  a.mcp_servers mcp_server_config 
+  # If there were native tools, they would be added here, e.g.:
+  # a.use_tool :calculator 
+end
+
+agent = ADK::Agent.new(definition: mcp_client_agent_definition)
 
 # --- 3. Start Agent Runtime (Connects to MCP) ---
 begin

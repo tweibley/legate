@@ -51,6 +51,10 @@ module ADK
     attr_reader :fallback_mode
     # @return [Array<Hash>] Configuration for MCP servers. Defaults to [].
     attr_reader :mcp_servers
+    # @return [Set<Symbol>] A set of names of sub-agent definitions to instantiate.
+    attr_reader :sub_agent_names
+    # @return [Symbol, nil] The key under which the agent's final output should be stored in the session state.
+    attr_reader :output_key
 
     # Delegate common attributes to the definition proxy for easier access during definition
     # Only delegate methods needed *within* the define block
@@ -71,6 +75,8 @@ module ADK
       @webhook_session_extractor = nil
       @fallback_mode = :error # Default fallback mode
       @mcp_servers = [] # Default MCP servers
+      @sub_agent_names = Set.new # MAS New attribute for sub-agent definitions
+      @output_key = nil      # MAS New attribute for state management
       # -----------------------
 
       @proxy = DefinitionProxy.new(self)
@@ -122,7 +128,9 @@ module ADK
         webhook_transformer: @webhook_transformer.is_a?(Proc) ? '<Proc>' : nil,
         webhook_session_extractor: @webhook_session_extractor.is_a?(Proc) ? '<Proc>' : nil,
         fallback_mode: @fallback_mode,
-        mcp_servers: @mcp_servers
+        mcp_servers: @mcp_servers,
+        sub_agent_names: @sub_agent_names.to_a, # MAS New attribute
+        output_key: @output_key # MAS New attribute
       }
     end
 
@@ -242,8 +250,95 @@ module ADK
         @definition.instance_variable_set(:@mcp_servers, configs)
       end
       # -----------------------------
+
+      # --- MAS Attributes DSL ---
+      # Defines the names of sub-agents that should be instantiated under this agent.
+      # @param names [Array<Symbol>] An array of sub-agent definition names.
+      def sub_agents_define(*names)
+        flat_names = names.flatten.map(&:to_sym)
+        invalid_names = flat_names.reject { |n| n.is_a?(Symbol) }
+        unless invalid_names.empty?
+          raise ArgumentError, "Sub-agent names must all be Symbols. Invalid names: #{invalid_names.join(', ')}"
+        end
+        @definition.instance_variable_set(:@sub_agent_names, @definition.instance_variable_get(:@sub_agent_names).merge(flat_names))
+      end
+
+      # Sets the key under which the agent's final output should be stored in session state.
+      # @param key_name [Symbol] The key name.
+      def output_key(key_name)
+        raise ArgumentError, 'Output key must be a Symbol.' unless key_name.is_a?(Symbol)
+        @definition.instance_variable_set(:@output_key, key_name)
+      end
+      # --- End MAS Attributes DSL ---
     end
     private_constant :DefinitionProxy
+
+    # Class method to create an AgentDefinition instance from a hash.
+    # This is typically used when loading a definition from a persistent store.
+    # @param hash_data [Hash] The hash containing agent definition attributes.
+    # @return [ADK::AgentDefinition, nil] A new AgentDefinition instance or nil on error.
+    def self.from_hash(hash_data)
+      return nil unless hash_data.is_a?(Hash)
+
+      definition = new
+      proxy = DefinitionProxy.new(definition)
+
+      proxy.name(hash_data[:name].to_sym) if hash_data[:name]
+      proxy.description(hash_data[:description].to_s) if hash_data.key?(:description)
+      proxy.instruction(hash_data[:instruction].to_s) if hash_data.key?(:instruction)
+      proxy.model_name(hash_data[:model_name].to_sym) if hash_data[:model_name]
+      proxy.temperature(hash_data[:temperature].to_f) if hash_data[:temperature]
+
+      (hash_data[:tool_names] || []).each do |tn|
+        proxy.use_tool(tn.to_sym) unless tn.to_s.strip.empty?
+      end
+
+      proxy.webhook_enabled(hash_data[:webhook_enabled]) if hash_data.key?(:webhook_enabled)
+      # webhook_validator, webhook_transformer, webhook_session_extractor are often Procs
+      # and cannot be reliably serialized/deserialized from a generic hash.
+      # They typically need to be re-associated if the definition is loaded by name
+      # from a registry that manages these Procs, or set programmatically after load.
+      # For webhook_validator, if it's a symbol, we can restore it.
+      if hash_data[:webhook_validator].is_a?(String) || hash_data[:webhook_validator].is_a?(Symbol)
+        proxy.webhook_validator(hash_data[:webhook_validator].to_sym)
+      elsif hash_data.key?(:webhook_validator) && hash_data[:webhook_validator].nil?
+        proxy.webhook_validator(nil)
+      end
+      proxy.webhook_secret(hash_data[:webhook_secret].to_s) if hash_data.key?(:webhook_secret)
+
+      proxy.fallback_mode(hash_data[:fallback_mode].to_sym) if hash_data[:fallback_mode]
+
+      mcp_servers_data = hash_data[:mcp_servers]
+      if mcp_servers_data.is_a?(String)
+        begin
+          parsed_mcp_servers = JSON.parse(mcp_servers_data)
+          proxy.mcp_servers(*(parsed_mcp_servers.is_a?(Array) ? parsed_mcp_servers : []))
+        rescue JSON::ParserError => e
+          ADK.logger.warn("Failed to parse mcp_servers JSON from hash_data for agent '#{hash_data[:name]}': #{e.message}")
+          proxy.mcp_servers([]) # Default to empty if parsing fails
+        end
+      elsif mcp_servers_data.is_a?(Array)
+        proxy.mcp_servers(*mcp_servers_data)
+      end
+
+      # MAS: Handle sub_agent_names
+      if hash_data[:sub_agent_names].is_a?(Array)
+        proxy.sub_agents_define(*(hash_data[:sub_agent_names].map(&:to_sym)))
+      end
+
+      # MAS: Handle output_key
+      proxy.output_key(hash_data[:output_key].to_sym) if hash_data[:output_key]
+
+      definition.validate!
+      definition
+    rescue ArgumentError => e # Catch validation errors or other argument errors from proxy setters
+      ADK.logger.error("ArgumentError creating AgentDefinition from hash for agent '#{hash_data[:name]}': #{e.message}. Hash: #{hash_data.inspect}")
+      nil
+    rescue => e
+      ADK.logger.error("Unexpected error creating AgentDefinition from hash for agent '#{hash_data[:name]}': #{e.class} - #{e.message}. Hash: #{hash_data.inspect}")
+      ADK.logger.error(e.backtrace.first(5).join("\n"))
+      nil
+    end
   end
 
   # Agent class represents an AI agent that can perform tasks using tools and a planner.
@@ -253,6 +348,9 @@ module ADK
 
     attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode,
                 :instruction, :definition
+    # MAS Attributes
+    attr_reader :parent_agent # The parent agent in a hierarchy, if any
+    attr_reader :sub_agents   # A collection of sub-agents
 
     # --- Builder Class for `define` method ---
     # class AgentBuilder
@@ -361,78 +459,55 @@ module ADK
     # --- End Class Method ---
 
     # Initializes a new agent instance.
-    # Note: Session and Memory are no longer managed directly by the agent instance.
+    # An agent MUST be initialized with a valid ADK::AgentDefinition object.
     #
-    # @param name [String] The unique name of the agent definition.
-    # @param description [String] A description of the agent's purpose.
-    # @param model_name [String, nil] The specific LLM model name (optional).
-    # @param tool_classes [Array<Class>] An initial list of native tool *classes* (must inherit from ADK::Tool).
-    # @param tool_paths [String, Array<String>] Optional: Path(s) to directories containing tool definitions (.rb files) to automatically discover and load.
-    # @param planner [ADK::Planner] A specific planner instance (default: created automatically).
-    # @param mcp_servers [Array<Hash>, String] Optional configurations for external MCP servers (JSON string or Array).
-    # @param fallback_mode [Symbol] Behavior when planning fails (:error or :echo). Default: :error
-    # @param selected_tool_names [Array<Symbol>] List of tool names explicitly selected in the agent definition (used for MCP).
-    # @param instruction [String, nil] Optional: Instructions for the agent's behavior (system prompt).
-    # @param definition [ADK::AgentDefinition, nil] Optional: An agent definition object. If provided, other args are ignored.
-    # @param session_service [ADK::SessionService::Base, nil] Optional: Pre-initialized session service (used by worker).
-    def initialize(name: nil, description: nil, model_name: nil, tool_classes: [], tool_paths: [], planner: nil, mcp_servers: [],
-                   fallback_mode: :error, selected_tool_names: [], instruction: nil, definition: nil, session_service: nil)
-      # --- If definition is provided, use it --- (Typically for worker instantiation)
-      if definition
-        # Use duck-typing instead of is_a? for mock compatibility
-        unless definition.respond_to?(:name) && definition.respond_to?(:description) && definition.respond_to?(:instruction) && definition.respond_to?(:tool_names)
-          raise ArgumentError,
-                'provided definition object does not appear to be a valid ADK::AgentDefinition (missing required methods)'
-        end
-
-        # raise ArgumentError, "definition must be an ADK::AgentDefinition" unless definition.is_a?(ADK::AgentDefinition)
-
-        @definition = definition
-        @name = definition.name
-        @description = definition.description
-        @instruction = definition.instruction
-        @model_name = definition.model_name || DEFAULT_MODEL
-
-        @selected_tool_names = definition.tool_names.to_a # Tool names are directly from definition
-        # Tool paths are NOT loaded when initializing from definition
-        tool_paths_to_load = [] # Initialize to empty array
-        # Tool classes are resolved via GlobalToolManager using names from definition
-        tool_classes_to_load = definition.tool_names.map { |tn| ADK::GlobalToolManager.find_class(tn) }.compact
-        if tool_classes_to_load.length != definition.tool_names.length
-          # Correctly find missing tool *names* by comparing sets
-          found_tool_names = tool_classes_to_load.map { |tc| tc.tool_metadata[:name].to_sym rescue nil }.compact.to_set
-          missing_tool_names = definition.tool_names.to_set - found_tool_names
-          # missing_tools = definition.tool_names - tool_classes_to_load.map { |tc| ADK::GlobalToolManager.get_tool_name(tc) }
-          ADK.logger.warn("Agent '#{@name}': Could not find globally registered classes for tools: #{missing_tool_names.to_a.join(', ')}. These tools will be unavailable.")
-        end
-
-        @session_service = session_service || initialize_session_service_from_definition
-
-        # <<< FIXED: Set mcp_servers_config when initializing from definition >>>
-        # Default to empty array if not present in definition
-        mcp_servers_config_str = definition.mcp_servers || []
-
-        ADK.logger.info("Initializing agent '#{@name}' from definition...")
-      else
-        # --- Original initialization logic ---
-        raise ArgumentError, 'Agent name must be provided if not using definition.' unless name
-
-        @name = name
-        @description = description || ''
-        @instruction = instruction
-        @model_name = model_name || DEFAULT_MODEL
-        @fallback_mode = fallback_mode == :echo ? :echo : :error # Ensure only valid modes
-        tool_paths_to_load = Array(tool_paths).compact.uniq
-        mcp_servers_config_str = mcp_servers # Store raw config
-        selected_tool_names_symbols = selected_tool_names.map(&:to_sym)
-        tool_classes_to_load = tool_classes
-        @definition = nil # No separate definition object in this path
-
-        # <<< Use provided session_service if available when init from args >>>
-        @session_service = session_service || initialize_session_service_from_args
-
-        ADK.logger.info("Initializing agent '#{@name}' from arguments...")
+    # @param definition [ADK::AgentDefinition] The agent definition object.
+    # @param session_service [ADK::SessionService::Base, nil] Optional: Pre-initialized session service.
+    # @param planner_override [ADK::Planner, nil] Optional: A specific planner instance to override the default.
+    # @param sub_agents [Array<ADK::Agent>, nil] Optional: An array of pre-initialized sub-agent instances. If provided, these will be used instead of instantiating from `definition.sub_agent_names`.
+    def initialize(definition:, session_service: nil, planner_override: nil, sub_agents: nil)
+      unless definition.is_a?(ADK::AgentDefinition)
+        raise ArgumentError,
+              "Agent must be initialized with an ADK::AgentDefinition object. Received: #{definition.class}"
       end
+      # Perform a more thorough check if it looks like a definition
+      unless definition.respond_to?(:name) && definition.respond_to?(:description) &&
+             definition.respond_to?(:instruction) && definition.respond_to?(:tool_names) &&
+             definition.respond_to?(:model_name) && definition.respond_to?(:fallback_mode) &&
+             definition.respond_to?(:mcp_servers)
+        raise ArgumentError,
+              'Provided definition object does not appear to be a valid ADK::AgentDefinition (missing required attributes/methods).'
+      end
+
+      @definition = definition
+      @name = definition.name
+      @description = definition.description
+      @instruction = definition.instruction
+      @model_name = definition.model_name || DEFAULT_MODEL
+      @fallback_mode = definition.fallback_mode # Assumes :error is default in AgentDefinition
+      @selected_tool_names = definition.tool_names.to_a # Tool names are directly from definition
+
+      # MAS Attributes Initialization
+      @parent_agent = nil # Will be set by parent if this is a sub-agent
+      @sub_agents = []    # Will be populated if this agent has sub-agents defined
+
+      # Tool paths are NOT loaded when initializing from definition; tools are expected to be globally registered.
+      tool_paths_to_load = []
+      # Tool classes are resolved via GlobalToolManager using names from definition
+      tool_classes_to_load = definition.tool_names.map { |tn| ADK::GlobalToolManager.find_class(tn) }.compact
+
+      if tool_classes_to_load.length != definition.tool_names.length
+        found_tool_names = tool_classes_to_load.map { |tc| tc.tool_metadata[:name].to_sym rescue nil }.compact.to_set
+        missing_tool_names = definition.tool_names.to_set - found_tool_names
+        ADK.logger.warn("Agent '#{@name}': Could not find globally registered classes for tools: #{missing_tool_names.to_a.join(', ')}. These tools will be unavailable.")
+      end
+
+      @session_service = session_service || ADK.config.session_service # Simplified session service init
+
+      # MCP servers are taken directly from the definition
+      mcp_servers_config_str = definition.mcp_servers || []
+
+      ADK.logger.info("Initializing agent '#{@name}' from provided definition object...")
       # -----------------------------------------
       @state = :idle # Initial state
 
@@ -499,10 +574,10 @@ module ADK
         @mcp_servers_config = []
       end
 
-      @selected_tool_names = selected_tool_names_symbols # Store selected tool names (used for MCP)
+      @selected_tool_names = @definition.tool_names.to_a # Ensure this uses the definition
       @mcp_clients = [] # Store active MCP client instances
 
-      @planner = planner || ADK::Planner.new(agent: self, model_name: @model_name)
+      @planner = planner_override || ADK::Planner.new(agent: self, model_name: @model_name)
 
       # Validate essential components using respond_to? for duck typing
       unless @session_service&.respond_to?(:get_session) && @session_service&.respond_to?(:append_event)
@@ -516,6 +591,66 @@ module ADK
       ADK.logger.debug {
         "Agent '#{@name}' initialized with #{@tool_registry.tools.count} tools: [#{@tool_registry.tools.keys.join(', ')}]"
       }
+
+      # MAS: Instantiate Sub-Agents or use provided ones
+      if sub_agents && !sub_agents.empty?
+        ADK.logger.info("Agent \'#{@name}\': Initializing with programmatically provided sub-agents (#{sub_agents.length} agents).")
+        sub_agents.each do |sub_agent|
+          unless sub_agent.is_a?(ADK::Agent)
+            ADK.logger.warn("Agent \'#{@name}\': Item in provided sub_agents list is not an ADK::Agent. Skipping: #{sub_agent.inspect}")
+            next
+          end
+          # Enforce single parent rule
+          if sub_agent.parent_agent.nil?
+            sub_agent.instance_variable_set(:@parent_agent, self)
+          elsif sub_agent.parent_agent != self
+            ADK.logger.error("Agent \'#{@name}\': Cannot adopt sub-agent \'#{sub_agent.name}\'. It already has a different parent: \'#{sub_agent.parent_agent.name}\'. Skipping this sub-agent.")
+            next # Skip this sub-agent
+          end
+          # (If sub_agent.parent_agent == self, it's already correctly parented, do nothing extra here)
+
+          # Verify session service consistency
+          if sub_agent.session_service.nil? && @session_service
+            ADK.logger.debug("Agent \'#{@name}\': Setting session_service for programmatic sub-agent \'#{sub_agent.name}\' to match parent.")
+            sub_agent.instance_variable_set(:@session_service, @session_service)
+          elsif sub_agent.session_service != @session_service && @session_service # Warn if different and parent has one
+            ADK.logger.warn("Agent \'#{@name}\': Programmatic sub-agent \'#{sub_agent.name}\' has a different session_service than parent.")
+          end
+          @sub_agents << sub_agent
+          ADK.logger.info("Agent \'#{@name}\': Successfully instantiated and linked sub-agent \'#{sub_agent.name}\'.")
+        end
+        ADK.logger.info("Agent \'#{@name}\' finished linking programmatic sub-agents. Total sub-agents: #{@sub_agents.length}")
+      elsif definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
+        ADK.logger.info("Agent \'#{@name}\' attempting to instantiate sub-agents from definition: #{definition.sub_agent_names.to_a.inspect}")
+        definition.sub_agent_names.each do |sub_agent_name|
+          begin
+            sub_agent_definition = ADK::GlobalDefinitionRegistry.get(sub_agent_name)
+            unless sub_agent_definition
+              ADK.logger.error("Agent '#{@name}': Could not find definition for sub-agent '#{sub_agent_name}' in GlobalDefinitionRegistry. Skipping.")
+              next
+            end
+
+            ADK.logger.debug("Agent '#{@name}': Instantiating sub-agent '#{sub_agent_name}'...")
+            sub_agent = ADK::Agent.new(definition: sub_agent_definition, session_service: @session_service)
+            # Set parent link - enforce single parent rule
+            if sub_agent.parent_agent.nil?
+              sub_agent.instance_variable_set(:@parent_agent, self)
+            elsif sub_agent.parent_agent != self # Should not happen if instantiated fresh, but defensive check
+              ADK.logger.error("Agent \'#{@name}\': Newly instantiated sub-agent \'#{sub_agent.name}\' unexpectedly already has a different parent: \'#{sub_agent.parent_agent.name}\'. Skipping.")
+              next # Skip this sub-agent
+            end
+            # (If sub_agent.parent_agent == self, it's already fine)
+
+            @sub_agents << sub_agent
+            ADK.logger.info("Agent \'#{@name}\': Successfully instantiated and linked sub-agent \'#{sub_agent_name}\'.")
+          rescue ArgumentError => e # Catch errors from ADK::Agent.new (e.g. definition issues)
+            ADK.logger.error("Agent '#{@name}': ArgumentError instantiating sub-agent '#{sub_agent_name}': #{e.message}")
+          rescue StandardError => e
+            ADK.logger.error("Agent '#{@name}': Unexpected error instantiating sub-agent '#{sub_agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+          end
+        end
+        ADK.logger.info("Agent '#{@name}' finished sub-agent instantiation. Total sub-agents: #{@sub_agents.length}")
+      end
     end
 
     # Adds a tool instance OR class to the agent's registry
@@ -736,9 +871,26 @@ module ADK
         session_service.append_event(session_id: session_id, event: final_agent_event)
       rescue StandardError => e
         # Log failure to append the *final* event, but still return it
-        ADK.logger.error("Failed to append final agent event for session '#{session_id}': #{e.class} - #{e.message}")
+        ADK.logger.error("Failed to append final agent event for session \'#{session_id}\': #{e.class} - #{e.message}")
       end
       # --------------------------- #
+
+      # --- MAS: Store result in session state if output_key is defined --- #
+      if @definition.respond_to?(:output_key) && @definition.output_key && final_agent_event
+        output_value = final_agent_event.content # Store the entire content hash
+        ADK.logger.info("Agent \'#{@name}\' storing output to session state with key \'#{@definition.output_key}\' for session \'#{session_id}\'. Value: #{output_value.inspect}")
+        begin
+          # Ensure session_service has set_state. Add if missing for base/inmemory.
+          if session_service.respond_to?(:set_state)
+            session_service.set_state(session_id: session_id, key: @definition.output_key, value: output_value)
+          else
+            ADK.logger.warn("Agent \'#{@name}\': Session service does not support :set_state. Cannot store output for key \'#{@definition.output_key}\'.")
+          end
+        rescue StandardError => e
+          ADK.logger.error("Agent \'#{@name}\': Failed to set state for key \'#{@definition.output_key}\' in session \'#{session_id}\': #{e.class} - #{e.message}")
+        end
+      end
+      # --- End MAS State Management --- #
 
       return final_agent_event
     end
