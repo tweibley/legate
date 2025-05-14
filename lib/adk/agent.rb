@@ -1076,6 +1076,44 @@ module ADK
       return final_agent_event
     end
 
+    # Returns the root agent in the hierarchy (the topmost agent with no parent)
+    # @return [ADK::Agent] The root agent in the hierarchy
+    def root_agent
+      return self if @parent_agent.nil?
+      @parent_agent.root_agent
+    end
+
+    # Finds an agent with the given name in the hierarchy using DFS
+    # @param name_sym [Symbol] The name of the agent to find (as a symbol)
+    # @return [ADK::Agent, nil] The agent with the given name, or nil if not found
+    def find_agent(name_sym)
+      # Convert to symbol if string provided
+      name_sym = name_sym.to_sym if name_sym.is_a?(String)
+      
+      # Check if this is the agent we're looking for
+      return self if @name.to_sym == name_sym
+      
+      # Search sub-agents recursively
+      @sub_agents.each do |sub_agent|
+        found = sub_agent.find_agent(name_sym)
+        return found if found
+      end
+      
+      # Not found in this branch
+      nil
+    end
+
+    # Finds a direct sub-agent with the given name
+    # @param name_sym [Symbol] The name of the sub-agent to find
+    # @return [ADK::Agent, nil] The sub-agent with the given name, or nil if not found
+    def find_sub_agent(name_sym)
+      # Convert to symbol if string provided
+      name_sym = name_sym.to_sym if name_sym.is_a?(String)
+      
+      # Find first sub-agent with matching name
+      @sub_agents.find { |sub_agent| sub_agent.name.to_sym == name_sym }
+    end
+
     private
 
     # Helper method to consistently determine the tool name from a tool class.
