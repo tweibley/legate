@@ -76,7 +76,7 @@ module ADK
       @fallback_mode = :error # Default fallback mode
       @mcp_servers = [] # Default MCP servers
       @sub_agent_names = Set.new # MAS New attribute for sub-agent definitions
-      @output_key = nil      # MAS New attribute for state management
+      @output_key = nil # MAS New attribute for state management
       # -----------------------
 
       @proxy = DefinitionProxy.new(self)
@@ -260,6 +260,7 @@ module ADK
         unless invalid_names.empty?
           raise ArgumentError, "Sub-agent names must all be Symbols. Invalid names: #{invalid_names.join(', ')}"
         end
+
         @definition.instance_variable_set(:@sub_agent_names, @definition.instance_variable_get(:@sub_agent_names).merge(flat_names))
       end
 
@@ -267,6 +268,7 @@ module ADK
       # @param key_name [Symbol] The key name.
       def output_key(key_name)
         raise ArgumentError, 'Output key must be a Symbol.' unless key_name.is_a?(Symbol)
+
         @definition.instance_variable_set(:@output_key, key_name)
       end
       # --- End MAS Attributes DSL ---
@@ -300,7 +302,7 @@ module ADK
       if validator_data.is_a?(Symbol)
         proxy.webhook_validator(validator_data)
       elsif validator_data == '<Proc>' # String placeholder from to_h for a Proc
-        proxy.webhook_validator(nil)    # Cannot reconstruct Proc, set to nil
+        proxy.webhook_validator(nil) # Cannot reconstruct Proc, set to nil
       elsif validator_data.is_a?(String) # Assume it's a symbol stored as string e.g. "my_validator" or ":my_val"
         proxy.webhook_validator(validator_data.delete_prefix(':').to_sym)
       elsif hash_data.key?(:webhook_validator) && validator_data.nil? # Explicit nil in hash
@@ -310,12 +312,12 @@ module ADK
       # Webhook Transformer
       transformer_data = hash_data[:webhook_transformer]
       if transformer_data == '<Proc>' # String placeholder from to_h for a Proc
-        proxy.webhook_transformer(nil)   # Cannot reconstruct Proc, set to nil
+        proxy.webhook_transformer(nil) # Cannot reconstruct Proc, set to nil
       elsif hash_data.key?(:webhook_transformer) && transformer_data.nil? # Explicit nil in hash
         proxy.webhook_transformer(nil)
-      # If transformer_data is something else (e.g., unexpected string/type from hash),
-      # the DefinitionProxy#webhook_transformer setter will raise an ArgumentError if it's not a Proc or nil.
-      # This is the desired behavior - from_hash should not try to coerce invalid types.
+        # If transformer_data is something else (e.g., unexpected string/type from hash),
+        # the DefinitionProxy#webhook_transformer setter will raise an ArgumentError if it's not a Proc or nil.
+        # This is the desired behavior - from_hash should not try to coerce invalid types.
       end
 
       # Webhook Session Extractor
@@ -325,7 +327,7 @@ module ADK
       elsif hash_data.key?(:webhook_session_extractor) && extractor_data.nil? # Explicit nil in hash
         proxy.webhook_session_extractor(nil)
       end
-      
+
       proxy.webhook_secret(hash_data[:webhook_secret]) if hash_data.key?(:webhook_secret)
 
       proxy.fallback_mode(hash_data[:fallback_mode].to_sym) if hash_data[:fallback_mode]

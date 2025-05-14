@@ -240,8 +240,8 @@ RSpec.describe ADK::AgentDefinition do
   describe '.from_hash and #to_h serialization/deserialization' do
     let(:original_definition) { described_class.new }
     let(:transformer_proc) { ->(data) { data } } # Dummy proc for testing assignment
-    let(:extractor_proc) { ->(req) { req[:id] } }   # Dummy proc for testing assignment
-    let(:validator_proc) { ->(req) { true } }    # Dummy proc for testing assignment
+    let(:extractor_proc) { ->(req) { req[:id] } } # Dummy proc for testing assignment
+    let(:validator_proc) { ->(req) { true } } # Dummy proc for testing assignment
 
     # Use a shared context for defining a complex agent to reduce duplication
     shared_context 'with a complex original definition' do

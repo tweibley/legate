@@ -128,7 +128,7 @@ module ADK
             definition_hash[:tool_names] = definition_hash.delete(:tools) if definition_hash.key?(:tools)
             # mcp_servers might be stored as mcp_servers_json
             if definition_hash.key?(:mcp_servers_json) && !definition_hash.key?(:mcp_servers)
-                definition_hash[:mcp_servers] = definition_hash.delete(:mcp_servers_json) # from_hash handles parsing if string
+              definition_hash[:mcp_servers] = definition_hash.delete(:mcp_servers_json) # from_hash handles parsing if string
             end
 
             Mcp.logger.debug("Agent definition hash loaded. Creating AgentDefinition object for '#{agent_name}'.")

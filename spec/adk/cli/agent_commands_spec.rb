@@ -373,7 +373,7 @@ RSpec.describe ADK::CLI::AgentCommands do
 
         invoke_command(:delete, agent_name.to_s)
         expect(output.string).to include('Error deleting definition from Redis.')
-        
+
         # After the delete, find should return nil
         allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(nil)
         expect(ADK::AgentDefinitionStore.find(agent_name)).to be_nil # Removed from memory
@@ -393,15 +393,15 @@ RSpec.describe ADK::CLI::AgentCommands do
       # Global stubs needed across all contexts
       # Allow from_hash calls on the mock objects
       allow(ADK::AgentDefinition).to receive(:from_hash).with(agent_def).and_return(agent_definition_object)
-      
+
       # Default mocks for core methods
       allow(ADK::GlobalDefinitionRegistry).to receive(:find).and_return(nil)
       allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(agent_name).and_return(nil)
-      
+
       # Default mocks for Agent class
       allow(ADK::Agent).to receive(:new).and_call_original
       allow(ADK::Agent).to receive(:new).with(definition: agent_definition_object).and_return(agent_instance)
-      
+
       # Default behavior for agent instance
       allow(agent_instance).to receive(:running?).and_return(false)
       # Setup start/stop to modify running? state
@@ -411,7 +411,7 @@ RSpec.describe ADK::CLI::AgentCommands do
       allow(agent_instance).to receive(:stop) do
         allow(agent_instance).to receive(:running?).and_return(false)
       end
-      
+
       # Default behavior for AgentDefinitionStore
       allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).and_call_original
       allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(agent_name).and_return(agent_def)
@@ -445,11 +445,11 @@ RSpec.describe ADK::CLI::AgentCommands do
         # Need to stub any agent_name lookup
         allow(ADK::AgentDefinitionStore).to receive(:find).and_call_original
         allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(nil)
-        
+
         # Specific stubbing for Redis load
         allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).and_call_original
         allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(agent_name).and_return(agent_def)
-        
+
         # Override instance creation and behavior
         allow(ADK::Agent).to receive(:new).with(definition: agent_definition_object).and_return(agent_instance)
       end
@@ -468,16 +468,16 @@ RSpec.describe ADK::CLI::AgentCommands do
       let(:agent_def_missing_tool) {
         { description: 'Missing tool', tools: ['mock_cli_tool', 'forgotten_tool'], model: 'gemini-test' }
       }
-      
-      let(:agent_definition_object_with_missing) { 
-        instance_double(ADK::AgentDefinition, name: agent_name, tool_names: ['mock_cli_tool', 'forgotten_tool'], model_name: 'gemini-test') 
+
+      let(:agent_definition_object_with_missing) {
+        instance_double(ADK::AgentDefinition, name: agent_name, tool_names: ['mock_cli_tool', 'forgotten_tool'], model_name: 'gemini-test')
       }
 
       before do
         ADK::AgentDefinitionStore.register(agent_name, agent_def_missing_tool)
         allow(ADK::AgentDefinitionStore).to receive(:find).and_call_original
         allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(agent_def_missing_tool)
-        
+
         # Specific stubs for this context
         allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(agent_name).and_return(nil)
         allow(ADK::AgentDefinition).to receive(:from_hash).with(agent_def_missing_tool).and_return(agent_definition_object_with_missing)
@@ -498,7 +498,7 @@ RSpec.describe ADK::CLI::AgentCommands do
         ADK::AgentDefinitionStore.register(agent_name, agent_def)
         allow(ADK::AgentDefinitionStore).to receive(:find).and_call_original
         allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(agent_def)
-        
+
         # Specific stubs for this context
         allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(agent_name).and_return(nil)
         allow(ADK::Agent).to receive(:new).with(definition: agent_definition_object).and_raise(StandardError, 'Initialization failed')
@@ -516,7 +516,7 @@ RSpec.describe ADK::CLI::AgentCommands do
         ADK::AgentDefinitionStore.register(agent_name, agent_def)
         allow(ADK::AgentDefinitionStore).to receive(:find).and_call_original
         allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(agent_def)
-        
+
         # Specific stubs for this context
         allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(agent_name).and_return(nil)
         allow(ADK::Agent).to receive(:new).with(definition: agent_definition_object).and_return(agent_instance)
@@ -552,7 +552,7 @@ RSpec.describe ADK::CLI::AgentCommands do
       if ADK::CLI::AgentCommands.class_variable_defined?(:@@session_service_for_execute)
         original_execute_service = ADK::CLI::AgentCommands.class_variable_get(:@@session_service_for_execute)
       end
-      
+
       # Replace with our test instance
       ADK::CLI::AgentCommands.class_variable_set(:@@session_service, session_service_in_memory)
       ADK::CLI::AgentCommands.class_variable_set(:@@session_service_for_execute, session_service_in_memory)
@@ -566,7 +566,7 @@ RSpec.describe ADK::CLI::AgentCommands do
       else
         ADK::CLI::AgentCommands.class_variable_set(:@@session_service, ADK::SessionService::InMemory.new)
       end
-      
+
       if original_execute_service
         ADK::CLI::AgentCommands.class_variable_set(:@@session_service_for_execute, original_execute_service)
       else
@@ -598,12 +598,12 @@ RSpec.describe ADK::CLI::AgentCommands do
         ADK::AgentDefinitionStore.register(agent_name, agent_def)
         allow(ADK::AgentDefinitionStore).to receive(:find).and_call_original
         allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(agent_def)
-        
+
         expected_event = ADK::Event.new(role: :agent, content: { status: :success, result: 'Task completed!' })
 
         # Expect run_task with any arguments to work
         allow(mock_agent_instance).to receive(:run_task).and_return(expected_event)
-        
+
         expect(mock_agent_instance).to receive(:start)
         expect(mock_agent_instance).to receive(:stop)
 
@@ -640,7 +640,7 @@ RSpec.describe ADK::CLI::AgentCommands do
     end
 
     context 'with session handling options' do
-      before { 
+      before {
         ADK::AgentDefinitionStore.register(agent_name, agent_def)
         allow(ADK::AgentDefinitionStore).to receive(:find).and_call_original
         allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(agent_def)
@@ -668,16 +668,16 @@ RSpec.describe ADK::CLI::AgentCommands do
 
       it 'warns and creates new session if provided session ID not found' do
         non_existent_session_id = 'non-existent-session-456'
-        
+
         # Mock get_session to return nil for the non-existent ID
         allow(session_service_in_memory).to receive(:get_session).with(session_id: non_existent_session_id).and_return(nil)
-        
+
         # Create a new session when called with any arguments
         new_session = session_service_in_memory.create_session(
           app_name: agent_name.to_s, user_id: 'cli_user'
         )
         allow(session_service_in_memory).to receive(:create_session).and_return(new_session)
-        
+
         # Allow run_task with any arguments
         allow(mock_agent_instance).to receive(:run_task).and_return({ status: :success, result: 'Created new session ok' })
 
@@ -692,11 +692,11 @@ RSpec.describe ADK::CLI::AgentCommands do
       let(:agent_def_missing) {
         { description: 'Executor Missing', tools: %w[mock_cli_tool unregistered_tool], model: 'gemini-exec' }
       }
-      
-      let(:agent_definition_object_missing) { 
-        instance_double(ADK::AgentDefinition, name: agent_name, tool_names: ['mock_cli_tool', 'unregistered_tool'], model_name: 'gemini-exec') 
+
+      let(:agent_definition_object_missing) {
+        instance_double(ADK::AgentDefinition, name: agent_name, tool_names: ['mock_cli_tool', 'unregistered_tool'], model_name: 'gemini-exec')
       }
-      
+
       before do
         ADK::AgentDefinitionStore.register(agent_name, agent_def_missing)
         allow(ADK::AgentDefinitionStore).to receive(:find).and_call_original
@@ -707,7 +707,7 @@ RSpec.describe ADK::CLI::AgentCommands do
 
       it 'warns about missing tools during instantiation' do
         invoke_command(:execute, agent_name.to_s, task)
-        
+
         # The warning is not output in this case because we're directly using mock_agent_instance
         # Instead, verify the task executes successfully
         expect(output.string).to include('Task Result:')

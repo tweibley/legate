@@ -278,7 +278,7 @@ module ADK
       def delete(name)
         name_sym = name.to_sym
         definition_exists = false
-        
+
         # Check in-memory first
         if ADK::AgentDefinitionStore.find(name_sym)
           definition_exists = true
@@ -292,12 +292,12 @@ module ADK
             exit(1)
           end
         end
-        
+
         unless definition_exists
           say "Error: Agent definition '#{name}' not found.", :red
           exit(1)
         end
-        
+
         if yes?("Are you sure you want to permanently delete agent definition '#{name}'? [y/N]", :yellow)
           redis_deleted = ADK::AgentDefinitionStore.delete_from_redis(name_sym)
           ADK::AgentDefinitionStore.remove(name_sym)
@@ -405,22 +405,22 @@ module ADK
       def start(name)
         name_sym = name.to_sym
         say "Loading agent '#{name}'..."
-        
+
         # First check the global registry
         agent_definition_object = ADK::GlobalDefinitionRegistry.find(name_sym)
-        
+
         # If not found in memory, try loading from Redis
         if agent_definition_object.nil?
           definition_hash = ADK::AgentDefinitionStore.load_from_redis(name_sym)
-          
+
           unless definition_hash
             say "Error: Agent definition '#{name}' not found.", :red
             exit(1)
           end
-          
+
           say "Creating agent '#{name}' from definition object..."
           agent_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
-          
+
           unless agent_definition_object
             say "Error: Could not create a valid AgentDefinition object for '#{name}' from the loaded hash.", :red
             exit(1)

@@ -52,11 +52,11 @@ end
 
 class MockToolNoName < ADK::Tool
   tool_description 'A tool without an explicit name.'
-  
+
   def self.tool_metadata
     { name: nil, description: 'A tool without an explicit name.' }
   end
-  
+
   def self.inferred_name
     nil
   end
@@ -89,6 +89,7 @@ class MockToolWithArgError < ADK::Tool
 
   def perform_execution(params, context)
     raise ADK::ToolArgumentError, 'Invalid number provided' unless params[:number] > 0
+
     { status: :success, result: params[:number] }
   end
 end
@@ -164,8 +165,7 @@ RSpec.describe ADK::Agent do
                     webhook_transformer: nil,
                     webhook_session_extractor: nil,
                     sub_agent_names: Set.new, # Allow and provide default
-                    output_key: nil           # Allow and provide default
-                   )
+                    output_key: nil) # Allow and provide default
   end
   let(:mock_store) { instance_double(ADK::DefinitionStore::RedisStore, save_definition: true, get_definition: nil) }
   let(:mock_config) {
@@ -414,7 +414,7 @@ RSpec.describe ADK::Agent do
           ADK::Agent.new(
             definition: parent_definition_declaring_subs, # This definition *declares* :child_one
             session_service: session_service_double,
-            sub_agents: [programmatic_child_instance]    # But we provide :child_two programmatically
+            sub_agents: [programmatic_child_instance] # But we provide :child_two programmatically
           )
         end
 
@@ -435,8 +435,8 @@ RSpec.describe ADK::Agent do
         it 'assigns parent session service to programmatic sub-agent if sub-agent lacks one' do
           child_without_service_def = ADK::AgentDefinition.new.define { |d| d.name :child_no_svc; d.instruction 'hi' }
           programmatic_child_no_service = ADK::Agent.new(definition: child_without_service_def)
-          
-          # Force nil session service after initialization 
+
+          # Force nil session service after initialization
           programmatic_child_no_service.instance_variable_set(:@session_service, nil)
           # Verify it's nil after our modification
           expect(programmatic_child_no_service.instance_variable_get(:@session_service)).to be_nil
@@ -642,7 +642,7 @@ RSpec.describe ADK::Agent do
     subject(:agent) { create_agent() }
 
     describe '#add_tool' do
-      let(:new_tool_class) { ADK::Tools::Calculator } 
+      let(:new_tool_class) { ADK::Tools::Calculator }
       let(:new_tool_name) { :calculator }
       let(:new_tool_instance) { new_tool_class.new }
 
@@ -658,7 +658,7 @@ RSpec.describe ADK::Agent do
       end
 
       it 'warns and overwrites when adding a duplicate tool' do
-        agent.add_tool(new_tool_class) 
+        agent.add_tool(new_tool_class)
         expect(logger_double).to receive(:warn).with(/ToolRegistry: Tool '#{new_tool_name}' is already registered/).at_least(:once)
         expect(agent.add_tool(new_tool_class)).to be true
       end
@@ -709,19 +709,19 @@ RSpec.describe ADK::Agent do
         # Create a class specifically for this test that will change its metadata behavior
         test_tool_class = Class.new(ADK::Tool) do
           tool_description 'A test tool for name checking'
-          
+
           # Keep track of call count to return different values
           class << self
             attr_accessor :call_count
-            
+
             def reset_count
               @call_count = 0
             end
-            
+
             def tool_metadata
               @call_count ||= 0
               @call_count += 1
-              
+
               if @call_count <= 2
                 # First calls during registration return valid name
                 { name: :disappearing_tool, description: 'Tool that will lose its name' }
@@ -730,34 +730,34 @@ RSpec.describe ADK::Agent do
                 { name: nil, description: 'Tool with no retrievable name' }
               end
             end
-            
+
             def inferred_name
               @call_count ||= 0
               @call_count > 2 ? nil : :disappearing_tool
             end
           end
         end
-        
+
         # Reset the counter before starting
         test_tool_class.reset_count
-                
+
         # Create a registry and manually register our test tool
         registry = ADK::ToolRegistry.new
         registry.register(:disappearing_tool, test_tool_class)
-        
+
         # Create an agent and replace its registry with our prepared one
         agent = create_agent(tool_names_array: [])
         agent.instance_variable_set(:@tool_registry, registry)
-        
+
         # By this point the tool should be registered with a valid name
         expect(agent.find_tool_class(:disappearing_tool)).to eq(test_tool_class)
-        
+
         # Set up the expectation for the warning
         expect(logger_double).to receive(:warn).with(/Skipping tool instance creation for class .* as its name could not be determined post-registration/)
-        
+
         # Mock tool_name_from_class to return nil to simulate the test scenario
         allow(agent).to receive(:get_tool_name_from_class).with(test_tool_class).and_return(nil)
-        
+
         # Call tools() which will trigger the name lookup again, but this time it will return nil
         tools = agent.tools
         expect(tools).to be_empty
@@ -924,7 +924,7 @@ RSpec.describe ADK::Agent do
         allow(agent.tool_registry).to receive(:create_instance).with(:check_job_status).and_return(check_tool_instance)
 
         allow(check_tool_instance).to receive(:execute).with({ job_id: mock_job_id }, anything)
-                                         .and_return({ status: :success, result: 'Job Done', job_status: 'completed' })
+                                                       .and_return({ status: :success, result: 'Job Done', job_status: 'completed' })
       end
 
       it 'injects job_id and returns result of check tool' do

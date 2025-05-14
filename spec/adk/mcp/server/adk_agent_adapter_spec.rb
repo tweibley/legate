@@ -46,11 +46,11 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
   end
 
   let(:mock_redis_definition_hash_no_tools) do
-    mock_redis_definition_hash.merge({'tools' => [].to_json})
+    mock_redis_definition_hash.merge({ 'tools' => [].to_json })
   end
 
   let(:mock_redis_definition_hash_invalid_tools_json) do
-    mock_redis_definition_hash.merge({'tools' => 'invalid_json['})
+    mock_redis_definition_hash.merge({ 'tools' => 'invalid_json[' })
   end
 
   let(:mock_redis_definition_hash_tool_not_found) do
@@ -196,9 +196,9 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
         # The implementation changed to use AgentDefinition, so we expect new to be called with definition: and session_service:
         expect(agent_class_double).to have_received(:new)
           .with(hash_including(
-            definition: instance_of(ADK::AgentDefinition),
-            session_service: session_service_instance
-          ))
+                  definition: instance_of(ADK::AgentDefinition),
+                  session_service: session_service_instance
+                ))
         expect(agent_instance_double).to have_received(:start)
         expect(agent_instance_double).to have_received(:run_task)
         expect(agent_instance_double).to have_received(:stop) # From ensure block
@@ -218,9 +218,9 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
         # The expectation needs to change as we're using AgentDefinition now
         expect(agent_class_double).to have_received(:new)
           .with(hash_including(
-            definition: instance_of(ADK::AgentDefinition),
-            session_service: session_service_instance
-          ))
+                  definition: instance_of(ADK::AgentDefinition),
+                  session_service: session_service_instance
+                ))
       end
 
       it 'handles empty tool list from Redis' do
@@ -233,9 +233,9 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
         # The expectation needs to change as we're using AgentDefinition now
         expect(agent_class_double).to have_received(:new)
           .with(hash_including(
-            definition: instance_of(ADK::AgentDefinition),
-            session_service: session_service_instance
-          ))
+                  definition: instance_of(ADK::AgentDefinition),
+                  session_service: session_service_instance
+                ))
       end
 
       it 'handles invalid JSON tool list from Redis' do
@@ -248,9 +248,9 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
         # The expectation needs to change as we're using AgentDefinition now
         expect(agent_class_double).to have_received(:new)
           .with(hash_including(
-            definition: instance_of(ADK::AgentDefinition),
-            session_service: session_service_instance
-          ))
+                  definition: instance_of(ADK::AgentDefinition),
+                  session_service: session_service_instance
+                ))
       end
     end
 
@@ -316,13 +316,13 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
         # We don't need to check for specific warning message since those are implementation details
         # The important part is that execution proceeds
         # expect(logger_spy).to have_received(:warn).with(/Some tools defined for agent '#{agent_name}' were not found/)
-        
+
         # The expectation needs to change as we're using AgentDefinition now
         expect(agent_class_double).to have_received(:new)
           .with(hash_including(
-            definition: instance_of(ADK::AgentDefinition),
-            session_service: session_service_instance
-          ))
+                  definition: instance_of(ADK::AgentDefinition),
+                  session_service: session_service_instance
+                ))
         # Ensure execution completes
         expect(agent_instance_double).to have_received(:run_task)
         expect(session_service_instance).to have_received(:delete_session)
