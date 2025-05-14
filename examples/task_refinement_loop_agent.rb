@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 # This example demonstrates a practical use of LoopAgent for iterative refinement of text
-# Using two LLM agents in a loop - one to critique and another to improve based on the critique
+# Using three agents in a loop - one to critique, another to improve based on the critique,
+# and a third to assess when the refinement is complete
 
 $LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
 require 'adk'
@@ -34,9 +35,7 @@ puts "------------------------------"
 critic_agent = ADK::AgentDefinition.new.define do |a|
   a.name :critic_agent
   a.description 'Analyzes text and provides critical feedback for improvement'
-  a.instruction 'You are a literary critic. Analyze the provided text and give constructive criticism.
-                Score the text from 1-10 where 10 is perfect. Be honest but fair.'
-  a.model_name :gemini_pro
+  a.instruction 'You are a literary critic. Analyze the provided text and give constructive criticism.'
   a.use_tool :echo
   a.output_key :critique_result
 end
@@ -46,9 +45,7 @@ ADK::GlobalDefinitionRegistry.register(critic_agent)
 improver_agent = ADK::AgentDefinition.new.define do |a|
   a.name :improver_agent
   a.description 'Improves text based on critical feedback'
-  a.instruction 'You are a skilled writer. Take the existing text and the critique, then produce an improved version.
-                 Be creative and address the specific issues mentioned in the critique.'
-  a.model_name :gemini_pro
+  a.instruction 'You are a skilled writer. Take the existing text and the critique, then produce an improved version.'
   a.use_tool :echo
   a.output_key :improved_text
 end
@@ -58,9 +55,7 @@ ADK::GlobalDefinitionRegistry.register(improver_agent)
 assessment_agent = ADK::AgentDefinition.new.define do |a|
   a.name :assessment_agent
   a.description 'Determines if refinement process is complete'
-  a.instruction 'You assess whether the text refinement is complete based on the critique score.
-                 If score is 8 or higher, refinement is complete.'
-  a.model_name :gemini_pro
+  a.instruction 'You assess whether the text refinement is complete based on the critique score.'
   a.use_tool :echo
   a.output_key :assessment_result
 end
@@ -96,11 +91,10 @@ def critic_instance.execute_plan(plan, session, session_service)
   # Get the current text
   current_text = session_service.get_state(session_id: session_id, key: :current_text)
 
-  # Generate critique using LLM
-  iteration = session_service.get_state(session_id: session_id, key: :count) || 0
-
   # For this demo, we'll simulate different scores at each iteration
   # In a production system, this would be determined by actual LLM analysis
+  iteration = session_service.get_state(session_id: session_id, key: :count) || 0
+  
   score = case iteration
           when 0 then 3
           when 1 then 5 
@@ -150,33 +144,26 @@ def improver_instance.execute_plan(plan, session, session_service)
   current_text = session_service.get_state(session_id: session_id, key: :current_text)
   critique_result = session_service.get_state(session_id: session_id, key: :current_critique)
 
-  # Keep track of iterations to simulate improvement
+  # Keep track of iterations
   iteration = session_service.get_state(session_id: session_id, key: :count) || 0
   iteration += 1
   session_service.set_state(session_id: session_id, key: :count, value: iteration)
 
-  # Use the model associated with this agent to improve the text
-  user_message = "Please improve this text based on the critique:\n\n" +
-                 "Original text: \"#{current_text}\"\n\n" +
-                 "Critique: #{critique_result[:critique]}\n" +
-                 "Current score: #{critique_result[:score]}/10\n\n" +
-                 "Please provide only the improved version of the text, with no other commentary."
-
-  # Create a plan with the user message
-  plan_result = ADK::Planner.build_single_step_plan_for_agent(
-    agent: self,
-    user_message: user_message
-  )
+  # Generate improved text based on iteration number
+  # In a production system, this would use an LLM to generate the improved text
+  improved_text = case iteration
+                  when 1
+                    "The sleepy cat curled up on the worn mat."
+                  when 2
+                    "The orange tabby cat stretched lazily before settling on the woven mat by the fireplace."
+                  when 3
+                    "Basking in the afternoon sunlight, the orange tabby cat stretched lazily before settling on the intricately woven mat by the crackling fireplace."
+                  when 4
+                    "Basking in the warm afternoon sunlight that streamed through the window, the orange tabby cat stretched lazily, arching its back, before settling comfortably on the intricately woven mat by the crackling fireplace."
+                  else
+                    "Basking in the warm golden rays of the afternoon sunlight that streamed through the dusty bay window, the elderly orange tabby cat stretched lazily, arching its back with practiced grace, before settling comfortably on the intricately woven Persian mat positioned strategically by the crackling oak-wood fireplace."
+                  end
   
-  # Execute the plan to get improved text
-  execution_result = self.model.execute_plan(
-    plan_result[:plan],
-    message: user_message
-  )
-  
-  # Extract the improved text
-  improved_text = execution_result[:last_result][:result]
-
   # Store the improved text for next iteration
   session_service.set_state(session_id: session_id, key: :current_text, value: improved_text)
 
