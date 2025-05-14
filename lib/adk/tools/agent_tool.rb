@@ -110,6 +110,23 @@ module ADK
           # The ephemeral name like "_delegated_" is no longer part of agent instantation.
           # The agent will use the name from its definition.
         )
+        
+        # Check if tools are configured for this agent
+        if target_definition_object.tool_names.empty?
+          ADK.logger.warn("AgentTool: Target agent '#{target_agent_name_str}' has no tools configured.")
+        end
+        
+        # Register tools - get the class objects for each tool name and register with the agent
+        tool_names = Array(definition_hash[:tools] || definition_hash[:tool_names] || [])
+        tool_names.each do |tool_name|
+          tool_class = ADK::GlobalToolManager.find_class(tool_name.to_sym)
+          if tool_class
+            target_agent.register_tool_class(tool_class)
+            ADK.logger.debug("AgentTool: Registered tool '#{tool_name}' with target agent.")
+          else
+            ADK.logger.warn("AgentTool: Could not find tool class for '#{tool_name}' in GlobalToolManager.")
+          end
+        end
 
         # Use the already created delegate_session_service
         delegate_session = delegate_session_service.create_session(
