@@ -99,21 +99,23 @@ def critic_instance.execute_plan(plan, session, session_service)
   # Generate critique using LLM
   iteration = session_service.get_state(session_id: session_id, key: :count) || 0
 
-  # Build prompt for the LLM
-  prompt = "You are a literary critic reviewing the following text:\n\n\"#{current_text}\"\n\n"
-  prompt += "Provide constructive criticism and score the text from 1-10 where 10 is perfect.\n"
-  prompt += "Format your response as: Score: X/10. [Your critique here]"
+  # For this demo, we'll simulate different scores at each iteration
+  # In a production system, this would be determined by actual LLM analysis
+  score = case iteration
+          when 0 then 3
+          when 1 then 5 
+          when 2 then 7
+          when 3 then 9
+          else 10
+          end
 
-  # Use ADK's planner to get LLM response
-  planner = ADK::Planner.new(model_name: :gemini_pro)
-  response = planner.simple_prompt(prompt)
-  
-  # Parse the response to extract score
-  score_match = response.match(/Score:\s*(\d+)\/10/i)
-  score = score_match ? score_match[1].to_i : 5  # Default to 5 if parsing fails
-  
-  # Extract critique (everything after the score)
-  critique = response.sub(/Score:\s*\d+\/10\.\s*/i, '')
+  critique = if score < 5
+               "Basic text with simple structure. Score: #{score}/10. Needs more descriptive language and complexity."
+             elsif score < 8
+               "Good progress, but could use more creativity. Score: #{score}/10. Consider adding more vivid imagery."
+             else
+               "Excellent work, very polished. Score: #{score}/10. Minor refinements could still be made."
+             end
   
   # Store the score in state for the assessment agent
   session_service.set_state(session_id: session_id, key: :refinement_score, value: score)
@@ -130,7 +132,7 @@ def critic_instance.execute_plan(plan, session, session_service)
   # Create success result
   result_hash = {
     status: :success,
-    result: "Score: #{score}/10. #{critique}",
+    result: critique,
     score: score
   }
 
@@ -148,23 +150,33 @@ def improver_instance.execute_plan(plan, session, session_service)
   current_text = session_service.get_state(session_id: session_id, key: :current_text)
   critique_result = session_service.get_state(session_id: session_id, key: :current_critique)
 
-  # Keep track of iterations
+  # Keep track of iterations to simulate improvement
   iteration = session_service.get_state(session_id: session_id, key: :count) || 0
   iteration += 1
   session_service.set_state(session_id: session_id, key: :count, value: iteration)
 
-  # Build prompt for the LLM
-  prompt = "You are a skilled writer improving text based on critique.\n\n"
-  prompt += "Original text: \"#{current_text}\"\n\n"
-  prompt += "Critique: #{critique_result[:critique]}\n"
-  prompt += "Score: #{critique_result[:score]}/10\n\n"
-  prompt += "Please rewrite the text to address the critique. Be creative and improve the quality."
-  prompt += "Only return the improved text, nothing else."
+  # Use the model associated with this agent to improve the text
+  user_message = "Please improve this text based on the critique:\n\n" +
+                 "Original text: \"#{current_text}\"\n\n" +
+                 "Critique: #{critique_result[:critique]}\n" +
+                 "Current score: #{critique_result[:score]}/10\n\n" +
+                 "Please provide only the improved version of the text, with no other commentary."
 
-  # Use ADK's planner to get LLM response
-  planner = ADK::Planner.new(model_name: :gemini_pro)
-  improved_text = planner.simple_prompt(prompt)
+  # Create a plan with the user message
+  plan_result = ADK::Planner.build_single_step_plan_for_agent(
+    agent: self,
+    user_message: user_message
+  )
   
+  # Execute the plan to get improved text
+  execution_result = self.model.execute_plan(
+    plan_result[:plan],
+    message: user_message
+  )
+  
+  # Extract the improved text
+  improved_text = execution_result[:last_result][:result]
+
   # Store the improved text for next iteration
   session_service.set_state(session_id: session_id, key: :current_text, value: improved_text)
 
