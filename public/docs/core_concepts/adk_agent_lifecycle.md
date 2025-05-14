@@ -29,16 +29,16 @@ stateDiagram-v2
 
 ### 1. Initialization (`ADK::Agent.new`)
 
-*   **Trigger:** Calling `ADK::Agent.new(...)` directly or indirectly when loading an agent definition (e.g., via `DefinitionStore` and then instantiating).
+*   **Trigger:** Calling `ADK::Agent.new(definition: your_agent_definition_object, ...)` where `your_agent_definition_object` is an instance of `ADK::AgentDefinition`. This definition object would have been created programmatically (e.g., `ADK::AgentDefinition.new.define { ... }`) or loaded and deserialized (e.g., from a store, often involving `ADK::AgentDefinition.from_hash(hash_from_store)` if the store provides hashes).
 *   **State:** Enters the **Initialized** state.
 *   **Actions:**
-    *   Sets basic attributes: `name`, `description`, `instruction`, `model_name`.
-    *   Creates an instance of `ADK::ToolRegistry`.
-    *   Registers any native `tool_classes` provided during initialization into the registry.
-    *   Stores `mcp_servers` configuration (if provided).
-    *   Stores `selected_tool_names` (if provided).
-    *   Initializes the `ADK::Planner` (typically `ADK::Planner::DefaultPlanner`).
-*   **Notes:** At this point, the agent object exists, but it hasn't connected to external systems like MCP servers and might not have registered all its intended tools yet. It cannot execute tasks.
+    *   The `ADK::AgentDefinition` object provides all core static properties: `name`, `description`, `instruction`, `tool_names` (symbols of tools to use), `model_name`, `temperature`, `fallback_mode`, `mcp_servers` configuration, `sub_agent_names`, `output_key`, and webhook configurations.
+    *   The agent copies these properties from the provided `definition` object.
+    *   Creates an instance of `ADK::ToolRegistry` specific to this agent instance.
+    *   For each tool name specified in `definition.tool_names`, it resolves the corresponding tool class using `ADK::GlobalToolManager.find_class(tool_name)` and registers this class with the agent's local `ToolRegistry`.
+    *   Initializes the `ADK::Planner` (e.g., `ADK::Planner`), using the agent's effective model name (from definition or default).
+    *   If the `sub_agents:` parameter was provided to `ADK::Agent.new` with pre-initialized sub-agent instances, those are linked. Otherwise, if `definition.sub_agent_names` is populated, it attempts to instantiate these sub-agents by looking up their full `ADK::AgentDefinition` objects in `ADK::GlobalDefinitionRegistry` and then calling `ADK::Agent.new` for each.
+*   **Notes:** At this point, the agent object exists, but it hasn't connected to external systems like MCP servers (that happens in `start`). It cannot execute tasks until started.
 
 ### 2. Starting (`agent.start`)
 
@@ -89,13 +89,13 @@ stateDiagram-v2
 
 ## Relationship to Agent Definition
 
-The lifecycle described above pertains to an *instance* of `ADK::Agent`. Agent *definitions*, managed by the `DefinitionStore`, represent the blueprint used to create these instances. Loading a definition and calling `ADK::Agent.new` using its data is the first step (Initialization) in this lifecycle.
+The lifecycle described above pertains to an *instance* of `ADK::Agent`. Agent *definitions*, managed by the `DefinitionStore` or created programmatically (e.g. using `ADK::AgentDefinition.new.define`), represent the blueprint used to create these instances. Passing an `ADK::AgentDefinition` object to `ADK::Agent.new` is the first step (Initialization) in this lifecycle.
 
 ## Further Reading
 
-*   [`adk_architecture_overview`](./adk_architecture_overview)
-*   [`adk_session_service`](./adk_session_service)
-*   [`adk_planner`](./adk_planner)
-*   [`adk_tools_and_registry`](./adk_tools_and_registry) <!-- Link to be created -->
-*   [`mcp_client_integration`](../guides/mcp_client_integration)
-*   [`adk_definition_store`](./adk_definition_store) 
+*   [`adk_architecture_overview`](./adk_architecture_overview.md)
+*   [`adk_session_service`](./adk_session_service.md)
+*   [`adk_planner`](./adk_planner.md)
+*   [`adk_tools_and_registry`](../tools/adk_tools_and_registry.md) 
+*   [`mcp_client_integration`](../guides/mcp_client_integration.md)
+*   [`adk_definition_store`](./adk_definition_store.md)

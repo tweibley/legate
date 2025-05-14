@@ -140,18 +140,21 @@ For the asynchronous job feature:
 ADK comes with several examples demonstrating different capabilities:
 
 ### 1. Simple Echo Agent (`examples/simple_agent.rb`)
-A basic example showing session-based agent interaction using `ADK::Agent.define`:
+A basic example showing session-based agent interaction:
 ```ruby
 require 'adk'
-require 'adk/tools/echo' # Make sure the built-in tool class is loaded
+# Ensure tool classes like ADK::Tools::Echo are loaded so they can be found by name.
 
-agent = ADK::Agent.define do |a|
-  a.name = 'simple_echo_agent'
-  a.description = 'A simple agent that can echo messages'
-  # Explicitly add the built-in Echo tool class
-  a.add_tool_classes ADK::Tools::Echo
-  # No need for discover_tools_in for just this built-in tool
+# Define the agent's properties
+echo_agent_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :simple_echo_agent # Agent name should be a Symbol
+  a.description 'A simple agent that can echo messages'
+  a.instruction 'You are an echo agent. Your task is to repeat the user\\'s input exactly.' # Instruction is required
+  a.use_tool :echo         # Specify tools by their registered name (Symbol)
 end
+
+# Instantiate the agent with the definition
+agent = ADK::Agent.new(definition: echo_agent_definition)
 
 # Create session
 session_service = ADK::SessionService::InMemory.new
@@ -179,15 +182,19 @@ end
 ### 2. Random Calculator (`examples/random_calculator.rb`)
 Demonstrates multi-step planning with multiple tools:
 ```ruby
-# Assuming calculator and random_number tools are in ./tools
-agent = ADK::Agent.new(
-  name: 'multi_step_hash_agent_001',
-  description: 'An agent that uses multiple tools and returns structured results.',
-  tool_paths: './tools' # Load tools from the ./tools directory
-)
-# Manual addition no longer needed:
-# agent.add_tool(ADK::ToolRegistry.create_instance(:random_number))
-# agent.add_tool(ADK::ToolRegistry.create_instance(:calculator))
+require 'adk'
+# Ensure tools like ADK::Tools::RandomNumberTool and ADK::Tools::Calculator are loaded
+# and globally registered so they can be found by their names (:random_number, :calculator).
+
+random_calc_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :random_calculator_agent
+  a.description 'An agent that uses random number and calculator tools.'
+  a.instruction 'Generate a random number then perform a calculation with it.' # Basic instruction
+  a.use_tool :random_number # Provided by ADK::Tools::RandomNumberTool (assumed registered)
+  a.use_tool :calculator    # Provided by ADK::Tools::Calculator (assumed registered)
+end
+
+agent = ADK::Agent.new(definition: random_calc_definition)
 
 # Run complex task
 result = agent.run_task(
@@ -200,18 +207,22 @@ result = agent.run_task(
 ### 3. Multi-Tool Agent (`examples/multi_tool_agent.rb`)
 Showcases all available tools and task delegation:
 ```ruby
-# Assuming all standard tools are defined in ./tools or loaded by default
-agent = ADK::Agent.new(
-  name: 'multi_tool_agent',
-  description: 'An agent that can use multiple tools including echo, calculator, cat facts, random numbers, and task delegation',
-  tool_paths: './tools' # Discover tools here
-)
+require 'adk'
+# Ensure all used tools (:echo, :calculator, :cat_facts, :random_number, :delegate_task)
+# are loaded and globally registered. For :delegate_task, ADK::Tools::AgentTool provides this.
 
-# Manual addition no longer needed if tools are discoverable:
-# tools = [
-#   :echo, :calculator, :cat_facts, :random_number, :delegate_task
-# ].map { |tool| ADK::ToolRegistry.create_instance(tool) }
-# tools.each { |tool| agent.add_tool(tool) }
+multi_tool_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :multi_tool_agent
+  a.description 'An agent that can use multiple tools including echo, calculator, cat facts, random numbers, and task delegation'
+  a.instruction 'You are a versatile assistant. Use the appropriate tool for the task.' # Basic instruction
+  a.use_tool :echo
+  a.use_tool :calculator
+  a.use_tool :cat_facts
+  a.use_tool :random_number
+  a.use_tool :delegate_task # Provided by ADK::Tools::AgentTool
+end
+
+agent = ADK::Agent.new(definition: multi_tool_definition)
 
 # Run various tasks
 tasks = [
@@ -240,48 +251,30 @@ Agents are the core components that can:
 - Plan multi-step operations
 - Handle errors gracefully
 
-Agents can be initialized directly using `ADK::Agent.new`:
-
-```ruby
-agent = ADK::Agent.new(
-  name: 'my_agent',
-  description: 'Description of what the agent does',
-  instruction: "You are a helpful assistant.", # Optional: Agent instructions
-  tool_classes: [MyToolClass], # Explicitly list tool classes
-  tool_paths: 'path/to/my/tools', # Or discover tools in a directory
-  model_name: 'gemini-2.0-pro' # Optional: specify the LLM model
-)
-```
-
-Alternatively, use the `ADK::Agent.define` block for a more structured setup:
+Agents are initialized by first creating an `ADK::AgentDefinition` and then passing that to `ADK::Agent.new`:
 
 ```ruby
 require 'adk'
 
-# Assuming MyToolClass and AnotherToolClass are defined
-agent = ADK::Agent.define do |a|
-  a.name = 'defined_agent'
-  a.description = 'An agent configured using the define block.'
-  a.instruction = "You are a helpful assistant that only uses the tools provided. Respond concisely." # Optional instructions
-  a.model_name = 'gemini-1.5-flash'
+# Assume MyToolClass is defined and globally registered (e.g., provides :my_tool_name)
+# ADK::GlobalToolManager.register_tool(MyToolClass) # If not auto-registered
 
-  # Discover tools in directories
-  a.discover_tools_in 'path/to/tools', 'path/to/more_tools'
-
-  # Add specific tool classes
-  a.add_tool_classes MyToolClass, AnotherToolClass
-
-  # Specify which discovered/added tools the agent should actually *use*
-  # If omitted, the agent uses all discovered/added tools.
-  a.selected_tool_names = [:my_tool, :another_tool]
-
-  # Configure MCP connection (if needed)
-  # a.mcp_servers = ['host1:port1', 'host2:port2']
-
-  # Set fallback mode (optional)
-  # a.fallback_mode = :delegate_to_planner
+my_agent_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :my_agent # Name as a Symbol
+  a.description 'Description of what the agent does'
+  a.instruction "You are a helpful assistant." # Agent instructions
+  a.use_tool :my_tool_name                   # Specify tools by their registered name
+  # a.use_tool :another_tool_name
+  a.model_name 'gemini-2.0-pro'             # Optional: specify the LLM model
+  # Other options: a.temperature, a.fallback_mode, a.mcp_servers, etc.
 end
+
+# Instantiate the agent with the definition object
+agent = ADK::Agent.new(definition: my_agent_definition)
 ```
+
+The `ADK::AgentDefinition.new.define` block provides a DSL to set various properties.
+The older `ADK::Agent.define` method (which created, saved, and registered a definition) should no longer be used for direct agent instantiation.
 
 ### Tools
 
@@ -329,43 +322,28 @@ end
 - **CheckJobStatusTool**: Built-in tool to check the status/result of a Sidekiq job started by an `BaseAsyncJobTool` (`:check_job_status`).
 
 **Adding Tools to Agents:**
+
+Tools are made available to an agent by listing their registered names (symbols) in the agent's definition using `a.use_tool :tool_name`. The tool classes themselves must be loaded and registered with the `ADK::GlobalToolManager` beforehand (e.g., by requiring their source files if they self-register, or by explicit `ADK::GlobalToolManager.register_tool(ToolClass)` calls).
+
 ```ruby
-# 1. Automatic discovery during agent initialization via tool_paths (using new):
-agent_new = ADK::Agent.new(
-  name: 'my_agent',
-  description: 'Agent with discovered tools',
-  tool_paths: './tools' # Loads *.rb files defining ADK::Tool subclasses
-)
+# 1. Define an agent that uses specific tools by name:
+# Ensure MyCustomTool (providing :my_custom_tool) and ADK::Tools::Calculator (providing :calculator)
+# are loaded and globally registered.
+# ADK::GlobalToolManager.register_tool(MyCustomTool) # If needed
 
-# 2. Automatic discovery using the define block:
-agent_define_discover = ADK::Agent.define do |a|
-  a.name = 'my_agent'
-  a.discover_tools_in './tools'
+agent_definition_with_tools = ADK::AgentDefinition.new.define do |a|
+  a.name :agent_using_tools
+  a.description 'This agent uses a custom tool and the calculator.'
+  a.instruction 'Perform tasks using my custom tool or the calculator.'
+  a.use_tool :my_custom_tool
+  a.use_tool :calculator
 end
 
-# 3. Add tool classes explicitly (using new):
-agent_new_explicit = ADK::Agent.new(
-  name: 'my_agent',
-  description: 'Agent with explicit tools',
-  tool_classes: [MyCustomTool, ADK::Tools::Calculator]
-)
+agent = ADK::Agent.new(definition: agent_definition_with_tools)
 
-# 4. Add tool classes explicitly using the define block:
-agent_define_explicit = ADK::Agent.define do |a|
-  a.name = 'my_agent'
-  a.add_tool_classes MyCustomTool, ADK::Tools::Calculator
-end
-
-# 5. Combine discovery and explicit classes using the define block:
-agent_define_mixed = ADK::Agent.define do |a|
-  a.name = 'my_mixed_agent'
-  a.discover_tools_in './tools'
-  a.add_tool_classes AnotherSpecificTool
-end
-
-# Manual instance addition (less common, generally use classes/discovery):
-# tool_instance = MyCustomTool.new
-# agent.add_tool(tool_instance) # This method still exists but isn't the primary way
+# The old methods of adding tools during ADK::Agent.new (like :tool_classes, :tool_paths)
+# or in an ADK::Agent.define block (like :discover_tools_in, :add_tool_classes) are deprecated
+# in favor of defining tools by name in the ADK::AgentDefinition.
 ```
 
 **Tool Implementation Notes:**
