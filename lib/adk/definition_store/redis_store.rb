@@ -60,8 +60,8 @@ module ADK
         fallback_str = fallback_mode.to_s # Store as string
         mcp_json_to_save = (mcp_servers_json.nil? || mcp_servers_json.strip.empty?) ? '[]' : mcp_servers_json.strip
         
-        # Convert agent_type to string
-        agent_type_str = agent_type.to_s
+        # Convert agent_type to string, defaulting to 'llm' if nil
+        agent_type_str = agent_type ? agent_type.to_s : 'llm'
 
         begin
           # Validate MCP JSON before saving
@@ -255,6 +255,12 @@ module ADK
         updates_hash.each do |key, value|
           field_str = key.to_s
 
+          # Handle special 'name' field - can't be updated
+          if field_str == 'name'
+            @logger.warn("Attempted to update agent name for '#{agent_name}', which is not allowed.")
+            next # Skip this field
+          end
+
           case field_str
           when 'tools'
             # Wrap the specific call that can raise JSON::GeneratorError
@@ -312,9 +318,13 @@ module ADK
               @logger.warn("Invalid agent_type '#{agent_type_val}' for agent '#{agent_name}'. Using 'llm' instead.")
               redis_updates[field_str] = 'llm'
             end
-          else
-            # Handle other fields generically as strings
+          when 'description', 'persistent_status', 'webhook_validator', 'temperature'
+            # These are valid fields that can be updated directly
             redis_updates[field_str] = value&.to_s || ''
+          else
+            # Unknown/invalid field
+            @logger.warn("Attempted to update unknown field '#{field_str}' for agent '#{agent_name}'. Ignoring.")
+            # Don't add to redis_updates
           end
         end # end of .each loop
 
@@ -426,6 +436,16 @@ module ADK
               # Convert fallback_mode string to symbol
               fb_mode_str = summary_hash['fallback_mode']
               summary_hash['fallback_mode'] = (fb_mode_str == 'echo') ? :echo : :error
+              
+              # Convert agent_type string to symbol
+              agent_type_str = summary_hash['agent_type']
+              if agent_type_str && !agent_type_str.empty?
+                valid_types = %w[llm sequential parallel loop]
+                summary_hash['agent_type'] = valid_types.include?(agent_type_str) ? agent_type_str.to_sym : :llm
+              else
+                summary_hash['agent_type'] = :llm # Default to :llm if missing or empty
+              end
+              
               summary_hash['mcp_servers_json'] ||= '[]' # Use '[]' if nil/missing
               summary_hash['instruction'] ||= '' # Use empty string if nil/missing
               # Convert agent name to symbol before transforming keys

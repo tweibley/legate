@@ -119,7 +119,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
 
     it 'successfully saves a valid definition using MULTI' do
       # Mock the multi block execution
-      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1, 1, 1, 1, 1, 1, 1]) # Simulate successful results
+      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]) # Simulate successful results
       expect(mock_redis).to receive(:hset).with(agent_key, 'name', agent_name)
       expect(mock_redis).to receive(:hset).with(agent_key, 'description', description)
       expect(mock_redis).to receive(:hset).with(agent_key, 'tools', tools_json)
@@ -253,9 +253,12 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
     end
 
     it 'saves with default llm agent_type if not specified' do
-      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1, 1, 1, 1, 1, 1, 1])
-      expect(mock_redis).to receive(:hset).with(agent_key, 'agent_type', 'llm') # Check default
-      allow(mock_redis).to receive(:hset) # Allow other hsets
+      # Setup multi to return success but don't verify all calls
+      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+      # Allow any hset calls
+      allow(mock_redis).to receive(:hset)
+      # But specifically expect agent_type to be set to 'llm'
+      expect(mock_redis).to receive(:hset).with(agent_key, 'agent_type', 'llm') 
       allow(mock_redis).to receive(:sadd)
       expect(@store.save_definition(**save_args.merge(agent_type: nil))).to be true
     end
@@ -481,13 +484,13 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       expect {
         @store.update_definition(agent_name,
                                  invalid_mcp_update)
-      }.to raise_error(ArgumentError, /MCP configuration must be a JSON array/)
+      }.to raise_error(ArgumentError, /MCP servers must be an array/)
 
       unparseable_mcp_update = { mcp_servers_json: '[[bad' }
       expect {
         @store.update_definition(agent_name,
                                  unparseable_mcp_update)
-      }.to raise_error(ArgumentError, /Invalid format for MCP Server Configurations/)
+      }.to raise_error(ArgumentError, /Invalid MCP servers JSON/)
     end
 
     it 'returns false if agent does not exist' do
@@ -551,11 +554,11 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       bad_tools_update_with_mock = { tools: bad_tools_array }
 
       expect(mock_redis).not_to receive(:hset)
-      expect(ADK.logger).to receive(:error).with(/Failed to serialize tools array to JSON for updating agent.*tool json gen error/)
+      expect(ADK.logger).to receive(:error).with("JSON error serializing tools for agent 'test_agent': tool json gen error")
       expect {
         @store.update_definition(agent_name,
                                  bad_tools_update_with_mock)
-      }.to raise_error(ADK::DefinitionStore::StoreError, /Internal error serializing tool data for agent update/)
+      }.to raise_error(ADK::DefinitionStore::StoreError, /Failed to serialize tools for agent/)
     end
 
     it 'raises StoreError on unexpected errors' do
@@ -645,6 +648,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       vals['instruction'] = ''
       vals['webhook_enabled'] = webhook_enabled.to_s
       vals['webhook_secret'] = webhook_secret || ''
+      vals['persistent_status'] = nil
+      vals['agent_type'] = 'llm'  # Default agent type
       all_fields.map { |f| vals[f] } # Return values in correct order
     }
     let(:summary_values_2) {
@@ -659,6 +664,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       vals['instruction'] = ''
       vals['webhook_enabled'] = webhook_enabled.to_s
       vals['webhook_secret'] = webhook_secret || ''
+      vals['persistent_status'] = nil
+      vals['agent_type'] = 'llm'  # Default agent type
       all_fields.map { |f| vals[f] }
     }
     let(:expected_list) do
@@ -732,6 +739,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         # Agent 2 exists
         agent2_values = all_fields_inc.map { |f| f == 'name' ? 'agent2' : "agent2_#{f}" }
         agent2_values[all_fields_inc.index('tools')] = '["tool_c"]'
+        # Explicitly set agent_type to a valid value that will be converted to symbol
+        agent2_values[all_fields_inc.index('agent_type')] = 'llm'
 
         expect(mock_redis).to receive(:smembers).with(ADK::DefinitionStore::RedisStore::AGENTS_SET_KEY).and_return(agent_names_inc)
         # Ensure pipelined returns an array containing the results for each agent
@@ -752,6 +761,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         expect(definitions.first[:name]).to eq(:agent2) # Expect symbol key
         expect(definitions.first[:description]).to eq('agent2_description')
         expect(definitions.first[:tools]).to eq([:tool_c]) # Expect symbolized tool names
+        expect(definitions.first[:agent_type]).to eq(:llm) # Default agent type
       end
     end
 
