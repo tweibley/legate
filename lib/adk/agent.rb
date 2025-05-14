@@ -16,6 +16,8 @@ require 'forwardable'
 require 'json'
 require_relative 'global_definition_registry'
 require_relative 'global_tool_manager' # Added
+require 'socket'
+require 'set' # Required for the Set class in _check_circular_dependency
 
 module ADK
   class Error < StandardError; end unless defined?(ADK::Error)
@@ -675,6 +677,14 @@ module ADK
 
       @definition = definition
       @name = definition.name
+      
+      # Check for direct self-references in the definition's sub_agent_names
+      if definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
+        if definition.sub_agent_names.include?(@name)
+          raise ADK::ConfigurationError, "Circular dependency detected: Agent '#{@name}' cannot include itself as a sub-agent"
+        end
+      end
+      
       @description = definition.description
       @instruction = definition.instruction
       @model_name = definition.model_name || DEFAULT_MODEL
@@ -794,6 +804,15 @@ module ADK
             ADK.logger.warn("Agent '#{@name}': Item in provided sub_agents list is not an ADK::Agent. Skipping: #{sub_agent.inspect}")
             next
           end
+          
+          # Check for circular dependencies
+          begin
+            _check_circular_dependency(sub_agent.name)
+          rescue ADK::ConfigurationError => e
+            ADK.logger.error("Agent '#{@name}': #{e.message}")
+            next # Skip this sub-agent
+          end
+          
           # Enforce single parent rule
           if sub_agent.parent_agent.nil?
             sub_agent.instance_variable_set(:@parent_agent, self)
@@ -818,6 +837,9 @@ module ADK
         ADK.logger.info("Agent '#{@name}' attempting to instantiate sub-agents from definition: #{definition.sub_agent_names.to_a.inspect}")
         definition.sub_agent_names.each do |sub_agent_name|
           begin
+            # Check for circular dependencies before instantiation
+            _check_circular_dependency(sub_agent_name)
+            
             sub_agent_definition = ADK::GlobalDefinitionRegistry.get(sub_agent_name)
             unless sub_agent_definition
               ADK.logger.error("Agent '#{@name}': Could not find definition for sub-agent '#{sub_agent_name}' in GlobalDefinitionRegistry. Skipping.")
@@ -836,7 +858,7 @@ module ADK
             # (If sub_agent.parent_agent == self, it's already fine)
 
             @sub_agents << sub_agent
-            ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent_name}'.")
+            ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent.name}'.")
           rescue ArgumentError => e # Catch errors from ADK::Agent.new (e.g. definition issues)
             ADK.logger.error("Agent '#{@name}': ArgumentError instantiating sub-agent '#{sub_agent_name}': #{e.message}")
           rescue StandardError => e
@@ -1642,5 +1664,31 @@ module ADK
       ADK.config.session_service
     end
     # --- End Session Service Initialization Helpers --- #
+
+    # Helper method to check for circular dependencies in the agent hierarchy
+    # @param new_sub_agent_name [Symbol] The name of the new sub-agent to check for cycles
+    # @raise [ADK::ConfigurationError] If a circular dependency is detected
+    private def _check_circular_dependency(new_sub_agent_name)
+      # Direct self-reference check
+      if new_sub_agent_name == @name
+        raise ADK::ConfigurationError, "Circular dependency detected: Agent '#{@name}' cannot include itself as a sub-agent"
+      end
+
+      # Check if the sub-agent would create an indirect circular reference
+      # by traversing up the parent chain (backwards check)
+      current_agent = self
+      ancestry_path = [@name]
+
+      while (parent = current_agent.parent_agent)
+        # If any parent has the same name as the new sub-agent, it's a circular reference
+        if parent.name == new_sub_agent_name
+          circular_path = [new_sub_agent_name] + ancestry_path
+          raise ADK::ConfigurationError, "Circular dependency detected: #{circular_path.join(' → ')}"
+        end
+        
+        ancestry_path.unshift(parent.name)
+        current_agent = parent
+      end
+    end
   end # End Agent class
 end # End ADK module
