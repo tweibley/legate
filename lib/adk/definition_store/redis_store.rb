@@ -18,7 +18,7 @@ module ADK
       # They are handled by the AgentDefinition object in memory, not persisted here by default.
       # Expected field names in the Redis hash
       AGENT_DEFINITION_FIELDS = %w[name description tools model fallback_mode mcp_servers_json instruction
-                                   webhook_enabled webhook_secret persistent_status].freeze
+                                   webhook_enabled webhook_secret persistent_status agent_type].freeze
 
       # Expects a keyword argument for the Redis client instance.
       # @param redis_client [Redis] An instance of the Redis client.
@@ -44,12 +44,13 @@ module ADK
       # @param instruction [String, nil] Optional instructions for the agent.
       # @param webhook_enabled [Boolean] Whether webhooks are enabled.
       # @param webhook_secret [String, nil] Secret for webhook validation.
+      # @param agent_type [Symbol, String] The type of agent (:llm, :sequential, :parallel, :loop). Defaults to :llm.
       # @return [Boolean] true if successful, false otherwise.
       # @raise [ArgumentError] if required fields (name) are missing or invalid.
       # @raise [ConfigurationError] if Redis client is not available.
       # @raise [StoreError] for Redis errors during save.
       def save_definition(name:, description:, tools:, model:, fallback_mode:, mcp_servers_json:, instruction: nil,
-                          webhook_enabled: false, webhook_secret: nil)
+                          webhook_enabled: false, webhook_secret: nil, agent_type: :llm)
         raise ConfigurationError, 'Redis client not available.' unless @redis
         raise ArgumentError, 'Agent name cannot be empty.' if name.nil? || name.strip.empty?
 
@@ -58,6 +59,9 @@ module ADK
         agent_key = agent_redis_key(name)
         fallback_str = fallback_mode.to_s # Store as string
         mcp_json_to_save = (mcp_servers_json.nil? || mcp_servers_json.strip.empty?) ? '[]' : mcp_servers_json.strip
+        
+        # Convert agent_type to string
+        agent_type_str = agent_type.to_s
 
         begin
           # Validate MCP JSON before saving
@@ -80,6 +84,7 @@ module ADK
             multi.hset(agent_key, 'webhook_enabled', webhook_enabled.to_s) # Store boolean as string ('true'/'false')
             multi.hset(agent_key, 'webhook_secret', webhook_secret || '') # Store secret (empty if nil)
             multi.hset(agent_key, 'persistent_status', 'stopped') # Default new agents to 'stopped'
+            multi.hset(agent_key, 'agent_type', agent_type_str) # Store agent type as string
             multi.sadd(AGENTS_SET_KEY, name)
           end
 
@@ -172,6 +177,14 @@ module ADK
           definition_hash['webhook_secret'] = nil if definition_hash['webhook_secret']&.empty? # Convert empty string back to nil
           # --- Process persistent_status ---
           definition_hash['persistent_status'] ||= 'stopped' # Default to 'stopped' if not present
+          # --- Process agent_type ---
+          agent_type_str = definition_hash['agent_type']
+          if agent_type_str && !agent_type_str.empty?
+            valid_types = %w[llm sequential parallel loop]
+            definition_hash['agent_type'] = valid_types.include?(agent_type_str) ? agent_type_str.to_sym : :llm
+          else
+            definition_hash['agent_type'] = :llm # Default to :llm if not present or empty
+          end
           # Note: Procs (validator, transformer, extractor) are not stored/retrieved.
           # --- END Webhook Fields ---
           # --- Return symbol-keyed hash for consistency? ---
@@ -248,59 +261,60 @@ module ADK
             begin
               redis_updates[field_str] = value.is_a?(Array) ? value.to_json : '[]'
             rescue JSON::GeneratorError => e
-              @logger.error("Failed to serialize tools array to JSON for updating agent '#{agent_name}': #{e.message}")
-              raise StoreError, 'Internal error serializing tool data for agent update.'
+              @logger.error("JSON error serializing tools for agent '#{agent_name}': #{e.message}")
+              raise StoreError, "Failed to serialize tools for agent '#{agent_name}'."
             end
-          when 'mcp_servers_json'
-            # Defensive check for non-string types remains:
-            stringified_value = value.to_s
-            if stringified_value.is_a?(String)
-              mcp_json_to_save = (stringified_value.strip.empty?) ? '[]' : stringified_value.strip
-            else
-              @logger.warn("Unexpected non-string type for mcp_servers_json after .to_s for agent '#{agent_name}': #{stringified_value.class}. Defaulting to '[]'.")
-              mcp_json_to_save = '[]'
-            end
-
-            # Validate MCP JSON before adding to updates
-            begin
-              unless mcp_json_to_save == '[]'
-                parsed_mcp = JSON.parse(mcp_json_to_save)
-                raise ArgumentError, 'MCP configuration must be a JSON array.' unless parsed_mcp.is_a?(Array)
+          when 'model'
+            redis_updates[field_str] = value&.to_s || ADK::Agent::DEFAULT_MODEL
+          when 'fallback_mode'
+            redis_updates[field_str] = value&.to_s || 'error'
+          when 'mcp_servers_json', 'mcp_servers'
+            # Handle both key formats (consistency with hash types)
+            if value.is_a?(String)
+              # Try to validate if not empty
+              if !value.strip.empty? && value.strip != '[]'
+                begin
+                  parsed = JSON.parse(value)
+                  raise ArgumentError, 'MCP servers must be an array.' unless parsed.is_a?(Array)
+                rescue JSON::ParserError => e
+                  @logger.error("Invalid MCP servers JSON for agent '#{agent_name}': #{e.message}")
+                  raise ArgumentError, "Invalid MCP servers JSON: #{e.message}"
+                end
               end
-              redis_updates[field_str] = mcp_json_to_save
-            rescue JSON::ParserError => e
-              @logger.error("Invalid MCP JSON provided for updating agent '#{agent_name}': #{e.message}")
-              raise ArgumentError, "Invalid format for MCP Server Configurations: #{e.message}"
-            end
-          when 'fallback_mode' # Store as string
-            redis_updates[field_str] = value.to_s
-          when 'name' # Disallow changing the name via update, it's the primary key
-            @logger.warn("Attempted to update agent name for '#{agent_name}', which is not allowed.")
-            next # Skip this update
-          when 'instruction' # Added instruction case
-            redis_updates[field_str] = value || '' # Store empty string if value is nil
-          when 'persistent_status'
-            # This branch is still needed for multi-field updates
-            status_val = value.to_s
-            if %w[running stopped unknown].include?(status_val)
-              redis_updates[field_str] = status_val
+              redis_updates['mcp_servers_json'] = value.strip.empty? ? '[]' : value.strip
+            elsif value.is_a?(Array)
+              # Convert Ruby array to JSON string
+              begin
+                redis_updates['mcp_servers_json'] = value.to_json
+              rescue JSON::GeneratorError => e
+                @logger.error("Failed to convert MCP servers to JSON for agent '#{agent_name}': #{e.message}")
+                raise StoreError, "Could not serialize MCP servers: #{e.message}"
+              end
             else
-              @logger.warn("Attempted to update persistent_status with invalid value '#{status_val}' for agent '#{agent_name}'. Ignoring.")
-              next
+              # Default to empty array for any other type
+              redis_updates['mcp_servers_json'] = '[]'
+            end
+          when 'instruction'
+            redis_updates[field_str] = value&.to_s || ''
+          when 'webhook_enabled'
+            # Convert various truthy/falsy values to string 'true'/'false'
+            redis_updates[field_str] = (!!value).to_s
+          when 'webhook_secret'
+            redis_updates[field_str] = value&.to_s || ''
+          when 'agent_type'
+            # Convert agent_type to string, validating it first
+            agent_type_val = value&.to_s || 'llm'
+            valid_types = %w[llm sequential parallel loop]
+            if valid_types.include?(agent_type_val)
+              redis_updates[field_str] = agent_type_val
+            else
+              # If invalid, default to 'llm'
+              @logger.warn("Invalid agent_type '#{agent_type_val}' for agent '#{agent_name}'. Using 'llm' instead.")
+              redis_updates[field_str] = 'llm'
             end
           else
-            # Assume other fields can be stored directly (description, model, webhook_enabled, webhook_secret)
-            if AGENT_DEFINITION_FIELDS.include?(field_str)
-              if field_str == 'webhook_enabled'
-                redis_updates[field_str] = value.to_s
-              elsif field_str == 'webhook_secret'
-                redis_updates[field_str] = value || ''
-              else
-                redis_updates[field_str] = value
-              end
-            else
-              @logger.warn("Attempted to update unknown field '#{field_str}' for agent '#{agent_name}'. Ignoring.")
-            end
+            # Handle other fields generically as strings
+            redis_updates[field_str] = value&.to_s || ''
           end
         end # end of .each loop
 

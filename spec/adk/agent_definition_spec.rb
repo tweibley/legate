@@ -117,6 +117,32 @@ RSpec.describe ADK::AgentDefinition do
         end
       end.to raise_error(ArgumentError, 'webhook_session_extractor must be a Proc or nil.')
     end
+
+    # --- MAS attribute tests ---
+    it 'allows setting agent_type to valid values' do
+      definition.define do |a|
+        minimal_valid_block_proc.call(a)
+        a.agent_type :sequential
+      end
+      expect(definition.agent_type).to eq(:sequential)
+    end
+
+    it 'raises ArgumentError for invalid agent_type values' do
+      expect do
+        definition.define do |a|
+          minimal_valid_block_proc.call(a)
+          a.agent_type :invalid_type
+        end
+      end.to raise_error(ArgumentError, /Agent type must be one of:/)
+    end
+
+    it 'defaults agent_type to :llm' do
+      definition.define do |a|
+        minimal_valid_block_proc.call(a)
+      end
+      expect(definition.agent_type).to eq(:llm)
+    end
+    # --- End MAS attribute tests ---
   end
 
   describe '#validate!' do
@@ -265,6 +291,15 @@ RSpec.describe ADK::AgentDefinition do
           a.fallback_mode :echo
           a.mcp_servers({ type: 'stdio', command: 'mcp_server_exec' }, { type: 'sse', url: 'http://localhost:8080/sse' })
           a.sub_agents_define :sub_agent_alpha, :sub_agent_beta
+          a.output_key :final_output
+          # Add MAS workflow attributes
+          a.agent_type :sequential
+          a.sequential_sub_agents :seq_agent_1, :seq_agent_2
+          a.parallel_sub_agents :par_agent_1, :par_agent_2
+          a.loop_sub_agents :loop_agent_1
+          a.loop_max_iterations 5
+          a.loop_condition :done, true
+          a.can_delegate_to :target_agent_1, :target_agent_2
         end
       end
     end
@@ -345,6 +380,44 @@ RSpec.describe ADK::AgentDefinition do
       it 'reconstructs sub_agent_names correctly' do
         expect(reconstructed_definition.sub_agent_names).to match_array([:sub_agent_alpha, :sub_agent_beta])
       end
+
+      it 'reconstructs output_key correctly' do
+        expect(reconstructed_definition.output_key).to eq(:final_output)
+      end
+
+      # --- MAS Workflow Attribute Tests ---
+      it 'reconstructs agent_type correctly' do
+        expect(reconstructed_definition.agent_type).to eq(:sequential)
+      end
+
+      it 'reconstructs sequential_sub_agent_names correctly' do
+        expect(reconstructed_definition.sequential_sub_agent_names).to match_array([:seq_agent_1, :seq_agent_2])
+      end
+
+      it 'reconstructs parallel_sub_agent_names correctly' do
+        expect(reconstructed_definition.parallel_sub_agent_names).to match_array([:par_agent_1, :par_agent_2])
+      end
+
+      it 'reconstructs loop_sub_agent_names correctly' do
+        expect(reconstructed_definition.loop_sub_agent_names).to match_array([:loop_agent_1])
+      end
+
+      it 'reconstructs loop_max_iterations correctly' do
+        expect(reconstructed_definition.loop_max_iterations).to eq(5)
+      end
+
+      it 'reconstructs loop_condition_state_key correctly' do
+        expect(reconstructed_definition.loop_condition_state_key).to eq(:done)
+      end
+
+      it 'reconstructs loop_condition_expected_value correctly' do
+        expect(reconstructed_definition.loop_condition_expected_value).to eq(true)
+      end
+
+      it 'reconstructs delegation_targets correctly' do
+        expect(reconstructed_definition.delegation_targets).to match_array([:target_agent_1, :target_agent_2])
+      end
+      # --- End MAS Workflow Attribute Tests ---
     end
 
     context 'when webhook_validator is a Proc in original definition' do

@@ -55,6 +55,22 @@ module ADK
     attr_reader :sub_agent_names
     # @return [Symbol, nil] The key under which the agent's final output should be stored in the session state.
     attr_reader :output_key
+    # @return [Symbol] The type of agent (:llm, :sequential, :parallel, :loop). Defaults to :llm.
+    attr_reader :agent_type
+    # @return [Set<Symbol>] A set of names of sub-agents to execute in sequence (for SequentialAgent).
+    attr_reader :sequential_sub_agent_names
+    # @return [Set<Symbol>] A set of names of sub-agents to execute in parallel (for ParallelAgent).
+    attr_reader :parallel_sub_agent_names
+    # @return [Set<Symbol>] A set of names of sub-agents to execute in each loop iteration (for LoopAgent).
+    attr_reader :loop_sub_agent_names
+    # @return [Integer, nil] The maximum number of loop iterations (for LoopAgent).
+    attr_reader :loop_max_iterations
+    # @return [Symbol, nil] The key in the session state to check for loop condition (for LoopAgent).
+    attr_reader :loop_condition_state_key
+    # @return [Object, nil] The expected value for loop condition (for LoopAgent).
+    attr_reader :loop_condition_expected_value
+    # @return [Set<Symbol>] A set of names of agents that this agent can delegate tasks to via LLM planning.
+    attr_reader :delegation_targets
 
     # Delegate common attributes to the definition proxy for easier access during definition
     # Only delegate methods needed *within* the define block
@@ -75,8 +91,17 @@ module ADK
       @webhook_session_extractor = nil
       @fallback_mode = :error # Default fallback mode
       @mcp_servers = [] # Default MCP servers
-      @sub_agent_names = Set.new # MAS New attribute for sub-agent definitions
-      @output_key = nil # MAS New attribute for state management
+      @sub_agent_names = Set.new # MAS attribute for sub-agent definitions
+      @output_key = nil # MAS attribute for state management
+      # --- MAS Workflow Agent Attributes ---
+      @agent_type = :llm # Default agent type
+      @sequential_sub_agent_names = Set.new # For SequentialAgent
+      @parallel_sub_agent_names = Set.new # For ParallelAgent
+      @loop_sub_agent_names = Set.new # For LoopAgent
+      @loop_max_iterations = nil # Maximum number of loop iterations
+      @loop_condition_state_key = nil # State key to check in loop condition
+      @loop_condition_expected_value = nil # Expected value for loop condition
+      @delegation_targets = Set.new # Agent names that this agent can delegate to
       # -----------------------
 
       @proxy = DefinitionProxy.new(self)
@@ -129,8 +154,17 @@ module ADK
         webhook_session_extractor: @webhook_session_extractor.is_a?(Proc) ? '<Proc>' : nil,
         fallback_mode: @fallback_mode,
         mcp_servers: @mcp_servers,
-        sub_agent_names: @sub_agent_names.to_a, # MAS New attribute
-        output_key: @output_key # MAS New attribute
+        sub_agent_names: @sub_agent_names.to_a, # MAS attribute
+        output_key: @output_key, # MAS attribute
+        # Adding new MAS attributes for agent hierarchy and workflow
+        agent_type: @agent_type || :llm, # Default to :llm if not set
+        sequential_sub_agent_names: @sequential_sub_agent_names&.to_a || [],
+        parallel_sub_agent_names: @parallel_sub_agent_names&.to_a || [],
+        loop_sub_agent_names: @loop_sub_agent_names&.to_a || [],
+        loop_max_iterations: @loop_max_iterations,
+        loop_condition_state_key: @loop_condition_state_key,
+        loop_condition_expected_value: @loop_condition_expected_value,
+        delegation_targets: @delegation_targets&.to_a || []
       }
     end
 
@@ -271,6 +305,82 @@ module ADK
 
         @definition.instance_variable_set(:@output_key, key_name)
       end
+
+      # --- MAS Workflow Agent Type ---
+      # Sets the agent type
+      # @param type [Symbol] The agent type (:llm, :sequential, :parallel, :loop)
+      def agent_type(type)
+        valid_types = %i[llm sequential parallel loop]
+        unless valid_types.include?(type.to_sym)
+          raise ArgumentError, "Agent type must be one of: #{valid_types.join(', ')}. Got: #{type}"
+        end
+
+        @definition.instance_variable_set(:@agent_type, type.to_sym)
+      end
+
+      # --- SequentialAgent Configuration ---
+      # Define sequential sub-agent names in order of execution
+      # @param names [Array<Symbol>] Names of sub-agents to execute in sequence
+      def sequential_sub_agents(*names)
+        flat_names = names.flatten.map(&:to_sym)
+        # Log a warning if the array is empty but don't raise an error
+        ADK.logger.warn("Empty sequential sub-agents list for agent '#{@definition.name}'") if flat_names.empty?
+        
+        @definition.instance_variable_set(:@sequential_sub_agent_names, Set.new(flat_names))
+      end
+
+      # --- ParallelAgent Configuration ---
+      # Define parallel sub-agent names to execute concurrently
+      # @param names [Array<Symbol>] Names of sub-agents to execute in parallel
+      def parallel_sub_agents(*names)
+        flat_names = names.flatten.map(&:to_sym)
+        # Log a warning if the array is empty but don't raise an error
+        ADK.logger.warn("Empty parallel sub-agents list for agent '#{@definition.name}'") if flat_names.empty?
+        
+        @definition.instance_variable_set(:@parallel_sub_agent_names, Set.new(flat_names))
+      end
+
+      # --- LoopAgent Configuration ---
+      # Define loop sub-agent names in order of execution within each loop iteration
+      # @param names [Array<Symbol>] Names of sub-agents to execute in each loop iteration
+      def loop_sub_agents(*names)
+        flat_names = names.flatten.map(&:to_sym)
+        # Log a warning if the array is empty but don't raise an error
+        ADK.logger.warn("Empty loop sub-agents list for agent '#{@definition.name}'") if flat_names.empty?
+        
+        @definition.instance_variable_set(:@loop_sub_agent_names, Set.new(flat_names))
+      end
+
+      # Set maximum number of loop iterations
+      # @param max [Integer] The maximum number of iterations
+      def loop_max_iterations(max)
+        unless max.is_a?(Integer) && max > 0
+          raise ArgumentError, "Maximum iterations must be a positive integer. Got: #{max}"
+        end
+        
+        @definition.instance_variable_set(:@loop_max_iterations, max)
+      end
+
+      # Set the loop condition state key and expected value
+      # @param key [Symbol] The key in the session state to check
+      # @param value [Object] The expected value that indicates loop completion
+      def loop_condition(key, value)
+        raise ArgumentError, 'Loop condition key must be a Symbol.' unless key.is_a?(Symbol)
+        
+        @definition.instance_variable_set(:@loop_condition_state_key, key)
+        @definition.instance_variable_set(:@loop_condition_expected_value, value)
+      end
+
+      # --- Delegation Configuration ---
+      # Define agent names that this agent can delegate tasks to via LLM planning
+      # @param names [Array<Symbol>] Names of agents that can be delegation targets
+      def can_delegate_to(*names)
+        flat_names = names.flatten.map(&:to_sym)
+        # Log a warning if the array is empty but don't raise an error
+        ADK.logger.warn("Empty delegation targets list for agent '#{@definition.name}'") if flat_names.empty?
+        
+        @definition.instance_variable_set(:@delegation_targets, Set.new(flat_names))
+      end
       # --- End MAS Attributes DSL ---
     end
     private_constant :DefinitionProxy
@@ -283,85 +393,145 @@ module ADK
       return nil unless hash_data.is_a?(Hash)
 
       definition = new
-      proxy = DefinitionProxy.new(definition)
 
-      proxy.name(hash_data[:name].to_sym) if hash_data[:name]
-      proxy.description(hash_data[:description].to_s) if hash_data.key?(:description)
-      proxy.instruction(hash_data[:instruction].to_s) if hash_data.key?(:instruction)
-      proxy.model_name(hash_data[:model_name].to_sym) if hash_data[:model_name]
-      proxy.temperature(hash_data[:temperature].to_f) if hash_data[:temperature]
-
-      (hash_data[:tool_names] || []).each do |tn|
-        proxy.use_tool(tn.to_sym) unless tn.to_s.strip.empty?
-      end
-
-      proxy.webhook_enabled(hash_data[:webhook_enabled]) if hash_data.key?(:webhook_enabled)
-
-      # Webhook Validator
-      validator_data = hash_data[:webhook_validator]
-      if validator_data.is_a?(Symbol)
-        proxy.webhook_validator(validator_data)
-      elsif validator_data == '<Proc>' # String placeholder from to_h for a Proc
-        proxy.webhook_validator(nil) # Cannot reconstruct Proc, set to nil
-      elsif validator_data.is_a?(String) # Assume it's a symbol stored as string e.g. "my_validator" or ":my_val"
-        proxy.webhook_validator(validator_data.delete_prefix(':').to_sym)
-      elsif hash_data.key?(:webhook_validator) && validator_data.nil? # Explicit nil in hash
-        proxy.webhook_validator(nil)
-      end
-
-      # Webhook Transformer
-      transformer_data = hash_data[:webhook_transformer]
-      if transformer_data == '<Proc>' # String placeholder from to_h for a Proc
-        proxy.webhook_transformer(nil) # Cannot reconstruct Proc, set to nil
-      elsif hash_data.key?(:webhook_transformer) && transformer_data.nil? # Explicit nil in hash
-        proxy.webhook_transformer(nil)
-        # If transformer_data is something else (e.g., unexpected string/type from hash),
-        # the DefinitionProxy#webhook_transformer setter will raise an ArgumentError if it's not a Proc or nil.
-        # This is the desired behavior - from_hash should not try to coerce invalid types.
-      end
-
-      # Webhook Session Extractor
-      extractor_data = hash_data[:webhook_session_extractor]
-      if extractor_data == '<Proc>' # String placeholder from to_h for a Proc
-        proxy.webhook_session_extractor(nil) # Cannot reconstruct Proc, set to nil
-      elsif hash_data.key?(:webhook_session_extractor) && extractor_data.nil? # Explicit nil in hash
-        proxy.webhook_session_extractor(nil)
-      end
-
-      proxy.webhook_secret(hash_data[:webhook_secret]) if hash_data.key?(:webhook_secret)
-
-      proxy.fallback_mode(hash_data[:fallback_mode].to_sym) if hash_data[:fallback_mode]
-
-      mcp_servers_data = hash_data[:mcp_servers]
-      if mcp_servers_data.is_a?(String)
-        begin
-          parsed_mcp_servers = JSON.parse(mcp_servers_data)
-          proxy.mcp_servers(*(parsed_mcp_servers.is_a?(Array) ? parsed_mcp_servers : []))
-        rescue JSON::ParserError => e
-          ADK.logger.warn("Failed to parse mcp_servers JSON from hash_data for agent '#{hash_data[:name]}': #{e.message}")
-          proxy.mcp_servers([]) # Default to empty if parsing fails
+      # Helper method to convert array values to Sets if present in the source hash
+      convert_to_set = lambda do |key, default = nil|
+        if hash_data.key?(key)
+          val = hash_data[key]
+          val.is_a?(Array) ? Set.new(val.map(&:to_sym)) : (val.nil? ? default : Set.new([val.to_sym]))
+        else
+          default || Set.new
         end
-      elsif mcp_servers_data.is_a?(Array)
-        proxy.mcp_servers(*mcp_servers_data)
       end
 
-      # MAS: Handle sub_agent_names
-      if hash_data[:sub_agent_names].is_a?(Array)
-        proxy.sub_agents_define(*(hash_data[:sub_agent_names].map(&:to_sym)))
+      # Map string or symbol keys to our keys
+      definition.instance_variable_set(:@name, hash_data[:name]&.to_sym || hash_data['name']&.to_sym)
+      definition.instance_variable_set(:@description, hash_data[:description]&.to_s || hash_data['description']&.to_s || '')
+      definition.instance_variable_set(:@instruction, hash_data[:instruction]&.to_s || hash_data['instruction']&.to_s || '')
+
+      # Handle tools/tool_names (expected to be an array of strings or symbols)
+      tool_names = nil
+      if hash_data.key?(:tool_names) || hash_data.key?('tool_names')
+        tool_names = hash_data[:tool_names] || hash_data['tool_names']
+      elsif hash_data.key?(:tools) || hash_data.key?('tools')
+        tool_names = hash_data[:tools] || hash_data['tools']
       end
 
-      # MAS: Handle output_key
-      proxy.output_key(hash_data[:output_key].to_sym) if hash_data[:output_key]
+      # Convert tool_names to a Set of symbols (always ensure it's a Set)
+      if tool_names.is_a?(Array)
+        definition.instance_variable_set(:@tool_names, Set.new(tool_names.map(&:to_sym)))
+      elsif tool_names.is_a?(String)
+        # Special case: if it's a JSON string, try to parse it
+        begin
+          parsed_tools = JSON.parse(tool_names)
+          if parsed_tools.is_a?(Array)
+            definition.instance_variable_set(:@tool_names, Set.new(parsed_tools.map(&:to_sym)))
+          else
+            definition.instance_variable_set(:@tool_names, Set.new)
+          end
+        rescue JSON::ParserError
+          # Not valid JSON, treat as single tool name
+          definition.instance_variable_set(:@tool_names, Set.new([tool_names.to_sym]))
+        end
+      else
+        # No valid tools provided, use empty set
+        definition.instance_variable_set(:@tool_names, Set.new)
+      end
 
-      definition.validate!
+      # Process model_name (string or symbol)
+      model_name = hash_data[:model_name] || hash_data['model_name'] || hash_data[:model] || hash_data['model']
+      definition.instance_variable_set(:@model_name, model_name&.to_sym)
+
+      # Process temperature (float)
+      temp_value = hash_data[:temperature] || hash_data['temperature']
+      definition.instance_variable_set(:@temperature, temp_value&.to_f)
+
+      # --- Process webhook fields ---
+      # Boolean conversion helper for webhook_enabled
+      wb_enabled = hash_data[:webhook_enabled] || hash_data['webhook_enabled']
+      wb_enabled = wb_enabled.to_s.downcase == 'true' if wb_enabled.is_a?(String)
+      definition.instance_variable_set(:@webhook_enabled, !!wb_enabled) # Force to boolean
+
+      # webhook_validator can be symbol or nil
+      wb_validator = hash_data[:webhook_validator] || hash_data['webhook_validator']
+      definition.instance_variable_set(:@webhook_validator, wb_validator.is_a?(Symbol) ? wb_validator : nil)
+
+      # webhook_secret is a string or nil
+      wb_secret = hash_data[:webhook_secret] || hash_data['webhook_secret']
+      # Special case: '<present>' is a placeholder used in to_h when the secret exists
+      definition.instance_variable_set(:@webhook_secret, wb_secret == '<present>' ? wb_secret : wb_secret)
+
+      # webhook_transformer and webhook_session_extractor are Procs (can't be serialized)
+      # Always nil when recreated from a hash
+      definition.instance_variable_set(:@webhook_transformer, nil)
+      definition.instance_variable_set(:@webhook_session_extractor, nil)
+
+      # --- Process MCP servers ---
+      # MCP servers can be array of hashes, or JSON string
+      mcp_value = hash_data[:mcp_servers] || hash_data['mcp_servers'] || hash_data[:mcp_servers_json] || hash_data['mcp_servers_json']
+      if mcp_value.is_a?(String)
+        begin
+          parsed_mcp = JSON.parse(mcp_value)
+          definition.instance_variable_set(:@mcp_servers, parsed_mcp.is_a?(Array) ? parsed_mcp : [])
+        rescue JSON::ParserError
+          # Not valid JSON, use empty array
+          definition.instance_variable_set(:@mcp_servers, [])
+        end
+      elsif mcp_value.is_a?(Array)
+        definition.instance_variable_set(:@mcp_servers, mcp_value)
+      else
+        definition.instance_variable_set(:@mcp_servers, [])
+      end
+
+      # --- Process fallback_mode (convert to symbol) ---
+      fallback = hash_data[:fallback_mode] || hash_data['fallback_mode']
+      if fallback.is_a?(String) || fallback.is_a?(Symbol)
+        fb_sym = fallback.to_sym
+        definition.instance_variable_set(:@fallback_mode, fb_sym == :echo ? :echo : :error)
+      else
+        definition.instance_variable_set(:@fallback_mode, :error) # Default
+      end
+
+      # --- Process MAS attributes ---
+      # Sub-agent names (convert to Set of symbols)
+      definition.instance_variable_set(:@sub_agent_names, convert_to_set.call(:sub_agent_names))
+
+      # Output key (convert to symbol if present)
+      output_key = hash_data[:output_key] || hash_data['output_key']
+      definition.instance_variable_set(:@output_key, output_key&.to_sym)
+
+      # --- MAS Workflow Agent Attributes ---
+      # Agent type (convert to symbol, default to :llm)
+      agent_type = hash_data[:agent_type] || hash_data['agent_type'] || :llm
+      if agent_type.is_a?(String) || agent_type.is_a?(Symbol)
+        agent_type_sym = agent_type.to_sym
+        valid_types = %i[llm sequential parallel loop]
+        # If invalid type, use default :llm
+        agent_type_sym = :llm unless valid_types.include?(agent_type_sym)
+        definition.instance_variable_set(:@agent_type, agent_type_sym)
+      else
+        definition.instance_variable_set(:@agent_type, :llm) # Default
+      end
+
+      # Workflow-specific sub-agent lists
+      definition.instance_variable_set(:@sequential_sub_agent_names, convert_to_set.call(:sequential_sub_agent_names))
+      definition.instance_variable_set(:@parallel_sub_agent_names, convert_to_set.call(:parallel_sub_agent_names))
+      definition.instance_variable_set(:@loop_sub_agent_names, convert_to_set.call(:loop_sub_agent_names))
+
+      # Loop configuration
+      loop_max = hash_data[:loop_max_iterations] || hash_data['loop_max_iterations']
+      definition.instance_variable_set(:@loop_max_iterations, loop_max&.to_i)
+
+      loop_key = hash_data[:loop_condition_state_key] || hash_data['loop_condition_state_key']
+      definition.instance_variable_set(:@loop_condition_state_key, loop_key&.to_sym)
+
+      loop_value = hash_data[:loop_condition_expected_value] || hash_data['loop_condition_expected_value']
+      definition.instance_variable_set(:@loop_condition_expected_value, loop_value)
+
+      # Delegation targets
+      definition.instance_variable_set(:@delegation_targets, convert_to_set.call(:delegation_targets))
+
       definition
-    rescue ArgumentError => e # Catch validation errors or other argument errors from proxy setters
-      ADK.logger.error("ArgumentError creating AgentDefinition from hash for agent '#{hash_data[:name]}': #{e.message}. Hash: #{hash_data.inspect}")
-      nil
-    rescue => e
-      ADK.logger.error("Unexpected error creating AgentDefinition from hash for agent '#{hash_data[:name]}': #{e.class} - #{e.message}. Hash: #{hash_data.inspect}")
-      ADK.logger.error(e.backtrace.first(5).join("\n"))
-      nil
     end
   end
 
