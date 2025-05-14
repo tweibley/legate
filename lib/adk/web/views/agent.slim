@@ -19,6 +19,10 @@ section.section
       div#agent-description-display.mt-2 hx-swap="outerHTML"
         == slim :_display_agent_description, locals: { agent_data: agent_data }
 
+      / Add the agent hierarchy display
+      div#agent-hierarchy-display.mt-3 hx-swap="outerHTML"
+        == slim :_display_agent_hierarchy, locals: { agent_data: agent_data }
+
     .custom-rounded-tabs-container
       .tabs
         ul
@@ -53,7 +57,7 @@ section.section
               form#execute-task-form( hx-post="/agents/#{agent_name}/execute"
                                       hx-target="#task-result"
                                       hx-swap="innerHTML"
-                                      hx-indicator="#execute-task-button .htmx-indicator" )
+                                      hx-indicator="#execute-task-button span.htmx-indicator" )
                   .field
                     label.label Task (JSON Input)
                     p.help.is-size-7 Format: `{"task": "..."}` or `{"tool_name": "...", ...}`

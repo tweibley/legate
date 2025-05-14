@@ -1,0 +1,61 @@
+/ File: lib/adk/web/views/_edit_agent_hierarchy.slim
+/ Expects agent_data hash with name, agent_type, and sub_agent_names
+/ Also expects all_agent_definitions if available for selecting sub-agents
+
+- agent_name = agent_data[:name]
+- agent_type = agent_data[:agent_type]&.to_sym || :llm
+- sub_agent_names = agent_data[:sub_agent_names] || []
+- all_agent_names = defined?(all_agent_definitions) ? all_agent_definitions.map { |d| d[:name] }.reject { |n| n == agent_name } : []
+
+.content
+  form( hx-put="/agents/#{agent_name}/update/hierarchy"
+        hx-target="#agent-hierarchy-display"
+        hx-swap="outerHTML" )
+    
+    h4.is-size-5 Edit Agent Hierarchy
+    
+    - type_label = case agent_type
+    - when :sequential then "Sequential"
+    - when :parallel then "Parallel"
+    - when :loop then "Loop"
+    - else "LLM"
+    
+    p.mb-3
+      | This is a 
+      strong= "#{type_label} Agent"
+      | . 
+      - if agent_type == :llm
+        | You can configure its sub-agents here.
+      - else
+        | Workflow configuration is available in the Config tab.
+    
+    / Display error if provided
+    - if defined?(error_message) && error_message
+      .notification.is-danger.is-light.mb-4
+        button.delete(type="button" onclick="this.parentElement.remove()")
+        = error_message
+    
+    .field
+      label.label Sub-Agents
+      - if all_agent_names.any?
+        .select.is-multiple
+          select(name="sub_agent_names[]" multiple size="5")
+            - all_agent_names.each do |name|
+              option(value=name selected=sub_agent_names.include?(name)) = name
+        p.help Select agents that will be available to this agent. Use Ctrl/Cmd+click for multiple selection.
+      - else
+        p.has-text-grey-light No other agents available to select as sub-agents.
+    
+    / Action Buttons
+    .field.is-grouped.mt-4
+      .control
+        button.button.is-light( type="button"
+                                hx-get="/agents/#{agent_name}/display/hierarchy"
+                                hx-target="#agent-hierarchy-display"
+                                hx-swap="outerHTML" )
+          span Cancel
+      .control
+        button.button.is-success(type="submit")
+          span.icon.is-small
+            i.fas.fa-check
+          span Save Changes 

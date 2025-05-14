@@ -8,9 +8,32 @@
 - status_content_id = "agent-status-content-#{agent_name}"
 - row_id = "agent-row-#{agent_name}"
 - is_new_row = locals.fetch(:agent_info, {}).fetch(:is_new, false) # Check for the is_new flag
+- agent_type = agent_info[:agent_type]&.to_sym || :llm
 
 / Helper to find tool description
 - find_tool_desc = lambda { |name| available_tools&.find { |t| t[:name].to_s == name.to_s }&.[](:description) || "Description not found" }
+
+/ Determine agent type display info
+- type_class = ""
+- type_icon = ""
+- type_label = ""
+- case agent_type
+- when :sequential
+  - type_class = "is-primary"
+  - type_icon = "fa-list-ol"
+  - type_label = "Sequential"
+- when :parallel
+  - type_class = "is-info" 
+  - type_icon = "fa-layer-group"
+  - type_label = "Parallel"
+- when :loop
+  - type_class = "is-warning"
+  - type_icon = "fa-sync-alt"
+  - type_label = "Loop"
+- else # :llm (default)
+  - type_class = "is-light"
+  - type_icon = "fa-robot"
+  - type_label = "LLM"
 
 tr(data-agent-name=agent_name id=row_id class=(is_new_row ? 'is-newly-added' : ''))
   / Status Column (Moved to first column)
@@ -25,6 +48,11 @@ tr(data-agent-name=agent_name id=row_id class=(is_new_row ? 'is-newly-added' : '
   td
     a(href="/agents/#{agent_name}")
       strong= agent_name
+    / Display agent type indicator
+    span.tag.ml-2(class=type_class title="#{type_label} Agent" style="font-size: 0.7rem;")
+      span.icon.is-small
+        i(class="fas #{type_icon}")
+      span= type_label
 
   / Description Column (Truncate long descriptions potentially)
   td

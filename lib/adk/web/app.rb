@@ -887,12 +887,16 @@ module ADK
         end
         logger.info("Attempting to start agent '#{name}' (Model: #{model_name}, Fallback: #{fallback_mode_sym}, MCP: #{mcp_server_count} servers)... Selected Tools: #{selected_tool_names.inspect}")
 
+        # Convert hash to ADK::AgentDefinition object
+        definition_obj = ADK::AgentDefinition.from_hash(agent_definition)
+        unless definition_obj
+          logger.error("Failed to convert agent definition hash to ADK::AgentDefinition object for '#{name}'")
+          return nil
+        end
+
         agent = ADK::Agent.new(
-          name: name, description: agent_description, model_name: model_name,
-          fallback_mode: fallback_mode_sym,
-          mcp_servers: mcp_servers_json,
-          selected_tool_names: selected_tool_names,
-          instruction: agent_instruction
+          definition: definition_obj,
+          session_service: @session_service
         )
 
         selected_tool_names.each do |tn|

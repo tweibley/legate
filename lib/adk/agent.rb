@@ -677,14 +677,14 @@ module ADK
 
       @definition = definition
       @name = definition.name
-      
+
       # Check for direct self-references in the definition's sub_agent_names
       if definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
         if definition.sub_agent_names.include?(@name)
           raise ADK::ConfigurationError, "Circular dependency detected: Agent '#{@name}' cannot include itself as a sub-agent"
         end
       end
-      
+
       @description = definition.description
       @instruction = definition.instruction
       @model_name = definition.model_name || DEFAULT_MODEL
@@ -804,7 +804,7 @@ module ADK
             ADK.logger.warn("Agent '#{@name}': Item in provided sub_agents list is not an ADK::Agent. Skipping: #{sub_agent.inspect}")
             next
           end
-          
+
           # Check for circular dependencies
           begin
             _check_circular_dependency(sub_agent.name)
@@ -812,7 +812,7 @@ module ADK
             ADK.logger.error("Agent '#{@name}': #{e.message}")
             next # Skip this sub-agent
           end
-          
+
           # Enforce single parent rule
           if sub_agent.parent_agent.nil?
             sub_agent.instance_variable_set(:@parent_agent, self)
@@ -839,7 +839,7 @@ module ADK
           begin
             # Check for circular dependencies before instantiation
             _check_circular_dependency(sub_agent_name)
-            
+
             sub_agent_definition = ADK::GlobalDefinitionRegistry.get(sub_agent_name)
             unless sub_agent_definition
               ADK.logger.error("Agent '#{@name}': Could not find definition for sub-agent '#{sub_agent_name}' in GlobalDefinitionRegistry. Skipping.")
@@ -1685,7 +1685,7 @@ module ADK
           circular_path = [new_sub_agent_name] + ancestry_path
           raise ADK::ConfigurationError, "Circular dependency detected: #{circular_path.join(' → ')}"
         end
-        
+
         ancestry_path.unshift(parent.name)
         current_agent = parent
       end

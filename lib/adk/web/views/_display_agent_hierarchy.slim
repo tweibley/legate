@@ -1,0 +1,54 @@
+/ File: lib/adk/web/views/_display_agent_hierarchy.slim
+/ Expects agent_data hash with name, agent_type, sub_agent_names
+
+- agent_name = agent_data[:name]
+- agent_type = agent_data[:agent_type]&.to_sym || :llm
+- sub_agent_names = agent_data[:sub_agent_names] || []
+
+.content
+  h4.is-size-5
+    span.icon.mr-2
+      - type_icon = case agent_type
+      - when :sequential then "fa-list-ol"
+      - when :parallel then "fa-layer-group"
+      - when :loop then "fa-sync-alt"
+      - else "fa-robot"
+      i(class="fas #{type_icon}")
+    | Agent Hierarchy
+    
+  - if agent_type == :llm
+    p.help
+      | Standard LLM agent. Can have sub-agents and be used for delegation.
+  - elsif agent_type == :sequential 
+    p.help
+      | Sequential workflow agent. Executes sub-agents in sequence, passing state between them.
+  - elsif agent_type == :parallel
+    p.help
+      | Parallel workflow agent. Executes sub-agents concurrently and combines their results.
+  - elsif agent_type == :loop
+    p.help
+      | Loop workflow agent. Repeatedly executes sub-agents until a condition is met.
+
+  - if sub_agent_names.any?
+    .panel.mt-3
+      p.panel-heading.is-size-6 Sub-Agents
+      - sub_agent_names.each do |sub_agent_name|
+        a.panel-block(href="/agents/#{sub_agent_name}")
+          span.icon.is-small.mr-2
+            i.fas.fa-chevron-right
+          = sub_agent_name
+  - else
+    p.has-text-grey 
+      | This agent has no sub-agents defined.
+
+  .field.mt-4
+    button.button.is-small.is-link.is-light(
+      hx-get="/agents/#{agent_name}/edit/hierarchy"
+      hx-target="#agent-hierarchy-display"
+      hx-swap="outerHTML"
+      hx-indicator="this .htmx-indicator")
+      span.icon.is-small.htmx-indicator
+        i.fas.fa-spinner.fa-spin
+      span.icon.is-small
+        i.fas.fa-edit
+      span Edit Hierarchy 

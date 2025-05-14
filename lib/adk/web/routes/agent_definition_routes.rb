@@ -36,6 +36,8 @@ module ADK
 
                 view_model = definition.dup # Create a mutable copy for the view
                 view_model[:configured_tools] = view_model.delete(:tools) || [] # Ensure it's an array
+                # Include agent_type in the view model, default to :llm if not present
+                view_model[:agent_type] = view_model[:agent_type]&.to_sym || :llm
                 view_model.merge(running: current_display_status_running)
               end.compact # Remove any nils from failed definition fetches
             rescue ADK::DefinitionStore::StoreError => e
@@ -170,7 +172,10 @@ module ADK
                                        instruction: agent_definition[:instruction],
                                        mcp_servers_json: agent_definition[:mcp_servers_json],
                                        mcp_display_string: mcp_display_string,
-                                       configured_tool_names: agent_definition[:tools]
+                                       configured_tool_names: agent_definition[:tools],
+                                       # Include agent type and sub-agent names for hierarchy display
+                                       agent_type: agent_definition[:agent_type]&.to_sym || :llm,
+                                       sub_agent_names: agent_definition[:sub_agent_names] || []
                                      })
 
           # Tool metadata fetching logic (similar to what's in app.rb for this route)
@@ -232,7 +237,7 @@ module ADK
 
         # GET /agents/:name/edit/:field - Show edit form for a specific agent field.
         app.get '/agents/:name/edit/:field' do |name, field|
-          supported_fields = %w[description model tools fallback mcp instruction]
+          supported_fields = %w[description model tools fallback mcp instruction hierarchy]
           halt 404, "Editing field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
@@ -279,13 +284,22 @@ module ADK
             view_locals[:all_available_tools] = (native_tools + fetched_mcp_meta).uniq { |t|
               t[:name]
             }.sort_by { |t| t[:name].to_s }
+          elsif field == 'hierarchy'
+            # Get all available agent definitions for sub-agent selection
+            begin
+              all_agent_definitions = definition_store.list_definitions
+              view_locals[:all_agent_definitions] = all_agent_definitions || []
+            rescue ADK::DefinitionStore::StoreError => e
+              logger.error("Store error fetching agent list for hierarchy edit: #{e.message}")
+              view_locals[:all_agent_definitions] = []
+            end
           end
           slim :"_edit_agent_#{field}", layout: false, locals: view_locals
         end
 
         # GET /agents/:name/display/:field - Display an agent field (after edit cancel).
         app.get '/agents/:name/display/:field' do |name, field|
-          supported_fields = %w[description model tools fallback mcp instruction]
+          supported_fields = %w[description model tools fallback mcp instruction hierarchy]
           halt 404, "Displaying field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
@@ -310,9 +324,11 @@ module ADK
               mcp_json_val
             end
           elsif field == 'tools'
-            # This part is complex and relies on _agent_tool_table which needs more context
-            # For now, ensure agent_data is passed, and _agent_tool_table will fetch its needs
-            # Fallback to just passing agent_data; _agent_tool_table needs to be self-sufficient or this needs full tool fetching
+            # ... existing code ...
+          elsif field == 'hierarchy'
+            # Add sub_agent_names for hierarchy display
+            agent_data_for_display[:sub_agent_names] = agent_definition[:sub_agent_names] || []
+            agent_data_for_display[:agent_type] = agent_definition[:agent_type]&.to_sym || :llm
           end
           response_locals[:agent_data] = agent_data_for_display
 
@@ -549,6 +565,38 @@ module ADK
             halt 500, 'Error updating agent definition.'
           rescue ArgumentError => e # From store validation
             halt 400, "Invalid input: #{e.message}"
+          end
+        end
+
+        # PUT /agents/:name/update/hierarchy - Update agent hierarchy
+        app.put '/agents/:name/update/hierarchy' do |name|
+          definition_store = self.instance_variable_get(:@definition_store)
+          halt 503, 'Definition Store unavailable.' unless definition_store
+
+          begin
+            agent_definition = definition_store.get_definition(name)
+            halt 404, 'Agent definition not found.' unless agent_definition
+
+            # Get selected sub-agent names from the form
+            sub_agent_names = params['sub_agent_names'] || []
+
+            # Update the definition with the new sub_agent_names
+            definition_store.update_definition(name, sub_agent_names: sub_agent_names)
+
+            # Refresh agent data for display
+            updated_definition = definition_store.get_definition(name)
+            agent_data = {
+              name: name,
+              description: updated_definition[:description],
+              agent_type: updated_definition[:agent_type]&.to_sym || :llm,
+              sub_agent_names: updated_definition[:sub_agent_names] || []
+            }
+
+            # Return the updated display partial
+            slim :_display_agent_hierarchy, layout: false, locals: { agent_data: agent_data }
+          rescue ADK::DefinitionStore::StoreError => e
+            logger.error("Store error updating agent hierarchy: #{e.message}")
+            halt 500, 'Error updating agent hierarchy.'
           end
         end
       end

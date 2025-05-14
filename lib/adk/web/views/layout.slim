@@ -1,4 +1,4 @@
-# File: lib/adk/web/views/layout.slim
+/ File: lib/adk/web/views/layout.slim
 doctype html
 html(class="has-navbar-fixed-top is-clipped-touch")
   head
@@ -205,6 +205,7 @@ html(class="has-navbar-fixed-top is-clipped-touch")
             { id: 'mcp-json-editor', options: {} },
             { id: 'mcp-json-display', options: { readOnly: true } },
             { id: 'task-json-editor', options: {} },
+            { id: 'direct-task-json-input', options: {} },
             { id: 'edit-instruction-textarea', options: { mode: 'text/plain'} }
           ];
 
@@ -440,7 +441,7 @@ html(class="has-navbar-fixed-top is-clipped-touch")
         const elt = config.elt;
 
         if (elt && elt.id === 'generate-example-task-btn') {
-           const editorId = 'task-json-editor';
+           const editorId = 'direct-task-json-input';
            const editorInstance = window.codeMirrorInstances[editorId];
            if (!editorInstance) {
                if (typeof showToast === 'function') showToast("Task editor is not ready. Please wait.", "is-warning");
