@@ -36,6 +36,7 @@ critic_agent = ADK::AgentDefinition.new.define do |a|
   a.description 'Analyzes text and provides critical feedback for improvement'
   a.instruction 'You are a literary critic. Analyze the provided text and give constructive criticism.
                 Score the text from 1-10 where 10 is perfect. Be honest but fair.'
+  a.model_name :gemini_pro
   a.use_tool :echo
   a.output_key :critique_result
 end
@@ -45,7 +46,9 @@ ADK::GlobalDefinitionRegistry.register(critic_agent)
 improver_agent = ADK::AgentDefinition.new.define do |a|
   a.name :improver_agent
   a.description 'Improves text based on critical feedback'
-  a.instruction 'You are a skilled writer. Take the existing text and the critique, then produce an improved version.'
+  a.instruction 'You are a skilled writer. Take the existing text and the critique, then produce an improved version.
+                 Be creative and address the specific issues mentioned in the critique.'
+  a.model_name :gemini_pro
   a.use_tool :echo
   a.output_key :improved_text
 end
@@ -57,6 +60,7 @@ assessment_agent = ADK::AgentDefinition.new.define do |a|
   a.description 'Determines if refinement process is complete'
   a.instruction 'You assess whether the text refinement is complete based on the critique score.
                  If score is 8 or higher, refinement is complete.'
+  a.model_name :gemini_pro
   a.use_tool :echo
   a.output_key :assessment_result
 end
@@ -92,22 +96,27 @@ def critic_instance.execute_plan(plan, session, session_service)
   # Get the current text
   current_text = session_service.get_state(session_id: session_id, key: :current_text)
 
-  # Generate critique (in a real agent, this would use an LLM)
+  # Generate critique using LLM
   iteration = session_service.get_state(session_id: session_id, key: :count) || 0
 
-  # For this demo, we'll simulate different scores at each iteration
-  score = [3, 5, 7, 9, 10].at(iteration) || 10
+  # Build prompt for the LLM
+  prompt = "You are a literary critic reviewing the following text:\n\n\"#{current_text}\"\n\n"
+  prompt += "Provide constructive criticism and score the text from 1-10 where 10 is perfect.\n"
+  prompt += "Format your response as: Score: X/10. [Your critique here]"
 
+  # Use ADK's planner to get LLM response
+  planner = ADK::Planner.new(model_name: :gemini_pro)
+  response = planner.simple_prompt(prompt)
+  
+  # Parse the response to extract score
+  score_match = response.match(/Score:\s*(\d+)\/10/i)
+  score = score_match ? score_match[1].to_i : 5  # Default to 5 if parsing fails
+  
+  # Extract critique (everything after the score)
+  critique = response.sub(/Score:\s*\d+\/10\.\s*/i, '')
+  
   # Store the score in state for the assessment agent
   session_service.set_state(session_id: session_id, key: :refinement_score, value: score)
-
-  critique = if score < 5
-               "Basic text with simple structure. Score: #{score}/10. Needs more descriptive language and complexity."
-             elsif score < 8
-               "Good progress, but could use more creativity. Score: #{score}/10. Consider adding more vivid imagery."
-             else
-               "Excellent work, very polished. Score: #{score}/10. Minor refinements could still be made."
-             end
 
   critique_result = {
     text: current_text,
@@ -121,7 +130,7 @@ def critic_instance.execute_plan(plan, session, session_service)
   # Create success result
   result_hash = {
     status: :success,
-    result: critique,
+    result: "Score: #{score}/10. #{critique}",
     score: score
   }
 
@@ -139,25 +148,23 @@ def improver_instance.execute_plan(plan, session, session_service)
   current_text = session_service.get_state(session_id: session_id, key: :current_text)
   critique_result = session_service.get_state(session_id: session_id, key: :current_critique)
 
-  # Keep track of iterations to simulate improvement
+  # Keep track of iterations
   iteration = session_service.get_state(session_id: session_id, key: :count) || 0
   iteration += 1
   session_service.set_state(session_id: session_id, key: :count, value: iteration)
 
-  # Generate improved text (in a real agent, this would use an LLM)
-  improved_text = case iteration
-                  when 1
-                    "The sleepy cat curled up on the worn mat."
-                  when 2
-                    "The orange tabby cat stretched lazily before settling on the woven mat by the fireplace."
-                  when 3
-                    "Basking in the afternoon sunlight, the orange tabby cat stretched lazily before settling on the intricately woven mat by the crackling fireplace."
-                  when 4
-                    "Basking in the warm afternoon sunlight that streamed through the window, the orange tabby cat stretched lazily, arching its back, before settling comfortably on the intricately woven mat by the crackling fireplace."
-                  else
-                    "Basking in the warm golden rays of the afternoon sunlight that streamed through the dusty bay window, the elderly orange tabby cat stretched lazily, arching its back with practiced grace, before settling comfortably on the intricately woven Persian mat positioned strategically by the crackling oak-wood fireplace."
-                  end
+  # Build prompt for the LLM
+  prompt = "You are a skilled writer improving text based on critique.\n\n"
+  prompt += "Original text: \"#{current_text}\"\n\n"
+  prompt += "Critique: #{critique_result[:critique]}\n"
+  prompt += "Score: #{critique_result[:score]}/10\n\n"
+  prompt += "Please rewrite the text to address the critique. Be creative and improve the quality."
+  prompt += "Only return the improved text, nothing else."
 
+  # Use ADK's planner to get LLM response
+  planner = ADK::Planner.new(model_name: :gemini_pro)
+  improved_text = planner.simple_prompt(prompt)
+  
   # Store the improved text for next iteration
   session_service.set_state(session_id: session_id, key: :current_text, value: improved_text)
 
