@@ -117,9 +117,13 @@ module ADK
     # Fetches metadata from the agent instance directly.
     def format_tools_for_prompt
       tools_metadata = agent.available_tools_metadata # Fetch metadata here
-      return 'No tools available.' if tools_metadata.empty?
-
-      tools_metadata.map do |metadata|
+      delegation_targets_description = format_delegation_targets
+      
+      if tools_metadata.empty? && delegation_targets_description.empty?
+        return 'No tools or delegable agents available.'
+      end
+      
+      tools_description = tools_metadata.map do |metadata|
         # Use metadata hash directly
         tool_name = metadata[:name]
         tool_description = metadata[:description]
@@ -138,6 +142,42 @@ module ADK
             #{params_desc.empty? ? 'None' : params_desc}
         TOOL_DESC
       end.join("\n\n")
+      
+      # Combine tools and delegation targets
+      combined_description = tools_description
+      combined_description += "\n\n" + delegation_targets_description unless delegation_targets_description.empty?
+      combined_description
+    end
+    
+    # Format delegation targets for the prompt
+    # Each delegable agent is presented as a "tool" with a target_agent parameter
+    def format_delegation_targets
+      return '' unless @agent.definition.respond_to?(:delegation_targets) && @agent.definition.delegation_targets&.any?
+      
+      delegation_targets = @agent.definition.delegation_targets
+      logger.info("Planner including #{delegation_targets.size} delegation targets: #{delegation_targets.to_a.join(', ')}")
+      
+      targets_description = delegation_targets.map do |target_name|
+        # Try to find the target agent definition for its description
+        target_def = nil
+        begin
+          target_def = ADK::GlobalDefinitionRegistry.get(target_name)
+        rescue StandardError => e
+          logger.warn("Error getting definition for delegation target '#{target_name}': #{e.message}")
+        end
+        
+        description = target_def&.description || "Delegate tasks to the #{target_name} agent"
+        
+        # Format as a special tool with agent_transfer type
+        <<~DELEGATE_DESC
+          Tool Name: agent_transfer_to_#{target_name}
+          Description: #{description}
+          Parameters:
+            - task (string, required): The task to delegate to the #{target_name} agent
+        DELEGATE_DESC
+      end.join("\n\n")
+      
+      targets_description
     end
 
     # --- NEW: Build the multi-step prompt ---
@@ -151,12 +191,25 @@ module ADK
         INSTRUCTION
       end
 
+      # Add special instructions for delegation if targets are available
+      delegation_instructions = ''
+      if @agent.definition.respond_to?(:delegation_targets) && @agent.definition.delegation_targets&.any?
+        delegation_instructions = <<~DELEGATION
+          
+          Important: You can delegate tasks to other specialized agents when appropriate. Look for tools with names starting with "agent_transfer_to_" in the Available Tools list. When you choose to delegate:
+          1. Select the most appropriate specialized agent based on the task requirements and agent descriptions.
+          2. Use the exact "agent_transfer_to_X" tool name for that agent.
+          3. Pass the specific subtask in the "task" parameter that clearly describes what the target agent should do.
+          4. The target agent will execute the task and return its result to the main flow.
+        DELEGATION
+      end
+
       <<~PROMPT
         #{instruction_block}You are an AI planner for an agent. Your goal is to break down the user's request into a sequence of steps. Each step must use exactly one of the available tools. You need to determine the necessary parameters for each tool call based on the user request AND the potential output of previous steps.
         Carefully analyze the User Request below to understand the core goal. Then, search the following list of Available Tools to find the single best tool or sequence of tools to achieve that goal. Pay close attention to tool descriptions and required parameters.
         If you find that the user's request can be fulfilled by a single tool call, respond with a JSON array containing only one step object.
         Otherwise, identify the sequence of tool calls needed to fulfill the request.
-        Only use tools that are directly relevant to fulfilling the user request. Do not select tools speculatively.
+        Only use tools that are directly relevant to fulfilling the user request. Do not select tools speculatively.#{delegation_instructions}
 
         User Request: "#{task}"
         Available Tools:
@@ -236,6 +289,18 @@ module ADK
       plan_steps = []
       # Get available symbols from metadata
       available_tool_syms = agent.available_tools_metadata.map { |m| m[:name] }
+      
+      # Build a list of delegation target tools if the agent has any
+      delegation_target_tools = {}
+      if @agent.definition.respond_to?(:delegation_targets) && @agent.definition.delegation_targets&.any?
+        @agent.definition.delegation_targets.each do |target_name|
+          delegation_tool_name = "agent_transfer_to_#{target_name}".to_sym
+          delegation_target_tools[delegation_tool_name] = target_name
+        end
+      end
+      
+      # Combined list of all allowed tools (real tools and delegation target "tools")
+      allowed_tools = available_tool_syms + delegation_target_tools.keys
 
       parsed_response.each_with_index do |step_data, index|
         unless step_data.is_a?(Hash)
@@ -254,9 +319,9 @@ module ADK
 
         tool_name_sym = tool_name_str.to_sym
 
-        # Check if tool exists
-        unless available_tool_syms.include?(tool_name_sym)
-          logger.warn("Step #{index + 1} suggested tool '#{tool_name_sym}' which is not available to the agent. Available: #{available_tool_syms.join(', ')}")
+        # Check if tool exists (either as a real tool or a delegation "tool")
+        unless allowed_tools.include?(tool_name_sym)
+          logger.warn("Step #{index + 1} suggested tool '#{tool_name_sym}' which is not available to the agent. Available: #{allowed_tools.join(', ')}")
           return [] # Invalid plan if tool doesn't exist
         end
 
@@ -273,8 +338,26 @@ module ADK
           k.to_sym rescue k # Keep original if conversion fails
         end
 
-        # Add the validated step to the plan
-        plan_steps << { tool: tool_name_sym, params: symbolized_params }
+        # Handle delegation targets specially - convert them to agent_transfer steps for the existing tool
+        if delegation_target_tools.key?(tool_name_sym)
+          target_agent = delegation_target_tools[tool_name_sym]
+          task = symbolized_params[:task] || "Delegated task" # Make sure there's always a task
+          
+          logger.info("Converting delegation tool '#{tool_name_sym}' to agent_transfer step with target: #{target_agent}")
+          
+          # Add the special agent_transfer step (will be processed by the execute_plan method)
+          plan_steps << { 
+            tool: :delegate_task, # Using the built-in delegate_task tool
+            params: {
+              agent_name: target_agent,
+              task: task
+            },
+            step_type: :agent_transfer # Mark specially for logging
+          }
+        else
+          # Regular tool - add as is
+          plan_steps << { tool: tool_name_sym, params: symbolized_params }
+        end
       end
 
       # Return the fully validated sequence of steps

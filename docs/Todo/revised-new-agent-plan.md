@@ -4,7 +4,8 @@
   - Phase A (Steps A.1 and A.2) verified as completed on May 14, 2025.
   - Phase B (Step B.1) completed on May 14, 2025. Implemented and tested agent hierarchy methods.
   - Phase B (Step B.2) completed on May 14, 2025. Implemented workflow agent classes and directory structure.
-  All tests are passing. Ready to proceed with Step B.3.
+  - Phase B (Step B.3) completed on May 14, 2025. Updated planner for LLM-driven delegation.
+  All tests are passing. Ready to proceed with Step C.1.
 -->
 
 ## Evaluation of Original Implementation Plan
@@ -200,19 +201,22 @@ This plan prioritizes foundational elements and then builds upon them.
 *   **Implementation Notes:** Successfully created the directory structure and implemented all three workflow agent types: SequentialAgent, ParallelAgent, and LoopAgent. Each agent type inherits from ADK::Agent and overrides the run_task method with specialized logic for its execution pattern.
 
 **Step B.3: Update Planner for LLM-Driven Delegation (Original Plan Step 3.1)**
+*   **Status: ✅ COMPLETED**
 *   **Task:** Modify `ADK::Planner#build_multi_step_gemini_prompt` in `lib/adk/planner.rb`.
     *   The prompt needs to be aware of `delegation_targets` (defined in an agent's `ADK::AgentDefinition`).
     *   The `tools_description` section of the prompt should be augmented to include descriptions of delegable sub-agents. This means if an agent `A` can delegate to sub-agent `B`, sub-agent `B`'s name and description should be presented to the LLM as if `B` were a "tool" available to `A`.
-*   **Files to Change:**
-    *   `lib/adk/planner.rb`
-    *   `spec/adk/planner_spec.rb` (for tests on new prompt structure and delegation planning)
-*   **Test Tasks:**
-    *   Test that build_multi_step_gemini_prompt includes delegation targets in the tools description
-    *   Test the format of delegation targets in the prompt is correct and usable by the LLM
-    *   Test that the planner can generate plans that include agent delegation steps
-    *   Test that the planner correctly formats delegation targets with their descriptions
-    *   Test that delegation targets are only included when the agent has them defined
-    *   Test delegation target formatting with various special characters in names/descriptions
+*   **Files Changed:**
+    *   `lib/adk/planner.rb` - Added delegation target handling in prompt generation
+    *   `spec/adk/planner_delegation_spec.rb` - Added comprehensive tests for delegation functionality
+*   **Tests Added:**
+    *   Tests for `format_delegation_targets` to verify proper formatting of agent targets
+    *   Tests for `build_multi_step_gemini_prompt` to ensure delegation instructions are included
+    *   Tests for `validate_and_format_multi_step_plan` to verify conversion of agent transfer "tools" to actual delegation steps
+*   **Implementation Details:**
+    * Added new `format_delegation_targets` method to format delegation targets as pseudo-tools 
+    * Modified `format_tools_for_prompt` to include both regular tools and delegation targets
+    * Updated `build_multi_step_gemini_prompt` to include special instructions for delegation when targets exist
+    * Enhanced `validate_and_format_multi_step_plan` to handle the special delegation tools
 
 **Step B.4: Implement Circular Dependency Detection (Original Plan General Consideration)**
 *   **Task:** Add recursion depth detection or ancestor tracking during sub-agent instantiation in `ADK::Agent#initialize` (where sub-agents are created from definition names).
