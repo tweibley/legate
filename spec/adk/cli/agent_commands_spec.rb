@@ -259,6 +259,9 @@ RSpec.describe ADK::CLI::AgentCommands do
     context 'when definition exists in memory' do
       before do
         ADK::AgentDefinitionStore.register(agent_name, agent_def)
+        # Need to explicitly stub the find method for our agent_name
+        allow(ADK::AgentDefinitionStore).to receive(:find).and_call_original
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(agent_def)
       end
 
       it 'prompts for confirmation and deletes from Redis and memory' do
@@ -292,6 +295,8 @@ RSpec.describe ADK::CLI::AgentCommands do
 
     context 'when definition exists only in Redis' do
       before do
+        # Need to explicitly stub find with any argument
+        allow(ADK::AgentDefinitionStore).to receive(:find).and_call_original
         allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(nil)
         allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(agent_name).and_return(agent_def)
       end
@@ -371,6 +376,9 @@ RSpec.describe ADK::CLI::AgentCommands do
     context 'when definition exists in memory' do
       before do
         ADK::AgentDefinitionStore.register(agent_name, agent_def)
+        # Need to explicitly stub find with any argument
+        allow(ADK::AgentDefinitionStore).to receive(:find).and_call_original
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(agent_def)
         allow(ADK::Agent).to receive(:new).and_call_original # Allow agent creation
       end
 
@@ -564,6 +572,7 @@ RSpec.describe ADK::CLI::AgentCommands do
 
     context 'loading definition from Redis' do
       before do
+        allow(ADK::AgentDefinitionStore).to receive(:find).and_call_original
         allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(nil)
         allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(agent_name).and_return(agent_def)
       end
@@ -571,7 +580,7 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'successfully loads from Redis and executes' do
         expect(mock_agent_instance).to receive(:run_task).and_return('Simple String Result')
         invoke_command(:execute, agent_name.to_s, task)
-        expect(output.string).to include("Loading agent 'executor_agent'")
+        expect(output.string).to include("Loading agent 'executor_agent' to execute task:")
         expect(output.string).to include('Success:')
         expect(output.string).to include('Result: Simple String Result')
         expect(output.string).not_to include('SystemExit')
@@ -580,6 +589,7 @@ RSpec.describe ADK::CLI::AgentCommands do
 
     context 'when definition not found' do
       before do
+        allow(ADK::AgentDefinitionStore).to receive(:find).and_call_original
         allow(ADK::AgentDefinitionStore).to receive(:find).with(agent_name).and_return(nil)
         allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(agent_name).and_return(nil)
       end

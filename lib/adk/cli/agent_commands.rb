@@ -404,7 +404,7 @@ module ADK
       LONGDESC
       def start(name)
         name_sym = name.to_sym
-        say "Loading agent definition '#{name}'..."
+        say "Loading agent '#{name}'..."
         
         # First check the global registry
         agent_definition_object = ADK::GlobalDefinitionRegistry.find(name_sym)
@@ -414,7 +414,7 @@ module ADK
           definition_hash = ADK::AgentDefinitionStore.load_from_redis(name_sym)
           
           unless definition_hash
-            say "Error: Agent definition hash '#{name}' not found in store.", :red
+            say "Error: Agent definition '#{name}' not found.", :red
             exit(1)
           end
           
@@ -482,12 +482,12 @@ module ADK
       method_option :redis, type: :boolean, default: false, desc: 'Use Redis for session storage instead of in-memory.'
       def execute(name, task)
         name_sym = name.to_sym
-        say("Loading agent definition '#{name}' to execute task: \"#{task}\"...")
+        say("Loading agent '#{name}' to execute task: \"#{task}\"...")
         definition_hash = ADK::AgentDefinitionStore.find(name_sym)
         definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
         unless definition_hash
-          say "Error: Agent definition hash '#{name}' not found in store.", :red
+          say "Error: Agent definition '#{name}' not found.", :red
           exit(1)
         end
 
