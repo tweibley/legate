@@ -46,6 +46,12 @@ module ADK
     # @param task [String] The task to plan
     # @return [Array] The plan (array of step hashes) or a fallback plan on error
     def plan(user_input)
+      # Check if client is available, fallback if not
+      unless @client
+        logger.error("Gemini client not initialized. Falling back to default plan.")
+        return fallback_plan(user_input, "No LLM client available")
+      end
+
       # Format tools for the prompt
       tools_description = format_tools_for_prompt
 
@@ -53,34 +59,39 @@ module ADK
       prompt = build_multi_step_gemini_prompt(user_input, tools_description)
 
       # Use the LLM client from the Gemini wrapper
-      response = @client.generate_content(
+      begin
+        response = @client.generate_content(
+          {
+            contents: [{ role: 'user', parts: { text: prompt } }]
+          }
+        )
+
+        raw_response_text = response.dig('candidates', 0, 'content', 'parts', 0, 'text')
+
+        unless raw_response_text
+          logger.warn("Gemini response was empty or couldn't find text.")
+          logger.debug("Raw Gemini Response Object: #{response.inspect}")
+          return { error: 'Gemini response was empty or unparseable.' }
+        end
+
+        # Extract and validate the plan
+        validated_result = validate_and_format_multi_step_plan(raw_response_text)
+
+        # Check for errors in validation
+        if validated_result[:error]
+          logger.error("Plan validation failed: #{validated_result[:error]}")
+          return { error: validated_result[:error] }
+        end
+
+        # Return the formatted plan steps
         {
-          contents: [{ role: 'user', parts: { text: prompt } }]
+          thought_process: validated_result[:thought_process],
+          steps: validated_result[:formatted_steps]
         }
-      )
-
-      raw_response_text = response.dig('candidates', 0, 'content', 'parts', 0, 'text')
-
-      unless raw_response_text
-        logger.warn("Gemini response was empty or couldn't find text.")
-        logger.debug("Raw Gemini Response Object: #{response.inspect}")
-        return { error: 'Gemini response was empty or unparseable.' }
+      rescue StandardError => e
+        logger.error("Error during planning with Gemini: #{e.class}: #{e.message}")
+        fallback_plan(user_input, "Error during planning: #{e.message}")
       end
-
-      # Extract and validate the plan
-      validated_result = validate_and_format_multi_step_plan(raw_response_text)
-
-      # Check for errors in validation
-      if validated_result[:error]
-        logger.error("Plan validation failed: #{validated_result[:error]}")
-        return { error: validated_result[:error] }
-      end
-
-      # Return the formatted plan steps
-      {
-        thought_process: validated_result[:thought_process],
-        steps: validated_result[:formatted_steps]
-      }
     end
 
     private
@@ -364,6 +375,12 @@ module ADK
         unless step.key?("tool_name") && step.key?("tool_input")
           logger.warn("Step #{step_number} is missing required tool fields: #{step.inspect}")
           return { error: "Step #{step_number} is missing required tool fields" }
+        end
+
+        # Check if tool_input is a hash
+        unless step["tool_input"].is_a?(Hash)
+          logger.warn("Step #{step_number} has invalid tool_input (not a hash): #{step["tool_input"].inspect}")
+          return { error: "Step #{step_number} has invalid tool_input: must be a hash/object" }
         end
 
         # Format as proper tool step

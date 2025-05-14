@@ -258,7 +258,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       # Allow any hset calls
       allow(mock_redis).to receive(:hset)
       # But specifically expect agent_type to be set to 'llm'
-      expect(mock_redis).to receive(:hset).with(agent_key, 'agent_type', 'llm') 
+      expect(mock_redis).to receive(:hset).with(agent_key, 'agent_type', 'llm')
       allow(mock_redis).to receive(:sadd)
       expect(@store.save_definition(**save_args.merge(agent_type: nil))).to be true
     end
@@ -649,7 +649,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       vals['webhook_enabled'] = webhook_enabled.to_s
       vals['webhook_secret'] = webhook_secret || ''
       vals['persistent_status'] = nil
-      vals['agent_type'] = 'llm'  # Default agent type
+      vals['agent_type'] = 'llm' # Default agent type
       all_fields.map { |f| vals[f] } # Return values in correct order
     }
     let(:summary_values_2) {
@@ -665,7 +665,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       vals['webhook_enabled'] = webhook_enabled.to_s
       vals['webhook_secret'] = webhook_secret || ''
       vals['persistent_status'] = nil
-      vals['agent_type'] = 'llm'  # Default agent type
+      vals['agent_type'] = 'llm' # Default agent type
       all_fields.map { |f| vals[f] }
     }
     let(:expected_list) do
@@ -681,7 +681,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
           webhook_enabled: webhook_enabled.to_s,
           webhook_secret: webhook_secret || '',
           persistent_status: nil,
-          agent_type: :llm  # Default agent type
+          agent_type: :llm # Default agent type
         },
         {
           name: :agent2, # Expect symbols
@@ -694,7 +694,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
           webhook_enabled: webhook_enabled.to_s,
           webhook_secret: webhook_secret || '',
           persistent_status: nil,
-          agent_type: :llm  # Default agent type
+          agent_type: :llm # Default agent type
         }
       ].sort_by { |h| h[:name] }
     end
