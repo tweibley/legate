@@ -12,6 +12,7 @@ gem 'puma' # Add puma for Sinatra's default server
 group :development, :test do
   gem 'rubocop', '~> 1.50' # <-- Ensure this line is present here
   gem 'yard', '~> 0.9'
+  gem 'tty-spinner', '~> 0.9.3' # For terminal spinner animations
   # gem 'temporalio'
 end
 
