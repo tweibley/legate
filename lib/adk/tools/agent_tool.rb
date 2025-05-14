@@ -32,6 +32,13 @@ module ADK
       private
 
       def perform_execution(params, context) # context is the ToolContext of the calling agent
+        # Validate that the context has a valid tool registry
+        unless context && context.respond_to?(:tool_registry) && context.tool_registry
+          msg = "Tool registry not found or invalid in the provided context"
+          ADK.logger.error("AgentTool: #{msg}")
+          raise ADK::ToolError, msg
+        end
+
         target_agent_name_str = params.fetch(:target_agent_name) do
           raise ADK::ToolArgumentError, 'Missing required parameter: target_agent_name'
         end.to_s # Ensure it's a string for store lookup

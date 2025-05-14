@@ -277,7 +277,7 @@ RSpec.describe ADK::Tools::AgentTool do
         allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_sym).and_return(target_definition_hash)
       end
 
-      xit 'raises ToolError' do # PENDING: AgentTool currently does not use its own context's tool_registry for delegation logic.
+      it 'raises ToolError' do # Test is now enabled since AgentTool checks context's tool_registry
         expect {
           tool.execute(params, invalid_context)
         }.to raise_error(ADK::ToolError, /Tool registry not found or invalid/)
