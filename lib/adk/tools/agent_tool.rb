@@ -42,13 +42,41 @@ module ADK
 
         # Load definition hash from the store
         definition_hash = ADK::AgentDefinitionStore.find(target_agent_name_str.to_sym) # Try memory first
-        definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(target_agent_name_str)
+        definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(target_agent_name_str.to_sym) # Ensure symbol key for lookup
 
         unless definition_hash
           msg = "Target agent definition '#{target_agent_name_str}' could not be loaded from store."
           ADK.logger.error("AgentTool: #{msg}")
           raise ADK::ToolArgumentError, msg
         end
+
+        # Massage the hash: Ensure keys are symbols and handle specific field transformations.
+        # ADK::AgentDefinitionStore.load_from_redis might already return symbolized keys,
+        # but this is a defensive measure.
+        definition_hash = definition_hash.transform_keys(&:to_sym) if definition_hash.respond_to?(:transform_keys)
+
+        # Handle 'tools' field: parse if JSON string, then rename to 'tool_names'
+        if definition_hash.key?(:tools)
+          if definition_hash[:tools].is_a?(String)
+            begin
+              parsed_tools = JSON.parse(definition_hash[:tools])
+              definition_hash[:tools] = parsed_tools.is_a?(Array) ? parsed_tools : []
+            rescue JSON::ParserError
+              ADK.logger.warn("AgentTool: Could not parse :tools JSON for agent '#{target_agent_name_str}'. Defaulting to empty tools array.")
+              definition_hash[:tools] = []
+            end
+          end
+          definition_hash[:tool_names] = definition_hash.delete(:tools)
+        elsif !definition_hash.key?(:tool_names) # Ensure tool_names is at least an empty array if not present
+            definition_hash[:tool_names] = []
+        end
+
+
+        # Handle 'mcp_servers_json' field: rename to 'mcp_servers'
+        if definition_hash.key?(:mcp_servers_json) && !definition_hash.key?(:mcp_servers)
+          definition_hash[:mcp_servers] = definition_hash.delete(:mcp_servers_json)
+        end
+        # End massage
 
         # Convert hash to an ADK::AgentDefinition object
         target_definition_object = ADK::AgentDefinition.from_hash(definition_hash)

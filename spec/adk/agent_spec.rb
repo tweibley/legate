@@ -121,9 +121,19 @@ RSpec.describe ADK::Agent do
   }
   let(:fake_history) { [] }
   let(:session_double) do
+    # Create a hash to simulate state storage within the double
+    session_state_store = {}
+
     instance_double(ADK::Session, id: session_id, user_id: 'user1', app_name: 'app1').tap do |double|
       allow(double).to receive(:events).and_return(fake_history)
       allow(double).to receive(:add_event) { |event| fake_history << event }
+      # Implement set_state and get_state using the local hash
+      allow(double).to receive(:set_state) do |key, value|
+        session_state_store[key] = value
+      end
+      allow(double).to receive(:get_state) do |key|
+        session_state_store[key]
+      end
     end
   end
   let(:session_id) { "test_session_#{rand(1000)}" }
@@ -144,10 +154,12 @@ RSpec.describe ADK::Agent do
                     webhook_validator: nil,
                     webhook_secret: nil,
                     webhook_transformer: nil,
-                    webhook_session_extractor: nil)
+                    webhook_session_extractor: nil,
+                    sub_agent_names: Set.new, # Allow and provide default
+                    output_key: nil           # Allow and provide default
+                   )
   end
   let(:mock_store) { instance_double(ADK::DefinitionStore::RedisStore, save_definition: true, get_definition: nil) }
-  let(:mock_registry) { class_double(ADK::GlobalDefinitionRegistry, register: nil, find: nil).as_stubbed_const }
   let(:mock_config) {
     instance_double(ADK::Configuration, definition_store: mock_store, session_service: session_service_double)
   }
@@ -212,7 +224,7 @@ RSpec.describe ADK::Agent do
   def create_agent_from_definition(def_double = mock_definition, **overrides)
     allow(def_double).to receive(:is_a?).with(ADK::AgentDefinition).and_return(true)
     # Ensure it responds to necessary methods if it's a pure double used in tests
-    %i[name description instruction tool_names model_name fallback_mode mcp_servers].each do |method|
+    %i[name description instruction tool_names model_name fallback_mode mcp_servers sub_agent_names output_key webhook_enabled webhook_validator webhook_secret webhook_transformer webhook_session_extractor].each do |method|
       allow(def_double).to receive(:respond_to?).with(method).and_return(true)
     end
 
@@ -229,13 +241,6 @@ RSpec.describe ADK::Agent do
   before do
     allow(ADK).to receive(:logger).and_return(logger_double)
     allow(ADK).to receive(:config).and_return(mock_config)
-    allow(mock_registry).to receive(:register)
-    allow(mock_registry).to receive(:find)
-    allow(mock_store).to receive(:get_definition)
-    allow(mock_definition).to receive(:is_a?).with(ADK::AgentDefinition).and_return(true)
-
-    # General stubs for GlobalToolManager for common tools used with mock_definition or directly.
-    # The `create_agent` helper manages its own more specific `find_class` stubs.
     allow(mock_tool_manager).to receive(:find_class).with(:mock_tool).and_return(MockTool)
     allow(mock_tool_manager).to receive(:find_class).with(:another_tool).and_return(MockAnotherTool)
     allow(mock_tool_manager).to receive(:find_class).with(:context_tool).and_return(MockToolNeedsContext)
@@ -357,32 +362,42 @@ RSpec.describe ADK::Agent do
       let(:child_agent_name) { :child_one }
       let(:child_instruction) { 'I am child one.' }
       let(:child_definition) do
+        # Capture let variables for the define block
+        name_val = child_agent_name
+        instruction_val = child_instruction
         ADK::AgentDefinition.new.define do |d|
-          d.name child_agent_name
-          d.instruction child_instruction
+          d.name name_val
+          d.instruction instruction_val
         end
       end
       let(:another_child_agent_name) { :child_two }
       let(:another_child_instruction) { 'I am child two.' }
       let(:another_child_definition) do
+        # Capture let variables for the define block
+        name_val = another_child_agent_name
+        instruction_val = another_child_instruction
         ADK::AgentDefinition.new.define do |d|
-          d.name another_child_agent_name
-          d.instruction another_child_instruction
+          d.name name_val
+          d.instruction instruction_val
         end
       end
 
       let(:parent_definition_declaring_subs) do
+        # Capture let variables for the define block
+        sub_name_val = child_agent_name
         ADK::AgentDefinition.new.define do |d|
           d.name :parent_with_declared_subs
           d.instruction 'I declare subs.'
-          d.sub_agents_define child_agent_name # Declare :child_one
+          d.sub_agents_define sub_name_val # Declare :child_one
         end
       end
 
       before do
         # Ensure child definitions are in the GlobalDefinitionRegistry for declarative instantiation tests
-        allow(mock_registry).to receive(:get).with(child_agent_name).and_return(child_definition)
-        allow(mock_registry).to receive(:get).with(another_child_agent_name).and_return(another_child_definition)
+        # Stub the class method directly on ADK::GlobalDefinitionRegistry
+        allow(ADK::GlobalDefinitionRegistry).to receive(:get).with(child_agent_name).and_return(child_definition)
+        allow(ADK::GlobalDefinitionRegistry).to receive(:get).with(another_child_agent_name).and_return(another_child_definition)
+        allow(ADK::GlobalDefinitionRegistry).to receive(:register) # Allow register to be called
       end
 
       context 'when sub_agents parameter is provided (programmatic override)' do
@@ -404,7 +419,7 @@ RSpec.describe ADK::Agent do
           expect(parent_agent.sub_agents.first.parent_agent).to eq(parent_agent)
         end
 
-        it 'does not instantiate sub-agents from the definition's sub_agent_names' do
+        it 'does not instantiate sub-agents from the definitions sub_agent_names' do
           # Verified by checking that :child_one (from parent_definition_declaring_subs) is not instantiated
           expect(parent_agent.sub_agents.map(&:name)).not_to include(child_agent_name)
         end
@@ -412,6 +427,7 @@ RSpec.describe ADK::Agent do
         it 'assigns parent session service to programmatic sub-agent if sub-agent lacks one' do
           child_without_service_def = ADK::AgentDefinition.new.define { |d| d.name :child_no_svc; d.instruction 'hi' }
           programmatic_child_no_service = ADK::Agent.new(definition: child_without_service_def, session_service: nil)
+          # Expect the child agent to initially have no session service
           expect(programmatic_child_no_service.session_service).to be_nil
 
           parent_with_child_no_service = ADK::Agent.new(
@@ -419,6 +435,7 @@ RSpec.describe ADK::Agent do
             session_service: session_service_double,
             sub_agents: [programmatic_child_no_service]
           )
+          # Now expect the child agent's session service to be the parent's session service
           expect(parent_with_child_no_service.sub_agents.first.session_service).to eq(session_service_double)
         end
 
@@ -511,7 +528,7 @@ RSpec.describe ADK::Agent do
         end
 
         it 'logs an error and skips if a declared sub-agent definition is not found in registry' do
-          allow(mock_registry).to receive(:get).with(child_agent_name).and_return(nil) # Simulate missing definition
+          allow(ADK::GlobalDefinitionRegistry).to receive(:get).with(child_agent_name).and_return(nil) # Simulate missing definition
           expect(logger_double).to receive(:error).with(/Could not find definition for sub-agent 'child_one'/)
           parent_with_missing_sub_def = ADK::Agent.new(definition: parent_definition_declaring_subs, session_service: session_service_double)
           expect(parent_with_missing_sub_def.sub_agents).to be_empty
@@ -536,8 +553,10 @@ RSpec.describe ADK::Agent do
       context 'when definition is loaded from a store hash (simulating persistence)' do
         let(:child_b_name) { :child_b }
         let(:child_b_definition_obj) do # The actual object
+          # Capture let variables for the define block
+          name_val = child_b_name
           ADK::AgentDefinition.new.define do |d|
-            d.name child_b_name
+            d.name name_val
             d.instruction 'I am Child B.'
           end
         end
@@ -563,7 +582,8 @@ RSpec.describe ADK::Agent do
         before do
           # Ensure ChildB's full definition object is in the GlobalDefinitionRegistry
           # This is what ADK::Agent#initialize will use to instantiate ChildB
-          allow(mock_registry).to receive(:get).with(child_b_name).and_return(child_b_definition_obj)
+          # Stub the class method directly on ADK::GlobalDefinitionRegistry
+          allow(ADK::GlobalDefinitionRegistry).to receive(:get).with(child_b_name).and_return(child_b_definition_obj)
 
           # Verify that from_hash worked as expected (especially sub_agent_names)
           expect(loaded_parent_a_definition_obj.name).to eq(parent_a_name)
@@ -761,7 +781,7 @@ RSpec.describe ADK::Agent do
         allow(MockToolNoName).to receive(:explicit_tool_name).and_return(nil) # Be explicit
 
         agent_with_bad_tool.instance_variable_set(:@tools_cache, nil) # Explicitly clear cache
-        expect(logger_double).to receive(:warn).with(/Skipping tool instance creation for class MockToolNoName as it has no retrievable name/)
+        expect(logger_double).to receive(:warn).with(/Skipping tool instance creation for class MockToolNoName as its name could not be determined post-registration/)
         agent_with_bad_tool.tools
 
         # Clean up the mocks on MockToolNoName to avoid affecting other tests
@@ -961,11 +981,13 @@ RSpec.describe ADK::Agent do
     context 'with output_key state management' do
       let(:output_key_name) { :my_agent_output }
       let(:agent_with_output_key) do
+        # Capture let variable for the define block
+        key_name_val = output_key_name
         definition_with_key = ADK::AgentDefinition.new.define do |d|
           d.name :output_key_agent
           d.instruction 'I save my output.'
           d.use_tool :mock_tool
-          d.output_key output_key_name # Set the output key
+          d.output_key key_name_val # Set the output key
         end
         # Need to stub find_class for :mock_tool if create_agent helper isn't used or adapted
         allow(mock_tool_manager).to receive(:find_class).with(:mock_tool).and_return(MockTool)

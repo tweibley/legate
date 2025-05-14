@@ -294,16 +294,38 @@ module ADK
       end
 
       proxy.webhook_enabled(hash_data[:webhook_enabled]) if hash_data.key?(:webhook_enabled)
-      # webhook_validator, webhook_transformer, webhook_session_extractor are often Procs
-      # and cannot be reliably serialized/deserialized from a generic hash.
-      # They typically need to be re-associated if the definition is loaded by name
-      # from a registry that manages these Procs, or set programmatically after load.
-      # For webhook_validator, if it's a symbol, we can restore it.
-      if hash_data[:webhook_validator].is_a?(String) || hash_data[:webhook_validator].is_a?(Symbol)
-        proxy.webhook_validator(hash_data[:webhook_validator].to_sym)
-      elsif hash_data.key?(:webhook_validator) && hash_data[:webhook_validator].nil?
+
+      # Webhook Validator
+      validator_data = hash_data[:webhook_validator]
+      if validator_data.is_a?(Symbol)
+        proxy.webhook_validator(validator_data)
+      elsif validator_data == '<Proc>' # String placeholder from to_h for a Proc
+        proxy.webhook_validator(nil)    # Cannot reconstruct Proc, set to nil
+      elsif validator_data.is_a?(String) # Assume it's a symbol stored as string e.g. "my_validator" or ":my_val"
+        proxy.webhook_validator(validator_data.delete_prefix(':').to_sym)
+      elsif hash_data.key?(:webhook_validator) && validator_data.nil? # Explicit nil in hash
         proxy.webhook_validator(nil)
       end
+
+      # Webhook Transformer
+      transformer_data = hash_data[:webhook_transformer]
+      if transformer_data == '<Proc>' # String placeholder from to_h for a Proc
+        proxy.webhook_transformer(nil)   # Cannot reconstruct Proc, set to nil
+      elsif hash_data.key?(:webhook_transformer) && transformer_data.nil? # Explicit nil in hash
+        proxy.webhook_transformer(nil)
+      # If transformer_data is something else (e.g., unexpected string/type from hash),
+      # the DefinitionProxy#webhook_transformer setter will raise an ArgumentError if it's not a Proc or nil.
+      # This is the desired behavior - from_hash should not try to coerce invalid types.
+      end
+
+      # Webhook Session Extractor
+      extractor_data = hash_data[:webhook_session_extractor]
+      if extractor_data == '<Proc>' # String placeholder from to_h for a Proc
+        proxy.webhook_session_extractor(nil) # Cannot reconstruct Proc, set to nil
+      elsif hash_data.key?(:webhook_session_extractor) && extractor_data.nil? # Explicit nil in hash
+        proxy.webhook_session_extractor(nil)
+      end
+      
       proxy.webhook_secret(hash_data[:webhook_secret]) if hash_data.key?(:webhook_secret)
 
       proxy.fallback_mode(hash_data[:fallback_mode].to_sym) if hash_data[:fallback_mode]
@@ -347,7 +369,7 @@ module ADK
     DEFAULT_MODEL = 'gemini-2.0-flash' # Updated default model
 
     attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode,
-                :instruction, :definition
+                :instruction, :definition, :session_service # Added session_service to attr_reader
     # MAS Attributes
     attr_reader :parent_agent # The parent agent in a hierarchy, if any
     attr_reader :sub_agents   # A collection of sub-agents
@@ -594,34 +616,34 @@ module ADK
 
       # MAS: Instantiate Sub-Agents or use provided ones
       if sub_agents && !sub_agents.empty?
-        ADK.logger.info("Agent \'#{@name}\': Initializing with programmatically provided sub-agents (#{sub_agents.length} agents).")
+        ADK.logger.info("Agent '#{@name}': Initializing with programmatically provided sub-agents (#{sub_agents.length} agents).")
         sub_agents.each do |sub_agent|
           unless sub_agent.is_a?(ADK::Agent)
-            ADK.logger.warn("Agent \'#{@name}\': Item in provided sub_agents list is not an ADK::Agent. Skipping: #{sub_agent.inspect}")
+            ADK.logger.warn("Agent '#{@name}': Item in provided sub_agents list is not an ADK::Agent. Skipping: #{sub_agent.inspect}")
             next
           end
           # Enforce single parent rule
           if sub_agent.parent_agent.nil?
             sub_agent.instance_variable_set(:@parent_agent, self)
           elsif sub_agent.parent_agent != self
-            ADK.logger.error("Agent \'#{@name}\': Cannot adopt sub-agent \'#{sub_agent.name}\'. It already has a different parent: \'#{sub_agent.parent_agent.name}\'. Skipping this sub-agent.")
+            ADK.logger.error("Agent '#{@name}': Cannot adopt sub-agent '#{sub_agent.name}'. It already has a different parent: '#{sub_agent.parent_agent.name}'. Skipping this sub-agent.")
             next # Skip this sub-agent
           end
           # (If sub_agent.parent_agent == self, it's already correctly parented, do nothing extra here)
 
           # Verify session service consistency
-          if sub_agent.session_service.nil? && @session_service
-            ADK.logger.debug("Agent \'#{@name}\': Setting session_service for programmatic sub-agent \'#{sub_agent.name}\' to match parent.")
+          if sub_agent.instance_variable_get(:@session_service).nil? && @session_service
+            ADK.logger.debug("Agent '#{@name}': Setting session_service for programmatic sub-agent '#{sub_agent.name}' to match parent.")
             sub_agent.instance_variable_set(:@session_service, @session_service)
-          elsif sub_agent.session_service != @session_service && @session_service # Warn if different and parent has one
-            ADK.logger.warn("Agent \'#{@name}\': Programmatic sub-agent \'#{sub_agent.name}\' has a different session_service than parent.")
+          elsif sub_agent.instance_variable_get(:@session_service) != @session_service && @session_service # Warn if different and parent has one
+            ADK.logger.warn("Agent '#{@name}': Programmatic sub-agent '#{sub_agent.name}' has a different session_service than parent.")
           end
           @sub_agents << sub_agent
-          ADK.logger.info("Agent \'#{@name}\': Successfully instantiated and linked sub-agent \'#{sub_agent.name}\'.")
+          ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent.name}'.")
         end
-        ADK.logger.info("Agent \'#{@name}\' finished linking programmatic sub-agents. Total sub-agents: #{@sub_agents.length}")
+        ADK.logger.info("Agent '#{@name}' finished linking programmatic sub-agents. Total sub-agents: #{@sub_agents.length}")
       elsif definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
-        ADK.logger.info("Agent \'#{@name}\' attempting to instantiate sub-agents from definition: #{definition.sub_agent_names.to_a.inspect}")
+        ADK.logger.info("Agent '#{@name}' attempting to instantiate sub-agents from definition: #{definition.sub_agent_names.to_a.inspect}")
         definition.sub_agent_names.each do |sub_agent_name|
           begin
             sub_agent_definition = ADK::GlobalDefinitionRegistry.get(sub_agent_name)
@@ -636,13 +658,13 @@ module ADK
             if sub_agent.parent_agent.nil?
               sub_agent.instance_variable_set(:@parent_agent, self)
             elsif sub_agent.parent_agent != self # Should not happen if instantiated fresh, but defensive check
-              ADK.logger.error("Agent \'#{@name}\': Newly instantiated sub-agent \'#{sub_agent.name}\' unexpectedly already has a different parent: \'#{sub_agent.parent_agent.name}\'. Skipping.")
+              ADK.logger.error("Agent '#{@name}': Newly instantiated sub-agent '#{sub_agent.name}' unexpectedly already has a different parent: '#{sub_agent.parent_agent.name}'. Skipping.")
               next # Skip this sub-agent
             end
             # (If sub_agent.parent_agent == self, it's already fine)
 
             @sub_agents << sub_agent
-            ADK.logger.info("Agent \'#{@name}\': Successfully instantiated and linked sub-agent \'#{sub_agent_name}\'.")
+            ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent_name}'.")
           rescue ArgumentError => e # Catch errors from ADK::Agent.new (e.g. definition issues)
             ADK.logger.error("Agent '#{@name}': ArgumentError instantiating sub-agent '#{sub_agent_name}': #{e.message}")
           rescue StandardError => e
@@ -670,24 +692,11 @@ module ADK
       tool_class = is_tool_class ? tool : tool.class
 
       # --- Determine Tool Name with Fallbacks --- #
-      metadata = tool_class.tool_metadata # No rescue - let errors propagate if metadata itself fails
-      tool_name = metadata[:name]&.to_sym
-
-      if tool_name.nil? || tool_name == :''
-        # Check deprecated @tool_name
-        if tool_class.instance_variable_defined?(:@tool_name)
-          tool_name = tool_class.instance_variable_get(:@tool_name)&.to_sym
-          ADK.logger.debug("Agent '#{name}' add_tool: using name from deprecated @tool_name: #{tool_name.inspect}")
-        elsif tool_class.respond_to?(:inferred_name)
-          # Try inference
-          tool_name = tool_class.inferred_name
-          ADK.logger.debug("Agent '#{name}' add_tool: using inferred name: #{tool_name.inspect}")
-        end
-      end
+      tool_name = get_tool_name_from_class(tool_class) # Use the new helper
       # --- End Determine Tool Name --- #
 
       # Validate name was found
-      unless tool_name && tool_name != :''
+      unless tool_name # The helper returns nil if no valid name is found
         ADK.logger.error("Agent '#{name}' add_tool: Could not determine tool name for class #{tool_class}. Cannot add tool.")
         return false # Explicitly return false
       end
@@ -710,12 +719,13 @@ module ADK
     # @return [Array<ADK::Tool>] Array of tool instances
     def tools
       @tool_registry.tools.values.map do |tool_class|
-        # Get name reliably using the unified metadata method
-        tool_name = tool_class.tool_metadata[:name]
+        # Get name reliably using the new helper method
+        tool_name = get_tool_name_from_class(tool_class)
         if tool_name
           @tool_registry.create_instance(tool_name)
         else
-          ADK.logger.warn("Agent '#{name}': Skipping tool instance creation for class #{tool_class} as it has no retrievable name.")
+          # This branch should ideally not be hit frequently if registration robustly requires a name.
+          ADK.logger.warn("Agent '#{name}': Skipping tool instance creation for class #{tool_class} as its name could not be determined post-registration.")
           nil
         end
       end.compact
@@ -740,13 +750,12 @@ module ADK
       end
 
       # Get name via metadata method
-      metadata = tool_class.tool_metadata # <-- Revert to getting metadata hash first
-      tool_name = metadata[:name]&.to_sym # <-- Revert to checking :name key
+      tool_name = get_tool_name_from_class(tool_class) # Use the new helper
       ADK.logger.debug("[register_tool_class] Determined tool name: #{tool_name.inspect} for class #{tool_class.inspect}")
 
-      unless tool_name
+      unless tool_name # Helper returns nil if no valid name
         # Use logger method, not direct access
-        ADK.logger.error("Agent '#{name}': Tool class #{tool_class} missing name in its metadata. Cannot register.") # <-- Revert error message
+        ADK.logger.error("Agent '#{name}': Could not determine tool name for class #{tool_class}. Cannot register.") # Consistent error message
         return false
       end
 
@@ -871,23 +880,23 @@ module ADK
         session_service.append_event(session_id: session_id, event: final_agent_event)
       rescue StandardError => e
         # Log failure to append the *final* event, but still return it
-        ADK.logger.error("Failed to append final agent event for session \'#{session_id}\': #{e.class} - #{e.message}")
+        ADK.logger.error("Failed to append final agent event for session '#{session_id}': #{e.class} - #{e.message}")
       end
       # --------------------------- #
 
       # --- MAS: Store result in session state if output_key is defined --- #
       if @definition.respond_to?(:output_key) && @definition.output_key && final_agent_event
         output_value = final_agent_event.content # Store the entire content hash
-        ADK.logger.info("Agent \'#{@name}\' storing output to session state with key \'#{@definition.output_key}\' for session \'#{session_id}\'. Value: #{output_value.inspect}")
+        ADK.logger.info("Agent '#{@name}' storing output to session state with key '#{@definition.output_key}' for session '#{session_id}'. Value: #{output_value.inspect}")
         begin
           # Ensure session_service has set_state. Add if missing for base/inmemory.
           if session_service.respond_to?(:set_state)
             session_service.set_state(session_id: session_id, key: @definition.output_key, value: output_value)
           else
-            ADK.logger.warn("Agent \'#{@name}\': Session service does not support :set_state. Cannot store output for key \'#{@definition.output_key}\'.")
+            ADK.logger.warn("Agent '#{@name}': Session service does not support :set_state. Cannot store output for key '#{@definition.output_key}'.")
           end
         rescue StandardError => e
-          ADK.logger.error("Agent \'#{@name}\': Failed to set state for key \'#{@definition.output_key}\' in session \'#{session_id}\': #{e.class} - #{e.message}")
+          ADK.logger.error("Agent '#{@name}': Failed to set state for key '#{@definition.output_key}' in session '#{session_id}': #{e.class} - #{e.message}")
         end
       end
       # --- End MAS State Management --- #
@@ -896,6 +905,36 @@ module ADK
     end
 
     private
+
+    # Helper method to consistently determine the tool name from a tool class.
+    # Uses metadata, then deprecated @tool_name, then inferred_name.
+    def get_tool_name_from_class(tool_class)
+      return nil unless tool_class.is_a?(Class) && tool_class < ADK::Tool
+
+      begin
+        metadata = tool_class.tool_metadata
+      rescue StandardError => e
+        ADK.logger.error("Error calling tool_metadata on #{tool_class}: #{e.class} - #{e.message} - Backtrace: #{e.backtrace.first(3).join(' | ')}")
+        metadata = {} # Default to empty hash if metadata call fails, for diagnosis
+      end
+      name = metadata[:name]&.to_sym
+
+      if name.nil? || name == :''
+        # Check deprecated @tool_name (instance variable on the class itself)
+        if tool_class.instance_variable_defined?(:@tool_name)
+          name = tool_class.instance_variable_get(:@tool_name)&.to_sym
+          # ADK.logger.debug { "get_tool_name_from_class: Using name from deprecated @tool_name for #{tool_class}: #{name.inspect}" } if name
+        end
+
+        # If still no name, try inferred_name as a primary fallback if metadata[:name] is missing
+        if (name.nil? || name == '') && tool_class.respond_to?(:inferred_name)
+          name = tool_class.inferred_name
+          # ADK.logger.debug { "get_tool_name_from_class: Using inferred_name for #{tool_class}: #{name.inspect}" } if name
+        end
+      end
+
+      (name && name != :'') ? name : nil
+    end
 
     # Discovers and loads tool definition files from specified paths.
     # @param paths [Array<String>] An array of directory paths to search.
