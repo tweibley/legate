@@ -4,16 +4,37 @@
 require 'spec_helper'
 
 RSpec.describe ADK::Planner do
+  # Mock agent definition with delegation_targets
+  let(:agent_definition_without_delegation) do
+    instance_double(ADK::AgentDefinition, 
+                   respond_to?: true, 
+                   delegation_targets: nil)
+  end
+  
+  let(:agent_definition_with_delegation) do
+    instance_double(ADK::AgentDefinition, 
+                   respond_to?: true, 
+                   delegation_targets: [:target_agent])
+  end
+
   # Mock basic metadata for tools used in planner tests
   let(:echo_tool_metadata) { { name: :echo, description: 'Echoes input', parameters: { message: { required: true } } } }
   let(:mock_agent_metadata) { [echo_tool_metadata] } # Default metadata for most agent mocks
   let(:agent_with_echo) {
     # Allow instruction call for this mock as well
-    instance_double(ADK::Agent, available_tools_metadata: mock_agent_metadata, name: 'test_agent', instruction: nil)
+    instance_double(ADK::Agent, 
+                   available_tools_metadata: mock_agent_metadata, 
+                   name: 'test_agent', 
+                   instruction: nil,
+                   definition: agent_definition_without_delegation)
   }
   let(:agent_without_tools) {
     # Allow the call to instruction and return nil
-    instance_double(ADK::Agent, available_tools_metadata: [], name: 'test_agent', instruction: nil)
+    instance_double(ADK::Agent, 
+                   available_tools_metadata: [], 
+                   name: 'test_agent', 
+                   instruction: nil,
+                   definition: agent_definition_without_delegation)
   }
 
   # Use agent_without_tools as the default agent for most tests
@@ -239,6 +260,28 @@ RSpec.describe ADK::Planner do
                             [{ 'tool_name' => 'echo', 'parameters' => { 'message' => 'Hello' } }])
       expect(result.first[:params].keys.first).to be_a(Symbol)
     end
+    
+    context 'with delegation targets' do
+      let(:agent_with_delegation) do
+        instance_double(ADK::Agent, 
+                       available_tools_metadata: mock_agent_metadata, 
+                       name: 'test_agent', 
+                       instruction: nil,
+                       definition: agent_definition_with_delegation)
+      end
+      
+      let(:planner_with_delegation) { described_class.new(agent: agent_with_delegation, logger: mock_logger) }
+      
+      it 'converts agent_transfer_to_X tools to delegate_task steps' do
+        result = planner_with_delegation.send(:validate_and_format_multi_step_plan,
+                                            [{ 'tool_name' => 'agent_transfer_to_target_agent', 'parameters' => { 'task' => 'Do something' } }])
+        expect(result).to eq([{ 
+                              tool: :delegate_task, 
+                              params: { agent_name: :target_agent, task: 'Do something' },
+                              step_type: :agent_transfer
+                            }])
+      end
+    end
   end
 
   describe '#fallback_plan' do
@@ -283,38 +326,99 @@ RSpec.describe ADK::Planner do
         }
       }
     end
-    # Planner instance for these tests (can use default agent_without_tools)
-    let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
+    
+    # Tests with no delegation targets
+    context 'with no delegation targets' do
+      # Planner instance for these tests (can use default agent_without_tools)
+      let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
 
-    it 'returns a message when no tools are available' do
-      # Stub the call on the specific planner instance for this test
-      allow(planner.agent).to receive(:available_tools_metadata).and_return([])
-      expect(planner.send(:format_tools_for_prompt)).to eq('No tools available.')
-    end
+      it 'returns a message when no tools or delegation targets are available' do
+        # Stub the call on the specific planner instance for this test
+        allow(planner.agent).to receive(:available_tools_metadata).and_return([])
+        # Mock the delegation targets method to return empty
+        allow(planner).to receive(:format_delegation_targets).and_return('')
+        
+        expect(planner.send(:format_tools_for_prompt)).to eq('No tools or delegable agents available.')
+      end
 
-    it 'formats a tool with no parameters' do
-      allow(planner.agent).to receive(:available_tools_metadata).and_return([tool_no_params_metadata])
-      result = planner.send(:format_tools_for_prompt)
-      expect(result).to include('Tool Name: test')
-      expect(result).to include('Description: Test tool')
-      expect(result).to include("Parameters:\n  None")
-    end
+      it 'formats a tool with no parameters' do
+        allow(planner.agent).to receive(:available_tools_metadata).and_return([tool_no_params_metadata])
+        allow(planner).to receive(:format_delegation_targets).and_return('')
+        
+        result = planner.send(:format_tools_for_prompt)
+        expect(result).to include('Tool Name: test')
+        expect(result).to include('Description: Test tool')
+        expect(result).to include("Parameters:\n  None")
+      end
 
-    it 'formats a tool with parameters' do
-      allow(planner.agent).to receive(:available_tools_metadata).and_return([tool_with_params_metadata])
-      result = planner.send(:format_tools_for_prompt)
-      expect(result).to include('Tool Name: parameterized')
-      expect(result).to include('Description: Tool with params')
-      expect(result).to include('required_param (string, required)')
-      expect(result).to include('optional_param (number, optional)')
-    end
+      it 'formats a tool with parameters' do
+        allow(planner.agent).to receive(:available_tools_metadata).and_return([tool_with_params_metadata])
+        allow(planner).to receive(:format_delegation_targets).and_return('')
+        
+        result = planner.send(:format_tools_for_prompt)
+        expect(result).to include('Tool Name: parameterized')
+        expect(result).to include('Description: Tool with params')
+        expect(result).to include('required_param (string, required)')
+        expect(result).to include('optional_param (number, optional)')
+      end
 
-    it 'formats multiple tools' do
-      allow(planner.agent).to receive(:available_tools_metadata).and_return([tool_no_params_metadata,
+      it 'formats multiple tools' do
+        allow(planner.agent).to receive(:available_tools_metadata).and_return([tool_no_params_metadata,
                                                                              tool_with_params_metadata])
-      result = planner.send(:format_tools_for_prompt)
-      expect(result).to include('Tool Name: test')
-      expect(result).to include('Tool Name: parameterized')
+        allow(planner).to receive(:format_delegation_targets).and_return('')
+        
+        result = planner.send(:format_tools_for_prompt)
+        expect(result).to include('Tool Name: test')
+        expect(result).to include('Tool Name: parameterized')
+      end
+    end
+    
+    # Tests with delegation targets
+    context 'with delegation targets' do
+      let(:agent_with_delegation) do
+        instance_double(ADK::Agent, 
+                       available_tools_metadata: [], 
+                       name: 'test_agent', 
+                       instruction: nil,
+                       definition: agent_definition_with_delegation)
+      end
+      
+      let(:planner_with_delegation) { described_class.new(agent: agent_with_delegation, logger: mock_logger) }
+      
+      it 'combines tools and delegation targets' do
+        allow(agent_with_delegation).to receive(:available_tools_metadata).and_return([tool_no_params_metadata])
+        allow(planner_with_delegation).to receive(:format_delegation_targets).and_return("Tool Name: agent_transfer_to_target_agent")
+        
+        result = planner_with_delegation.send(:format_tools_for_prompt)
+        expect(result).to include('Tool Name: test')
+        expect(result).to include('Tool Name: agent_transfer_to_target_agent')
+      end
+    end
+  end
+  
+  describe '#format_delegation_targets' do
+    let(:agent_with_delegation) do
+      instance_double(ADK::Agent, 
+                     available_tools_metadata: [], 
+                     name: 'test_agent', 
+                     instruction: nil,
+                     definition: agent_definition_with_delegation)
+    end
+    
+    let(:planner_with_delegation) { described_class.new(agent: agent_with_delegation, logger: mock_logger) }
+    
+    it 'returns empty string when no delegation targets exist' do
+      result = planner.send(:format_delegation_targets)
+      expect(result).to eq('')
+    end
+    
+    it 'formats delegation targets as tools' do
+      target_def = instance_double(ADK::AgentDefinition, description: 'Target agent for tests')
+      allow(ADK::GlobalDefinitionRegistry).to receive(:get).with(:target_agent).and_return(target_def)
+      
+      result = planner_with_delegation.send(:format_delegation_targets)
+      expect(result).to include('Tool Name: agent_transfer_to_target_agent')
+      expect(result).to include('Target agent for tests')
     end
   end
 
@@ -324,7 +428,11 @@ RSpec.describe ADK::Planner do
 
     context 'when agent has an instruction' do
       let(:instruction) { 'Be concise.' }
-      let(:agent_with_instruction) { instance_double(ADK::Agent, instruction: instruction) }
+      let(:agent_with_instruction) do 
+        instance_double(ADK::Agent, 
+                       instruction: instruction, 
+                       definition: agent_definition_without_delegation)
+      end
       let(:planner) { described_class.new(agent: agent_with_instruction, logger: mock_logger) }
 
       it 'prepends the instruction to the prompt' do
@@ -337,7 +445,11 @@ RSpec.describe ADK::Planner do
     end
 
     context 'when agent instruction is nil' do
-      let(:agent_without_instruction) { instance_double(ADK::Agent, instruction: nil) }
+      let(:agent_without_instruction) do
+        instance_double(ADK::Agent, 
+                       instruction: nil, 
+                       definition: agent_definition_without_delegation)
+      end
       let(:planner) { described_class.new(agent: agent_without_instruction, logger: mock_logger) }
 
       it 'does not include the instruction block' do
@@ -350,7 +462,11 @@ RSpec.describe ADK::Planner do
     end
 
     context 'when agent instruction is an empty string' do
-      let(:agent_with_empty_instruction) { instance_double(ADK::Agent, instruction: '   ') }
+      let(:agent_with_empty_instruction) do 
+        instance_double(ADK::Agent, 
+                       instruction: '   ', 
+                       definition: agent_definition_without_delegation)
+      end
       let(:planner) { described_class.new(agent: agent_with_empty_instruction, logger: mock_logger) }
 
       it 'does not include the instruction block' do
@@ -359,6 +475,21 @@ RSpec.describe ADK::Planner do
         expect(prompt).to start_with('You are an AI planner')
         expect(prompt).to include("User Request: \"#{task}\"")
         expect(prompt).to include(tools_description)
+      end
+    end
+    
+    context 'with delegation targets' do
+      let(:agent_with_delegation) do
+        instance_double(ADK::Agent, 
+                       instruction: nil, 
+                       definition: agent_definition_with_delegation)
+      end
+      let(:planner_with_delegation) { described_class.new(agent: agent_with_delegation, logger: mock_logger) }
+      
+      it 'includes delegation instructions when delegation targets exist' do
+        prompt = planner_with_delegation.send(:build_multi_step_gemini_prompt, task, tools_description)
+        expect(prompt).to include('Important: You can delegate tasks to other specialized agents')
+        expect(prompt).to include('agent_transfer_to_')
       end
     end
 
