@@ -280,7 +280,7 @@ module ADK
         definition_exists = false
         
         # Check in-memory first
-        if ADK::GlobalDefinitionRegistry.find(name_sym)
+        if ADK::AgentDefinitionStore.find(name_sym)
           definition_exists = true
         else
           # Then check Redis
@@ -300,7 +300,7 @@ module ADK
         
         if yes?("Are you sure you want to permanently delete agent definition '#{name}'? [y/N]", :yellow)
           redis_deleted = ADK::AgentDefinitionStore.delete_from_redis(name_sym)
-          ADK::GlobalDefinitionRegistry.remove(name_sym)
+          ADK::AgentDefinitionStore.remove(name_sym)
           if redis_deleted
             say "Agent definition '#{name}' deleted successfully.", :green
           else

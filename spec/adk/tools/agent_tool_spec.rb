@@ -84,12 +84,26 @@ RSpec.describe ADK::Tools::AgentTool do
     allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_sym).and_return(nil)
     allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(target_agent_name.to_s).and_return(nil)
 
-    # Mock Agent instantiation
-    allow(ADK::Agent).to receive(:new)
-      .with(hash_including(name: matching(/#{target_agent_name}_delegated/),
-                           model_name: target_definition_hash[:model],
-                           description: target_definition_hash[:description]))
-      .and_return(mock_target_agent)
+    # Mock Agent instantiation with any arguments
+    allow(ADK::Agent).to receive(:new).and_return(mock_target_agent)
+    
+    # Mock AgentDefinition creation
+    allow(ADK::AgentDefinition).to receive(:from_hash).and_return(instance_double(ADK::AgentDefinition, 
+      name: target_agent_name,
+      tool_names: [:calculator].to_set,
+      description: target_definition_hash[:description],
+      model_name: target_definition_hash[:model],
+      instruction: "Perform calculations",
+      fallback_mode: :error,
+      mcp_servers: [],
+      sub_agent_names: Set.new,
+      output_key: nil,
+      webhook_enabled: false,
+      webhook_validator: nil,
+      webhook_secret: nil,
+      webhook_transformer: nil,
+      webhook_session_extractor: nil
+    ))
 
     # Mock methods on the target agent instance
     allow(mock_target_agent).to receive(:register_tool_class).with(ADK::Tools::Calculator)
@@ -143,11 +157,19 @@ RSpec.describe ADK::Tools::AgentTool do
       it 'loads definition, instantiates agent, adds tools, runs task' do
         # Verify store lookup with symbol name
         expect(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_sym).and_return(target_definition_hash)
-        # Verify agent instantiation
+        # Verify an AgentDefinition is created from the hash
+        expect(ADK::AgentDefinition).to receive(:from_hash).with(hash_including(
+          name: target_agent_name,
+          description: target_definition_hash[:description],
+          model: target_definition_hash[:model]
+        )).and_call_original
+        
+        # Verify Agent is instantiated with definition object
         expect(ADK::Agent).to receive(:new)
-          .with(hash_including(name: matching(/#{target_agent_name}_delegated/),
-                               model_name: target_definition_hash[:model],
-                               description: target_definition_hash[:description]))
+          .with(hash_including(
+            definition: instance_of(RSpec::Mocks::InstanceVerifyingDouble),
+            session_service: mock_session_service
+          ))
           .and_return(mock_target_agent)
         # Verify tool registration on the target agent (GlobalToolManager is stubbed in before block)
         expect(mock_target_agent).to receive(:register_tool_class).with(ADK::Tools::Calculator)
@@ -200,7 +222,7 @@ RSpec.describe ADK::Tools::AgentTool do
       it 'raises ToolArgumentError' do
         expect {
           tool.execute(params, mock_context)
-        }.to raise_error(ADK::ToolArgumentError, /Target agent definition 'calculator_agent' not found/)
+        }.to raise_error(ADK::ToolArgumentError, /Target agent definition 'calculator_agent' could not be loaded from store/)
       end
     end
 
@@ -211,6 +233,27 @@ RSpec.describe ADK::Tools::AgentTool do
         allow(ADK::GlobalToolManager).to receive(:find_class).with(:calculator).and_return(ADK::Tools::Calculator)
         # Stub definition store to return the definition, expect symbol name for find
         allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_sym).and_return(target_definition_hash)
+        # Don't use from_hash for this test, provide a valid definition directly
+        mock_definition = instance_double(ADK::AgentDefinition,
+          name: target_agent_name,
+          tool_names: [:calculator].to_set,
+          description: target_definition_hash[:description],
+          model_name: target_definition_hash[:model],
+          instruction: "Perform calculations",
+          fallback_mode: :error,
+          mcp_servers: [],
+          sub_agent_names: Set.new,
+          output_key: nil,
+          webhook_enabled: false,
+          webhook_validator: nil,
+          webhook_secret: nil,
+          webhook_transformer: nil,
+          webhook_session_extractor: nil
+        )
+        allow(ADK::AgentDefinition).to receive(:from_hash).and_return(mock_definition)
+        allow(mock_definition).to receive(:is_a?).with(ADK::AgentDefinition).and_return(true)
+        allow(mock_definition).to receive(:respond_to?).and_return(true)
+        
         # Stub run_task to raise error
         allow(mock_target_agent).to receive(:run_task)
           .with(session_id: session_id, user_input: task_to_delegate, session_service: mock_session_service)

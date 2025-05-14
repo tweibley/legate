@@ -50,38 +50,43 @@ module ADK
           raise ADK::ToolArgumentError, msg
         end
 
-        # Massage the hash: Ensure keys are symbols and handle specific field transformations.
-        # ADK::AgentDefinitionStore.load_from_redis might already return symbolized keys,
-        # but this is a defensive measure.
+        # Ensure we have essential fields for a valid definition
         definition_hash = definition_hash.transform_keys(&:to_sym) if definition_hash.respond_to?(:transform_keys)
-
-        # Handle 'tools' field: parse if JSON string, then rename to 'tool_names'
+        
+        # Ensure the definition has all required fields
+        definition_hash[:name] = target_agent_name_str.to_sym unless definition_hash.key?(:name)
+        definition_hash[:description] = definition_hash[:description] || "Delegated agent #{target_agent_name_str}"
+        definition_hash[:instruction] = definition_hash[:instruction] || "Perform the delegated task: #{task_to_delegate}"
+        
+        # Handle 'tools' field: parse if JSON string, convert to array of symbols
         if definition_hash.key?(:tools)
-          if definition_hash[:tools].is_a?(String)
+          tool_array = if definition_hash[:tools].is_a?(String)
             begin
-              parsed_tools = JSON.parse(definition_hash[:tools])
-              definition_hash[:tools] = parsed_tools.is_a?(Array) ? parsed_tools : []
+              parsed = JSON.parse(definition_hash[:tools])
+              parsed.is_a?(Array) ? parsed : []
             rescue JSON::ParserError
               ADK.logger.warn("AgentTool: Could not parse :tools JSON for agent '#{target_agent_name_str}'. Defaulting to empty tools array.")
-              definition_hash[:tools] = []
+              []
             end
+          else
+            Array(definition_hash[:tools])
           end
-          definition_hash[:tool_names] = definition_hash.delete(:tools)
-        elsif !definition_hash.key?(:tool_names) # Ensure tool_names is at least an empty array if not present
-            definition_hash[:tool_names] = []
+          
+          # Convert to symbols for the definition
+          definition_hash[:tools] = tool_array.map(&:to_sym)
+        elsif !definition_hash.key?(:tool_names) # Ensure some form of tools field exists
+          definition_hash[:tools] = []
         end
         
-        # Convert any string tool names to symbols for use with Set
-        if definition_hash[:tool_names].is_a?(Array)
-          definition_hash[:tool_names] = definition_hash[:tool_names].map(&:to_sym)
-        end
-
-
-        # Handle 'mcp_servers_json' field: rename to 'mcp_servers'
+        # Handle 'mcp_servers_json' field: if present and no mcp_servers, rename
         if definition_hash.key?(:mcp_servers_json) && !definition_hash.key?(:mcp_servers)
           definition_hash[:mcp_servers] = definition_hash.delete(:mcp_servers_json)
         end
-        # End massage
+        
+        # Ensure fallback_mode is symbolized
+        if definition_hash[:fallback_mode].is_a?(String)
+          definition_hash[:fallback_mode] = definition_hash[:fallback_mode].to_sym
+        end
 
         # Convert hash to an ADK::AgentDefinition object
         target_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
