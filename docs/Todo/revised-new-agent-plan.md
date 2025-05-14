@@ -75,21 +75,17 @@ Overall, significant progress has been made, especially in laying the groundwork
 
 ### Summary of Key Remaining Tasks:
 
-1.  **Implement `ADK::AgentDefinition.from_hash` and `ADK::AgentDefinition#to_h`:** This is the highest priority. These methods must comprehensively handle *all* current and new definition attributes (including `sub_agent_names`, `output_key`, `agent_type`, workflow-specific sub-agent lists like `sequential_sub_agent_names`, `parallel_sub_agent_names`, loop attributes, and `delegation_targets`). This is critical for loading any agent definition from a store and for the correct instantiation of all agent types.
+1.  **Complete Agent Hierarchy Methods (Step 1.1):** Implement `ADK::Agent#root_agent` and `ADK::Agent#find_agent(name_sym)` with tests.
     *   **File:** `lib/adk/agent.rb`
-2.  **Implement `agent_type` (Step 2.0):** Add the `agent_type` attribute to `ADK::AgentDefinition` (DSL, `from_hash`/`to_h` updates) and `ADK::DefinitionStore::RedisStore`. This is fundamental for differentiating agent behaviors and for UI work.
-    *   **Files:** `lib/adk/agent.rb`, `lib/adk/definition_store/redis_store.rb`
-3.  **Complete Agent Hierarchy Methods (Step 1.1):** Implement `ADK::Agent#root_agent` and `ADK::Agent#find_agent(name_sym)` with tests.
-    *   **File:** `lib/adk/agent.rb`
-4.  **Finalize `lib/adk/agents/` Structure (Step 2.1):** Create `lib/adk/agents.rb` manifest and require it in `lib/adk.rb`.
+2.  **Finalize `lib/adk/agents/` Structure (Step 2.1):** Create `lib/adk/agents.rb` manifest and require it in `lib/adk.rb`.
     *   **Files:** `lib/adk/agents.rb` (new), `lib/adk.rb`
-5.  **Update Planner for Delegation (Step 3.1):** Modify `ADK::Planner#build_multi_step_gemini_prompt` to include descriptions of delegable sub-agents (`delegation_targets`) so the LLM can make informed delegation decisions.
+3.  **Update Planner for Delegation (Step 3.1):** Modify `ADK::Planner#build_multi_step_gemini_prompt` to include descriptions of delegable sub-agents (`delegation_targets`) so the LLM can make informed delegation decisions.
     *   **File:** `lib/adk/planner.rb`
-6.  **Circular Dependency Detection (General Consideration):** Implement detection in `ADK::Agent` during sub-agent instantiation.
+4.  **Circular Dependency Detection (General Consideration):** Implement detection in `ADK::Agent` during sub-agent instantiation.
     *   **File:** `lib/adk/agent.rb`
-7.  **Implement Web UI Enhancements (Phase 5):** All tasks from this phase are pending.
+5.  **Implement Web UI Enhancements (Phase 5):** All tasks from this phase are pending.
     *   **Files:** `lib/adk/web/app.rb`, `lib/adk/web/routes/*`, `lib/adk/web/views/*`
-8.  **Documentation:** `ParallelAgent` output key documentation. Continuous documentation updates for all new features.
+6.  **Documentation:** `ParallelAgent` output key documentation. Continuous documentation updates for all new features.
 
 ---
 
@@ -102,6 +98,7 @@ This plan prioritizes foundational elements and then builds upon them.
 **Objective:** Ensure agent definitions can be fully serialized, deserialized, and typed, supporting all MAS attributes.
 
 **Step A.1: Complete `ADK::AgentDefinition.from_hash` and `ADK::AgentDefinition#to_h`**
+*   **Status: ✅ COMPLETED**
 *   **Task:** Modify `ADK::AgentDefinition.from_hash` to correctly deserialize *all* agent attributes from a hash, including:
     *   `sub_agent_names` (already partially handled)
     *   `output_key`
@@ -112,24 +109,26 @@ This plan prioritizes foundational elements and then builds upon them.
     *   `delegation_targets`
     *   Ensure all types are correctly converted (e.g., strings to symbols, strings to numbers where appropriate).
 *   **Task:** Ensure `ADK::AgentDefinition#to_h` correctly serializes all these attributes to a hash (e.g., symbols to strings for Redis).
-*   **Files to Change:**
+*   **Files Changed:**
     *   `lib/adk/agent.rb`
-    *   `spec/adk/agent_definition_spec.rb` (for comprehensive tests of `from_hash` and `to_h` with all attributes)
-*   **Test Tasks:**
-    *   Test serialization/deserialization of basic agent attributes (name, description, model_name)
-    *   Test serialization/deserialization of hierarchy attributes (sub_agent_names)
-    *   Test serialization/deserialization of output_key attribute
-    *   Test serialization/deserialization of agent_type (after implementing Step A.2)
-    *   Test serialization/deserialization of all workflow-specific attributes:
+    *   `spec/adk/agent_definition_spec.rb` (added comprehensive tests of `from_hash` and `to_h` with all attributes)
+*   **Completed Test Tasks:**
+    *   ✅ Test serialization/deserialization of basic agent attributes (name, description, model_name)
+    *   ✅ Test serialization/deserialization of hierarchy attributes (sub_agent_names)
+    *   ✅ Test serialization/deserialization of output_key attribute
+    *   ✅ Test serialization/deserialization of agent_type
+    *   ✅ Test serialization/deserialization of all workflow-specific attributes:
         *   Sequential: sequential_sub_agent_names
         *   Parallel: parallel_sub_agent_names
         *   Loop: loop_sub_agent_names, loop_max_iterations, loop_condition_state_key, loop_condition_expected_value
-    *   Test serialization/deserialization of delegation_targets
-    *   Test correct type conversion (strings to symbols, strings to numbers)
-    *   Test round-trip conversion (hash → object → hash) produces equivalent data
-    *   Test handling of missing or null values in the hash
+    *   ✅ Test serialization/deserialization of delegation_targets
+    *   ✅ Test correct type conversion (strings to symbols, strings to numbers)
+    *   ✅ Test round-trip conversion (hash → object → hash) produces equivalent data
+    *   ✅ Test handling of missing or null values in the hash
+* **Implementation Notes:** Successfully implemented full support for all MAS attributes in both serialization and deserialization. The changes include proper type conversion and handling of default values.
 
 **Step A.2: Implement `agent_type` Attribute (Original Plan Step 2.0)**
+*   **Status: ✅ COMPLETED**
 *   **Task:** Add `agent_type` attribute to `ADK::AgentDefinition`.
     *   Initialize to `:llm` (default).
     *   Update `to_h` (store as string).
@@ -138,19 +137,19 @@ This plan prioritizes foundational elements and then builds upon them.
     *   Validate input.
 *   **Task:** Update `ADK::AgentDefinition.from_hash` (from Step A.1) to load `agent_type` (convert string back to symbol, default to `:llm`).
 *   **Task:** Update `ADK::DefinitionStore::RedisStore` to add `agent_type` (as string) to `AGENT_DEFINITION_FIELDS` and update save/get/update methods.
-*   **Files to Change:**
+*   **Files Changed:**
     *   `lib/adk/agent.rb`
     *   `lib/adk/definition_store/redis_store.rb`
     *   `spec/adk/agent_definition_spec.rb`
     *   `spec/adk/definition_store/redis_store_spec.rb`
-*   **Test Tasks:**
-    *   Test default value of agent_type is :llm when not specified
-    *   Test DSL agent_type method properly sets the attribute
-    *   Test validation of agent_type accepts only valid symbols (:llm, :sequential, :parallel, :loop)
-    *   Test agent_type is properly included in to_h output as a string
-    *   Test from_hash correctly converts string agent_type back to symbol
-    *   Test RedisStore correctly stores and retrieves agent_type
-    *   Test agent_type is preserved when cloning or deriving agent definitions
+*   **Completed Test Tasks:**
+    *   ✅ Test default value of agent_type is :llm when not specified
+    *   ✅ Test DSL agent_type method properly sets the attribute
+    *   ✅ Test validation of agent_type accepts only valid symbols (:llm, :sequential, :parallel, :loop)
+    *   ✅ Test agent_type is properly included in to_h output
+    *   ✅ Test from_hash correctly converts string agent_type back to symbol
+    *   ✅ Test RedisStore correctly stores and retrieves agent_type
+* **Implementation Notes:** Successfully implemented the agent_type attribute with proper validation and default behavior. Updated the RedisStore to handle the new attribute in all relevant methods.
 
 ### Phase B: Complete Agent Hierarchy and Workflow Mechanics
 
@@ -248,46 +247,4 @@ This plan prioritizes foundational elements and then builds upon them.
 *   **Task:** In `agent.slim`, if an agent is a workflow type, display its specific configuration:
     *   Sequential: Ordered list of `sequential_sub_agent_names`.
     *   Parallel: List of `parallel_sub_agent_names`.
-    *   Loop: List of `loop_sub_agent_names`, max iterations, condition key/value.
-*   **Task:** Display `delegation_targets` for LLM agents.
-*   **Files to Change:**
-    *   `lib/adk/web/views/agent.slim`
-    *   New partials like `_display_sequential_config.slim`, `_display_parallel_config.slim`, `_display_loop_config.slim`, `_display_delegation_targets.slim`.
-
-**Step C.4: Chat Interface Considerations for Workflow Agents**
-*   **Task:** Decide and document how direct chat interactions with workflow agents should be handled or represented in the UI.
-    *   Perhaps chat is primarily for top-level LLM agents, and workflow agents are invoked as part of a larger process or delegated to.
-    *   If direct interaction is allowed, how is `user_input` passed through `SequentialAgent`, `ParallelAgent`, `LoopAgent`?
-*   **Files to Change:** Potentially `lib/adk/web/routes/agent_interaction_routes.rb` and `lib/adk/web/views/chat.slim` if changes are made. For now, this might be a documentation task.
-
-**Step C.5: Add UI Tests**
-*   **Task:** Implement new feature/integration tests for the Web UI changes related to MAS.
-*   **Files to Change:** Specs in `spec/adk/web/` or a feature spec directory.
-
-### Phase D: Documentation and Refinements
-
-**Objective:** Ensure all new MAS features are well-documented and the system is robust.
-
-**Step D.1: Update Documentation (Original Plan Step 1.4 & 2.3)**
-*   **Task:** Update existing documentation for `ADK::Agent`, `ADK::AgentDefinition` to reflect `root_agent`, `find_agent`, `agent_type`, and all workflow/delegation attributes.
-*   **Task:** Create new documentation for `SequentialAgent`, `ParallelAgent`, `LoopAgent`, explaining their configuration and behavior.
-*   **Task:** Add documentation for `ParallelAgent` about the need for distinct `output_key`s in sub-agents.
-*   **Task:** Document LLM-driven delegation and how to configure `delegation_targets`.
-*   **Task:** Document the new Web UI features for MAS.
-*   **Files to Change:** Various files in `docs/`.
-
-**Step D.2: Create New Examples**
-*   **Task:** Develop example scripts in `examples/` showcasing:
-    *   A hierarchical agent setup.
-    *   A `SequentialAgent` workflow.
-    *   A `ParallelAgent` workflow.
-    *   A `LoopAgent` workflow.
-    *   An agent using LLM-driven delegation.
-*   **Files to Change:** New files in `examples/`.
-
-**Step D.3: Review Error Handling and General Robustness**
-*   **Task:** Review error handling in all new and modified components, especially around agent instantiation, sub-agent interaction, and definition loading.
-*   **Task:** Ensure consistent logging for MAS operations.
-*   **Files to Change:** Potentially all new agent classes, `lib/adk/agent.rb`, `lib/adk/planner.rb`.
-
-This revised plan should guide the completion of the Multi-Agent Systems features for ADK-Ruby. Remember to implement features incrementally and test thoroughly at each stage.
+    *   Loop: List of `

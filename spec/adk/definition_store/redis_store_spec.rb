@@ -113,7 +113,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
   describe '#save_definition' do
     let(:save_args) {
       { name: agent_name, description: description, tools: tools, model: model, fallback_mode: fallback_mode,
-        mcp_servers_json: mcp_servers_json, webhook_enabled: webhook_enabled, webhook_secret: webhook_secret }
+        mcp_servers_json: mcp_servers_json, webhook_enabled: webhook_enabled, webhook_secret: webhook_secret,
+        agent_type: :sequential }
     }
 
     it 'successfully saves a valid definition using MULTI' do
@@ -128,6 +129,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       expect(mock_redis).to receive(:hset).with(agent_key, 'instruction', '') # Expect default instruction
       expect(mock_redis).to receive(:hset).with(agent_key, 'webhook_enabled', webhook_enabled.to_s)
       expect(mock_redis).to receive(:hset).with(agent_key, 'webhook_secret', webhook_secret || '')
+      expect(mock_redis).to receive(:hset).with(agent_key, 'persistent_status', 'stopped')
+      expect(mock_redis).to receive(:hset).with(agent_key, 'agent_type', 'sequential') # Check agent_type is saved
       expect(mock_redis).to receive(:sadd).with(agents_set_key, agent_name)
       expect(ADK.logger).to receive(:info).with("Agent definition '#{agent_name}' saved successfully.")
 
@@ -248,6 +251,14 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       }.to raise_error(ADK::DefinitionStore::StoreError,
                        /Unexpected error saving agent definition: #{unexpected_error.message}/)
     end
+
+    it 'saves with default llm agent_type if not specified' do
+      expect(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1, 1, 1, 1, 1, 1, 1])
+      expect(mock_redis).to receive(:hset).with(agent_key, 'agent_type', 'llm') # Check default
+      allow(mock_redis).to receive(:hset) # Allow other hsets
+      allow(mock_redis).to receive(:sadd)
+      expect(@store.save_definition(**save_args.merge(agent_type: nil))).to be true
+    end
   end
 
   describe '#get_definition' do
@@ -262,7 +273,9 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         mcp_servers_json,    # mcp_servers_json
         '',                  # instruction (default empty string)
         webhook_enabled.to_s, # webhook_enabled
-        webhook_secret || '' # webhook_secret
+        webhook_secret || '', # webhook_secret
+        'stopped',           # persistent_status
+        'sequential'         # agent_type
       ]
     end
     let(:expected_definition) do
@@ -275,7 +288,9 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         mcp_servers_json: mcp_servers_json,
         instruction: '',
         webhook_enabled: webhook_enabled,
-        webhook_secret: webhook_secret
+        webhook_secret: webhook_secret,
+        persistent_status: 'stopped',
+        agent_type: :sequential
       }
     end
 
@@ -292,7 +307,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         mcp_servers_json: JSON.generate([{ url: 'http://localhost:8080' }]),
         webhook_enabled: false,
         webhook_secret: nil,
-        persistent_status: 'stopped'
+        persistent_status: 'stopped',
+        agent_type: :sequential
       }
       # Mock redis values corresponding to the expected hash
       redis_values_get = [
@@ -304,7 +320,9 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         JSON.generate([{ url: 'http://localhost:8080' }]),
         '', # Instruction
         'false',
-        ''
+        '',
+        'stopped',
+        'sequential'
       ]
 
       expect(mock_redis).to receive(:hmget)
@@ -373,6 +391,24 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       values_other_fallback[fallback_index] = 'something_else' # Defaults to :error
       expect(mock_redis).to receive(:hmget).and_return(values_other_fallback)
       expect(@store.get_definition(agent_name)[:fallback_mode]).to eq(:error)
+    end
+
+    it 'correctly parses agent_type symbol' do
+      values_sequential = redis_hash_values.dup
+      agent_type_index = described_class::AGENT_DEFINITION_FIELDS.index('agent_type')
+      values_sequential[agent_type_index] = 'sequential'
+      expect(mock_redis).to receive(:hmget).and_return(values_sequential)
+      expect(@store.get_definition(agent_name)[:agent_type]).to eq(:sequential)
+
+      values_invalid_type = redis_hash_values.dup
+      values_invalid_type[agent_type_index] = 'invalid_type' # Defaults to :llm
+      expect(mock_redis).to receive(:hmget).and_return(values_invalid_type)
+      expect(@store.get_definition(agent_name)[:agent_type]).to eq(:llm)
+
+      values_missing_type = redis_hash_values.dup
+      values_missing_type[agent_type_index] = nil # Defaults to :llm
+      expect(mock_redis).to receive(:hmget).and_return(values_missing_type)
+      expect(@store.get_definition(agent_name)[:agent_type]).to eq(:llm)
     end
 
     it 'raises StoreError on Redis error' do
@@ -628,7 +664,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
     let(:expected_list) do
       [
         {
-          name: :agent1, # Expect symbols from transform_keys
+          name: :agent1, # Expect symbols
           description: 'Desc 1',
           model: ADK::Agent::DEFAULT_MODEL,
           tools: [], # Expect empty array from JSON parse/default
@@ -637,7 +673,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
           instruction: '',
           webhook_enabled: webhook_enabled.to_s,
           webhook_secret: webhook_secret || '',
-          persistent_status: nil
+          persistent_status: nil,
+          agent_type: :llm  # Default agent type
         },
         {
           name: :agent2, # Expect symbols
@@ -649,7 +686,8 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
           instruction: '',
           webhook_enabled: webhook_enabled.to_s,
           webhook_secret: webhook_secret || '',
-          persistent_status: nil
+          persistent_status: nil,
+          agent_type: :llm  # Default agent type
         }
       ].sort_by { |h| h[:name] }
     end
