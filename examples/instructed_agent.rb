@@ -76,11 +76,10 @@ begin
   processed_2 = response_processor.send(:process_agent_response, result_event_2)
   puts processed_2[:display_content]
   # Expected: Agent might respond with planning failure because the task doesn't match its instructions.
-
 ensure
   puts "\nStopping agent '#{agent.name}'..."
   agent.stop
   puts 'Agent stopped.'
 end
 
-puts "\nExample finished." 
+puts "\nExample finished."

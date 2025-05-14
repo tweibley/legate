@@ -33,7 +33,7 @@ async_job_runner_definition = ADK::AgentDefinition.new.define do |a|
   a.name :async_job_runner
   a.description 'An agent that can start and check background jobs.'
   a.instruction 'You manage asynchronous jobs. Use start_sleepy_job to initiate them and check_job_status to monitor.'
-  a.use_tool :start_sleepy_job     # Provided by SleepyTool
+  a.use_tool :start_sleepy_job # Provided by SleepyTool
   a.use_tool :check_job_status # Provided by CheckJobStatusTool
 end
 

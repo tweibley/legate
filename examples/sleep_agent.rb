@@ -13,7 +13,7 @@ async_job_demo_definition = ADK::AgentDefinition.new.define do |a|
   a.name :async_job_demo_agent
   a.description 'An agent that starts a background job and can check its status.'
   a.instruction 'You can start sleepy jobs and check their status. Use start_sleepy_job to initiate, and the system might use check_job_status for monitoring.'
-  a.use_tool :start_sleepy_job   # Provided by ADK::Tools::SleepyTool
+  a.use_tool :start_sleepy_job # Provided by ADK::Tools::SleepyTool
   a.use_tool :check_job_status # Provided by ADK::Tools::CheckJobStatusTool
 end
 

@@ -13,7 +13,7 @@ require 'json'    # For payload generation
 
 # Configuration
 # Use environment variables for sensitive info like secrets and potentially the target URL
-# NOTE: The listener URL depends on the configuration in the *runner* script 
+# NOTE: The listener URL depends on the configuration in the *runner* script
 # (webhook_e2e_runner.rb) - Ensure the port and base_path match!
 listener_port = ENV.fetch('ADK_WEBHOOK_PORT', 9292) # Default if not set by runner
 listener_base_path = ENV.fetch('ADK_WEBHOOK_BASE_PATH', '/webhooks') # Default if not set
@@ -75,7 +75,7 @@ WebhookTool sent request. Listener responded with status: #{response_status}"
       puts "Listener Response Body (non-JSON): #{response_body_str}"
     end
     # Check if the listener accepted the request (202)
-    exit(0) if response_status == 202 
+    exit(0) if response_status == 202
     exit(1) # Exit with error if listener didn't return 202
   else
     # The WebhookTool itself failed (e.g., connection error)
@@ -83,7 +83,6 @@ WebhookTool sent request. Listener responded with status: #{response_status}"
     puts "\nError sending webhook via WebhookTool: #{result[:error_message]}"
     exit(1)
   end
-
 rescue ADK::ToolArgumentError => e
   ADK.logger.error "Tool configuration error: #{e.message}"
   puts "\nError: Invalid arguments provided to the WebhookTool. #{e.message}"
@@ -96,4 +95,4 @@ rescue StandardError => e
   ADK.logger.fatal "An unexpected error occurred: #{e.message}\n#{e.backtrace.join("\n")}"
   puts "\nAn unexpected error occurred: #{e.message}"
   exit(1)
-end 
+end

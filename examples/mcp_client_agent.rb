@@ -57,9 +57,9 @@ mcp_client_agent_definition = ADK::AgentDefinition.new.define do |a|
   a.description 'This agent connects to an external MCP server.'
   a.instruction 'You are an agent that can leverage tools from an MCP server. Please use them as needed.'
   # Pass the single mcp_server_config hash to the mcp_servers DSL method
-  a.mcp_servers mcp_server_config 
+  a.mcp_servers mcp_server_config
   # If there were native tools, they would be added here, e.g.:
-  # a.use_tool :calculator 
+  # a.use_tool :calculator
 end
 
 agent = ADK::Agent.new(definition: mcp_client_agent_definition)
