@@ -70,6 +70,11 @@ module ADK
         elsif !definition_hash.key?(:tool_names) # Ensure tool_names is at least an empty array if not present
             definition_hash[:tool_names] = []
         end
+        
+        # Convert any string tool names to symbols for use with Set
+        if definition_hash[:tool_names].is_a?(Array)
+          definition_hash[:tool_names] = definition_hash[:tool_names].map(&:to_sym)
+        end
 
 
         # Handle 'mcp_servers_json' field: rename to 'mcp_servers'

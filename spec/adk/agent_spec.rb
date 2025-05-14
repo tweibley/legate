@@ -52,6 +52,14 @@ end
 
 class MockToolNoName < ADK::Tool
   tool_description 'A tool without an explicit name.'
+  
+  def self.tool_metadata
+    { name: nil, description: 'A tool without an explicit name.' }
+  end
+  
+  def self.inferred_name
+    nil
+  end
 end
 
 class MockToolWithPending < ADK::Tool

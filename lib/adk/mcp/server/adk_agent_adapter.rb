@@ -113,7 +113,7 @@ module ADK
             definition_hash_from_redis = redis.hgetall(key)
 
             if definition_hash_from_redis.empty?
-              raise ADK::Mcp::Error, "Agent definition hash '#{agent_name}' not found in Redis or is empty."
+              raise ADK::Mcp::Error, "Agent definition '#{agent_name}' not found in Redis or is empty."
             end
 
             # Ensure all keys in the hash are symbols for from_hash consistency

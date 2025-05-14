@@ -277,21 +277,30 @@ module ADK
       desc 'delete NAME', "Delete an agent's definition"
       def delete(name)
         name_sym = name.to_sym
-        unless ADK::AgentDefinitionStore.find(name_sym)
+        definition_exists = false
+        
+        # Check in-memory first
+        if ADK::GlobalDefinitionRegistry.find(name_sym)
+          definition_exists = true
+        else
+          # Then check Redis
           begin
             definition_from_redis = ADK::AgentDefinitionStore.load_from_redis(name_sym)
-            unless definition_from_redis
-              say "Error: Agent definition '#{name}' not found.", :red
-              exit(1)
-            end
+            definition_exists = !definition_from_redis.nil?
           rescue Redis::BaseError => e
             say "Error: Could not connect to Redis to check agent definition. #{e.message}", :red
             exit(1)
           end
         end
+        
+        unless definition_exists
+          say "Error: Agent definition '#{name}' not found.", :red
+          exit(1)
+        end
+        
         if yes?("Are you sure you want to permanently delete agent definition '#{name}'? [y/N]", :yellow)
           redis_deleted = ADK::AgentDefinitionStore.delete_from_redis(name_sym)
-          ADK::AgentDefinitionStore.remove(name_sym)
+          ADK::GlobalDefinitionRegistry.remove(name_sym)
           if redis_deleted
             say "Agent definition '#{name}' deleted successfully.", :green
           else
@@ -396,20 +405,26 @@ module ADK
       def start(name)
         name_sym = name.to_sym
         say "Loading agent definition '#{name}'..."
-        definition_hash = ADK::AgentDefinitionStore.find(name_sym)
-        definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
-
-        unless definition_hash
-          say "Error: Agent definition hash '#{name}' not found in store.", :red
-          exit(1)
-        end
-
-        say "Creating agent '#{name}' from definition object..."
-        agent_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
-
-        unless agent_definition_object
-          say "Error: Could not create a valid AgentDefinition object for '#{name}' from the loaded hash.", :red
-          exit(1)
+        
+        # First check the global registry
+        agent_definition_object = ADK::GlobalDefinitionRegistry.find(name_sym)
+        
+        # If not found in memory, try loading from Redis
+        if agent_definition_object.nil?
+          definition_hash = ADK::AgentDefinitionStore.load_from_redis(name_sym)
+          
+          unless definition_hash
+            say "Error: Agent definition hash '#{name}' not found in store.", :red
+            exit(1)
+          end
+          
+          say "Creating agent '#{name}' from definition object..."
+          agent_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
+          
+          unless agent_definition_object
+            say "Error: Could not create a valid AgentDefinition object for '#{name}' from the loaded hash.", :red
+            exit(1)
+          end
         end
 
         agent = nil
@@ -422,7 +437,7 @@ module ADK
 
           # Tool loading is now handled by ADK::Agent#initialize via the definition.
           # We can check which tools the agent *actually* loaded for verification.
-          loaded_tool_names = agent.tool_registry.tools.keys
+          loaded_tool_names = agent.tools.map(&:name)
           defined_tool_names = agent_definition_object.tool_names.to_a
           missing_tools = defined_tool_names - loaded_tool_names
 
@@ -514,7 +529,8 @@ module ADK
           say "  - Agent uses model: #{agent.model_name}", :cyan
 
           # Tool loading is now handled by ADK::Agent#initialize via the definition.
-          loaded_tool_names = agent.tool_registry.tools.keys
+          loaded_tool_instances = agent.tools
+          loaded_tool_names = loaded_tool_instances.map(&:name)
           defined_tool_names = agent_definition_object.tool_names.to_a
           missing_tools = defined_tool_names - loaded_tool_names
 

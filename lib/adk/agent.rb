@@ -631,11 +631,8 @@ module ADK
           end
           # (If sub_agent.parent_agent == self, it's already correctly parented, do nothing extra here)
 
-          # Verify session service consistency
-          if sub_agent.instance_variable_get(:@session_service).nil? && @session_service
-            ADK.logger.debug("Agent '#{@name}': Setting session_service for programmatic sub-agent '#{sub_agent.name}' to match parent.")
-            sub_agent.instance_variable_set(:@session_service, @session_service)
-          elsif sub_agent.instance_variable_get(:@session_service) != @session_service && @session_service # Warn if different and parent has one
+          # Verify session service consistency - only log warnings
+          if sub_agent.instance_variable_get(:@session_service) != @session_service && @session_service # Warn if different and parent has one
             ADK.logger.warn("Agent '#{@name}': Programmatic sub-agent '#{sub_agent.name}' has a different session_service than parent.")
           end
           @sub_agents << sub_agent
