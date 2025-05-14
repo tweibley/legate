@@ -325,7 +325,7 @@ module ADK
         flat_names = names.flatten.map(&:to_sym)
         # Log a warning if the array is empty but don't raise an error
         ADK.logger.warn("Empty sequential sub-agents list for agent '#{@definition.name}'") if flat_names.empty?
-        
+
         @definition.instance_variable_set(:@sequential_sub_agent_names, Set.new(flat_names))
       end
 
@@ -336,7 +336,7 @@ module ADK
         flat_names = names.flatten.map(&:to_sym)
         # Log a warning if the array is empty but don't raise an error
         ADK.logger.warn("Empty parallel sub-agents list for agent '#{@definition.name}'") if flat_names.empty?
-        
+
         @definition.instance_variable_set(:@parallel_sub_agent_names, Set.new(flat_names))
       end
 
@@ -347,7 +347,7 @@ module ADK
         flat_names = names.flatten.map(&:to_sym)
         # Log a warning if the array is empty but don't raise an error
         ADK.logger.warn("Empty loop sub-agents list for agent '#{@definition.name}'") if flat_names.empty?
-        
+
         @definition.instance_variable_set(:@loop_sub_agent_names, Set.new(flat_names))
       end
 
@@ -357,7 +357,7 @@ module ADK
         unless max.is_a?(Integer) && max > 0
           raise ArgumentError, "Maximum iterations must be a positive integer. Got: #{max}"
         end
-        
+
         @definition.instance_variable_set(:@loop_max_iterations, max)
       end
 
@@ -366,7 +366,7 @@ module ADK
       # @param value [Object] The expected value that indicates loop completion
       def loop_condition(key, value)
         raise ArgumentError, 'Loop condition key must be a Symbol.' unless key.is_a?(Symbol)
-        
+
         @definition.instance_variable_set(:@loop_condition_state_key, key)
         @definition.instance_variable_set(:@loop_condition_expected_value, value)
       end
@@ -378,7 +378,7 @@ module ADK
         flat_names = names.flatten.map(&:to_sym)
         # Log a warning if the array is empty but don't raise an error
         ADK.logger.warn("Empty delegation targets list for agent '#{@definition.name}'") if flat_names.empty?
-        
+
         @definition.instance_variable_set(:@delegation_targets, Set.new(flat_names))
       end
       # --- End MAS Attributes DSL ---
@@ -1005,20 +1005,27 @@ module ADK
       session_service.append_event(session_id: session_id, event: user_event)
       # ---------------------- #
 
-      # --- Prepare for Planner --- #
-      # Combine system instruction + history + latest input
-      # (Assuming planner needs a simple string or specific format)
-      # TODO: Refine message formatting based on Planner requirements
-      history = session.events.map { |e|
-        "#{e.role}: #{e.content.is_a?(Hash) ? e.content.inspect : e.content}"
-      }.join("\n")
-      planner_input = [self.instruction, history, "user: #{user_input}"].compact.join("\n\n")
-      # ------------------------- #
-
       # --- Plan and Execute --- #
       final_agent_event = nil
       begin
-        plan = @planner.plan(planner_input)
+        # Use the updated planner with simplified input (no need for complex formatting)
+        plan = @planner.plan(user_input)
+
+        # Check if planning failed
+        if plan.is_a?(Hash) && plan[:error]
+          ADK.logger.error("Planning failed: #{plan[:error]}")
+          final_agent_event = ADK::Event.new(
+            role: :agent,
+            content: {
+              status: :error,
+              error_message: "Planning failed: #{plan[:error]}"
+            }
+          )
+
+          # Skip execution and jump to event logging
+          session_service.append_event(session_id: session_id, event: final_agent_event)
+          return final_agent_event
+        end
         execution_result = execute_plan(plan, session, session_service)
 
         # --- Create Final Agent Event --- #
@@ -1027,12 +1034,29 @@ module ADK
 
         # Merge plan details into the final content if it's a hash
         if final_content.is_a?(Hash)
-          final_content = final_content.merge(plan_details: execution_result[:details])
+          # Include thought process if available
+          if plan.is_a?(Hash) && plan[:thought_process]
+            final_content = final_content.merge(
+              thought_process: plan[:thought_process],
+              plan_details: execution_result[:details]
+            )
+          else
+            final_content = final_content.merge(plan_details: execution_result[:details])
+          end
         else # Should not happen if execute_plan returns error hash correctly
           ADK.logger.error("Unexpected result format from execute_plan: #{final_content.inspect}")
-          final_content = { status: :error, error_message: 'Internal error processing plan result.',
-                            result: final_content }
-          final_content = final_content.merge(plan_details: execution_result[:details]) if execution_result[:details]
+          final_content = {
+            status: :error,
+            error_message: 'Internal error processing plan result.',
+            result: final_content
+          }
+          if execution_result[:details]
+            final_content = final_content.merge(plan_details: execution_result[:details])
+          end
+          # Add thought process to error content if available
+          if plan.is_a?(Hash) && plan[:thought_process]
+            final_content = final_content.merge(thought_process: plan[:thought_process])
+          end
         end
 
         final_agent_event = ADK::Event.new(role: :agent, content: final_content)
@@ -1059,11 +1083,29 @@ module ADK
       # --- MAS: Store result in session state if output_key is defined --- #
       if @definition.respond_to?(:output_key) && @definition.output_key && final_agent_event
         output_value = final_agent_event.content # Store the entire content hash
-        ADK.logger.info("Agent '#{@name}' storing output to session state with key '#{@definition.output_key}' for session '#{session_id}'. Value: #{output_value.inspect}")
+
+        # Make the output value serializable by ensuring no symbols (convert to strings)
+        serialized_value = begin
+          # If the value is a Hash or Array, deep transform keys and symbolized values
+          if output_value.is_a?(Hash) || output_value.is_a?(Array)
+            # Convert to JSON and back to remove symbols
+            JSON.parse(output_value.to_json)
+          else
+            # For other values, just pass through
+            output_value
+          end
+        rescue => e
+          # If serialization fails, log and return the original
+          ADK.logger.warn("Agent '#{@name}': Failed to serialize output value: #{e.message}. Using original value.")
+          output_value
+        end
+
+        ADK.logger.info("Agent '#{@name}' storing output to session state with key '#{@definition.output_key}' for session '#{session_id}'. Value: #{serialized_value.inspect}")
+
         begin
           # Ensure session_service has set_state. Add if missing for base/inmemory.
           if session_service.respond_to?(:set_state)
-            session_service.set_state(session_id: session_id, key: @definition.output_key, value: output_value)
+            session_service.set_state(session_id: session_id, key: @definition.output_key, value: serialized_value)
           else
             ADK.logger.warn("Agent '#{@name}': Session service does not support :set_state. Cannot store output for key '#{@definition.output_key}'.")
           end
@@ -1080,6 +1122,7 @@ module ADK
     # @return [ADK::Agent] The root agent in the hierarchy
     def root_agent
       return self if @parent_agent.nil?
+
       @parent_agent.root_agent
     end
 
@@ -1089,16 +1132,16 @@ module ADK
     def find_agent(name_sym)
       # Convert to symbol if string provided
       name_sym = name_sym.to_sym if name_sym.is_a?(String)
-      
+
       # Check if this is the agent we're looking for
       return self if @name.to_sym == name_sym
-      
+
       # Search sub-agents recursively
       @sub_agents.each do |sub_agent|
         found = sub_agent.find_agent(name_sym)
         return found if found
       end
-      
+
       # Not found in this branch
       nil
     end
@@ -1109,9 +1152,20 @@ module ADK
     def find_sub_agent(name_sym)
       # Convert to symbol if string provided
       name_sym = name_sym.to_sym if name_sym.is_a?(String)
-      
-      # Find first sub-agent with matching name
-      @sub_agents.find { |sub_agent| sub_agent.name.to_sym == name_sym }
+
+      # Handle the case where @sub_agents is a hash (key: name => value: agent)
+      if @sub_agents.is_a?(Hash)
+        return @sub_agents[name_sym]
+      end
+
+      # Handle the case where @sub_agents is an array of Agent objects
+      if @sub_agents.is_a?(Array)
+        return @sub_agents.find { |sub_agent| sub_agent.name.to_sym == name_sym }
+      end
+
+      # No sub-agents or invalid type
+      ADK.logger.warn("No sub-agents found or invalid sub_agents type: #{@sub_agents.class}")
+      nil
     end
 
     private
@@ -1180,21 +1234,40 @@ module ADK
 
     # --- REFACTORED: execute_plan now returns hash { details: [...], last_result: original_hash } ---
     # Executes a plan, logging tool request/result events via the session service.
-    # @param plan [Array<Hash>] Plan from the planner.
+    # @param plan [Hash, Array] The plan from the planner, either as a hash with :thought_process and :steps, or as an array of steps.
     # @param session [ADK::Session] The current session object.
     # @param session_service [Object] The session service instance.
     # @return [Hash] { details: Array<Hash>, last_result: Hash } or { details: Hash, last_result: nil } on planning errors.
     def execute_plan(plan, session, session_service)
       session_id = session.id
 
-      unless plan.is_a?(Array)
-        msg = 'Invalid plan received from planner (not an Array).'
+      # Extract steps based on the plan format
+      steps = nil
+      thought_process = nil
+
+      # Handle new plan structure with thought_process and steps
+      if plan.is_a?(Hash) && plan[:steps].is_a?(Array)
+        steps = plan[:steps]
+        thought_process = plan[:thought_process]
+        ADK.logger.info("Plan thought process: #{thought_process}") if thought_process
+      elsif plan.is_a?(Array)
+        # For backward compatibility with old format
+        steps = plan
+      else
+        msg = 'Invalid plan received from planner (not an Array or properly structured Hash).'
         ADK.logger.error("#{msg} Plan: #{plan.inspect}")
         return { details: { status: :error, error_message: msg }, last_result: nil }
       end
 
+      # --- Continue with original logic, using 'steps' variable ---
+      unless steps.is_a?(Array)
+        msg = 'Invalid steps structure in plan (not an Array).'
+        ADK.logger.error("#{msg} Steps: #{steps.inspect}")
+        return { details: { status: :error, error_message: msg }, last_result: nil }
+      end
+
       # --- Handle Empty Plan based on Fallback Mode ---
-      if plan.empty?
+      if steps.empty?
         if @fallback_mode == :echo
           if @tool_registry.find_class(:echo)
             ADK.logger.warn("Plan is empty. Falling back to echo mode for session '#{session_id}'.")
@@ -1204,8 +1277,8 @@ module ADK
             original_user_input = session.events.reverse.find { |e|
               e.role == :user
             }&.content || '[Original input not found]'
-            plan = [{ tool: :echo, params: { message: original_user_input } }]
-            ADK.logger.debug("Reconstructed plan for echo fallback: #{plan.inspect}")
+            steps = [{ tool: :echo, params: { message: original_user_input } }]
+            ADK.logger.debug("Reconstructed plan for echo fallback: #{steps.inspect}")
             # Now continue execution with the modified plan
           else
             # Echo tool not available, default to error mode
@@ -1221,13 +1294,18 @@ module ADK
       end
       # --- End Handle Empty Plan ---
 
-      ADK.logger.debug("Executing plan with #{plan.length} step(s) for session '#{session_id}': #{plan.inspect}")
+      ADK.logger.debug("Executing plan with #{steps.length} step(s) for session '#{session_id}': #{steps.inspect}")
       previous_step_result_hash = nil
       plan_execution_details = []
       last_successful_or_pending_result = nil # <-- Store the original last hash
 
-      plan.each_with_index do |step, index|
-        ADK.logger.debug("Executing step #{index + 1}/#{plan.length}: #{step.inspect}")
+      steps.each_with_index do |step, index|
+        # Log the step type for clarity
+        step_type_desc = step[:step_type] == :sequential_sub_agent ?
+                        "sequential sub-agent '#{step[:sub_agent_name]}'" :
+                        "tool '#{step[:tool]}'"
+        ADK.logger.debug("Executing step #{index + 1}/#{steps.length}: #{step_type_desc}")
+        ADK.logger.debug("  Step details: #{step.inspect}")
         ADK.logger.debug("  Input (result hash from previous step): #{previous_step_result_hash.inspect}")
 
         # --- Input Injection Logic (Updated for job_id) ---
@@ -1341,6 +1419,63 @@ module ADK
         session_service.append_event(session_id: session_id, event: error_event)
         return error_event.content
       end
+
+      # --- Handle Sequential Sub-Agent Execution ---
+      if step[:step_type] == :sequential_sub_agent && step[:sub_agent_name] && step[:sub_agent_task]
+        sub_agent_name = step[:sub_agent_name]
+        sub_agent_task = step[:sub_agent_task]
+
+        # Log the sub-agent execution as a specialized request
+        ADK.logger.info("Executing sequential sub-agent '#{sub_agent_name}' with task: #{sub_agent_task}")
+        request_event = ADK::Event.new(role: :tool_request, tool_name: :sequential_sub_agent,
+                                       content: { sub_agent: sub_agent_name, task: sub_agent_task })
+        session_service.append_event(session_id: session_id, event: request_event)
+
+        # Find the sub-agent
+        sub_agent = find_sub_agent(sub_agent_name)
+        unless sub_agent
+          error_msg = "Sequential sub-agent '#{sub_agent_name}' not found"
+          ADK.logger.error(error_msg)
+          error_event = ADK::Event.new(role: :tool_result, tool_name: :sequential_sub_agent,
+                                       content: { status: :error, error_message: error_msg, error_class: 'SubAgentNotFound' })
+          session_service.append_event(session_id: session_id, event: error_event)
+          return error_event.content
+        end
+
+        # Start the sub-agent if it's not already running
+        sub_agent.start unless sub_agent.running?
+
+        # Execute the sub-agent
+        begin
+          sub_agent_result = sub_agent.run_task(
+            session_id: session_id,
+            user_input: sub_agent_task,
+            session_service: session_service
+          )
+
+          # Convert result event to hash
+          result_hash = {
+            status: :success,
+            sub_agent: sub_agent_name.to_s,
+            result: sub_agent_result.content
+          }
+
+          # Log the result
+          result_event = ADK::Event.new(role: :tool_result, tool_name: :sequential_sub_agent, content: result_hash)
+          session_service.append_event(session_id: session_id, event: result_event)
+
+          return result_hash
+        rescue StandardError => e
+          error_msg = "Error executing sub-agent '#{sub_agent_name}': #{e.message}"
+          ADK.logger.error("#{error_msg}\n#{e.backtrace.join("\n")}")
+          error_event = ADK::Event.new(role: :tool_result, tool_name: :sequential_sub_agent,
+                                       content: { status: :error, error_message: error_msg, error_class: e.class.name })
+          session_service.append_event(session_id: session_id, event: error_event)
+          return error_event.content
+        end
+      end
+
+      # --- Standard Tool Execution for non-special steps ---
       tool_name = step[:tool]
       params = step[:params]
 

@@ -11,4 +11,4 @@ module ADK
   module Agents
     # This module contains specialized agent implementations for workflow composition
   end
-end 
+end

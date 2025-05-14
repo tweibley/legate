@@ -18,11 +18,11 @@ module ADK
         unless @definition.sequential_sub_agent_names&.any?
           err_msg = "SequentialAgent '#{name}' has no sequential_sub_agent_names defined."
           ADK.logger.error(err_msg)
-          return ADK::Event.new(role: :agent, content: { 
-            status: :error, 
-            error_message: err_msg, 
-            error_class: 'ConfigurationError' 
-          })
+          return ADK::Event.new(role: :agent, content: {
+                                  status: :error,
+                                  error_message: err_msg,
+                                  error_class: 'ConfigurationError'
+                                })
         end
 
         # --- Pre-execution Checks --- #
@@ -46,10 +46,11 @@ module ADK
 
         # Log the execution sequence start
         ADK.logger.info("SequentialAgent '#{name}' starting execution of #{@definition.sequential_sub_agent_names.size} sub-agents in sequence.")
-        
+
         # Track results of all sub-agents
         all_results = []
         final_result = nil
+        current_input = user_input # Start with the original user input
 
         # Execute each sub-agent in order
         @definition.sequential_sub_agent_names.each_with_index do |sub_agent_name, index|
@@ -57,9 +58,9 @@ module ADK
           unless sub_agent
             err_msg = "Sub-agent '#{sub_agent_name}' not found for SequentialAgent '#{name}'."
             ADK.logger.error(err_msg)
-            final_result = { 
-              status: :error, 
-              error_message: err_msg, 
+            final_result = {
+              status: :error,
+              error_message: err_msg,
               error_class: 'MissingSubAgentError',
               step: index + 1,
               total_steps: @definition.sequential_sub_agent_names.size,
@@ -71,23 +72,49 @@ module ADK
           # Start the sub-agent if it's not already running
           sub_agent.start unless sub_agent.running?
 
-          # Execute the sub-agent with the same session and input
+          # If this is not the first agent, try to augment its input with previous results
+          if index > 0 && all_results.any?
+            # Get previous agent name - handle both Array and Set types
+            previous_agent_name = nil
+            if @definition.sequential_sub_agent_names.is_a?(Set)
+              # For Set, convert to Array and get the element
+              previous_agent_name = @definition.sequential_sub_agent_names.to_a[index - 1]
+            else
+              # For Array, access directly
+              previous_agent_name = @definition.sequential_sub_agent_names[index - 1]
+            end
+
+            previous_output_key = find_sub_agent(previous_agent_name)&.definition&.output_key
+
+            if previous_output_key && session_service.respond_to?(:get_state)
+              # Get the previous agent's result from session state
+              previous_result = session_service.get_state(session_id: session_id, key: previous_output_key)
+
+              if previous_result && previous_result.is_a?(Hash) && previous_result[:result]
+                # Enhanced input with previous result
+                current_input = "#{current_input}\n\nHere is the result from the previous step (#{previous_agent_name}):\n#{previous_result[:result]}"
+                ADK.logger.info("Enhanced input for sub-agent '#{sub_agent_name}' with previous result from '#{previous_agent_name}'")
+              end
+            end
+          end
+
+          # Execute the sub-agent with the updated input
           begin
             ADK.logger.info("SequentialAgent '#{name}' executing sub-agent '#{sub_agent_name}' (step #{index + 1}/#{@definition.sequential_sub_agent_names.size}).")
             sub_result = sub_agent.run_task(
               session_id: session_id,
-              user_input: user_input,
+              user_input: current_input,
               session_service: session_service
             )
 
             # Record the result
             all_results << sub_result.content
-            
+
             # Check for error to break sequence
             if sub_result.content[:status] == :error
               ADK.logger.warn("Sub-agent '#{sub_agent_name}' returned error, breaking sequence: #{sub_result.content[:error_message]}")
-              final_result = { 
-                status: :error, 
+              final_result = {
+                status: :error,
                 error_message: "Error in sub-agent '#{sub_agent_name}': #{sub_result.content[:error_message]}",
                 error_class: sub_result.content[:error_class] || 'SubAgentError',
                 step: index + 1,
@@ -97,11 +124,17 @@ module ADK
                 previous_results: all_results.map.with_index { |r, i| { agent: @definition.sequential_sub_agent_names.to_a[i], result: r } }
               }
               break # Stop the sequence on error
+            else
+              # If the sub-agent succeeded, update the current_input to include its result for the next agent
+              if sub_result.content[:result]
+                # Store the raw result for potential state-based chaining in next iteration
+                current_input = sub_result.content[:result].to_s
+              end
             end
           rescue StandardError => e
             ADK.logger.error("Error executing sub-agent '#{sub_agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
-            final_result = { 
-              status: :error, 
+            final_result = {
+              status: :error,
               error_message: "Exception in sub-agent '#{sub_agent_name}': #{e.message}",
               error_class: e.class.name,
               step: index + 1,
@@ -125,16 +158,26 @@ module ADK
 
         # Create the final event
         final_agent_event = ADK::Event.new(role: :agent, content: final_result)
-        
+
         # Log the final event to the session
         session_service.append_event(session_id: session_id, event: final_agent_event)
 
         # --- MAS: Store result in session state if output_key is defined --- #
         if @definition.respond_to?(:output_key) && @definition.output_key && final_agent_event
           output_value = final_agent_event.content # Store the entire content hash
+
+          # Make sure the output value is serializable
+          serialized_value = begin
+            # Convert to JSON and back to ensure it's serializable
+            JSON.parse(output_value.to_json)
+          rescue => e
+            ADK.logger.warn("SequentialAgent '#{@name}': Failed to serialize output value: #{e.message}. Using simplified value.")
+            { status: output_value[:status], result: output_value[:result].to_s }
+          end
+
           ADK.logger.info("SequentialAgent '#{@name}' storing output to session state with key '#{@definition.output_key}' for session '#{session_id}'.")
           if session_service.respond_to?(:set_state)
-            session_service.set_state(session_id: session_id, key: @definition.output_key, value: output_value)
+            session_service.set_state(session_id: session_id, key: @definition.output_key, value: serialized_value)
           else
             ADK.logger.warn("SequentialAgent '#{@name}': Session service does not support :set_state. Cannot store output for key '#{@definition.output_key}'.")
           end
@@ -145,4 +188,4 @@ module ADK
       end
     end
   end
-end 
+end

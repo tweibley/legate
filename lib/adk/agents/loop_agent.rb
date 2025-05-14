@@ -18,22 +18,22 @@ module ADK
         unless @definition.loop_sub_agent_names&.any?
           err_msg = "LoopAgent '#{name}' has no loop_sub_agent_names defined."
           ADK.logger.error(err_msg)
-          return ADK::Event.new(role: :agent, content: { 
-            status: :error, 
-            error_message: err_msg, 
-            error_class: 'ConfigurationError' 
-          })
+          return ADK::Event.new(role: :agent, content: {
+                                  status: :error,
+                                  error_message: err_msg,
+                                  error_class: 'ConfigurationError'
+                                })
         end
 
         # Verify we have either loop_max_iterations or a condition
         unless @definition.loop_max_iterations || (@definition.loop_condition_state_key && !@definition.loop_condition_expected_value.nil?)
           err_msg = "LoopAgent '#{name}' must define either loop_max_iterations or loop_condition (state key + expected value)."
           ADK.logger.error(err_msg)
-          return ADK::Event.new(role: :agent, content: { 
-            status: :error, 
-            error_message: err_msg, 
-            error_class: 'ConfigurationError' 
-          })
+          return ADK::Event.new(role: :agent, content: {
+                                  status: :error,
+                                  error_message: err_msg,
+                                  error_class: 'ConfigurationError'
+                                })
         end
 
         # --- Pre-execution Checks --- #
@@ -60,9 +60,9 @@ module ADK
         condition_key = @definition.loop_condition_state_key
         expected_value = @definition.loop_condition_expected_value
 
-        ADK.logger.info("LoopAgent '#{name}' starting execution with max #{max_iterations} iterations" + 
+        ADK.logger.info("LoopAgent '#{name}' starting execution with max #{max_iterations} iterations" +
                         (condition_key ? " or until #{condition_key} equals #{expected_value.inspect}" : ""))
-        
+
         # Track loop iterations and results
         iteration = 0
         all_iterations = []
@@ -73,7 +73,7 @@ module ADK
         while iteration < max_iterations
           iteration += 1
           ADK.logger.info("LoopAgent '#{name}' starting iteration #{iteration}/#{max_iterations == Float::INFINITY ? '∞' : max_iterations}")
-          
+
           # Check condition (if defined) before executing the iteration
           if condition_key && session_service.respond_to?(:get_state)
             current_value = session_service.get_state(session_id: session_id, key: condition_key)
@@ -83,20 +83,20 @@ module ADK
               break
             end
           end
-          
+
           # Execute one iteration (all sub-agents in sequence)
           iteration_results = []
           iteration_error = nil
-          
+
           # Execute each sub-agent in order (sequential execution within each iteration)
           @definition.loop_sub_agent_names.each_with_index do |sub_agent_name, index|
             sub_agent = find_sub_agent(sub_agent_name)
             unless sub_agent
               err_msg = "Sub-agent '#{sub_agent_name}' not found for LoopAgent '#{name}'."
               ADK.logger.error(err_msg)
-              iteration_error = { 
-                status: :error, 
-                error_message: err_msg, 
+              iteration_error = {
+                status: :error,
+                error_message: err_msg,
                 error_class: 'MissingSubAgentError',
                 step: index + 1,
                 total_steps: @definition.loop_sub_agent_names.size,
@@ -119,12 +119,12 @@ module ADK
 
               # Record the result
               iteration_results << { agent: sub_agent_name, result: sub_result.content }
-              
+
               # Check for error to break sequence
               if sub_result.content[:status] == :error
                 ADK.logger.warn("Sub-agent '#{sub_agent_name}' returned error, breaking iteration: #{sub_result.content[:error_message]}")
-                iteration_error = { 
-                  status: :error, 
+                iteration_error = {
+                  status: :error,
                   error_message: "Error in sub-agent '#{sub_agent_name}': #{sub_result.content[:error_message]}",
                   error_class: sub_result.content[:error_class] || 'SubAgentError',
                   step: index + 1,
@@ -136,8 +136,8 @@ module ADK
               end
             rescue StandardError => e
               ADK.logger.error("Error executing sub-agent '#{sub_agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
-              iteration_error = { 
-                status: :error, 
+              iteration_error = {
+                status: :error,
                 error_message: "Exception in sub-agent '#{sub_agent_name}': #{e.message}",
                 error_class: e.class.name,
                 step: index + 1,
@@ -147,20 +147,20 @@ module ADK
               break # Stop this iteration's execution on error
             end
           end
-          
+
           # Record this iteration's results
           all_iterations << {
             iteration: iteration,
             results: iteration_results,
             error: iteration_error
           }
-          
+
           # If there was an error in this iteration, we may need to break the loop
           if iteration_error
             # An error occurred during execution - decide whether to break the loop
             ADK.logger.warn("LoopAgent '#{name}' iteration #{iteration} encountered an error. Exiting loop.")
-            final_result = { 
-              status: :error, 
+            final_result = {
+              status: :error,
               error_message: "Loop terminated due to error in iteration #{iteration}: #{iteration_error[:error_message]}",
               error_class: iteration_error[:error_class],
               iterations_completed: iteration,
@@ -170,7 +170,7 @@ module ADK
             }
             break # Exit the loop on error
           end
-          
+
           # Check condition (if defined) after executing the iteration
           if condition_key && session_service.respond_to?(:get_state)
             current_value = session_service.get_state(session_id: session_id, key: condition_key)
@@ -185,13 +185,13 @@ module ADK
         # If we didn't set a final_result due to an error, create a success result
         if final_result.nil?
           completion_reason = if loop_condition_met
-                               "condition met (#{condition_key} = #{expected_value.inspect})"
-                             elsif iteration >= max_iterations
-                               "maximum iterations (#{max_iterations}) reached"
-                             else
-                               "unknown reason"
-                             end
-                             
+                                "condition met (#{condition_key} = #{expected_value.inspect})"
+                              elsif iteration >= max_iterations
+                                "maximum iterations (#{max_iterations}) reached"
+                              else
+                                "unknown reason"
+                              end
+
           final_result = {
             status: :success,
             result: "Completed #{iteration} iteration(s) of #{@definition.loop_sub_agent_names.size} sub-agent(s) - #{completion_reason}",
@@ -204,7 +204,7 @@ module ADK
 
         # Create the final event
         final_agent_event = ADK::Event.new(role: :agent, content: final_result)
-        
+
         # Log the final event to the session
         session_service.append_event(session_id: session_id, event: final_agent_event)
 
@@ -224,4 +224,4 @@ module ADK
       end
     end
   end
-end 
+end

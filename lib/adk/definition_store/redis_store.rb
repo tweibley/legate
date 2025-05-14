@@ -59,7 +59,7 @@ module ADK
         agent_key = agent_redis_key(name)
         fallback_str = fallback_mode.to_s # Store as string
         mcp_json_to_save = (mcp_servers_json.nil? || mcp_servers_json.strip.empty?) ? '[]' : mcp_servers_json.strip
-        
+
         # Convert agent_type to string, defaulting to 'llm' if nil
         agent_type_str = agent_type ? agent_type.to_s : 'llm'
 
@@ -436,7 +436,7 @@ module ADK
               # Convert fallback_mode string to symbol
               fb_mode_str = summary_hash['fallback_mode']
               summary_hash['fallback_mode'] = (fb_mode_str == 'echo') ? :echo : :error
-              
+
               # Convert agent_type string to symbol
               agent_type_str = summary_hash['agent_type']
               if agent_type_str && !agent_type_str.empty?
@@ -445,7 +445,7 @@ module ADK
               else
                 summary_hash['agent_type'] = :llm # Default to :llm if missing or empty
               end
-              
+
               summary_hash['mcp_servers_json'] ||= '[]' # Use '[]' if nil/missing
               summary_hash['instruction'] ||= '' # Use empty string if nil/missing
               # Convert agent name to symbol before transforming keys

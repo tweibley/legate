@@ -19,11 +19,11 @@ module ADK
         unless @definition.parallel_sub_agent_names&.any?
           err_msg = "ParallelAgent '#{name}' has no parallel_sub_agent_names defined."
           ADK.logger.error(err_msg)
-          return ADK::Event.new(role: :agent, content: { 
-            status: :error, 
-            error_message: err_msg, 
-            error_class: 'ConfigurationError' 
-          })
+          return ADK::Event.new(role: :agent, content: {
+                                  status: :error,
+                                  error_message: err_msg,
+                                  error_class: 'ConfigurationError'
+                                })
         end
 
         # --- Pre-execution Checks --- #
@@ -47,11 +47,11 @@ module ADK
 
         # Log the execution start
         ADK.logger.info("ParallelAgent '#{name}' starting parallel execution of #{@definition.parallel_sub_agent_names.size} sub-agents.")
-        
+
         # Get the sub-agents to run in parallel
         sub_agents_to_run = []
         missing_agents = []
-        
+
         @definition.parallel_sub_agent_names.each do |sub_agent_name|
           sub_agent = find_sub_agent(sub_agent_name)
           if sub_agent
@@ -62,16 +62,16 @@ module ADK
             missing_agents << sub_agent_name
           end
         end
-        
+
         # Check if any agents are missing
         unless missing_agents.empty?
           err_msg = "The following sub-agents were not found for ParallelAgent '#{name}': #{missing_agents.join(', ')}."
           ADK.logger.error(err_msg)
-          return ADK::Event.new(role: :agent, content: { 
-            status: :error, 
-            error_message: err_msg, 
-            error_class: 'MissingSubAgentError' 
-          })
+          return ADK::Event.new(role: :agent, content: {
+                                  status: :error,
+                                  error_message: err_msg,
+                                  error_class: 'MissingSubAgentError'
+                                })
         end
 
         # Prepare futures for parallel execution
@@ -88,11 +88,11 @@ module ADK
             rescue StandardError => e
               ADK.logger.error("Error executing sub-agent '#{agent_info[:name]}': #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
               # Return an error event
-              ADK::Event.new(role: :agent, content: { 
-                status: :error, 
-                error_message: "Exception in sub-agent '#{agent_info[:name]}': #{e.message}",
-                error_class: e.class.name 
-              })
+              ADK::Event.new(role: :agent, content: {
+                               status: :error,
+                               error_message: "Exception in sub-agent '#{agent_info[:name]}': #{e.message}",
+                               error_class: e.class.name
+                             })
             end
           end
         end
@@ -100,7 +100,7 @@ module ADK
         # Wait for all futures to complete
         all_results = {}
         has_errors = false
-        
+
         futures.each do |agent_name, future|
           begin
             result = future.value(120) # Wait up to 120 seconds for each agent
@@ -108,18 +108,18 @@ module ADK
             has_errors = true if result.content[:status] == :error
           rescue Concurrent::TimeoutError
             ADK.logger.error("Timeout waiting for sub-agent '#{agent_name}' to complete.")
-            all_results[agent_name] = { 
-              status: :error, 
+            all_results[agent_name] = {
+              status: :error,
               error_message: "Timeout waiting for sub-agent to complete",
-              error_class: 'TimeoutError' 
+              error_class: 'TimeoutError'
             }
             has_errors = true
           rescue StandardError => e
             ADK.logger.error("Error processing sub-agent '#{agent_name}' result: #{e.class} - #{e.message}")
-            all_results[agent_name] = { 
-              status: :error, 
+            all_results[agent_name] = {
+              status: :error,
               error_message: "Error processing result: #{e.message}",
-              error_class: e.class.name 
+              error_class: e.class.name
             }
             has_errors = true
           end
@@ -128,8 +128,8 @@ module ADK
         # Create the final result
         final_result = {
           status: has_errors ? :partial_success : :success,
-          result: has_errors ? 
-            "Completed parallel execution with some errors" : 
+          result: has_errors ?
+            "Completed parallel execution with some errors" :
             "Successfully completed parallel execution of #{@definition.parallel_sub_agent_names.size} sub-agents",
           sub_results: all_results,
           agents_completed: all_results.keys.map(&:to_sym),
@@ -138,7 +138,7 @@ module ADK
 
         # Create the final event
         final_agent_event = ADK::Event.new(role: :agent, content: final_result)
-        
+
         # Log the final event to the session
         session_service.append_event(session_id: session_id, event: final_agent_event)
 
@@ -158,4 +158,4 @@ module ADK
       end
     end
   end
-end 
+end
