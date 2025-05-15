@@ -693,7 +693,18 @@ module ADK
             end
 
             # Update the definition with the new agent type
-            update_success = definition_store.update_definition(name, agent_type: submitted_value)
+            update_params = { agent_type: submitted_value }
+            
+            # Clear sub-agent lists if switching to LLM agent
+            if submitted_value == 'llm'
+              update_params[:sub_agent_names] = []
+              update_params[:sequential_sub_agent_names] = []
+              update_params[:parallel_sub_agent_names] = []
+              update_params[:loop_sub_agent_names] = []
+              logger.info("Agent '#{name}' switched to LLM type, clearing all sub-agent lists.")
+            end
+            
+            update_success = definition_store.update_definition(name, update_params)
             halt 404, 'Agent not found for update.' unless update_success
             logger.info("Agent '#{name}' type updated to '#{submitted_value}' (from AgentDefinitionRoutes).")
 
