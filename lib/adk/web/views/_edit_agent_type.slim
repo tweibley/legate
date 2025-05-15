@@ -4,7 +4,7 @@
 - agent_name = agent_data[:name]
 - agent_type = agent_data[:agent_type]&.to_sym || :llm
 
-.content
+.content#agent-type-display
   form( hx-put="/agents/#{agent_name}/update/type"
         hx-target="#agent-type-display"
         hx-swap="outerHTML" )
