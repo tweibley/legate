@@ -443,7 +443,7 @@ module ADK
 
         # PUT /agents/:name/update/:field - Update a specific field of an agent definition.
         app.put '/agents/:name/update/:field' do |name, field|
-          supported_fields = %w[description model tools fallback mcp instruction type]
+          supported_fields = %w[description model tools fallback mcp instruction type hierarchy]
           halt 404, "Updating field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           active_agents_hash = self.instance_variable_get(:@agents)
@@ -559,6 +559,32 @@ module ADK
               halt 400, slim(:"_edit_agent_#{field}", layout: false, locals: edit_locals)
             end
             agent_data_for_display_partial[field.to_sym] = new_value_for_store
+          when 'hierarchy'
+            # Get selected sub-agent names from the form
+            sub_agent_names = params['sub_agent_names'] || []
+            
+            # Update the definition via a separate field
+            begin
+              update_success = definition_store.update_definition(name, sub_agent_names: sub_agent_names)
+              halt 404, 'Agent not found for update.' unless update_success
+              logger.info("Agent '#{name}' hierarchy updated with #{sub_agent_names.size} sub-agents (from AgentDefinitionRoutes)")
+              
+              # Refresh agent data for display
+              updated_definition = definition_store.get_definition(name)
+              agent_data = {
+                name: name,
+                description: updated_definition[:description],
+                agent_type: updated_definition[:agent_type]&.to_sym || :llm,
+                sub_agent_names: updated_definition[:sub_agent_names] || [],
+                show_edit_button: true
+              }
+              
+              # Return the updated display partial directly
+              return slim :_display_agent_hierarchy, layout: false, locals: { agent_data: agent_data }
+            rescue ADK::DefinitionStore::StoreError => e
+              logger.error("Store error updating agent hierarchy: #{e.message}")
+              halt 500, 'Error updating agent hierarchy.'
+            end
           end
 
           begin
