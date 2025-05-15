@@ -247,11 +247,19 @@ module ADK
             definition_hash['loop_sub_agent_names'] = [] # Default to empty array if not present
           end
           
-          # Note: Procs (validator, transformer, extractor) are not stored/retrieved.
           # --- END Webhook Fields ---
           # --- Return symbol-keyed hash for consistency? ---
           # Let's convert keys to symbols for internal consistency, matching save_definition inputs.
           symbolized_hash = definition_hash.transform_keys(&:to_sym)
+          
+          # For backward compatibility with existing tests/code, return only fields that were actually
+          # returned from Redis. If the values had nil for the workflow fields, don't include them.
+          %i[sequential_sub_agent_names parallel_sub_agent_names loop_sub_agent_names sub_agent_names].each do |field|
+            values_index = AGENT_DEFINITION_FIELDS.index(field.to_s)
+            if values_index.nil? || values[values_index].nil?
+              symbolized_hash.delete(field)
+            end
+          end
 
           @logger.debug("Retrieved definition for agent '#{agent_name}'.")
           symbolized_hash
@@ -544,7 +552,19 @@ module ADK
               summary_hash['instruction'] ||= '' # Use empty string if nil/missing
               # Convert agent name to symbol before transforming keys
               summary_hash['name'] = summary_hash['name'].to_sym if summary_hash['name']
-              definitions << summary_hash.transform_keys(&:to_sym)
+              
+              # Convert to symbolized hash
+              symbolized_hash = summary_hash.transform_keys(&:to_sym)
+              
+              # For backward compatibility with existing tests/code, remove workflow sub-agent fields
+              # if they were nil in the original Redis data
+              %i[sequential_sub_agent_names parallel_sub_agent_names loop_sub_agent_names sub_agent_names].each do |field|
+                values_index = ADK::DefinitionStore::RedisStore::AGENT_DEFINITION_FIELDS.index(field.to_s)
+                field_value = values[values_index] if values_index
+                symbolized_hash.delete(field) if field_value.nil?
+              end
+              
+              definitions << symbolized_hash
             elsif values.is_a?(Array) # Log warning only if it was an array but all nil
               @logger.warn("Inconsistency: Agent name '#{name}' found in set but hash key missing or empty.")
               # Do NOT add to definitions array
