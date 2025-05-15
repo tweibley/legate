@@ -4,51 +4,72 @@
 - agent_name = agent_data[:name]
 - agent_type = agent_data[:agent_type]&.to_sym || :llm
 - sub_agent_names = agent_data[:sub_agent_names] || []
+- show_edit_button = locals.fetch(:show_edit_button, true)
 
-.content
+.content#agent-hierarchy-display
   h4.is-size-5
     span.icon.mr-2
       - type_icon = case agent_type
       - when :sequential then "fa-list-ol"
       - when :parallel then "fa-layer-group"
       - when :loop then "fa-sync-alt"
-      - else "fa-robot"
+      - else "fa-sitemap"
       i(class="fas #{type_icon}")
     | Agent Hierarchy
-    
+
   - if agent_type == :llm
-    p.help
-      | Standard LLM agent. Can have sub-agents and be used for delegation.
+    p.help LLM agents can have sub-agents for delegation.
   - elsif agent_type == :sequential 
     p.help
-      | Sequential workflow agent. Executes sub-agents in sequence, passing state between them.
+      strong Sequential workflow
+      | : Sub-agents execute in sequence, passing state between them.
   - elsif agent_type == :parallel
     p.help
-      | Parallel workflow agent. Executes sub-agents concurrently and combines their results.
+      strong Parallel workflow
+      | : Sub-agents execute concurrently and results are combined.
   - elsif agent_type == :loop
     p.help
-      | Loop workflow agent. Repeatedly executes sub-agents until a condition is met.
+      strong Loop workflow
+      | : Sub-agents execute repeatedly until a condition is met.
 
   - if sub_agent_names.any?
     .panel.mt-3
-      p.panel-heading.is-size-6 Sub-Agents
-      - sub_agent_names.each do |sub_agent_name|
+      p.panel-heading.is-size-6 
+        = agent_type == :llm ? "Sub-Agents" : "Workflow Components"
+        span.tag.is-info.is-light.ml-2= "#{sub_agent_names.size} #{sub_agent_names.size == 1 ? 'agent' : 'agents'}"
+
+      - if agent_type == :sequential
+        p.panel-block.is-size-7.has-text-grey
+          | Agents will execute in the order shown below:
+      
+      - sub_agent_names.each_with_index do |sub_agent_name, index|
         a.panel-block(href="/agents/#{sub_agent_name}")
           span.icon.is-small.mr-2
-            i.fas.fa-chevron-right
+            - if agent_type == :sequential
+              span.tag.is-info.is-light.mr-1= index + 1
+            - elsif agent_type == :parallel
+              i.fas.fa-arrow-right
+            - elsif agent_type == :loop
+              i.fas.fa-redo-alt
+            - else
+              i.fas.fa-chevron-right
           = sub_agent_name
   - else
-    p.has-text-grey 
-      | This agent has no sub-agents defined.
+    .notification.is-light.is-warning 
+      - if agent_type == :llm
+        | This agent has no sub-agents defined.
+      - else
+        | This workflow has no components defined. Add sub-agents to make this workflow functional.
 
-  .field.mt-4
-    button.button.is-small.is-link.is-light(
-      hx-get="/agents/#{agent_name}/edit/hierarchy"
-      hx-target="#agent-hierarchy-display"
-      hx-swap="outerHTML"
-      hx-indicator="this .htmx-indicator")
-      span.icon.is-small.htmx-indicator
-        i.fas.fa-spinner.fa-spin
-      span.icon.is-small
-        i.fas.fa-edit
-      span Edit Hierarchy 
+  - if show_edit_button
+    .field.mt-4
+      button.button.is-small.is-link.is-light(
+        hx-get="/agents/#{agent_name}/edit/hierarchy"
+        hx-target="#agent-hierarchy-display"
+        hx-swap="outerHTML"
+        hx-indicator="this .htmx-indicator")
+        span.icon.is-small.htmx-indicator
+          i.fas.fa-spinner.fa-spin
+        span.icon.is-small
+          i.fas.fa-edit
+        span Edit Hierarchy 

@@ -7,27 +7,39 @@
 - sub_agent_names = agent_data[:sub_agent_names] || []
 - all_agent_names = defined?(all_agent_definitions) ? all_agent_definitions.map { |d| d[:name] }.reject { |n| n == agent_name } : []
 
-.content
+.content#agent-hierarchy-display
   form( hx-put="/agents/#{agent_name}/update/hierarchy"
         hx-target="#agent-hierarchy-display"
         hx-swap="outerHTML" )
     
-    h4.is-size-5 Edit Agent Hierarchy
+    h4.is-size-5 
+      span.icon.mr-2
+        - type_icon = case agent_type
+        - when :sequential then "fa-list-ol"
+        - when :parallel then "fa-layer-group"
+        - when :loop then "fa-sync-alt"
+        - else "fa-sitemap"
+        i(class="fas #{type_icon}")
+      | Edit 
+      = agent_type == :llm ? "Sub-Agents" : "Workflow Components"
     
     - type_label = case agent_type
-    - when :sequential then "Sequential"
-    - when :parallel then "Parallel"
-    - when :loop then "Loop"
-    - else "LLM"
+    - when :sequential then "Sequential Workflow"
+    - when :parallel then "Parallel Workflow"
+    - when :loop then "Loop Workflow"
+    - else "LLM Agent"
     
-    p.mb-3
-      | This is a 
-      strong= "#{type_label} Agent"
-      | . 
+    .notification.is-light.is-info.mb-4
+      span.icon.mr-2
+        i.fas.fa-info-circle
       - if agent_type == :llm
-        | You can configure its sub-agents here.
-      - else
-        | Workflow configuration is available in the Config tab.
+        | Configure sub-agents that this agent can delegate tasks to.
+      - elsif agent_type == :sequential
+        | Configure sub-agents that will execute in sequence. The order in the list below matters.
+      - elsif agent_type == :parallel
+        | Configure sub-agents that will execute concurrently. All selected agents will start at the same time.
+      - elsif agent_type == :loop
+        | Configure sub-agents for your loop. These will execute repeatedly until a condition is met.
     
     / Display error if provided
     - if defined?(error_message) && error_message
@@ -36,15 +48,23 @@
         = error_message
     
     .field
-      label.label Sub-Agents
+      label.label = agent_type == :llm ? "Sub-Agents" : "Workflow Components"
       - if all_agent_names.any?
-        .select.is-multiple
-          select(name="sub_agent_names[]" multiple size="5")
-            - all_agent_names.each do |name|
-              option(value=name selected=sub_agent_names.include?(name)) = name
-        p.help Select agents that will be available to this agent. Use Ctrl/Cmd+click for multiple selection.
+        - if agent_type == :sequential || agent_type == :loop
+          p.help.mb-2 The order of agents is important for this workflow type. Drag to reorder.
+          .select.is-multiple
+            select(name="sub_agent_names[]" multiple size="5")
+              - all_agent_names.each do |name|
+                option(value=name selected=sub_agent_names.include?(name)) = name
+          p.help Select agents for this workflow. Use Ctrl/Cmd+click for multiple selection.
+        - else
+          .select.is-multiple
+            select(name="sub_agent_names[]" multiple size="5")
+              - all_agent_names.each do |name|
+                option(value=name selected=sub_agent_names.include?(name)) = name
+          p.help Select agents for this workflow. Use Ctrl/Cmd+click for multiple selection.
       - else
-        p.has-text-grey-light No other agents available to select as sub-agents.
+        .notification.is-warning.is-light No other agents available to select as sub-agents. Create some first.
     
     / Action Buttons
     .field.is-grouped.mt-4
