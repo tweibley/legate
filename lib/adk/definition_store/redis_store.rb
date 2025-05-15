@@ -19,7 +19,7 @@ module ADK
       # Expected field names in the Redis hash
       AGENT_DEFINITION_FIELDS = %w[name description tools model fallback_mode mcp_servers_json instruction
                                    webhook_enabled webhook_secret persistent_status agent_type
-                                   sub_agent_names].freeze
+                                   sub_agent_names sequential_sub_agent_names parallel_sub_agent_names loop_sub_agent_names].freeze
 
       # Expects a keyword argument for the Redis client instance.
       # @param redis_client [Redis] An instance of the Redis client.
@@ -47,12 +47,16 @@ module ADK
       # @param webhook_secret [String, nil] Secret for webhook validation.
       # @param agent_type [Symbol, String] The type of agent (:llm, :sequential, :parallel, :loop). Defaults to :llm.
       # @param sub_agent_names [Array<String>] Names of sub-agents. Defaults to empty array.
+      # @param sequential_sub_agent_names [Array<String>] Names of sub-agents for sequential workflows. Defaults to empty array.
+      # @param parallel_sub_agent_names [Array<String>] Names of sub-agents for parallel workflows. Defaults to empty array.
+      # @param loop_sub_agent_names [Array<String>] Names of sub-agents for loop workflows. Defaults to empty array.
       # @return [Boolean] true if successful, false otherwise.
       # @raise [ArgumentError] if required fields (name) are missing or invalid.
       # @raise [ConfigurationError] if Redis client is not available.
       # @raise [StoreError] for Redis errors during save.
       def save_definition(name:, description:, tools:, model:, fallback_mode:, mcp_servers_json:, instruction: nil,
-                          webhook_enabled: false, webhook_secret: nil, agent_type: :llm, sub_agent_names: [])
+                          webhook_enabled: false, webhook_secret: nil, agent_type: :llm, sub_agent_names: [],
+                          sequential_sub_agent_names: [], parallel_sub_agent_names: [], loop_sub_agent_names: [])
         raise ConfigurationError, 'Redis client not available.' unless @redis
         raise ArgumentError, 'Agent name cannot be empty.' if name.nil? || name.strip.empty?
 
@@ -91,6 +95,9 @@ module ADK
             multi.hset(agent_key, 'persistent_status', 'stopped') # Default new agents to 'stopped'
             multi.hset(agent_key, 'agent_type', agent_type_str) # Store agent type as string
             multi.hset(agent_key, 'sub_agent_names', sub_agent_names_json) # Store sub-agent names as JSON string
+            multi.hset(agent_key, 'sequential_sub_agent_names', sequential_sub_agent_names.to_json)
+            multi.hset(agent_key, 'parallel_sub_agent_names', parallel_sub_agent_names.to_json)
+            multi.hset(agent_key, 'loop_sub_agent_names', loop_sub_agent_names.to_json)
             multi.sadd(AGENTS_SET_KEY, name)
           end
 
@@ -202,6 +209,42 @@ module ADK
             end
           else
             definition_hash['sub_agent_names'] = [] # Default to empty array if not present
+          end
+          
+          # Process sequential_sub_agent_names (if present)
+          sequential_sub_agent_names_json = definition_hash['sequential_sub_agent_names']
+          if sequential_sub_agent_names_json && !sequential_sub_agent_names_json.empty?
+            begin
+              definition_hash['sequential_sub_agent_names'] = JSON.parse(sequential_sub_agent_names_json)
+            rescue JSON::ParserError
+              definition_hash['sequential_sub_agent_names'] = [] # Default to empty array if parsing fails
+            end
+          else
+            definition_hash['sequential_sub_agent_names'] = [] # Default to empty array if not present
+          end
+          
+          # Process parallel_sub_agent_names (if present)
+          parallel_sub_agent_names_json = definition_hash['parallel_sub_agent_names']
+          if parallel_sub_agent_names_json && !parallel_sub_agent_names_json.empty?
+            begin
+              definition_hash['parallel_sub_agent_names'] = JSON.parse(parallel_sub_agent_names_json)
+            rescue JSON::ParserError
+              definition_hash['parallel_sub_agent_names'] = [] # Default to empty array if parsing fails
+            end
+          else
+            definition_hash['parallel_sub_agent_names'] = [] # Default to empty array if not present
+          end
+          
+          # Process loop_sub_agent_names (if present)
+          loop_sub_agent_names_json = definition_hash['loop_sub_agent_names']
+          if loop_sub_agent_names_json && !loop_sub_agent_names_json.empty?
+            begin
+              definition_hash['loop_sub_agent_names'] = JSON.parse(loop_sub_agent_names_json)
+            rescue JSON::ParserError
+              definition_hash['loop_sub_agent_names'] = [] # Default to empty array if parsing fails
+            end
+          else
+            definition_hash['loop_sub_agent_names'] = [] # Default to empty array if not present
           end
           
           # Note: Procs (validator, transformer, extractor) are not stored/retrieved.
@@ -344,6 +387,30 @@ module ADK
             rescue JSON::GeneratorError => e
               @logger.error("JSON error serializing sub_agent_names for agent '#{agent_name}': #{e.message}")
               raise StoreError, "Failed to serialize sub-agent names for agent '#{agent_name}'."
+            end
+          when 'sequential_sub_agent_names'
+            # Handle sequential_sub_agent_names array
+            begin
+              redis_updates[field_str] = value.is_a?(Array) ? value.to_json : '[]'
+            rescue JSON::GeneratorError => e
+              @logger.error("JSON error serializing sequential_sub_agent_names for agent '#{agent_name}': #{e.message}")
+              raise StoreError, "Failed to serialize sequential sub-agent names for agent '#{agent_name}'."
+            end
+          when 'parallel_sub_agent_names'
+            # Handle parallel_sub_agent_names array
+            begin
+              redis_updates[field_str] = value.is_a?(Array) ? value.to_json : '[]'
+            rescue JSON::GeneratorError => e
+              @logger.error("JSON error serializing parallel_sub_agent_names for agent '#{agent_name}': #{e.message}")
+              raise StoreError, "Failed to serialize parallel sub-agent names for agent '#{agent_name}'."
+            end
+          when 'loop_sub_agent_names'
+            # Handle loop_sub_agent_names array
+            begin
+              redis_updates[field_str] = value.is_a?(Array) ? value.to_json : '[]'
+            rescue JSON::GeneratorError => e
+              @logger.error("JSON error serializing loop_sub_agent_names for agent '#{agent_name}': #{e.message}")
+              raise StoreError, "Failed to serialize loop sub-agent names for agent '#{agent_name}'."
             end
           when 'description', 'persistent_status', 'webhook_validator', 'temperature'
             # These are valid fields that can be updated directly
