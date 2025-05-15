@@ -65,6 +65,12 @@ module ADK
           selected_fallback = params['fallback_mode'] || 'error'
           mcp_servers_json = params['mcp_servers_json']&.strip
           instruction = params['instruction']&.strip
+          agent_type = params['agent_type']&.strip || 'llm'
+          
+          # Validate agent_type
+          unless %w[llm sequential parallel loop].include?(agent_type)
+            agent_type = 'llm'
+          end
 
           mcp_servers_json_to_save = (mcp_servers_json.nil? || mcp_servers_json.empty?) ? '[]' : mcp_servers_json
           model_to_save = selected_model && !selected_model.empty? ? selected_model : ADK::Agent::DEFAULT_MODEL
@@ -82,7 +88,8 @@ module ADK
               model: model_to_save,
               fallback_mode: selected_fallback, # Store will convert to symbol
               mcp_servers_json: mcp_servers_json_to_save,
-              instruction: instruction
+              instruction: instruction,
+              agent_type: agent_type
             )
             logger.info("Agent '#{agent_name}' definition saved (from AgentDefinitionRoutes)")
           rescue ADK::DefinitionStore::StoreError => e
@@ -96,6 +103,7 @@ module ADK
             configured_tools: selected_tools, model: model_to_save,
             fallback_mode: selected_fallback.to_sym, # Ensure symbol for partial
             instruction: instruction,
+            agent_type: agent_type.to_sym, # Convert to symbol for the partial
             is_new: true
           }
           # available_tools needed by _agent_row partial
@@ -237,7 +245,7 @@ module ADK
 
         # GET /agents/:name/edit/:field - Show edit form for a specific agent field.
         app.get '/agents/:name/edit/:field' do |name, field|
-          supported_fields = %w[description model tools fallback mcp instruction hierarchy]
+          supported_fields = %w[description model tools fallback mcp instruction hierarchy type]
           halt 404, "Editing field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
@@ -299,7 +307,7 @@ module ADK
 
         # GET /agents/:name/display/:field - Display an agent field (after edit cancel).
         app.get '/agents/:name/display/:field' do |name, field|
-          supported_fields = %w[description model tools fallback mcp instruction hierarchy]
+          supported_fields = %w[description model tools fallback mcp instruction hierarchy type]
           halt 404, "Displaying field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
@@ -328,6 +336,9 @@ module ADK
           elsif field == 'hierarchy'
             # Add sub_agent_names for hierarchy display
             agent_data_for_display[:sub_agent_names] = agent_definition[:sub_agent_names] || []
+            agent_data_for_display[:agent_type] = agent_definition[:agent_type]&.to_sym || :llm
+          elsif field == 'type'
+            # Add agent_type for type display
             agent_data_for_display[:agent_type] = agent_definition[:agent_type]&.to_sym || :llm
           end
           response_locals[:agent_data] = agent_data_for_display
@@ -416,7 +427,7 @@ module ADK
 
         # PUT /agents/:name/update/:field - Update a specific field of an agent definition.
         app.put '/agents/:name/update/:field' do |name, field|
-          supported_fields = %w[description model tools fallback mcp instruction]
+          supported_fields = %w[description model tools fallback mcp instruction type]
           halt 404, "Updating field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           active_agents_hash = self.instance_variable_get(:@agents)
@@ -507,6 +518,19 @@ module ADK
             end
             new_value_for_store = submitted_value.to_sym
             agent_data_for_display_partial[:fallback_mode] = new_value_for_store
+          when 'type'
+            submitted_value = params['agent_type']&.strip
+            unless %w[llm sequential parallel loop].include?(submitted_value)
+              current_def = definition_store.get_definition(name)
+              edit_locals = {
+                agent_data: { name: name, agent_type: current_def ? current_def[:agent_type]&.to_sym : :llm }, 
+                error_message: 'Invalid agent type.'
+              }
+              halt 400, slim(:_edit_agent_type, layout: false, locals: edit_locals)
+            end
+            new_value_for_store = submitted_value
+            agent_data_for_display_partial[:agent_type] = submitted_value.to_sym
+            
           when 'instruction', 'description', 'model'
             new_value_for_store = params['value']&.strip || (field == 'instruction' ? '' : nil)
             if new_value_for_store.nil? && field != 'instruction' # Description and model cannot be nil (empty is ok for description)

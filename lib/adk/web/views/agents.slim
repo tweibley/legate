@@ -21,6 +21,22 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
                 i.fas.fa-robot
         .column.is-half
           .field
+            label.label for="agent_type" Agent Type
+            .control.has-icons-left
+              .select.is-fullwidth
+                select#agent_type(name="agent_type" onchange="toggleWorkflowFields()")
+                  option(value="llm" selected=true) LLM Agent
+                  option(value="sequential") Sequential Workflow
+                  option(value="parallel") Parallel Workflow
+                  option(value="loop") Loop Workflow
+              span.icon.is-small.is-left
+                i.fas.fa-cog
+            p.help 
+              | LLM uses AI for task execution. 
+              | Workflow agents orchestrate other agents.
+
+        .column.is-half
+          .field
             label.label for="model" Language Model
             .control.has-icons-left
               .select.is-fullwidth
@@ -31,7 +47,7 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
               span.icon.is-small.is-left
                 i.fas.fa-brain
 
-        .column.is-full
+        .column.is-half
           .field
             label.label for="description" Description
             .control
@@ -180,4 +196,9 @@ javascript:
     } else {
       input.placeholder = 'Search agents...';
     }
+  }
+  
+  function toggleWorkflowFields() {
+    // Will be implemented later when we add workflow-specific fields
+    console.log("Agent type changed to:", document.getElementById('agent_type').value);
   }

@@ -18,6 +18,10 @@ section.section
       / Moved description display outside the level to allow full width
       div#agent-description-display.mt-2 hx-swap="outerHTML"
         == slim :_display_agent_description, locals: { agent_data: agent_data }
+        
+      / Add agent type display
+      div#agent-type-display.mt-3 hx-swap="outerHTML"
+        == slim :_display_agent_type, locals: { agent_data: agent_data }
 
       / Add the agent hierarchy display
       div#agent-hierarchy-display.mt-3 hx-swap="outerHTML"

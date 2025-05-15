@@ -1,0 +1,57 @@
+/ File: lib/adk/web/views/_display_agent_type.slim
+/ Expects agent_data hash with name and agent_type
+
+- agent_name = agent_data[:name]
+- agent_type = agent_data[:agent_type]&.to_sym || :llm
+- show_edit_button = locals.fetch(:show_edit_button, true)
+
+.content#agent-type-display
+  h4.is-size-5
+    span.icon.mr-2
+      - type_icon = case agent_type
+      - when :sequential then "fa-list-ol"
+      - when :parallel then "fa-layer-group"
+      - when :loop then "fa-sync-alt"
+      - else "fa-robot"
+      i(class="fas #{type_icon}")
+    | Agent Type
+
+  .tags.has-addons.mb-2
+    - type_class = case agent_type
+    - when :sequential then "is-primary"
+    - when :parallel then "is-info"
+    - when :loop then "is-warning"
+    - else "is-light"
+    span.tag.is-medium(class=type_class)
+      - type_label = case agent_type
+      - when :sequential then "Sequential Workflow"
+      - when :parallel then "Parallel Workflow"
+      - when :loop then "Loop Workflow"
+      - else "LLM Agent"
+      = type_label
+
+  - if agent_type == :llm
+    p.help
+      | Standard LLM agent. Can have sub-agents and be used for delegation.
+  - elsif agent_type == :sequential 
+    p.help
+      | Sequential workflow agent. Executes sub-agents in sequence, passing state between them.
+  - elsif agent_type == :parallel
+    p.help
+      | Parallel workflow agent. Executes sub-agents concurrently and combines their results.
+  - elsif agent_type == :loop
+    p.help
+      | Loop workflow agent. Repeatedly executes sub-agents until a condition is met.
+
+  - if show_edit_button
+    .field.mt-3
+      button.button.is-small.is-link.is-light(
+        hx-get="/agents/#{agent_name}/edit/type"
+        hx-target="#agent-type-display"
+        hx-swap="outerHTML"
+        hx-indicator="this .htmx-indicator")
+        span.icon.is-small.htmx-indicator
+          i.fas.fa-spinner.fa-spin
+        span.icon.is-small
+          i.fas.fa-edit
+        span Edit Type 
