@@ -5,7 +5,13 @@
 - agent_name = agent_data[:name]
 - agent_type = agent_data[:agent_type]&.to_sym || :llm
 - sub_agent_names = agent_data[:sub_agent_names] || []
-- all_agent_names = defined?(all_agent_definitions) ? all_agent_definitions.map { |d| d[:name] }.reject { |n| n == agent_name } : []
+
+/ Debug: Display agent_name for filtering
+/ This makes it explicit what we're filtering out 
+/ current_agent_name = #{agent_name}
+
+/ Get available agent names and exclude current agent
+- all_agent_names = defined?(all_agent_definitions) ? all_agent_definitions.map { |d| d[:name] }.reject { |n| n.to_s == agent_name.to_s } : []
 
 .content#agent-hierarchy-display
   form( hx-put="/agents/#{agent_name}/update/hierarchy"
@@ -55,12 +61,14 @@
           .select.is-multiple
             select(name="sub_agent_names[]" multiple size="5")
               - all_agent_names.each do |name|
+                - next if name.to_s == agent_name.to_s
                 option(value=name selected=sub_agent_names.include?(name)) = name
           p.help Select agents for this workflow. Use Ctrl/Cmd+click for multiple selection.
         - else
           .select.is-multiple
             select(name="sub_agent_names[]" multiple size="5")
               - all_agent_names.each do |name|
+                - next if name.to_s == agent_name.to_s
                 option(value=name selected=sub_agent_names.include?(name)) = name
           p.help Select agents for this workflow. Use Ctrl/Cmd+click for multiple selection.
       - else

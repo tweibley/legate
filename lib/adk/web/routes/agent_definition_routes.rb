@@ -66,10 +66,13 @@ module ADK
           mcp_servers_json = params['mcp_servers_json']&.strip
           instruction = params['instruction']&.strip
           agent_type = params['agent_type']&.strip || 'llm'
-          
+
           # Get sub-agents for workflow agents
           sub_agent_names = params['sub_agent_names'] || []
-          
+
+          # Remove self from sub-agent selections to prevent circular references
+          sub_agent_names = sub_agent_names.reject { |name| name == agent_name }
+
           # Validate agent_type
           unless %w[llm sequential parallel loop].include?(agent_type)
             agent_type = 'llm'
@@ -94,12 +97,12 @@ module ADK
               instruction: instruction,
               agent_type: agent_type
             }
-            
+
             # Add sub_agent_names for workflow agents if they were selected
             if agent_type != 'llm' && !sub_agent_names.empty?
               definition_params[:sub_agent_names] = sub_agent_names
             end
-            
+
             definition_store.save_definition(**definition_params)
             logger.info("Agent '#{agent_name}' definition saved (from AgentDefinitionRoutes)")
           rescue ADK::DefinitionStore::StoreError => e
@@ -116,12 +119,12 @@ module ADK
             agent_type: agent_type.to_sym, # Convert to symbol for the partial
             is_new: true
           }
-          
+
           # Include sub_agent_names if this is a workflow agent
           if agent_type != 'llm' && !sub_agent_names.empty?
             agent_data[:sub_agent_names] = sub_agent_names
           end
-          
+
           # available_tools needed by _agent_row partial
           current_available_tools = ADK::GlobalToolManager.list_all_tools
           agent_row_html = slim(:_agent_row, layout: false,
@@ -313,7 +316,10 @@ module ADK
             # Get all available agent definitions for sub-agent selection
             begin
               all_agent_definitions = definition_store.list_definitions
-              view_locals[:all_agent_definitions] = all_agent_definitions || []
+              # Filter out the current agent from available sub-agents to prevent self-reference
+              filtered_agent_definitions = all_agent_definitions.reject { |def_data| def_data[:name].to_s == name.to_s }
+              logger.info("Agent '#{name}' hierarchy edit view: Filtered out self-reference from #{all_agent_definitions.size} to #{filtered_agent_definitions.size} agents.")
+              view_locals[:all_agent_definitions] = filtered_agent_definitions || []
             rescue ADK::DefinitionStore::StoreError => e
               logger.error("Store error fetching agent list for hierarchy edit: #{e.message}")
               view_locals[:all_agent_definitions] = []
@@ -542,35 +548,35 @@ module ADK
             unless %w[llm sequential parallel loop].include?(submitted_value)
               current_def = definition_store.get_definition(name)
               edit_locals = {
-                agent_data: { name: name, agent_type: current_def ? current_def[:agent_type]&.to_sym : :llm }, 
+                agent_data: { name: name, agent_type: current_def ? current_def[:agent_type]&.to_sym : :llm },
                 error_message: 'Invalid agent type.'
               }
               halt 400, slim(:_edit_agent_type, layout: false, locals: edit_locals)
             end
-            
+
             # Check if switching to LLM type and clear sub-agent lists if so
             if submitted_value == 'llm'
               # Get current definition to check current type
               current_def = definition_store.get_definition(name)
               current_type = current_def ? current_def[:agent_type]&.to_s : nil
-              
+
               # Only clear sub-agents if switching from a workflow type to LLM
               if current_type && %w[sequential parallel loop].include?(current_type)
                 # Update sub-agent fields first
                 begin
                   definition_store.update_definition(name, {
-                    sub_agent_names: [],
-                    sequential_sub_agent_names: [],
-                    parallel_sub_agent_names: [],
-                    loop_sub_agent_names: []
-                  })
+                                                       sub_agent_names: [],
+                                                       sequential_sub_agent_names: [],
+                                                       parallel_sub_agent_names: [],
+                                                       loop_sub_agent_names: []
+                                                     })
                   logger.info("Agent '#{name}' switched from '#{current_type}' to 'llm', cleared all sub-agent lists.")
                 rescue => e
                   logger.error("Failed to clear sub-agent lists for agent '#{name}': #{e.message}")
                 end
               end
             end
-            
+
             new_value_for_store = submitted_value
             agent_data_for_display_partial[:agent_type] = submitted_value.to_sym
           when 'instruction', 'description', 'model'
@@ -587,13 +593,13 @@ module ADK
           when 'hierarchy'
             # Get selected sub-agent names from the form
             sub_agent_names = params['sub_agent_names'] || []
-            
+
             # Update the definition via a separate field
             begin
               update_success = definition_store.update_definition(name, sub_agent_names: sub_agent_names)
               halt 404, 'Agent not found for update.' unless update_success
               logger.info("Agent '#{name}' hierarchy updated with #{sub_agent_names.size} sub-agents (from AgentDefinitionRoutes)")
-              
+
               # Refresh agent data for display
               updated_definition = definition_store.get_definition(name)
               agent_data = {
@@ -603,7 +609,7 @@ module ADK
                 sub_agent_names: updated_definition[:sub_agent_names] || [],
                 show_edit_button: true
               }
-              
+
               # Return the updated display partial directly
               return slim :_display_agent_hierarchy, layout: false, locals: { agent_data: agent_data }
             rescue ADK::DefinitionStore::StoreError => e
@@ -651,7 +657,7 @@ module ADK
               slim :_agent_tool_table, layout: false, locals: agent_data_for_display_partial # Pass the whole hash
             else
               response_html = slim :"_display_agent_#{field}", layout: false, locals: response_locals_for_display
-              
+
               # Add OOB update for hierarchy section if changing to LLM type
               if field == 'type' && new_value_for_store == 'llm'
                 # Add an out-of-band swap to update the hierarchy section with empty sub-agents
@@ -662,10 +668,10 @@ module ADK
                   show_edit_button: true
                 }
                 response_html += "<div id=\"agent-hierarchy-display\" hx-swap-oob=\"true\">" +
-                                slim(:_display_agent_hierarchy, layout: false, locals: { agent_data: empty_hierarchy_data }) +
-                                "</div>"
+                                 slim(:_display_agent_hierarchy, layout: false, locals: { agent_data: empty_hierarchy_data }) +
+                                 "</div>"
               end
-              
+
               response_html
             end
           rescue ADK::DefinitionStore::StoreError => e
@@ -720,13 +726,13 @@ module ADK
 
             # Get the submitted agent type value
             submitted_value = params['agent_type']&.strip
-            
+
             # Validate agent type
             unless %w[llm sequential parallel loop].include?(submitted_value)
               edit_locals = {
-                agent_data: { 
-                  name: name, 
-                  agent_type: agent_definition[:agent_type]&.to_sym || :llm 
+                agent_data: {
+                  name: name,
+                  agent_type: agent_definition[:agent_type]&.to_sym || :llm
                 },
                 error_message: 'Invalid agent type.'
               }
@@ -735,7 +741,7 @@ module ADK
 
             # Update the definition with the new agent type
             update_params = { agent_type: submitted_value }
-            
+
             # Clear sub-agent lists if switching to LLM agent
             if submitted_value == 'llm'
               update_params[:sub_agent_names] = []
@@ -744,7 +750,7 @@ module ADK
               update_params[:loop_sub_agent_names] = []
               logger.info("Agent '#{name}' switched to LLM type, clearing all sub-agent lists.")
             end
-            
+
             update_success = definition_store.update_definition(name, update_params)
             halt 404, 'Agent not found for update.' unless update_success
             logger.info("Agent '#{name}' type updated to '#{submitted_value}' (from AgentDefinitionRoutes).")
@@ -755,7 +761,7 @@ module ADK
               logger.info("Agent '#{name}' type updated while running. Triggering auto-restart (from AgentDefinitionRoutes).")
               self.send(:_stop_agent, name)
               newly_started_agent = self.send(:_start_agent, name)
-              
+
               # Set headers to trigger toast notification
               headers 'HX-Trigger-After-Swap' => (newly_started_agent ? 'showRestartToast' : 'showRestartErrorToast')
             end
@@ -771,7 +777,7 @@ module ADK
 
             # Return the updated display partial
             response_html = slim :_display_agent_type, layout: false, locals: { agent_data: agent_data }
-            
+
             # Add an HTMX trigger to refresh the hierarchy section if switching to LLM
             if submitted_value == 'llm'
               # Add an out-of-band swap to update the hierarchy section with empty sub-agents
@@ -782,10 +788,10 @@ module ADK
                 show_edit_button: true
               }
               response_html += "<div id=\"agent-hierarchy-display\" hx-swap-oob=\"true\">" +
-                              slim(:_display_agent_hierarchy, layout: false, locals: { agent_data: empty_hierarchy_data }) +
-                              "</div>"
+                               slim(:_display_agent_hierarchy, layout: false, locals: { agent_data: empty_hierarchy_data }) +
+                               "</div>"
             end
-            
+
             response_html
           rescue ADK::DefinitionStore::StoreError => e
             logger.error("Store error updating agent type: #{e.message}")
