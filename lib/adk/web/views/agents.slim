@@ -143,6 +143,11 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
               | No agent definitions found. Use the 'Create New Agent Definition' section above.
 
 javascript:
+  document.addEventListener('DOMContentLoaded', function() {
+    // Initialize form fields based on selected agent type
+    toggleWorkflowFields();
+  });
+  
   function filterAgents() {
     const input = document.getElementById('agent-search-input');
     const filter = input.value.toLowerCase().trim();
@@ -199,6 +204,20 @@ javascript:
   }
   
   function toggleWorkflowFields() {
-    // Will be implemented later when we add workflow-specific fields
-    console.log("Agent type changed to:", document.getElementById('agent_type').value);
+    const agentType = document.getElementById('agent_type').value;
+    console.log("Agent type changed to:", agentType);
+    
+    // Toggle display of model field based on agent type
+    const modelFieldColumn = document.querySelector('.column .field label[for="model"]').closest('.column');
+    if (agentType === 'llm') {
+      modelFieldColumn.style.display = '';
+    } else {
+      modelFieldColumn.style.display = 'none';
+    }
+    
+    // TODO: Add workflow-specific fields and toggle them based on agent type
+    // For example, we'll add fields for:
+    // - Sequential workflow: ordered list of sub-agents
+    // - Parallel workflow: set of sub-agents to run concurrently
+    // - Loop workflow: sub-agents to run in a loop, plus loop conditions
   }

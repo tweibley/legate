@@ -623,6 +623,63 @@ module ADK
             halt 500, 'Error updating agent hierarchy.'
           end
         end
+
+        # PUT /agents/:name/update/type - Update agent type
+        app.put '/agents/:name/update/type' do |name|
+          definition_store = self.instance_variable_get(:@definition_store)
+          active_agents_hash = self.instance_variable_get(:@agents)
+          halt 503, 'Definition Store unavailable.' unless definition_store
+
+          begin
+            agent_definition = definition_store.get_definition(name)
+            halt 404, 'Agent definition not found.' unless agent_definition
+
+            # Get the submitted agent type value
+            submitted_value = params['agent_type']&.strip
+            
+            # Validate agent type
+            unless %w[llm sequential parallel loop].include?(submitted_value)
+              edit_locals = {
+                agent_data: { 
+                  name: name, 
+                  agent_type: agent_definition[:agent_type]&.to_sym || :llm 
+                },
+                error_message: 'Invalid agent type.'
+              }
+              halt 400, slim(:_edit_agent_type, layout: false, locals: edit_locals)
+            end
+
+            # Update the definition with the new agent type
+            update_success = definition_store.update_definition(name, agent_type: submitted_value)
+            halt 404, 'Agent not found for update.' unless update_success
+            logger.info("Agent '#{name}' type updated to '#{submitted_value}' (from AgentDefinitionRoutes).")
+
+            # Handle agent restart if it was running
+            was_running = active_agents_hash.key?(name)
+            if was_running
+              logger.info("Agent '#{name}' type updated while running. Triggering auto-restart (from AgentDefinitionRoutes).")
+              self.send(:_stop_agent, name)
+              newly_started_agent = self.send(:_start_agent, name)
+              
+              # Set headers to trigger toast notification
+              headers 'HX-Trigger-After-Swap' => (newly_started_agent ? 'showRestartToast' : 'showRestartErrorToast')
+            end
+
+            # Refresh agent data for display
+            updated_definition = definition_store.get_definition(name)
+            agent_data = {
+              name: name,
+              agent_type: updated_definition[:agent_type]&.to_sym || :llm,
+              running: active_agents_hash.key?(name)
+            }
+
+            # Return the updated display partial
+            slim :_display_agent_type, layout: false, locals: { agent_data: agent_data }
+          rescue ADK::DefinitionStore::StoreError => e
+            logger.error("Store error updating agent type: #{e.message}")
+            halt 500, 'Error updating agent type.'
+          end
+        end
       end
     end
   end
