@@ -545,9 +545,32 @@ module ADK
               }
               halt 400, slim(:_edit_agent_type, layout: false, locals: edit_locals)
             end
+            
+            # Check if switching to LLM type and clear sub-agent lists if so
+            if submitted_value == 'llm'
+              # Get current definition to check current type
+              current_def = definition_store.get_definition(name)
+              current_type = current_def ? current_def[:agent_type]&.to_s : nil
+              
+              # Only clear sub-agents if switching from a workflow type to LLM
+              if current_type && %w[sequential parallel loop].include?(current_type)
+                # Update sub-agent fields first
+                begin
+                  definition_store.update_definition(name, {
+                    sub_agent_names: [],
+                    sequential_sub_agent_names: [],
+                    parallel_sub_agent_names: [],
+                    loop_sub_agent_names: []
+                  })
+                  logger.info("Agent '#{name}' switched from '#{current_type}' to 'llm', cleared all sub-agent lists.")
+                rescue => e
+                  logger.error("Failed to clear sub-agent lists for agent '#{name}': #{e.message}")
+                end
+              end
+            end
+            
             new_value_for_store = submitted_value
             agent_data_for_display_partial[:agent_type] = submitted_value.to_sym
-            
           when 'instruction', 'description', 'model'
             new_value_for_store = params['value']&.strip || (field == 'instruction' ? '' : nil)
             if new_value_for_store.nil? && field != 'instruction' # Description and model cannot be nil (empty is ok for description)
