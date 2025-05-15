@@ -452,6 +452,7 @@ module ADK
           field_to_update_in_store = case field
                                      when 'fallback' then 'fallback_mode'
                                      when 'mcp' then 'mcp_servers_json'
+                                     when 'type' then 'agent_type'
                                      else field
                                      end
           new_value_for_store = nil
@@ -686,7 +687,8 @@ module ADK
             agent_data = {
               name: name,
               agent_type: updated_definition[:agent_type]&.to_sym || :llm,
-              running: active_agents_hash.key?(name)
+              running: active_agents_hash.key?(name),
+              show_edit_button: true
             }
 
             # Return the updated display partial
