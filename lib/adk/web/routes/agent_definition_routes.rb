@@ -648,7 +648,23 @@ module ADK
               # and agent_data_for_display_partial[:mcp_tool_results]
               slim :_agent_tool_table, layout: false, locals: agent_data_for_display_partial # Pass the whole hash
             else
-              slim :"_display_agent_#{field}", layout: false, locals: response_locals_for_display
+              response_html = slim :"_display_agent_#{field}", layout: false, locals: response_locals_for_display
+              
+              # Add OOB update for hierarchy section if changing to LLM type
+              if field == 'type' && new_value_for_store == 'llm'
+                # Add an out-of-band swap to update the hierarchy section with empty sub-agents
+                empty_hierarchy_data = {
+                  name: name,
+                  agent_type: :llm,
+                  sub_agent_names: [],
+                  show_edit_button: true
+                }
+                response_html += "<div id=\"agent-hierarchy-display\" hx-swap-oob=\"true\">" +
+                                slim(:_display_agent_hierarchy, layout: false, locals: { agent_data: empty_hierarchy_data }) +
+                                "</div>"
+              end
+              
+              response_html
             end
           rescue ADK::DefinitionStore::StoreError => e
             logger.error("Store error updating agent '#{name}' (from AgentDefinitionRoutes): #{e.message}")
@@ -752,7 +768,23 @@ module ADK
             }
 
             # Return the updated display partial
-            slim :_display_agent_type, layout: false, locals: { agent_data: agent_data }
+            response_html = slim :_display_agent_type, layout: false, locals: { agent_data: agent_data }
+            
+            # Add an HTMX trigger to refresh the hierarchy section if switching to LLM
+            if submitted_value == 'llm'
+              # Add an out-of-band swap to update the hierarchy section with empty sub-agents
+              empty_hierarchy_data = {
+                name: name,
+                agent_type: :llm,
+                sub_agent_names: [],
+                show_edit_button: true
+              }
+              response_html += "<div id=\"agent-hierarchy-display\" hx-swap-oob=\"true\">" +
+                              slim(:_display_agent_hierarchy, layout: false, locals: { agent_data: empty_hierarchy_data }) +
+                              "</div>"
+            end
+            
+            response_html
           rescue ADK::DefinitionStore::StoreError => e
             logger.error("Store error updating agent type: #{e.message}")
             halt 500, 'Error updating agent type.'
