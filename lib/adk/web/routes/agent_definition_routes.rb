@@ -273,7 +273,8 @@ module ADK
             name: name, description: agent_definition[:description], model: agent_definition[:model],
             fallback_mode: agent_definition[:fallback_mode],
             mcp_servers_json: agent_definition[:mcp_servers_json],
-            instruction: agent_definition[:instruction]
+            instruction: agent_definition[:instruction],
+            agent_type: agent_definition[:agent_type]&.to_sym || :llm
           }
 
           view_locals = { agent_data: agent_data }
@@ -336,7 +337,8 @@ module ADK
             name: name, description: agent_definition[:description], model: agent_definition[:model],
             fallback_mode: agent_definition[:fallback_mode],
             mcp_servers_json: agent_definition[:mcp_servers_json],
-            instruction: agent_definition[:instruction]
+            instruction: agent_definition[:instruction],
+            agent_type: agent_definition[:agent_type]&.to_sym || :llm
           }
 
           if field == 'mcp'
