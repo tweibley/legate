@@ -61,7 +61,7 @@ section.section
               form#execute-task-form( hx-post="/agents/#{agent_name}/execute"
                                       hx-target="#task-result"
                                       hx-swap="innerHTML"
-                                      hx-indicator="#execute-task-button span.htmx-indicator" )
+                                      hx-indicator="#execute-task-button span.icon.htmx-indicator" )
                   .field
                     label.label Task (JSON Input)
                     p.help.is-size-7 Format: `{"task": "..."}` or `{"tool_name": "...", ...}`
