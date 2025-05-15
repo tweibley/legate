@@ -75,7 +75,9 @@
                                 hx-swap="outerHTML" )
           span Cancel
       .control
-        button.button.is-success(type="submit")
+        button.button.is-success(type="submit" hx-indicator=".htmx-indicator")
+          span.icon.is-small.htmx-indicator
+            i.fas.fa-spinner.fa-spin
           span.icon.is-small
             i.fas.fa-check
           span Save Changes 
