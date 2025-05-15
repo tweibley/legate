@@ -106,6 +106,8 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
               | These agents must already be created before they can be added to a workflow.
             .control
               - all_agent_names = @view_agents ? @view_agents.map { |agent| agent[:name] } : []
+              - # Note: For creation, we don't have a current agent name yet, but we'll need to check for conflicts
+              - # when the agent is actually created via the API endpoint
               - if all_agent_names.any?
                 .panel.sub-agent-selection-panel
                   p.panel-heading Available Agents
