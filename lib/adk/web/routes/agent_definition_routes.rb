@@ -67,6 +67,9 @@ module ADK
           instruction = params['instruction']&.strip
           agent_type = params['agent_type']&.strip || 'llm'
           
+          # Get sub-agents for workflow agents
+          sub_agent_names = params['sub_agent_names'] || []
+          
           # Validate agent_type
           unless %w[llm sequential parallel loop].include?(agent_type)
             agent_type = 'llm'
@@ -81,7 +84,7 @@ module ADK
           end
 
           begin
-            definition_store.save_definition(
+            definition_params = {
               name: agent_name,
               description: agent_description,
               tools: selected_tools,
@@ -90,7 +93,14 @@ module ADK
               mcp_servers_json: mcp_servers_json_to_save,
               instruction: instruction,
               agent_type: agent_type
-            )
+            }
+            
+            # Add sub_agent_names for workflow agents if they were selected
+            if agent_type != 'llm' && !sub_agent_names.empty?
+              definition_params[:sub_agent_names] = sub_agent_names
+            end
+            
+            definition_store.save_definition(**definition_params)
             logger.info("Agent '#{agent_name}' definition saved (from AgentDefinitionRoutes)")
           rescue ADK::DefinitionStore::StoreError => e
             logger.error("Store error saving agent definition (from AgentDefinitionRoutes): #{e.message}")
@@ -106,6 +116,12 @@ module ADK
             agent_type: agent_type.to_sym, # Convert to symbol for the partial
             is_new: true
           }
+          
+          # Include sub_agent_names if this is a workflow agent
+          if agent_type != 'llm' && !sub_agent_names.empty?
+            agent_data[:sub_agent_names] = sub_agent_names
+          end
+          
           # available_tools needed by _agent_row partial
           current_available_tools = ADK::GlobalToolManager.list_all_tools
           agent_row_html = slim(:_agent_row, layout: false,

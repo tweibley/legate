@@ -98,6 +98,37 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
               - else
                 .notification.is-warning.is-light No tools available for selection.
 
+        .column.is-full#workflow-configuration-section style="display: none;"
+          .field
+            label.label Workflow Sub-Agents
+            p.help.mb-3
+              | Select agents to include in this workflow. For sequential workflows, the order is important.
+              | These agents must already be created before they can be added to a workflow.
+            .control
+              - all_agent_names = @view_agents ? @view_agents.map { |agent| agent[:name] } : []
+              - if all_agent_names.any?
+                .panel.sub-agent-selection-panel
+                  p.panel-heading Available Agents
+                  - all_agent_names.each do |agent_name|
+                    label.panel-block.is-clickable
+                      input.mr-3(type="checkbox" name="sub_agent_names[]" value=agent_name)
+                      span = agent_name
+                
+                / Additional dropdown for sequential workflow with ordering instructions
+                .field.mt-3#sequential-workflow-ordering style="display: none;"
+                  label.label.is-size-6 Execution Order
+                  p.help.is-size-7.mb-2 
+                    | For sequential workflows, agents will execute in the order they are selected above.
+                    | First selected = first executed.
+                  .notification.is-info.is-light
+                    span.icon.mr-2
+                      i.fas.fa-info-circle
+                    | Tip: After creating the workflow, you can edit the hierarchy to reorder the agents.
+              - else
+                .notification.is-warning.is-light 
+                  | No other agents available to select as sub-agents. 
+                  | Create some regular agents first before creating a workflow.
+
       .field.mt-5
         .control
           button.button.is-link(type="submit")
@@ -215,9 +246,36 @@ javascript:
       modelFieldColumn.style.display = 'none';
     }
     
-    // TODO: Add workflow-specific fields and toggle them based on agent type
-    // For example, we'll add fields for:
-    // - Sequential workflow: ordered list of sub-agents
-    // - Parallel workflow: set of sub-agents to run concurrently
-    // - Loop workflow: sub-agents to run in a loop, plus loop conditions
+    // Toggle display of workflow configuration section
+    const workflowSection = document.getElementById('workflow-configuration-section');
+    if (agentType === 'llm') {
+      workflowSection.style.display = 'none';
+    } else {
+      workflowSection.style.display = '';
+      
+      // Check if there are any agents available for selection
+      const agentsAvailable = workflowSection.querySelector('.sub-agent-selection-panel') !== null;
+      
+      // Update help text and ordering section based on workflow type
+      const helpText = workflowSection.querySelector('p.help');
+      if (helpText) {
+        if (agentType === 'sequential') {
+          helpText.innerHTML = 'Select agents to execute in sequence. The order of selection matters.';
+          const orderingSection = document.getElementById('sequential-workflow-ordering');
+          if (orderingSection) {
+            orderingSection.style.display = agentsAvailable ? '' : 'none';
+          }
+        } else if (agentType === 'parallel') {
+          helpText.innerHTML = 'Select agents to execute concurrently. All selected agents will run at the same time.';
+          if (document.getElementById('sequential-workflow-ordering')) {
+            document.getElementById('sequential-workflow-ordering').style.display = 'none';
+          }
+        } else if (agentType === 'loop') {
+          helpText.innerHTML = 'Select agents to execute in a loop until a condition is met.';
+          if (document.getElementById('sequential-workflow-ordering')) {
+            document.getElementById('sequential-workflow-ordering').style.display = 'none';
+          }
+        }
+      }
+    }
   }
