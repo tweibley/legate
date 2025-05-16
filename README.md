@@ -24,6 +24,10 @@ ADK (Agent Development Kit) for Ruby is a framework for building AI agents with 
 - **Agent Delegation**: Agents can delegate tasks to other agents using the built-in `:delegate_task` tool
 - **Metrics**: Basic Prometheus metrics endpoint (`/metrics`) via `prometheus-client`
 - **Asynchronous Job Handling**: Support for long-running tasks via background jobs (using Sidekiq). See [Async Jobs with Sidekiq](docs/async_jobs_sidekiq.md)
+- **Dynamic Agent Delegation**: Enables agent coordination through direct delegation, allowing complex workflows where agents can transfer control to specialized agents while maintaining session state.
+- **Agent Hierarchy**: Organize agents in parent-child relationships, creating sophisticated agent structures.
+- **Workflow Agents**: Support for sequential, parallel, and loop agent patterns.
+- **Session State Sharing**: Maintain continuity across agent boundaries with shared session state.
 
 ## Installation
 

@@ -198,10 +198,20 @@ module ADK
 
     # --- NEW: Build the multi-step prompt ---
     def build_multi_step_gemini_prompt(user_input, tools_description)
+      # Check if agent has delegation targets
+      has_delegation_targets = @agent.definition.respond_to?(:delegation_targets) &&
+                               @agent.definition.delegation_targets&.any?
+
+      # Get agent instruction if available
+      agent_instruction = @agent.respond_to?(:instruction) ? @agent.instruction : nil
+      instruction_text = agent_instruction&.strip.to_s
+
+      # Build the prompt with clearer delegation instructions if relevant
       prompt = <<~PROMPT
         # Instructions
 
         You are an AI assistant that helps people by breaking down tasks into simpler steps.
+        #{!instruction_text.empty? ? "\n" + instruction_text + "\n" : ""}
 
         ## Response Format Requirements
 
@@ -233,14 +243,46 @@ module ADK
            - DO NOT add explanations outside the JSON structure
            - All JSON keys and string values MUST use double quotes
 
+      PROMPT
+
+      # Add delegation instructions if targets exist
+      if has_delegation_targets
+        prompt += <<~DELEGATION_INSTRUCTIONS
+
+          ## Agent Delegation Capabilities
+
+          You can delegate tasks to specialized agents when appropriate. Look for tools with names#{' '}
+          starting with "agent_transfer_to_" in the Available Tools list. These special tools allow
+          you to transfer control to another agent that specializes in specific tasks.
+
+          When deciding whether to delegate:
+          1. Consider if the task requires specialized knowledge or capabilities
+          2. Choose the most appropriate specialized agent from the available delegation options
+          3. Clearly specify the task for the specialized agent in the "task" parameter
+
+          For example, if you see "agent_transfer_to_calculator_agent" and the user asks a math question,
+          you can delegate by including this in your plan:
+          ```json
+          {
+            "step": 1,
+            "type": "tool_use",
+            "tool_name": "agent_transfer_to_calculator_agent",
+            "tool_input": {"task": "Calculate 125 * 45"},
+            "reason": "This requires mathematical calculation"
+          }
+          ```
+        DELEGATION_INSTRUCTIONS
+      end
+
+      # Continue with the standard prompt
+      prompt += <<~PROMPT
+
         ## CRITICAL INSTRUCTION:
 
         To answer the user's request, you MUST use the available tools to generate responses, especially the "echo" tool.#{' '}
         Even if you think you can't fulfill the request perfectly, use the "echo" tool to provide the best possible response.
 
         DO NOT say that you can't help or that your capabilities are limited. Instead, use your knowledge and the available tools to provide a helpful response.
-
-        If asked to create content, generate it using the "echo" tool with your message parameter containing all the content.
 
         ## Available Tools
 

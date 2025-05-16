@@ -81,11 +81,10 @@ RSpec.describe ADK::Planner do
       planner = ADK::Planner.new(agent: agent)
       result = planner.send(:build_multi_step_gemini_prompt, 'Test task', 'Tool descriptions')
 
-      # Remove these expectations as they no longer match the new format
-      # expect(result).to include('Important: You can delegate tasks to other specialized agents')
-      # expect(result).to include('Look for tools with names starting with "agent_transfer_to_"')
-
-      # Just verify the task is in the prompt
+      # Check for the new delegation instructions
+      expect(result).to include('Agent Delegation Capabilities')
+      expect(result).to include('delegate tasks to specialized agents')
+      expect(result).to include('agent_transfer_to_')
       expect(result).to include('Test task')
     end
 
@@ -104,11 +103,11 @@ RSpec.describe ADK::Planner do
       planner = ADK::Planner.new(agent: agent)
       result = planner.send(:build_multi_step_gemini_prompt, 'Test task', 'Tool descriptions')
 
-      # Remove these expectations as the format has changed
-      # expect(result).not_to include('Important: You can delegate tasks to other specialized agents')
-      # expect(result).not_to include('Look for tools with names starting with "agent_transfer_to_"')
+      # Check that delegation instructions are not included
+      expect(result).not_to include('Agent Delegation Capabilities')
+      expect(result).not_to include('delegate tasks to specialized agents')
 
-      # Just verify the task is in the prompt
+      # Verify the task is in the prompt
       expect(result).to include('Test task')
     end
   end

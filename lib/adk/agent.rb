@@ -1190,6 +1190,96 @@ module ADK
       nil
     end
 
+    # Transfers control to another agent, executing a task with the same session context.
+    # This is a public version of the private transfer_to method
+    #
+    # @param target_agent_name [Symbol] The name of the target agent to delegate to
+    # @param task [String] The task to delegate to the target agent
+    # @param session_id [String] The current session ID
+    # @param session_service [ADK::SessionService::Base] The session service instance
+    # @return [Hash] A standard result hash { status: :success/:error, result/error_message: ... }
+    def transfer_to(target_agent_name, task, session_id, session_service)
+      # Call the private transfer_to method if it exists
+      if self.private_methods.include?(:transfer_to)
+        self.send(:transfer_to, target_agent_name, task, session_id, session_service)
+      else
+        # Fallback implementation that manually does what transfer_to would do
+
+        # Verify the target agent is in the delegation_targets list if defined
+        if @definition.respond_to?(:delegation_targets) && @definition.delegation_targets&.any?
+          unless @definition.delegation_targets.include?(target_agent_name)
+            error_msg = "Agent '#{target_agent_name}' is not in the delegation targets for '#{@name}'"
+            ADK.logger.error(error_msg)
+            return { status: :error, error_message: error_msg, error_class: 'InvalidDelegationTarget' }
+          end
+        end
+
+        # Find the target agent in the agent hierarchy, starting from the root
+        target_agent = root_agent.find_agent(target_agent_name)
+
+        # If not found in hierarchy, try to instantiate from definition store
+        unless target_agent
+          ADK.logger.info("Target agent '#{target_agent_name}' not found in hierarchy. Attempting to load from definition store.")
+
+          begin
+            # Try to find the definition in the global registry
+            target_def = ADK::GlobalDefinitionRegistry.find(target_agent_name)
+
+            unless target_def
+              error_msg = "Target agent definition '#{target_agent_name}' not found in registry"
+              ADK.logger.error(error_msg)
+              return { status: :error, error_message: error_msg, error_class: 'AgentDefinitionNotFound' }
+            end
+
+            # Create a new agent instance from the definition
+            target_agent = ADK::Agent.new(
+              definition: target_def,
+              session_service: session_service
+            )
+          rescue StandardError => e
+            error_msg = "Failed to instantiate target agent '#{target_agent_name}': #{e.message}"
+            ADK.logger.error("#{error_msg}\n#{e.backtrace.join("\n")}")
+            return { status: :error, error_message: error_msg, error_class: e.class.name }
+          end
+        end
+
+        # Verify the target agent exists
+        unless target_agent
+          error_msg = "Target agent '#{target_agent_name}' not found in hierarchy or definition store"
+          ADK.logger.error(error_msg)
+          return { status: :error, error_message: error_msg, error_class: 'AgentNotFound' }
+        end
+
+        # Start the target agent if it's not already running
+        target_agent.start unless target_agent.running?
+
+        # Execute the delegated task
+        begin
+          ADK.logger.info("Executing delegated task on agent '#{target_agent_name}': #{task}")
+
+          # Call run_task with the same session context
+          result_event = target_agent.run_task(
+            session_id: session_id,
+            user_input: task,
+            session_service: session_service
+          )
+
+          # Extract and format the result
+          result_content = result_event.respond_to?(:content) ? result_event.content : result_event
+
+          return {
+            status: :success,
+            target_agent: target_agent_name.to_s,
+            result: result_content
+          }
+        rescue StandardError => e
+          error_msg = "Error executing task on target agent '#{target_agent_name}': #{e.message}"
+          ADK.logger.error("#{error_msg}\n#{e.backtrace.join("\n")}")
+          return { status: :error, error_message: error_msg, error_class: e.class.name }
+        end
+      end
+    end
+
     private
 
     # Helper method to consistently determine the tool name from a tool class.
