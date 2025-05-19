@@ -21,7 +21,7 @@ module ADK
     #   )
     class Credential
       # Valid credential types
-      VALID_TYPES = %i[api_key oauth2 oidc service_account http_bearer].freeze
+      VALID_TYPES = %i[api_key oauth2 oidc service_account google_service_account http_bearer].freeze
 
       # Prefix for environment variable references
       ENV_PREFIX = 'ENV:'.freeze
@@ -122,7 +122,13 @@ module ADK
         when :oidc
           [:client_id]
         when :service_account
-          [:service_account_json]
+          # Allow either service_account_key or service_account_key_file
+          return [] if @attributes.key?(:service_account_key) || @attributes.key?(:service_account_key_file)
+          [:service_account_key]
+        when :google_service_account
+          # Allow either service_account_key or service_account_key_file
+          return [] if @attributes.key?(:service_account_key) || @attributes.key?(:service_account_key_file)
+          [:service_account_key]
         when :http_bearer
           [:bearer_token]
         else
