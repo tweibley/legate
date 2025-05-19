@@ -352,5 +352,8 @@ RSpec.describe "ADK Callbacks" do
       expect(result.content[:status]).to eq(:error)
       expect(result.content[:error_message]).to include("Error in before_agent_callback")
     end
+    
+    # Note: Model callback tests (before_model_callback and after_model_callback) 
+    # have been moved to spec/adk/planner_callbacks_spec.rb
   end
 end 
