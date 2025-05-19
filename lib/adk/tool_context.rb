@@ -68,6 +68,73 @@ module ADK
     def clear_pending_state_delta!
       @pending_state_delta = {}
     end
+    
+    # Authentication-related methods
+    
+    # Apply authentication to a request using the specified scheme and credential
+    # @param request [Hash] The request to authenticate
+    # @param scheme [ADK::Auth::Scheme] The authentication scheme to use
+    # @param credential [ADK::Auth::Credential] The credential to use
+    # @return [Hash] The authenticated request
+    def authenticate_request(request, scheme, credential)
+      require_relative 'auth/tool_integration'
+      
+      # Get token store if session service supports it
+      token_store = get_token_store
+      
+      # Apply authentication
+      ADK::Auth::ToolIntegration.apply_authentication(request, scheme, credential, token_store)
+    end
+    
+    # Check if a response indicates an authentication error
+    # @param response [Hash] The response to check
+    # @return [Boolean] True if the response indicates an authentication error
+    def authentication_error?(response)
+      require_relative 'auth/tool_integration'
+      ADK::Auth::ToolIntegration.authentication_error?(response)
+    end
+    
+    # Get an authentication token from the session cache
+    # @param scheme [ADK::Auth::Scheme] The authentication scheme
+    # @param credential [ADK::Auth::Credential] The credential
+    # @return [ADK::Auth::ExchangedCredential, nil] The cached token if available
+    def get_cached_token(scheme, credential)
+      token_store = get_token_store
+      return nil unless token_store
+      
+      require_relative 'auth/tool_integration'
+      cache_key = ADK::Auth::ToolIntegration.generate_cache_key(scheme, credential)
+      token_store.get(cache_key)
+    end
+    
+    # Store an authentication token in the session cache
+    # @param scheme [ADK::Auth::Scheme] The authentication scheme
+    # @param credential [ADK::Auth::Credential] The credential
+    # @param token [ADK::Auth::ExchangedCredential] The token to cache
+    # @return [Boolean] True if the token was stored successfully
+    def store_token(scheme, credential, token)
+      token_store = get_token_store
+      return false unless token_store
+      
+      require_relative 'auth/tool_integration'
+      cache_key = ADK::Auth::ToolIntegration.generate_cache_key(scheme, credential)
+      token_store.store(cache_key, token)
+      true
+    end
+    
+    # Clear a cached authentication token
+    # @param scheme [ADK::Auth::Scheme] The authentication scheme
+    # @param credential [ADK::Auth::Credential] The credential
+    # @return [Boolean] True if the token was cleared successfully
+    def clear_token(scheme, credential)
+      token_store = get_token_store
+      return false unless token_store
+      
+      require_relative 'auth/tool_integration'
+      cache_key = ADK::Auth::ToolIntegration.generate_cache_key(scheme, credential)
+      token_store.clear(cache_key)
+      true
+    end
 
     def to_h
       {
@@ -78,6 +145,22 @@ module ADK
         tool_registry_object_id: @tool_registry&.object_id,
         session_service_present: !@session_service.nil?
       }
+    end
+    
+    private
+    
+    # Get the token store for caching authentication tokens
+    # @return [ADK::Auth::TokenStore, nil] The token store if available
+    def get_token_store
+      return nil unless @session_service
+      
+      # If session_service is Redis, we can use its methods directly
+      if @session_service.is_a?(ADK::SessionService::Redis)
+        require_relative 'auth/token_store'
+        return ADK::Auth::TokenStore.new(@session_service)
+      end
+      
+      nil
     end
   end
 end

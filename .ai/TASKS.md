@@ -7,11 +7,11 @@
 > Dependencies: 1
 > Implement the credential management system with environment variable resolution and secure storage.
 
-- [ ] **ID 3: Session Security Enhancement** (Priority: critical)
+- [x] **ID 3: Session Security Enhancement** (Priority: critical)
 > Dependencies: 1
 > Enhance the SessionService::Redis to securely store sensitive credentials with encryption.
 
-- [ ] **ID 4: Non-Interactive Authentication Flows** (Priority: high)
+- [x] **ID 4: Non-Interactive Authentication Flows** (Priority: high)
 > Dependencies: 1, 2, 3
 > Implement API Key and HTTP Bearer authentication schemes for non-interactive authentication.
 
