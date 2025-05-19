@@ -25,6 +25,9 @@ module ADK
         # @return [Boolean] Whether to use PKCE
         attr_reader :use_pkce
         
+        # @return [Hash, nil] Additional parameters for authorization requests
+        attr_reader :additional_params
+
         # Initialize a new OAuth2 scheme
         # @param authorization_url [String] The URL for the authorization endpoint
         # @param token_url [String] The URL for the token endpoint
@@ -199,7 +202,7 @@ module ADK
             
             # Create an exchanged credential from the token response
             ADK::Auth::ExchangedCredential.new(
-              auth_type: :oauth2,
+              auth_type: scheme_type,
               access_token: token.token,
               refresh_token: token.refresh_token,
               token_type: token.params['token_type'],
@@ -241,7 +244,7 @@ module ADK
             
             # Create a new exchanged credential with the refreshed token
             ADK::Auth::ExchangedCredential.new(
-              auth_type: :oauth2,
+              auth_type: scheme_type,
               access_token: refreshed_token.token,
               refresh_token: refreshed_token.refresh_token || refresh_token,
               token_type: refreshed_token.params['token_type'],
@@ -273,7 +276,7 @@ module ADK
             
             # Create an exchanged credential from the token response
             ADK::Auth::ExchangedCredential.new(
-              auth_type: :oauth2,
+              auth_type: scheme_type,
               access_token: token.token,
               token_type: token.params['token_type'],
               expires_at: token.expires_at ? Time.at(token.expires_at) : nil,
@@ -306,7 +309,7 @@ module ADK
             
             # Create an exchanged credential from the token response
             ADK::Auth::ExchangedCredential.new(
-              auth_type: :oauth2,
+              auth_type: scheme_type,
               access_token: token.token,
               refresh_token: token.refresh_token,
               token_type: token.params['token_type'],

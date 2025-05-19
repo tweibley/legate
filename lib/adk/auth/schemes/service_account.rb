@@ -101,7 +101,7 @@ module ADK
           
           # Create an exchanged credential with the token information
           ADK::Auth::ExchangedCredential.new(
-            auth_type: :service_account,
+            auth_type: scheme_type,
             access_token: token_response[:access_token],
             expires_in: token_response[:expires_in],
             token_type: token_response[:token_type],

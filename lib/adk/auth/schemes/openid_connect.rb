@@ -20,6 +20,12 @@ module ADK
         # @return [String, nil] The URL for the JWK Set
         attr_reader :jwks_url
         
+        # @return [String, nil] The userinfo endpoint URL
+        attr_reader :userinfo_url
+        
+        # @return [String, nil] The issuer identifier
+        attr_reader :issuer
+        
         # Initialize a new OpenID Connect scheme
         # @param authorization_url [String, nil] The URL for the authorization endpoint (optional if discovery_url is provided)
         # @param token_url [String, nil] The URL for the token endpoint (optional if discovery_url is provided)
@@ -32,6 +38,8 @@ module ADK
                        scopes: nil, use_pkce: true, additional_params: nil)
           @discovery_url = discovery_url
           @jwks_url = jwks_url
+          @userinfo_url = nil
+          @issuer = nil
           
           # If discovery URL is provided, attempt to fetch the endpoints
           if @discovery_url && (!authorization_url || !token_url || !@jwks_url)
@@ -127,8 +135,14 @@ module ADK
           # First, get the tokens using OAuth2's implementation
           oauth2_credential = super
           
-          # Extract the ID token from the token response
-          id_token = oauth2_credential[:id_token]
+          # Extract the ID token from the token response 
+          # Try different possible locations where the ID token might be stored
+          id_token = oauth2_credential.id_token ||
+                     oauth2_credential.attributes&.dig(:id_token) ||
+                     oauth2_credential.attributes&.dig(:params, 'id_token')
+          
+          # Initialize user_info as empty hash
+          user_info = {}
           
           # Verify the ID token if present
           if id_token
@@ -148,7 +162,7 @@ module ADK
           
           # Create an exchanged credential with OIDC specifics
           ADK::Auth::ExchangedCredential.new(
-            auth_type: :openid_connect,
+            auth_type: scheme_type,
             access_token: oauth2_credential.access_token,
             refresh_token: oauth2_credential.refresh_token,
             token_type: oauth2_credential.token_type,
