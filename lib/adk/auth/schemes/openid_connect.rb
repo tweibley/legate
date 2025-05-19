@@ -167,7 +167,6 @@ module ADK
             refresh_token: oauth2_credential.refresh_token,
             token_type: oauth2_credential.token_type,
             expires_at: oauth2_credential.expires_at,
-            expires_in: oauth2_credential.expires_in,
             scope: oauth2_credential[:scope],
             id_token: id_token,
             user_info: user_info

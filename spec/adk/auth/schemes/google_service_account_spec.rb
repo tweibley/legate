@@ -22,26 +22,6 @@ RSpec.describe ADK::Auth::Schemes::GoogleServiceAccount do
         SecureRandom.uuid
       end
     end
-    
-    # Add expires_in method to ExchangedCredential if it doesn't exist
-    unless ADK::Auth::ExchangedCredential.instance_methods.include?(:expires_in)
-      ADK::Auth::ExchangedCredential.class_eval do
-        def expires_in
-          return nil unless @expires_at
-          (@expires_at - Time.now).to_i
-        end
-      end
-    end
-    
-    # Modify initialize method to make access_token optional for tests
-    ADK::Auth::ExchangedCredential.class_eval do
-      alias_method :original_initialize, :initialize
-      
-      def initialize(auth_type:, access_token: nil, **options)
-        access_token ||= 'dummy_token' if ENV['RSPEC_ENV'] == 'test'
-        original_initialize(auth_type: auth_type, access_token: access_token, **options)
-      end
-    end
   end
   
   # Set test environment flag
@@ -51,6 +31,18 @@ RSpec.describe ADK::Auth::Schemes::GoogleServiceAccount do
   
   after(:each) do
     ENV.delete('RSPEC_ENV')
+  end
+  
+  # Helper method for creating test credentials
+  def create_test_credential(auth_type:, access_token: nil, **options)
+    access_token ||= 'dummy_token' if ENV['RSPEC_ENV'] == 'test'
+    ADK::Auth::ExchangedCredential.new(auth_type: auth_type, access_token: access_token, **options)
+  end
+  
+  # Helper method for calculating expires_in
+  def calculate_expires_in(expires_at)
+    return nil unless expires_at
+    (expires_at - Time.now).to_i
   end
   
   let(:token_url) { 'https://oauth2.googleapis.com/token' } 
@@ -172,7 +164,7 @@ RSpec.describe ADK::Auth::Schemes::GoogleServiceAccount do
       expect(result.auth_type).to eq(:google_service_account)
       expect(result.access_token).to eq('google_access_token')
       expect(result.token_type).to eq('Bearer')
-      expect(result.expires_in).to be_within(5).of(3600)
+      expect(calculate_expires_in(result.expires_at)).to be_within(5).of(3600)
       expect(result[:scope]).to eq(scopes.join(' '))
     end
     
