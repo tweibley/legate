@@ -35,6 +35,35 @@ module ADK
           :google_service_account
         end
         
+        # Fetch a new token using the Google service account
+        # @param credential [ADK::Auth::Credential] The credential with service account info
+        # @return [ADK::Auth::ExchangedCredential] The exchanged credential with the token
+        # @raise [ADK::Auth::TokenExchangeError] If token exchange fails
+        def fetch_token(credential)
+          # Verify credential type
+          unless credential.is_a?(ADK::Auth::Credential)
+            raise ADK::Auth::CredentialError, 'Invalid credential type for service account'
+          end
+          
+          # Extract service account key from credential
+          service_account_key = get_service_account_key(credential)
+          
+          # Create and sign the JWT
+          jwt = create_signed_jwt(service_account_key)
+          
+          # Exchange the JWT for an access token
+          token_response = exchange_jwt_for_token(jwt)
+          
+          # Create an exchanged credential with the token information
+          ADK::Auth::ExchangedCredential.new(
+            auth_type: :google_service_account,
+            access_token: token_response[:access_token],
+            expires_in: token_response[:expires_in],
+            token_type: token_response[:token_type],
+            scope: token_response[:scope]
+          )
+        end
+        
         private
         
         # Create and sign a JWT token for Google service account authentication
