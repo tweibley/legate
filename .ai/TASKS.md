@@ -23,11 +23,11 @@
 > Dependencies: 5
 > Add support for OpenID Connect authentication, extending the OAuth2 implementation.
 
-- [ ] **ID 7: Service Account Authentication** (Priority: medium)
+- [ ] **ID 7: Service Account Authentication** (Priority: medium) [IN PROGRESS]
 > Dependencies: 1, 2, 3
 > Implement service account authentication flow with automatic token exchange and refresh.
 
-- [ ] **ID 8: Token Lifecycle Management** (Priority: high)
+- [ ] **ID 8: Token Lifecycle Management** (Priority: high) [IN PROGRESS]
 > Dependencies: 3, 4, 5
 > Create token lifecycle management for handling token expiration, refresh, and invalidation.
 

@@ -17,30 +17,31 @@ error_log: null
 
 ## Description
 
-Create token lifecycle management for handling token expiration, refresh, and invalidation.
+Implement a comprehensive token lifecycle management system for handling token expiration, refresh, and invalidation.
 
 ## Details
 
-- Implement token expiration tracking:
-  - Add expiration time calculation and storage
-  - Create mechanism to check if a token is expired or about to expire
-  - Implement time buffer for preemptive refresh (e.g., refresh when <10% of lifetime remains)
-- Create refresh token handling:
-  - Implement secure storage of refresh tokens
-  - Add mechanisms to detect when refresh is needed
-  - Create refresh failure handling with appropriate error messages
-- Implement token invalidation:
-  - Add methods to force token invalidation
-  - Create secure cache clearing for invalidated tokens
-  - Implement handling for server-side token revocation when possible
-- Create token lifecycle hooks:
-  - Add event system for token lifecycle events (created, refreshed, expired, invalidated)
-  - Implement customizable handlers for lifecycle events
-  - Add logging for token lifecycle for debugging
-- Implement automatic token management:
-  - Create middleware or interceptors for automatic token refresh
-  - Add retry logic for failed requests due to token expiration
-  - Implement backoff strategies for refresh failures
+- Create a `TokenManager` class in `lib/adk/auth/` that centralizes token lifecycle operations:
+  - Token acquisition and caching
+  - Proactive token refresh before expiration
+  - Token invalidation and revocation
+  - Background refresh for long-lived sessions
+  - Consistent handling across different authentication schemes
+- Implement event callbacks for token lifecycle events:
+  - Token about to expire
+  - Token refresh success/failure
+  - Token invalidation
+- Add support for token revocation endpoints in schemes that support it (OAuth2, OIDC)
+- Create a configuration system for token lifecycle policies:
+  - Configurable refresh buffer times
+  - Auto-refresh policies
+  - Retry strategies for failed refreshes
+- Implement comprehensive error handling for token lifecycle issues:
+  - Network errors during refresh
+  - Invalid refresh tokens
+  - Service unavailability
+- Update relevant scheme implementations to leverage the new token lifecycle management system
+- Ensure thread safety for concurrent token operations
 
 ## Test Strategy
 
@@ -48,4 +49,30 @@ Create token lifecycle management for handling token expiration, refresh, and in
 - Test refresh token handling with mock refresh endpoints
 - Verify token invalidation works correctly
 - Test event hooks for various lifecycle events
-- Create integration tests for the complete token lifecycle 
+- Create integration tests for the complete token lifecycle
+
+## Implementation Notes
+
+- Build on top of the existing `ExchangedCredential`, `TokenStore`, and scheme implementations
+- Maintain backward compatibility with existing code
+- Design with extensibility in mind for future authentication schemes
+- Follow the established error handling patterns
+
+## Acceptance Criteria
+
+- [ ] `TokenManager` class implemented with all required features
+- [ ] Event callback system for token lifecycle events
+- [ ] Token revocation support for OAuth2 and OIDC schemes
+- [ ] Configuration system for lifecycle policies
+- [ ] Comprehensive error handling
+- [ ] All scheme implementations updated to use the token lifecycle system
+- [ ] Thread safety for concurrent operations
+- [ ] Unit tests for all new functionality
+- [ ] Documentation and examples
+
+## Definition of Done
+
+- Code implemented and tested
+- All tests passing
+- Documentation updated
+- Pull request reviewed and approved 

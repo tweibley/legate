@@ -5,6 +5,7 @@ require_relative 'credential'
 require_relative 'exchanged_credential'
 require_relative 'schemes/api_key'
 require_relative 'schemes/http_bearer'
+require_relative 'token_manager'
 
 module ADK
   module Auth
@@ -19,14 +20,22 @@ module ADK
       # @param scheme [ADK::Auth::Scheme] The authentication scheme to use
       # @param credential [ADK::Auth::Credential, ADK::Auth::ExchangedCredential] The credential to use
       # @param token_store [ADK::Auth::TokenStore, nil] Optional token store for retrieving cached tokens
+      # @param token_manager [ADK::Auth::TokenManager, nil] Optional token manager for token lifecycle management
       # @return [Hash] The modified request with authentication applied
       # @raise [ADK::Auth::Error] If authentication cannot be applied
-      def apply_authentication(request, scheme, credential, token_store = nil)
+      def apply_authentication(request, scheme, credential, token_store = nil, token_manager = nil)
         raise ArgumentError, 'Request must be a Hash' unless request.is_a?(Hash)
         raise ArgumentError, 'Scheme must be an ADK::Auth::Scheme' unless scheme.is_a?(ADK::Auth::Scheme)
         
-        # If we have a token store, try to get a cached token
-        if token_store && credential.is_a?(ADK::Auth::Credential)
+        # If we have a token manager, use it for getting tokens
+        if token_manager && token_manager.is_a?(ADK::Auth::TokenManager)
+          # Get a token using the token manager
+          token = token_manager.get_token(scheme, credential)
+          
+          # Use the token if available
+          credential = token if token
+        # Fall back to the old mechanism if token_manager not available
+        elsif token_store && credential.is_a?(ADK::Auth::Credential)
           cache_key = generate_cache_key(scheme, credential)
           exchanged_credential = token_store.get(cache_key)
           

@@ -27,6 +27,9 @@ module ADK
         
         # @return [Hash, nil] Additional parameters for authorization requests
         attr_reader :additional_params
+        
+        # @return [String, nil] The URL for the revocation endpoint
+        attr_reader :revocation_url
 
         # Initialize a new OAuth2 scheme
         # @param authorization_url [String] The URL for the authorization endpoint
@@ -34,12 +37,15 @@ module ADK
         # @param scopes [Array<String>, String, nil] The requested scopes
         # @param use_pkce [Boolean] Whether to use PKCE
         # @param additional_params [Hash, nil] Additional parameters for authorization requests
-        def initialize(authorization_url:, token_url:, scopes: nil, use_pkce: true, additional_params: nil)
+        # @param revocation_url [String, nil] The URL for the token revocation endpoint
+        def initialize(authorization_url:, token_url:, scopes: nil, use_pkce: true, 
+                      additional_params: nil, revocation_url: nil)
           @authorization_url = authorization_url
           @token_url = token_url
           @scopes = parse_scopes(scopes)
           @use_pkce = use_pkce
           @additional_params = additional_params || {}
+          @revocation_url = revocation_url
           validate!
         end
         
@@ -259,6 +265,59 @@ module ADK
           end
         end
         
+        # Revokes an access token or refresh token with the authorization server
+        # @param token [ADK::Auth::ExchangedCredential] The token to revoke
+        # @param credential [ADK::Auth::Credential] The credential with client information
+        # @param token_type_hint [String] The type of token to revoke ('access_token' or 'refresh_token')
+        # @return [Boolean] True if the token was revoked successfully
+        # @raise [ADK::Auth::TokenRevocationError] If token revocation fails
+        def revoke_token(token, credential, token_type_hint: 'access_token')
+          # Check if revocation endpoint is configured
+          unless @revocation_url && !@revocation_url.empty?
+            raise ADK::Auth::TokenRevocationError, 'Revocation URL not configured for this OAuth2 provider'
+          end
+          
+          # Get the token to revoke
+          token_value = token_type_hint == 'refresh_token' ? token.refresh_token : token.access_token
+          
+          unless token_value && !token_value.empty?
+            raise ADK::Auth::TokenRevocationError, "#{token_type_hint.gsub('_', ' ')} not available"
+          end
+          
+          begin
+            # Create an OAuth2 client
+            oauth_client = create_oauth_client(credential)
+            
+            # Prepare the revocation request
+            client_id = credential[:client_id, resolve_env: true]
+            client_secret = credential[:client_secret, resolve_env: true]
+            
+            # Make the revocation request
+            response = oauth_client.request(
+              :post,
+              @revocation_url,
+              headers: {
+                'Content-Type' => 'application/x-www-form-urlencoded'
+              },
+              body: URI.encode_www_form({
+                'token' => token_value,
+                'token_type_hint' => token_type_hint,
+                'client_id' => client_id,
+                'client_secret' => client_secret
+              })
+            )
+            
+            # Check the response
+            # According to OAuth 2.0 Token Revocation (RFC 7009), servers should
+            # respond with HTTP 200 for successful revocation
+            return response.status == 200
+          rescue ::OAuth2::Error => e
+            raise ADK::Auth::TokenRevocationError, "OAuth2 token revocation failed: #{e.message}"
+          rescue StandardError => e
+            raise ADK::Auth::TokenRevocationError, "Token revocation failed: #{e.message}"
+          end
+        end
+        
         # Exchange client credentials for an access token (client credentials flow)
         # @param credential [ADK::Auth::Credential] The credential with client information
         # @return [ADK::Auth::ExchangedCredential] The exchanged credential with tokens
@@ -332,7 +391,8 @@ module ADK
             token_url: @token_url,
             scopes: @scopes,
             use_pkce: @use_pkce,
-            additional_params: @additional_params
+            additional_params: @additional_params,
+            revocation_url: @revocation_url
           ).compact
         end
         
