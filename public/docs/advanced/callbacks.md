@@ -27,26 +27,9 @@ Callbacks are a cornerstone feature of the Ruby ADK, providing a powerful mechan
 **How are they added?** You register callbacks by assigning Procs to the relevant attributes in the `ADK::AgentDefinition` block:
 
 ```ruby
-# lib/adk/callbacks/callback_context.rb (Conceptual - needs to be defined)
-# module ADK
-#   module Callbacks
-#     class CallbackContext
-#       attr_reader :agent_name, :invocation_id, :session_id, :user_id, :app_name, :session_service, :logger
-#       # ... (methods like state_get, state_set)
-#     end
-#   end
-# end
-
-# lib/adk/tool_context.rb (Conceptual - needs to be enhanced)
-# module ADK
-#   class ToolContext
-#     # ... (existing attributes + session_service, logger, invocation_id, state methods)
-#   end
-# end
-
 # --- Define your callback function ---
 my_before_model_callback_proc = lambda do |callback_context, llm_request_params|
-  # callback_context is ADK::Callbacks::CallbackContext
+  # callback_context is an instance of ADK::Callbacks::CallbackContext
   # llm_request_params is a Hash representing what would be sent to the LLM
   puts "[Callback] Before model call for agent: #{callback_context.agent_name}"
   # ... your custom logic here ...
@@ -91,7 +74,11 @@ When the ADK framework encounters a point where a callback can run (e.g., just b
     *   **`after_tool_callback` &rarr; `Hash` (Tool Result):** Replaces the result Hash returned by the tool's `execute` method.
 
 **State Management in Callbacks:**
-Callbacks can read from and write to the session state using methods on the `callback_context` or `tool_context` (e.g., `context.state_get(:my_key)`, `context.state_set(:my_key, 'new_value')`).
+Callbacks can read from and write to the session state using methods on the `callback_context` (an instance of `ADK::Callbacks::CallbackContext`) or `tool_context` (an instance of `ADK::ToolContext`). Key methods include:
+*   `state_get(key)`: Retrieves a value from the session state.
+*   `state_set(key, value)`: Sets a value in the pending state delta.
+*   `state_update(hash_to_merge)`: Merges a hash of key-value pairs into the pending state delta.
+
 Changes made via `state_set` or `state_update` are collected in a `pending_state_delta` within the context object.
 The ADK framework automatically merges this `pending_state_delta` into the `state_delta` of the *next relevant ADK::Event* that is logged to the session history. This ensures state changes are tied to specific points in the execution flow.
 
@@ -320,9 +307,368 @@ end
 
 ## Design Patterns and Best Practices for Callbacks
 
-(This section would adapt the "Design Patterns and Best Practices" from your Python ADK documentation, translating concepts and examples to Ruby where appropriate. Key patterns would include Guardrails, Dynamic State Management, Logging, Caching, Request/Response Modification, Conditional Skipping, etc., with Ruby-specific syntax for Procs, Hashes, and context object interactions.)
-
 By understanding this callback mechanism, you can precisely control the agent's execution path, making callbacks an essential tool for building sophisticated and reliable agents with the Ruby ADK.
+
+## Design Patterns and Best Practices for Callbacks
+
+Callbacks are versatile. Here are some common patterns and best practices to make the most of them in your ADK agents:
+
+### 1. Comprehensive Logging and Auditing
+
+Use callbacks to gain deep insights into your agent's behavior by logging detailed information at each step.
+
+*   **`before_agent_callback`**: Log the initial request and any relevant session state.
+*   **`before_model_callback`**: Log the exact prompt being sent to the LLM.
+*   **`after_model_callback`**: Log the raw response from the LLM.
+*   **`before_tool_callback`**: Log the tool name and arguments before execution.
+*   **`after_tool_callback`**: Log the result (or error) from a tool.
+*   **`after_agent_callback`**: Log the final response being sent to the user and any significant state changes.
+
+```mermaid
+sequenceDiagram
+    participant AgentLogic as Agent's Main Logic
+    participant BeforeModelCB as before_model_callback
+    participant LoggerService as ADK Logger
+    participant LLMPlanner as Planner
+
+    AgentLogic->>BeforeModelCB: Invoke(context, llm_request_params)
+    BeforeModelCB->>LoggerService: context.logger.info("Sending to LLM...")
+    BeforeModelCB->>LoggerService: context.logger.debug("Full LLM Request...")
+    BeforeModelCB-->>AgentLogic: Return nil (proceed)
+    AgentLogic->>LLMPlanner: plan(user_input)
+    LLMPlanner-->>AgentLogic: llm_response_data
+    Note over AgentLogic: Similar logging can be done in other callbacks (after_model, before_tool, etc.)
+```
+
+**Code Example:**
+```ruby
+# Example: Detailed Logging
+ADK::Agent.define do |a|
+  a.name :audit_trail_agent
+  a.instruction "I am an agent that logs everything."
+  a.model_name "gemini-pro" # Or your preferred model
+
+  a.before_agent_callback do |context|
+    context.logger.info "[Audit] Agent '#{context.agent_name}' starting task. Invocation: #{context.invocation_id}, Session: #{context.session_id}"
+    # Log initial important state if any
+    important_state = context.state_get(:user_preference)
+    context.logger.debug "[Audit] Initial user_preference: #{important_state}" if important_state
+    nil
+  end
+
+  a.before_model_callback do |context, llm_request_params|
+    context.logger.info "[Audit] Sending to LLM. Prompt snippet: #{llm_request_params[:prompt][0..100]}..."
+    context.logger.debug "[Audit] Full LLM Request: #{llm_request_params.inspect}"
+    nil
+  end
+
+  # ... (other logging callbacks as shown previously) ...
+end
+```
+
+### 2. Input Validation and Sanitization (Guardrails)
+
+Ensure data integrity and enforce policies by validating inputs and sanitizing outputs.
+
+*   **`before_model_callback`**: Check the prompt for policy violations. Return an error plan to prevent the LLM call, or sanitize the prompt.
+
+```mermaid
+sequenceDiagram
+    participant AgentLogic as Agent's Main Logic
+    participant BeforeModelCB as before_model_callback
+    participant LLMPlanner as Planner
+    participant ExternalLLM as External LLM Service
+
+    AgentLogic->>BeforeModelCB: Invoke(context, llm_request_params)
+    alt Prompt is VALID and/or SANITIZED
+        BeforeModelCB->>BeforeModelCB: Sanitize(llm_request_params)
+        BeforeModelCB-->>AgentLogic: Return nil
+        AgentLogic->>LLMPlanner: plan(sanitized_request_params)
+        LLMPlanner->>ExternalLLM: Call LLM
+        ExternalLLM-->>LLMPlanner: LLM Response
+        LLMPlanner-->>AgentLogic: llm_response_data
+    else Prompt is INVALID (e.g., forbidden keyword)
+        BeforeModelCB-->>AgentLogic: Return error_plan (Hash)
+        Note over AgentLogic: LLM Call is SKIPPED
+        AgentLogic-->>User: Return error based on error_plan
+    end
+```
+
+**Code Example:**
+```ruby
+# Example: Input Guardrails
+ADK::Agent.define do |a|
+  a.name :safe_query_agent
+  a.instruction "I will only process safe queries."
+  a.model_name "gemini-pro"
+
+  FORBIDDEN_KEYWORDS = [/unsafe_action/i, /dangerous_command/i].freeze
+
+  a.before_model_callback do |context, llm_request_params|
+    prompt_text = llm_request_params[:prompt]
+    if FORBIDDEN_KEYWORDS.any? { |keyword| prompt_text.match?(keyword) }
+      context.logger.warn "[Guardrail] Forbidden keyword detected. Blocking LLM call."
+      { error: "Request blocked due to content policy." } # Override
+    else
+      llm_request_params[:prompt] = prompt_text.gsub(/email:\s*\S+@\S+\.\S+/, "email: [REDACTED]")
+      nil # Proceed
+    end
+  end
+  # ... (other guardrail callbacks as shown previously) ...
+end
+```
+
+### 3. Caching Strategies
+
+Improve performance and reduce costs by caching results from LLM calls or expensive tool executions.
+
+*   **`before_model_callback`**: Check cache. If hit, return cached plan.
+*   **`after_model_callback`**: If cache miss, store LLM response in cache.
+
+```mermaid
+sequenceDiagram
+    participant AgentLogic as Agent's Main Logic
+    participant BeforeModelCB as before_model_callback
+    participant CacheService as Cache (e.g., Session State/Redis)
+    participant LLMPlanner as Planner
+    participant ExternalLLM as External LLM Service
+    participant AfterModelCB as after_model_callback
+
+    AgentLogic->>BeforeModelCB: Invoke(context, llm_request_params)
+    BeforeModelCB->>CacheService: state_get(cache_key)
+    alt Cache Hit
+        CacheService-->>BeforeModelCB: Return cached_plan
+        BeforeModelCB-->>AgentLogic: Return cached_plan (Hash)
+        Note over AgentLogic: LLM Call is SKIPPED
+    else Cache Miss
+        CacheService-->>BeforeModelCB: Return nil (not found)
+        BeforeModelCB-->>AgentLogic: Return nil (proceed to LLM)
+        AgentLogic->>LLMPlanner: plan(llm_request_params)
+        LLMPlanner->>ExternalLLM: Call LLM
+        ExternalLLM-->>LLMPlanner: llm_response
+        LLMPlanner-->>AgentLogic: llm_response_data
+        AgentLogic->>AfterModelCB: Invoke(context, llm_response_data)
+        AfterModelCB->>CacheService: state_set(cache_key, llm_response_data)
+        AfterModelCB-->>AgentLogic: Return nil
+    end
+    AgentLogic-->>User: Process result (from cache or LLM)
+```
+
+**Code Example:**
+```ruby
+# Example: Caching LLM Responses (Simplified)
+require 'digest'
+ADK::Agent.define do |a|
+  a.name :caching_agent
+  a.instruction "I try to be efficient by caching."
+  a.model_name "gemini-pro"
+
+  a.before_model_callback do |context, llm_request_params|
+    cache_key = "llm_cache:#{Digest::SHA256.hexdigest(llm_request_params[:prompt])}"
+    cached_plan = context.state_get(cache_key)
+    if cached_plan
+      context.logger.info "[Cache] LLM cache hit."
+      return cached_plan # Override
+    else
+      context.logger.info "[Cache] LLM cache miss."
+      context.instance_variable_set(:@current_cache_key, cache_key) # Store for after_model_callback
+      nil # Proceed
+    end
+  end
+
+  a.after_model_callback do |context, llm_response_data|
+    cache_key = context.instance_variable_get(:@current_cache_key)
+    if cache_key && llm_response_data.is_a?(Hash) && llm_response_data.key?(:steps)
+      context.state_set(cache_key, llm_response_data.dup)
+      context.logger.info "[Cache] Stored LLM response in cache."
+    end
+    nil
+  end
+end
+```
+*Note: Robust caching requires careful key generation and consideration of cache eviction policies.*
+
+### 4. Dynamic Prompt Engineering
+
+Modify prompts on the fly based on session state, user history, or other dynamic factors.
+
+*   **`before_model_callback`**: Inject dynamic information into the prompt.
+
+```mermaid
+sequenceDiagram
+    participant AgentLogic as Agent's Main Logic
+    participant BeforeModelCB as before_model_callback
+    participant SessionState as Session State Access
+    participant LLMPlanner as Planner
+
+    AgentLogic->>BeforeModelCB: Invoke(context, llm_request_params)
+    BeforeModelCB->>SessionState: context.state_get(:user_preference)
+    SessionState-->>BeforeModelCB: preference_value
+    Note over BeforeModelCB: Augment llm_request_params[:prompt] += preference_value
+    BeforeModelCB-->>AgentLogic: Return nil (with modified params)
+    AgentLogic->>LLMPlanner: plan(modified_request_params)
+    LLMPlanner-->>AgentLogic: llm_response_data
+```
+
+**Code Example:**
+```ruby
+# Example: Dynamic Prompt Injection
+ADK::Agent.define do |a|
+  a.name :personalized_agent
+  a.instruction "I tailor my responses." # Base instruction
+  a.model_name "gemini-pro"
+
+  a.before_model_callback do |context, llm_request_params|
+    user_tone = context.state_get(:user_tone)
+    if user_tone && llm_request_params[:prompt].is_a?(String)
+      llm_request_params[:prompt] += "\n\nPlease respond in a #{user_tone} tone."
+      context.logger.info "[Personalize] Augmented prompt with tone."
+    end
+    nil
+  end
+end
+```
+
+### 5. Conditional Execution & Overrides
+
+Control the agent's workflow by conditionally skipping steps or providing alternative results.
+
+*   **`before_model_callback`**: If query matches FAQ, return a pre-canned plan.
+
+```mermaid
+sequenceDiagram
+    participant AgentLogic as Agent's Main Logic
+    participant BeforeModelCB as before_model_callback
+    participant FAQData as Internal FAQ Data
+    participant LLMPlanner as Planner
+
+    AgentLogic->>BeforeModelCB: Invoke(context, llm_request_params)
+    BeforeModelCB->>FAQData: Check if llm_request_params[:prompt] matches FAQ
+    alt FAQ Match
+        FAQData-->>BeforeModelCB: Return FAQ answer/plan
+        BeforeModelCB-->>AgentLogic: Return faq_plan_hash (Override)
+        Note over AgentLogic: LLM Call is SKIPPED
+    else No FAQ Match
+        FAQData-->>BeforeModelCB: Not found
+        BeforeModelCB-->>AgentLogic: Return nil (proceed to LLM)
+        AgentLogic->>LLMPlanner: plan(llm_request_params)
+        LLMPlanner-->>AgentLogic: llm_response_data
+    end
+    AgentLogic-->>User: Process result
+```
+
+**Code Example:**
+```ruby
+# Example: Conditional Skip of LLM for FAQ
+ADK::Agent.define do |a|
+  a.name :faq_bot
+  a.instruction "I answer FAQs."
+  a.model_name "gemini-pro"
+
+  FAQ = { "what is your name?" => "My name is FAQ Bot." }.freeze
+
+  a.before_model_callback do |context, llm_request_params|
+    query = llm_request_params[:prompt].to_s.downcase.strip
+    if FAQ.key?(query)
+      context.logger.info "[FAQ] Matched FAQ."
+      { thought_process: "FAQ match.", steps: [{ type: :agent_response, tool_name: :echo, tool_input: { message: FAQ[query] } }] } # Override
+    else
+      nil # Proceed to LLM
+    end
+  end
+end
+```
+
+### 6. Advanced State Management Techniques
+
+Use callbacks to manage complex state transitions or share information.
+
+*   **`after_tool_callback`**: Parse complex tool result and store structured data into session state.
+
+```mermaid
+sequenceDiagram
+    participant AgentLogic as Agent's Main Logic
+    participant ToolInstance as Specific Tool
+    participant AfterToolCB as after_tool_callback
+    participant SessionState as Session State Access
+
+    AgentLogic->>ToolInstance: execute(args, tool_context)
+    ToolInstance-->>AgentLogic: tool_result_hash
+    AgentLogic->>AfterToolCB: Invoke(tool, args, context, tool_result_hash)
+    Note over AfterToolCB: Parse tool_result_hash
+    AfterToolCB->>SessionState: context.state_set(:parsed_data_A, valueA)
+    AfterToolCB->>SessionState: context.state_set(:parsed_data_B, valueB)
+    AfterToolCB-->>AgentLogic: Return nil (use original/modified tool_result)
+    AgentLogic-->>User: Continues processing
+```
+
+**Code Example:**
+```ruby
+# Example: Storing Parsed Tool Output
+require 'json'
+ADK::Agent.define do |a|
+  a.name :data_parser_agent
+  a.use_tool :fetch_user_profile # Assumed to return JSON string
+
+  a.after_tool_callback do |tool, _args, context, tool_result|
+    if tool.name == :fetch_user_profile && tool_result[:status] == :success
+      begin
+        data = JSON.parse(tool_result[:result])
+        context.state_set(:user_name_from_profile, data['name'])
+        context.state_set(:user_email_from_profile, data['email'])
+        context.logger.info "[State] Parsed and stored profile data."
+      rescue JSON::ParserError => e
+        context.logger.error "[State] Failed to parse profile JSON: #{e.message}"
+      end
+    end
+    nil
+  end
+end
+```
+
+### 7. Integrating External Services
+
+Trigger external API calls or notifications at appropriate points.
+
+*   **`after_agent_callback`**: Send a notification with the task outcome.
+
+```mermaid
+sequenceDiagram
+    participant AgentLogic as Agent's Main Logic
+    participant AfterAgentCB as after_agent_callback
+    participant ExternalNotificationService as External Service (e.g., Email/Slack API)
+
+    AgentLogic-->>User: Agent completes task, prepares final_response_content
+    AgentLogic->>AfterAgentCB: Invoke(context, final_response_content)
+    Note over AfterAgentCB: Logic to determine notification content
+    AfterAgentCB->>ExternalNotificationService: SendNotification(details from final_response_content)
+    ExternalNotificationService-->>AfterAgentCB: Ack/Response (optional)
+    AfterAgentCB-->>AgentLogic: Return nil (use original final_response_content)
+    AgentLogic-->>User: Returns final response to user
+```
+
+**Code Example:**
+```ruby
+# Example: Notification on Task Completion (Conceptual)
+# Assume NotificationService.send(...) exists
+ADK::Agent.define do |a|
+  a.name :notifier_agent
+  # ...
+  a.after_agent_callback do |context, agent_response_content|
+    subject = if agent_response_content[:status] == :error
+                "Agent Task Failed: #{context.agent_name}"
+              else
+                "Agent Task Completed: #{context.agent_name}"
+              end
+    # Conceptual call
+    # NotificationService.send(to: 'ops@example.com', subject: subject, body: agent_response_content.inspect)
+    context.logger.info "[Notification] Would send notification: #{subject}"
+    nil
+  end
+end
+```
+
+By combining these patterns, you can build highly customized, robust, and observable agents using the ADK callback system. Remember to keep callbacks focused on their specific stage and to handle errors gracefully within your callback logic.
 
 ## Callbacks: Visualizing the Flow
 
