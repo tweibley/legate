@@ -162,44 +162,24 @@ module ADK
         register_scheme(ADK::Auth::Schemes::ApiKey.new, :api_key)
         register_scheme(ADK::Auth::Schemes::HttpBearer.new, :http_bearer)
 
-        # For OAuth2-based schemes, we need to provide valid parameters or skip validation in test mode
-        if ENV['RSPEC_ENV'] == 'test'
-          # In test mode, provide dummy values that will pass validation
-          oauth2 = ADK::Auth::Schemes::OAuth2.new(
-            authorization_url: 'https://example.com/oauth/authorize',
-            token_url: 'https://example.com/oauth/token'
-          )
-          register_scheme(oauth2, :oauth2)
-          
-          # Also for OIDC
-          oidc = ADK::Auth::Schemes::OIDC.new(
-            authorization_url: 'https://example.com/oidc/authorize',
-            token_url: 'https://example.com/oidc/token',
-            discovery_url: 'https://example.com/.well-known/openid-configuration'
-          )
-          register_scheme(oidc, :oidc)
-          
-          # For ServiceAccount
-          service_account = ADK::Auth::Schemes::ServiceAccount.new(
-            token_url: 'https://example.com/token'
-          )
-          register_scheme(service_account, :service_account)
-        else
-          # In production, we'll expect these to be configured properly later
-          # Skip validation initially, they'll be configured before use
-          begin
-            original_env = ENV['RSPEC_ENV']
-            ENV['RSPEC_ENV'] = 'test' # Temporarily set to skip validation
-            
-            register_scheme(ADK::Auth::Schemes::OAuth2.new, :oauth2)
-            register_scheme(ADK::Auth::Schemes::OIDC.new, :oidc)
-            register_scheme(ADK::Auth::Schemes::ServiceAccount.new, :service_account)
-            
-            ENV['RSPEC_ENV'] = original_env # Restore original setting
-          rescue => e
-            ADK.logger.warn("Failed to register default scheme: #{e.message}")
-          end
-        end
+        # Set default values for OAuth2 and other schemes regardless of environment
+        oauth2 = ADK::Auth::Schemes::OAuth2.new(
+          authorization_url: 'https://example.com/oauth/authorize',
+          token_url: 'https://example.com/oauth/token'
+        )
+        register_scheme(oauth2, :oauth2)
+        
+        oidc = ADK::Auth::Schemes::OIDC.new(
+          authorization_url: 'https://example.com/oidc/authorize',
+          token_url: 'https://example.com/oidc/token',
+          discovery_url: 'https://example.com/.well-known/openid-configuration'
+        )
+        register_scheme(oidc, :oidc)
+        
+        service_account = ADK::Auth::Schemes::ServiceAccount.new(
+          token_url: 'https://example.com/token'
+        )
+        register_scheme(service_account, :service_account)
       end
 
       # Find a compatible scheme for a credential
