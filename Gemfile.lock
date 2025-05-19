@@ -17,6 +17,7 @@ PATH
       ostruct
       prometheus-client (~> 2.1)
       puma (~> 6.4)
+      rbnacl (~> 7.1)
       redis (~> 5.0)
       sass-embedded (~> 1.72)
       sidekiq
@@ -202,6 +203,8 @@ GEM
       rack (>= 1.3)
     rainbow (3.1.1)
     rake (13.2.1)
+    rbnacl (7.1.2)
+      ffi (~> 1)
     redis (5.4.0)
       redis-client (>= 0.22.0)
     redis-client (0.24.0)

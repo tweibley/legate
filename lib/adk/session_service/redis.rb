@@ -7,6 +7,7 @@ require 'time' # For iso8601 parsing
 require_relative '../session'
 require_relative '../event'
 require_relative 'base'
+require_relative '../auth/encryption' # Added for encryption support
 
 module ADK
   module SessionService
@@ -28,12 +29,30 @@ module ADK
     # 2. Merges the state delta onto the current state
     # 3. Uses optimistic locking to ensure the state hasn't changed during the operation
     # 4. Retries the operation on conflicts up to a configured maximum
+    #
+    # ## Security
+    # Sensitive credential data is encrypted before storage in Redis using the ADK::Auth::Encryption
+    # module, which provides authenticated encryption via rbnacl. The encryption key is configured
+    # through an environment variable.
     class Redis < Base
       # Key Definitions
       REDIS_SESSION_HASH_PREFIX = 'adk:session:'
       REDIS_SESSION_EVENTS_LIST_PREFIX = 'adk:session:events:'
       REDIS_SESSIONS_SET_KEY = 'adk:sessions:all_ids'
       REDIS_SCOPED_STATE_PREFIX = 'adk:state:'
+
+      # Authentication-specific data namespace in session state
+      AUTH_TOKEN_CACHE_KEY = :auth_token_cache
+      
+      # Sensitive fields that should always be encrypted
+      SENSITIVE_FIELDS = [
+        AUTH_TOKEN_CACHE_KEY,
+        :credentials,
+        :tokens,
+        :api_keys,
+        :passwords,
+        :secrets
+      ].freeze
 
       # Default TTL for session keys (in seconds). Set to nil or 0 for no expiry.
       # Example: 7 days = 7 * 24 * 60 * 60 = 604800
@@ -43,15 +62,29 @@ module ADK
       # When WATCH detects a conflict, the operation will retry this many times
       DEFAULT_MAX_RETRIES = 3
 
-      attr_reader :redis_client, :session_ttl
+      attr_reader :redis_client, :session_ttl, :encryption_enabled
 
       # Initializes the service with a Redis client.
       # @param redis_client [Redis] An active Redis client instance.
       # @param session_ttl [Integer, nil] TTL for session keys in seconds (nil for no expiry).
-      def initialize(redis_client: nil, session_ttl: DEFAULT_SESSION_TTL)
+      # @param enable_encryption [Boolean] Whether to enable encryption for sensitive data.
+      def initialize(redis_client: nil, session_ttl: DEFAULT_SESSION_TTL, enable_encryption: true)
         @redis_client = redis_client || connect_redis
         @session_ttl = session_ttl
-        ADK.logger.info("RedisSessionService initialized. Session TTL: #{session_ttl || 'None'}")
+        @encryption_enabled = enable_encryption
+        
+        if @encryption_enabled
+          # Check if encryption is possible
+          begin
+            ADK::Auth::Encryption.encrypt('test')
+            ADK.logger.info("RedisSessionService initialized with encryption. Session TTL: #{session_ttl || 'None'}")
+          rescue => e
+            ADK.logger.warn("Encryption requested but unavailable: #{e.message}. Falling back to unencrypted mode.")
+            @encryption_enabled = false
+          end
+        end
+        
+        ADK.logger.info("RedisSessionService initialized. Encryption: #{@encryption_enabled}, Session TTL: #{session_ttl || 'None'}")
       end
 
       # Creates a new session and stores it in Redis.
@@ -68,17 +101,24 @@ module ADK
       # @return [ADK::Session] The newly created session object.
       # @raise [ADK::Error] If the session could not be created in Redis.
       def create_session(app_name:, user_id:, initial_state: {})
+        # Initialize an auth_token_cache in the initial state if not present
+        secure_initial_state = initial_state.dup
+        secure_initial_state[AUTH_TOKEN_CACHE_KEY] ||= {}
+        
         session = ADK::Session.new(
           app_name: app_name,
           user_id: user_id,
-          initial_state: initial_state,
+          initial_state: secure_initial_state,
           session_service: self
         )
         session_key = redis_session_key(session.id)
         events_key = redis_events_key(session.id)
 
         begin
-          state_json = JSON.generate(session.state_to_h)
+          # Process state for storage, applying encryption to sensitive fields
+          processed_state = process_state_for_storage(session.state_to_h)
+          state_json = JSON.generate(processed_state)
+          
           session_data = {
             app_name: session.app_name,
             user_id: session.user_id,
@@ -158,7 +198,9 @@ module ADK
           state = {}
           if session_hash_data['state']
             begin
-              state = JSON.parse(session_hash_data['state'], symbolize_names: true)
+              encrypted_state = JSON.parse(session_hash_data['state'], symbolize_names: true)
+              # Process state from storage, decrypting any encrypted fields
+              state = process_state_from_storage(encrypted_state)
             rescue JSON::ParserError => e
               ADK.logger.error("Failed to parse state JSON for session #{session_id}: #{e.message}. Data: #{session_hash_data['state']}")
               state = { _parse_error: "Failed to load state: #{e.message}" } # Include error in state
@@ -266,7 +308,8 @@ module ADK
                 current_state_json = @redis_client.hget(session_key, 'state')
                 if current_state_json
                   begin
-                    current_state = JSON.parse(current_state_json, symbolize_names: true)
+                    encrypted_state = JSON.parse(current_state_json, symbolize_names: true)
+                    current_state = process_state_from_storage(encrypted_state)
                     # Merge state delta with current state to preserve other modifications
                     session.update_state(current_state.merge(event.state_delta))
                   rescue JSON::ParserError => e
@@ -276,6 +319,9 @@ module ADK
                 end
               end
 
+              # Process state for storage, encrypting sensitive data
+              processed_state = process_state_for_storage(session.state_to_h)
+
               # Execute a Redis transaction to atomically update all related data
               # All commands will be queued and executed as a single atomic unit
               results = @redis_client.multi do |multi|
@@ -284,7 +330,7 @@ module ADK
 
                 # Update session hash with new state and timestamp
                 multi.hset(session_key, 'updated_at', session.updated_at.iso8601(3))
-                multi.hset(session_key, 'state', JSON.generate(session.state_to_h))
+                multi.hset(session_key, 'state', JSON.generate(processed_state))
 
                 # Refresh TTL if configured
                 if @session_ttl&.positive?
@@ -400,17 +446,24 @@ module ADK
             # Deserialize state
             state = {}
             if hash_data['state']
-              begin; state = JSON.parse(hash_data['state'], symbolize_names: true); rescue JSON::ParserError;
-                                                                                      state = { _parse_error: 'Failed to load state' };
+              begin
+                encrypted_state = JSON.parse(hash_data['state'], symbolize_names: true)
+                state = process_state_from_storage(encrypted_state)
+              rescue JSON::ParserError
+                state = { _parse_error: 'Failed to load state' }
               end
             end
 
             # Deserialize events
             events = []
             events_list&.each do |event_json|
-              begin;
- event_h = JSON.parse(event_json, symbolize_names: true);
- ev = ADK::Event.from_h(event_h); events << ev if ev; rescue JSON::ParserError; end
+              begin
+                event_h = JSON.parse(event_json, symbolize_names: true)
+                ev = ADK::Event.from_h(event_h)
+                events << ev if ev
+              rescue JSON::ParserError
+                # Skip events that can't be parsed
+              end
             end
 
             # Reconstruct Session object
@@ -444,6 +497,7 @@ module ADK
       end
 
       # Saves a value in Redis with a scoped key for arbitrary state storage.
+      # Encrypts sensitive data based on the scope and key.
       #
       # @param scope [String] The scope for the state (namespace).
       # @param key [String] The key within the scope.
@@ -451,8 +505,13 @@ module ADK
       # @raise [ADK::Error] If serialization or Redis operations fail.
       def save_scoped_state(scope, key, value)
         state_key = redis_scoped_state_key(scope, key)
+        
         begin
-          value_json = JSON.generate(value)
+          # Encrypt sensitive data based on scope/key
+          processed_value = should_encrypt_scoped_state?(scope, key) ? 
+                           encrypt_value(value) : value
+          
+          value_json = JSON.generate(processed_value)
           @redis_client.set(state_key, value_json)
           if @session_ttl&.positive?
             @redis_client.expire(state_key, @session_ttl)
@@ -467,17 +526,33 @@ module ADK
       end
 
       # Loads a value from Redis using a scoped key.
+      # Automatically decrypts encrypted values.
       #
       # @param scope [String] The scope for the state (namespace).
       # @param key [String] The key within the scope.
       # @return [Object, nil] The deserialized value or nil if not found.
       def load_scoped_state(scope, key)
         state_key = redis_scoped_state_key(scope, key)
+        
         begin
           value_json = @redis_client.get(state_key)
           return nil unless value_json
 
-          JSON.parse(value_json, symbolize_names: true)
+          value = JSON.parse(value_json, symbolize_names: true)
+          
+          # Try to decrypt if the value looks encrypted
+          if @encryption_enabled && value.is_a?(String) && 
+             ADK::Auth::Encryption.encrypted?(value)
+            begin
+              decrypted_value = ADK::Auth::Encryption.decrypt(value)
+              return JSON.parse(decrypted_value, symbolize_names: true)
+            rescue => e
+              ADK.logger.warn("Failed to decrypt scoped state value (#{scope}:#{key}): #{e.message}")
+              # Return value as-is if decryption fails
+            end
+          end
+          
+          value
         rescue JSON::ParserError => e
           ADK.logger.error("Failed to parse scoped state value: #{e.message}")
           nil
@@ -521,6 +596,65 @@ module ADK
           end
         end
       end
+      
+      # Helper methods for auth token management
+      
+      # Stores an auth token in the session state
+      # @param session [ADK::Session] The session to store the token in
+      # @param cache_key [String, Symbol] A unique key for the token
+      # @param token [ADK::Auth::ExchangedCredential] The token to store
+      # @return [Boolean] True if the token was stored successfully
+      def store_auth_token(session, cache_key, token)
+        # Ensure auth_token_cache exists in state
+        session.state[AUTH_TOKEN_CACHE_KEY] ||= {}
+        
+        # Serialize and encrypt the token
+        serialized = JSON.generate(token.to_h)
+        encrypted = encrypt_value(serialized)
+        
+        # Store in session state
+        session.state[AUTH_TOKEN_CACHE_KEY][cache_key.to_sym] = encrypted
+        
+        # Append an event to update the session state in Redis
+        event = ADK::Event.new(
+          role: 'system',
+          content: 'Auth token updated',
+          state_delta: { AUTH_TOKEN_CACHE_KEY => session.state[AUTH_TOKEN_CACHE_KEY] }
+        )
+        append_event(session_id: session.id, event: event)
+      end
+      
+      # Retrieves an auth token from the session state
+      # @param session [ADK::Session] The session to retrieve the token from
+      # @param cache_key [String, Symbol] The unique key for the token
+      # @return [ADK::Auth::ExchangedCredential, nil] The token if found and valid, nil otherwise
+      def retrieve_auth_token(session, cache_key)
+        # Check if auth_token_cache exists
+        return nil unless session.state[AUTH_TOKEN_CACHE_KEY]
+        
+        # Get the encrypted token
+        encrypted = session.state[AUTH_TOKEN_CACHE_KEY][cache_key.to_sym]
+        return nil unless encrypted
+        
+        # Decrypt and deserialize
+        begin
+          decrypted = decrypt_value(encrypted)
+          token_hash = JSON.parse(decrypted, symbolize_names: true)
+          
+          # Convert to ExchangedCredential
+          require_relative '../auth/exchanged_credential'
+          ADK::Auth::ExchangedCredential.from_h(token_hash)
+        rescue => e
+          ADK.logger.error("Failed to retrieve auth token: #{e.message}")
+          nil
+        end
+      end
+      
+      # Generate a new encryption key and return it
+      # @return [String] A new encryption key in Base64 format
+      def generate_encryption_key
+        ADK::Auth::Encryption.generate_key
+      end
 
       private
 
@@ -560,6 +694,105 @@ module ADK
       # @return [String] The Redis key for the scoped state.
       def redis_scoped_state_key(scope, key)
         "#{REDIS_SCOPED_STATE_PREFIX}#{scope}:#{key}"
+      end
+      
+      # Process state before storage, encrypting sensitive fields
+      # @param state [Hash] The state to process
+      # @return [Hash] The processed state with encrypted fields
+      def process_state_for_storage(state)
+        return state unless @encryption_enabled
+        
+        processed = {}
+        
+        state.each do |key, value|
+          if should_encrypt_field?(key) && value
+            processed[key] = encrypt_value(value)
+          else
+            processed[key] = value
+          end
+        end
+        
+        processed
+      end
+      
+      # Process state after retrieval, decrypting encrypted fields
+      # @param state [Hash] The state to process
+      # @return [Hash] The processed state with decrypted fields
+      def process_state_from_storage(state)
+        return state unless @encryption_enabled
+        
+        processed = {}
+        
+        state.each do |key, value|
+          if should_encrypt_field?(key) && value && value.is_a?(String) && 
+             ADK::Auth::Encryption.encrypted?(value)
+            begin
+              processed[key] = decrypt_value(value)
+            rescue => e
+              ADK.logger.warn("Failed to decrypt state field #{key}: #{e.message}")
+              processed[key] = value
+            end
+          else
+            processed[key] = value
+          end
+        end
+        
+        processed
+      end
+      
+      # Check if a field should be encrypted
+      # @param field [Symbol] The field to check
+      # @return [Boolean] True if the field should be encrypted
+      def should_encrypt_field?(field)
+        SENSITIVE_FIELDS.include?(field.to_sym)
+      end
+      
+      # Check if scoped state should be encrypted
+      # @param scope [String] The scope
+      # @param key [String] The key
+      # @return [Boolean] True if the state should be encrypted
+      def should_encrypt_scoped_state?(scope, key)
+        scope == 'auth' || 
+        scope == 'credentials' || 
+        key.to_s.include?('token') || 
+        key.to_s.include?('secret') || 
+        key.to_s.include?('password') || 
+        key.to_s.include?('key')
+      end
+      
+      # Encrypt a value for storage
+      # @param value [Object] The value to encrypt
+      # @return [String] The encrypted value
+      def encrypt_value(value)
+        return value unless @encryption_enabled
+        
+        # Convert non-string values to JSON before encryption
+        if !value.is_a?(String)
+          value = JSON.generate(value)
+        end
+        
+        ADK::Auth::Encryption.encrypt(value)
+      rescue => e
+        ADK.logger.warn("Encryption failed, storing unencrypted: #{e.message}")
+        value
+      end
+      
+      # Decrypt a value from storage
+      # @param encrypted [String] The encrypted value
+      # @return [Object] The decrypted value
+      def decrypt_value(encrypted)
+        return encrypted unless @encryption_enabled && encrypted.is_a?(String) && 
+                              ADK::Auth::Encryption.encrypted?(encrypted)
+        
+        decrypted = ADK::Auth::Encryption.decrypt(encrypted)
+        
+        # Try to parse as JSON in case it was a serialized object
+        begin
+          JSON.parse(decrypted, symbolize_names: true)
+        rescue JSON::ParserError
+          # Return as string if not valid JSON
+          decrypted
+        end
       end
     end
   end
