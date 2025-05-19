@@ -31,7 +31,7 @@
 > Dependencies: 3, 4, 5
 > Create token lifecycle management for handling token expiration, refresh, and invalidation.
 
-- [ ] **ID 9: Fiber-based Authentication Flow** (Priority: critical)
+- [ ] **ID 9: Fiber-based Authentication Flow** (Priority: critical) [IN PROGRESS]
 > Dependencies: 1, 2, 5
 > Implement the Fiber-based control flow for interactive authentication in the ADK Runner.
 

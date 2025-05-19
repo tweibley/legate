@@ -1,55 +1,61 @@
----
-id: 9
-title: 'Fiber-based Authentication Flow'
-status: pending
-priority: critical
-feature: Authentication System
-dependencies:
-  - 1
-  - 2
-  - 5
-assigned_agent: null
-created_at: "2025-05-19T16:41:55Z"
-started_at: null
-completed_at: null
-error_log: null
----
+# Task 9: Fiber-based Authentication Flow
+
+## Priority: Critical
+Dependencies: 1, 2, 5
 
 ## Description
-
 Implement the Fiber-based control flow for interactive authentication in the ADK Runner.
 
-## Details
+## Requirements
 
-- Enhance the `Adk::Runner` class to support authentication flows:
-  - Modify the execution logic to run within a `Fiber`
-  - Add detection of authentication needs during tool execution
-  - Implement `Fiber.yield` for authentication requests
-  - Add handling for `Fiber.resume` with authentication responses
-- Create authentication request handling:
-  - Implement generation of unique `auth_request_id` values
-  - Add creation of authentication request payloads
-  - Implement validation of authentication configurations
-  - Create clear error messages for malformed requests
-- Implement authentication response processing:
-  - Add validation of authentication response payloads
-  - Implement matching of responses to requests using `auth_request_id`
-  - Add token exchange logic based on response data
-  - Create error handling for failed exchanges
-- Add automatic retry mechanism:
-  - Implement tracking of operations that triggered authentication
-  - Add automatic retry after successful authentication
-  - Create mechanism to limit retry attempts
-  - Implement error propagation for persistent failures
-- Create client-side utility methods:
-  - Add helpers for building authentication response payloads
-  - Implement utilities for handling `Fiber.yield` return values
-  - Create documentation for client application integration
+1. Create a fiber-based authentication flow system that can:
+   - Pause execution to request user authentication
+   - Resume execution once authentication is complete
+   - Handle authentication timeout scenarios
+   - Support various authentication schemes (OAuth2, OIDC, etc.)
 
-## Test Strategy
+2. Implement authentication coordinators:
+   - Create `ADK::Auth::Coordinator` base class
+   - Implement scheme-specific coordinators for OAuth2, OIDC, and other schemes
+   - Ensure coordinators can manage the state of authentication flows
 
-- Write unit tests for Fiber-based authentication flow
-- Test yielding and resuming with various authentication configurations
-- Verify error handling for malformed requests and responses
-- Test automatic retry mechanism with mock authentication endpoints
-- Create end-to-end tests for the complete interactive authentication flow 
+3. Add runner integration:
+   - Integrate the authentication flow with the ADK Runner
+   - Ensure proper yielding and resuming of fibers during authentication
+   - Handle cancellation and timeout scenarios
+
+4. Implement authentication state management:
+   - Ensure authentication state is preserved across fiber yields/resumes
+   - Store and retrieve authentication context securely
+   - Handle expired sessions and reauthentication
+
+5. Add utilities for handling callbacks and redirects:
+   - Support authentication callbacks (like OAuth redirects)
+   - Implement mechanisms to resume authentication flow after callbacks
+
+## Implementation Notes
+
+- Build on top of existing fiber-based execution in ADK Runner
+- Maintain compatibility with existing authentication schemes
+- Design for extensibility to support future authentication methods
+- Ensure proper error handling and user feedback
+- Focus on security and proper state management
+- Follow established patterns for fiber-based control flow
+
+## Acceptance Criteria
+
+- [ ] All authentication schemes can be used with fiber-based control flow
+- [ ] Interactive authentication flows correctly pause and resume execution
+- [ ] Authentication state is properly maintained across fiber yields
+- [ ] Error handling accounts for authentication failures and timeouts
+- [ ] Authentication coordinators are properly implemented for all schemes
+- [ ] Runner integration is complete and functional
+- [ ] Documentation for the fiber-based authentication flow is provided
+- [ ] Tests demonstrate correct behavior of the fiber-based flow
+
+## Definition of Done
+
+- Code implemented and tested
+- All tests passing
+- Documentation updated
+- Pull request reviewed and approved 
