@@ -1,7 +1,7 @@
 ---
 id: 7
 title: 'Service Account Authentication'
-status: pending
+status: in_progress
 priority: medium
 feature: Authentication System
 dependencies:
@@ -10,7 +10,7 @@ dependencies:
   - 3
 assigned_agent: null
 created_at: "2025-05-19T16:41:55Z"
-started_at: null
+started_at: "2025-05-22T16:45:00Z"
 completed_at: null
 error_log: null
 ---

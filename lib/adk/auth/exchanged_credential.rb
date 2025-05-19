@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'time'
+require 'jwt'
 
 module ADK
   module Auth
@@ -74,6 +75,18 @@ module ADK
       # @return [Boolean] True if a refresh token is available
       def refreshable?
         !@refresh_token.nil? && !@refresh_token.empty?
+      end
+
+      # Returns the decoded claims from the ID token
+      # @return [Hash] The parsed ID token claims, or an empty hash if no ID token
+      def id_token_claims
+        return {} unless @id_token
+        
+        begin
+          JWT.decode(@id_token, nil, false)[0]
+        rescue JWT::DecodeError => e
+          {}
+        end
       end
 
       # Convert to a hash for serialization

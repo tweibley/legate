@@ -140,46 +140,42 @@ RSpec.describe ADK::SessionService::Redis do
   end
 
   describe '#create_session' do
-    let(:new_session) do
-      instance_double(ADK::Session,
-                      id: session_id,
-                      app_name: app_name,
-                      user_id: user_id,
-                      state_to_h: initial_state,
-                      created_at: now,
-                      updated_at: now)
-    end
+    let(:expected_initial_state) { { 'key' => 'value', auth_token_cache: {} } }
+    let(:new_session) {
+      instance_double(ADK::Session, id: session_id, app_name: app_name, user_id: user_id,
+                                    state_to_h: expected_initial_state, created_at: now, updated_at: now)
+    }
 
     before do
-      # Allow Session.new to return a predictable object
+      allow_any_instance_of(ADK::SessionService::Redis).to receive(:process_state_for_storage).and_return(expected_initial_state)
       allow(ADK::Session).to receive(:new).with(
         app_name: app_name,
         user_id: user_id,
-        initial_state: initial_state,
+        initial_state: anything,
         session_service: service
-      ).and_return(new_session) # Return our object with the expected ID
-
-      # Configure mocks for a successful creation
-      allow(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([true, true, true, true]) # Success for hset, sadd, expire, expire
-      allow(mock_redis).to receive(:hset).with(session_key, anything).and_return(1)
-      allow(mock_redis).to receive(:sadd).with(sessions_set_key, session_id).and_return(1)
-      allow(mock_redis).to receive(:expire).with(session_key, session_ttl).and_return(true)
-      allow(mock_redis).to receive(:expire).with(events_key, session_ttl).and_return(true)
-      allow(mock_redis).to receive(:exists?).with(events_key).and_return(true) # Simulate events key exists for expire
-
-      # Mock JSON.generate for any input
-      allow(JSON).to receive(:generate).with(any_args).and_return('{}')
-      # But be more specific for initial_state
-      allow(JSON).to receive(:generate).with(initial_state).and_return('{"key":"value"}')
+      ).and_return(new_session)
+      
+      # Setup the multi/exec mock for Redis
+      allow(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([
+        true,  # hset result
+        true,  # sadd result
+        true,  # expire session
+        true   # expire events
+      ])
+      allow(mock_redis).to receive(:hset).and_return(true)
+      allow(mock_redis).to receive(:sadd).and_return(true)
+      allow(mock_redis).to receive(:expire).and_return(true)
+      allow(mock_redis).to receive(:exists?).with(events_key).and_return(true)
     end
 
     it 'creates a session object with correct parameters' do
       expect(ADK::Session).to receive(:new).with(
         app_name: app_name,
         user_id: user_id,
-        initial_state: initial_state,
+        initial_state: hash_including(auth_token_cache: {}),
         session_service: service
       ).and_return(new_session)
+      
       session = service.create_session(app_name: app_name, user_id: user_id, initial_state: initial_state)
       expect(session).to eq(new_session)
     end
@@ -190,7 +186,7 @@ RSpec.describe ADK::SessionService::Redis do
         user_id: user_id,
         created_at: now_iso,
         updated_at: now_iso,
-        state: JSON.generate(initial_state)
+        state: JSON.generate(expected_initial_state)
       }
       expect(mock_redis).to receive(:hset).with(session_key, expected_hash_data).and_return(expected_hash_data.count)
       service.create_session(app_name: app_name, user_id: user_id, initial_state: initial_state)
@@ -212,7 +208,7 @@ RSpec.describe ADK::SessionService::Redis do
       allow(ADK::Session).to receive(:new).with(
         app_name: app_name,
         user_id: user_id,
-        initial_state: initial_state,
+        initial_state: hash_including(auth_token_cache: {}),
         session_service: service_no_ttl
       ).and_return(new_session)
       expect(mock_redis).not_to receive(:expire)
@@ -221,14 +217,16 @@ RSpec.describe ADK::SessionService::Redis do
 
     context 'when state serialization fails' do
       let(:bad_state) { { bad: Object.new } } # Cannot be JSON serialized
+      let(:bad_state_with_cache) { bad_state.merge(auth_token_cache: {}) } # With auth_token_cache
+      
       before do
         # Allow Session.new, but mock state_to_h
         allow(ADK::Session).to receive(:new).with(
-          app_name: app_name, user_id: user_id, initial_state: bad_state, session_service: service
+          app_name: app_name, user_id: user_id, initial_state: hash_including(auth_token_cache: {}), session_service: service
         ).and_return(instance_double(ADK::Session, id: session_id, app_name: app_name, user_id: user_id,
-                                                   state_to_h: bad_state, created_at: now, updated_at: now))
+                                                   state_to_h: bad_state_with_cache, created_at: now, updated_at: now))
         # Simulate JSON failure
-        allow(JSON).to receive(:generate).with(bad_state).and_raise(JSON::GeneratorError.new('Serialization failed'))
+        allow(JSON).to receive(:generate).with(bad_state_with_cache).and_raise(JSON::GeneratorError.new('Serialization failed'))
       end
 
       it 'raises ADK::Error' do
@@ -242,7 +240,7 @@ RSpec.describe ADK::SessionService::Redis do
       # Let's finally fix this test by stubbing everything
       let(:mock_session) {
         instance_double(ADK::Session, id: session_id, app_name: app_name, user_id: user_id,
-                                      state_to_h: {}, created_at: now, updated_at: now)
+                                      state_to_h: { auth_token_cache: {} }, created_at: now, updated_at: now)
       }
 
       before do
