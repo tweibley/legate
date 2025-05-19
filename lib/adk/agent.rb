@@ -18,6 +18,7 @@ require_relative 'global_definition_registry'
 require_relative 'global_tool_manager' # Added
 require 'socket'
 require 'set' # Required for the Set class in _check_circular_dependency
+require 'securerandom' # Added for SecureRandom
 
 module ADK
   class Error < StandardError; end unless defined?(ADK::Error)
@@ -73,6 +74,21 @@ module ADK
     attr_reader :loop_condition_expected_value
     # @return [Set<Symbol>] A set of names of agents that this agent can delegate tasks to via LLM planning.
     attr_reader :delegation_targets
+    
+    # --- Callback Attributes ---
+    # @return [Proc, nil] Callback run before agent execution begins
+    attr_reader :before_agent_callback
+    # @return [Proc, nil] Callback run after agent execution completes
+    attr_reader :after_agent_callback
+    # @return [Proc, nil] Callback run before LLM model interaction
+    attr_reader :before_model_callback
+    # @return [Proc, nil] Callback run after LLM model interaction
+    attr_reader :after_model_callback
+    # @return [Proc, nil] Callback run before any tool execution
+    attr_reader :before_tool_callback
+    # @return [Proc, nil] Callback run after any tool execution
+    attr_reader :after_tool_callback
+    # --- End Callback Attributes ---
 
     # Delegate common attributes to the definition proxy for easier access during definition
     # Only delegate methods needed *within* the define block
@@ -384,6 +400,72 @@ module ADK
         @definition.instance_variable_set(:@delegation_targets, Set.new(flat_names))
       end
       # --- End MAS Attributes DSL ---
+
+      # --- Callback DSL Methods ---
+      
+      # Sets the callback to run before agent execution
+      # @param block [Proc] The callback code to run
+      # @yieldparam context [ADK::Callbacks::CallbackContext] Context for state management
+      # @yieldreturn [Hash, nil] Optional hash to override normal execution
+      def before_agent_callback(&block)
+        raise ArgumentError, 'Callback must be a Proc or lambda.' unless block.is_a?(Proc)
+        @definition.instance_variable_set(:@before_agent_callback, block)
+      end
+
+      # Sets the callback to run after agent execution
+      # @param block [Proc] The callback code to run
+      # @yieldparam context [ADK::Callbacks::CallbackContext] Context for state management
+      # @yieldparam result [Hash] The agent's result hash that can be modified
+      # @yieldreturn [Hash, nil] Optional hash to replace the agent's result
+      def after_agent_callback(&block)
+        raise ArgumentError, 'Callback must be a Proc or lambda.' unless block.is_a?(Proc)
+        @definition.instance_variable_set(:@after_agent_callback, block)
+      end
+
+      # Sets the callback to run before model interaction
+      # @param block [Proc] The callback code to run
+      # @yieldparam context [ADK::Callbacks::CallbackContext] Context for state management
+      # @yieldparam llm_request [Hash] The request parameters being sent to the model
+      # @yieldreturn [Hash, nil] Optional hash to override normal model execution
+      def before_model_callback(&block)
+        raise ArgumentError, 'Callback must be a Proc or lambda.' unless block.is_a?(Proc)
+        @definition.instance_variable_set(:@before_model_callback, block)
+      end
+
+      # Sets the callback to run after model interaction
+      # @param block [Proc] The callback code to run
+      # @yieldparam context [ADK::Callbacks::CallbackContext] Context for state management
+      # @yieldparam plan [Hash] The plan returned by the model that can be modified
+      # @yieldreturn [Hash, nil] Optional hash to replace the model's plan
+      def after_model_callback(&block)
+        raise ArgumentError, 'Callback must be a Proc or lambda.' unless block.is_a?(Proc)
+        @definition.instance_variable_set(:@after_model_callback, block)
+      end
+
+      # Sets the callback to run before tool execution
+      # @param block [Proc] The callback code to run
+      # @yieldparam tool [ADK::Tool] The tool instance being executed
+      # @yieldparam params [Hash] The parameters being passed to the tool
+      # @yieldparam context [ADK::ToolContext] Context for tool execution and state management
+      # @yieldreturn [Hash, nil] Optional hash to override normal tool execution
+      def before_tool_callback(&block)
+        raise ArgumentError, 'Callback must be a Proc or lambda.' unless block.is_a?(Proc)
+        @definition.instance_variable_set(:@before_tool_callback, block)
+      end
+
+      # Sets the callback to run after tool execution
+      # @param block [Proc] The callback code to run
+      # @yieldparam tool [ADK::Tool] The tool instance that was executed
+      # @yieldparam params [Hash] The parameters that were passed to the tool
+      # @yieldparam context [ADK::ToolContext] Context for tool execution and state management
+      # @yieldparam result [Hash] The tool's result hash that can be modified
+      # @yieldreturn [Hash, nil] Optional hash to replace the tool's result
+      def after_tool_callback(&block)
+        raise ArgumentError, 'Callback must be a Proc or lambda.' unless block.is_a?(Proc)
+        @definition.instance_variable_set(:@after_tool_callback, block)
+      end
+      
+      # --- End Callback DSL Methods ---
     end
     private_constant :DefinitionProxy
 
@@ -548,6 +630,12 @@ module ADK
     attr_reader :parent_agent # The parent agent in a hierarchy, if any
     attr_reader :sub_agents   # A collection of sub-agents
 
+    # --- Callback Instance Variables ---
+    attr_reader :before_agent_callback, :after_agent_callback,
+                :before_model_callback, :after_model_callback,
+                :before_tool_callback, :after_tool_callback
+    # --- End Callback Instance Variables ---
+
     # --- Builder Class for `define` method ---
     # class AgentBuilder
     #   ...
@@ -677,6 +765,15 @@ module ADK
 
       @definition = definition
       @name = definition.name
+
+      # --- Initialize Callbacks from Definition ---
+      @before_agent_callback = definition.before_agent_callback
+      @after_agent_callback = definition.after_agent_callback
+      @before_model_callback = definition.before_model_callback
+      @after_model_callback = definition.after_model_callback
+      @before_tool_callback = definition.before_tool_callback
+      @after_tool_callback = definition.after_tool_callback
+      # --- End Initialize Callbacks ---
 
       # Check for direct self-references in the definition's sub_agent_names
       if definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
@@ -1020,124 +1117,132 @@ module ADK
         # Even if session isn't found, return an event for consistency?
         return ADK::Event.new(role: :agent, content: { status: :error, error_message: err_msg })
       end
-      # --------------------------- #
+      # ----------------- #
 
-      # --- Log User Input --- #
-      user_event = ADK::Event.new(role: :user, content: user_input)
-      session_service.append_event(session_id: session_id, event: user_event)
-      # ---------------------- #
+      # Generate invocation_id for this run and create callback context
+      invocation_id = SecureRandom.uuid
+      callback_context = nil
 
-      # --- Plan and Execute --- #
-      final_agent_event = nil
       begin
-        # Use the updated planner with simplified input (no need for complex formatting)
+        # Create callback context for callbacks to use
+        callback_context = ADK::Callbacks::CallbackContext.new(
+          agent_name: @name,
+          invocation_id: invocation_id,
+          session_id: session_id,
+          user_id: session.user_id,
+          app_name: session.app_name,
+          session_service: session_service
+        )
+
+        # Execute before_agent_callback if defined
+        if @definition.respond_to?(:before_agent_callback) && @definition.before_agent_callback
+          ADK.logger.debug { "Agent '#{@name}': Executing before_agent_callback." }
+          
+          # Execute the callback and check if it returns a result
+          begin
+            override_result = @definition.before_agent_callback.call(callback_context)
+            
+            # If the callback returns a result (not nil), use it instead of normal execution
+            if override_result
+              ADK.logger.info { "Agent '#{@name}': before_agent_callback provided an override result." }
+              
+              # Apply any pending state changes from the callback
+              unless callback_context.pending_state_delta.empty?
+                callback_context.pending_state_delta.each do |key, value|
+                  session_service.set_state(session_id: session_id, key: key, value: value)
+                end
+              end
+              
+              # Create an agent event with the override result
+              final_agent_event = ADK::Event.new(role: :agent, content: override_result)
+              session_service.append_event(session_id: session_id, event: final_agent_event)
+              
+              # Store the output if configured
+              _store_output_in_session(final_agent_event, session_id, session_service)
+              
+              return final_agent_event
+            end
+          rescue StandardError => e
+            ADK.logger.error { "Agent '#{@name}': Error in before_agent_callback: #{e.message}\n#{e.backtrace.join("\n")}" }
+            return ADK::Event.new(role: :agent, content: { 
+              status: :error, 
+              error_message: "Error in before_agent_callback: #{e.message}" 
+            })
+          end
+          
+          # Apply any pending state changes from the callback if execution continues
+          unless callback_context.pending_state_delta.empty?
+            callback_context.pending_state_delta.each do |key, value|
+              session_service.set_state(session_id: session_id, key: key, value: value)
+            end
+            callback_context.clear_pending_state_delta!
+          end
+        end
+        
+        # --- Normal Execution Flow --- #
+        # Create a user-message event for this turn
+        user_message_event = ADK::Event.new(
+          role: :user,
+          content: user_input
+        )
+        session_service.append_event(session_id: session_id, event: user_message_event)
+
+        # Use planner to generate a plan
         plan = @planner.plan(user_input)
 
-        # Check if planning failed
-        if plan.is_a?(Hash) && plan[:error]
-          ADK.logger.error("Planning failed: #{plan[:error]}")
-          final_agent_event = ADK::Event.new(
-            role: :agent,
-            content: {
-              status: :error,
-              error_message: "Planning failed: #{plan[:error]}"
-            }
-          )
+        # Execute the plan and get result
+        result_hash = execute_plan(plan, session, session_service, invocation_id)
 
-          # Skip execution and jump to event logging
-          session_service.append_event(session_id: session_id, event: final_agent_event)
-          return final_agent_event
-        end
-        execution_result = execute_plan(plan, session, session_service)
-
-        # --- Create Final Agent Event --- #
-        # execution_result = { details: plan_details, last_result: original_hash_or_nil }
-        final_content = execution_result[:last_result] || execution_result[:details]
-
-        # Merge plan details into the final content if it's a hash
-        if final_content.is_a?(Hash)
-          # Include thought process if available
-          if plan.is_a?(Hash) && plan[:thought_process]
-            final_content = final_content.merge(
-              thought_process: plan[:thought_process],
-              plan_details: execution_result[:details]
-            )
-          else
-            final_content = final_content.merge(plan_details: execution_result[:details])
-          end
-        else # Should not happen if execute_plan returns error hash correctly
-          ADK.logger.error("Unexpected result format from execute_plan: #{final_content.inspect}")
-          final_content = {
-            status: :error,
-            error_message: 'Internal error processing plan result.',
-            result: final_content
-          }
-          if execution_result[:details]
-            final_content = final_content.merge(plan_details: execution_result[:details])
-          end
-          # Add thought process to error content if available
-          if plan.is_a?(Hash) && plan[:thought_process]
-            final_content = final_content.merge(thought_process: plan[:thought_process])
-          end
-        end
-
-        final_agent_event = ADK::Event.new(role: :agent, content: final_content)
-        # ---------------------------- #
-      rescue StandardError => e
-        # Handle critical errors during planning or execution itself
-        ADK.logger.error("Critical error during run_task for session '#{session_id}': #{e.class} - #{e.message}\nBacktrace: #{e.backtrace.join("\n")}")
-        error_content = { status: :error, error_message: "An internal error occurred: #{e.message}" }
-        # Attempt to add plan details if available from a partial execution
-        # error_content = error_content.merge(plan_details: execution_result[:details]) if execution_result && execution_result[:details]
-        final_agent_event = ADK::Event.new(role: :agent, content: error_content)
-      end
-      # ------------------------ #
-
-      # --- Log Final Agent Event --- #
-      begin
+        # Create an agent event with the result
+        final_agent_event = ADK::Event.new(role: :agent, content: result_hash)
         session_service.append_event(session_id: session_id, event: final_agent_event)
+        
+        # Execute after_agent_callback if defined
+        if @definition.respond_to?(:after_agent_callback) && @definition.after_agent_callback
+          ADK.logger.debug { "Agent '#{@name}': Executing after_agent_callback." }
+          
+          begin
+            # Execute the callback and let it modify the result if needed
+            modified_result = @definition.after_agent_callback.call(callback_context, result_hash)
+            
+            # If the callback returned a modified result, use it
+            if modified_result && modified_result != result_hash
+              ADK.logger.info { "Agent '#{@name}': after_agent_callback modified the result." }
+              
+              # Apply any pending state changes from the callback
+              unless callback_context.pending_state_delta.empty?
+                callback_context.pending_state_delta.each do |key, value|
+                  session_service.set_state(session_id: session_id, key: key, value: value)
+                end
+              end
+              
+              # Create a new agent event with the modified result
+              final_agent_event = ADK::Event.new(role: :agent, content: modified_result)
+              session_service.append_event(session_id: session_id, event: final_agent_event)
+            end
+          rescue StandardError => e
+            ADK.logger.error { "Agent '#{@name}': Error in after_agent_callback: #{e.message}\n#{e.backtrace.join("\n")}" }
+            # Don't override the result completely on error, just log it
+          end
+          
+          # Apply any pending state changes from the callback
+          unless callback_context.pending_state_delta.empty?
+            callback_context.pending_state_delta.each do |key, value|
+              session_service.set_state(session_id: session_id, key: key, value: value)
+            end
+          end
+        end
+
+        # Store the output if configured
+        _store_output_in_session(final_agent_event, session_id, session_service)
+
+        # Return the final agent event
+        final_agent_event
       rescue StandardError => e
-        # Log failure to append the *final* event, but still return it
-        ADK.logger.error("Failed to append final agent event for session '#{session_id}': #{e.class} - #{e.message}")
+        # Handle any other errors during execution
+        ADK.logger.error { "Agent '#{@name}' runtime error: #{e.message}\n#{e.backtrace.join("\n")}" }
+        ADK::Event.new(role: :agent, content: { status: :error, error_message: e.message })
       end
-      # --------------------------- #
-
-      # --- MAS: Store result in session state if output_key is defined --- #
-      if @definition.respond_to?(:output_key) && @definition.output_key && final_agent_event
-        output_value = final_agent_event.content # Store the entire content hash
-
-        # Make the output value serializable by ensuring no symbols (convert to strings)
-        serialized_value = begin
-          # If the value is a Hash or Array, deep transform keys and symbolized values
-          if output_value.is_a?(Hash) || output_value.is_a?(Array)
-            # Convert to JSON and back to remove symbols
-            JSON.parse(output_value.to_json)
-          else
-            # For other values, just pass through
-            output_value
-          end
-        rescue => e
-          # If serialization fails, log and return the original
-          ADK.logger.warn("Agent '#{@name}': Failed to serialize output value: #{e.message}. Using original value.")
-          output_value
-        end
-
-        ADK.logger.info("Agent '#{@name}' storing output to session state with key '#{@definition.output_key}' for session '#{session_id}'. Value: #{serialized_value.inspect}")
-
-        begin
-          # Ensure session_service has set_state. Add if missing for base/inmemory.
-          if session_service.respond_to?(:set_state)
-            session_service.set_state(session_id: session_id, key: @definition.output_key, value: serialized_value)
-          else
-            ADK.logger.warn("Agent '#{@name}': Session service does not support :set_state. Cannot store output for key '#{@definition.output_key}'.")
-          end
-        rescue StandardError => e
-          ADK.logger.error("Agent '#{@name}': Failed to set state for key '#{@definition.output_key}' in session '#{session_id}': #{e.class} - #{e.message}")
-        end
-      end
-      # --- End MAS State Management --- #
-
-      return final_agent_event
     end
 
     # Returns the root agent in the hierarchy (the topmost agent with no parent)
@@ -1350,7 +1455,7 @@ module ADK
     # @param session [ADK::Session] The current session object.
     # @param session_service [Object] The session service instance.
     # @return [Hash] { details: Array<Hash>, last_result: Hash } or { details: Hash, last_result: nil } on planning errors.
-    def execute_plan(plan, session, session_service)
+    def execute_plan(plan, session, session_service, invocation_id)
       session_id = session.id
 
       # Extract steps based on the plan format
@@ -1460,7 +1565,7 @@ module ADK
         # --- End Input Injection Logic ---
 
         # --- Execute Step --- #
-        current_result_hash = execute_step(step_with_injected_params, session, session_service)
+        current_result_hash = execute_step(step_with_injected_params, session, session_service, invocation_id)
 
         # --- Sanitize for plan_details --- #
         sanitized_result_for_plan = {}
@@ -1517,149 +1622,152 @@ module ADK
     # @param step [Hash] A hash like { tool: :symbol, params: {...} }.
     # @param session [ADK::Session] The current session object.
     # @param session_service [Object] The session service instance.
-    # @return [Hash] A standard result hash { status: ..., result/error_message/job_id: ... }. <-- Updated return description
-    def execute_step(step, session, session_service) # <-- Takes session object now
+    # @param invocation_id [String] The ID of the current agent invocation.
+    # @return [Hash] A standard result hash { status: ..., result/error_message/job_id: ... }.
+    def execute_step(step, session, session_service, invocation_id = nil)
       session_id = session.id
 
       # --- Basic validation ---
-      unless step.is_a?(Hash) && step[:tool].is_a?(Symbol) && step[:params].is_a?(Hash)
-        msg = "Invalid step format received: #{step.inspect}"
-        ADK.logger.error(msg)
-        # Log as tool_result event (even though it failed before tool call)
-        error_event = ADK::Event.new(role: :tool_result, tool_name: step[:tool] || :unknown,
-                                     content: { status: :error, error_message: msg, error_class: 'InvalidStepFormat' })
-        session_service.append_event(session_id: session_id, event: error_event)
-        return error_event.content
+      unless step.is_a?(Hash) && step[:tool] && step[:params].is_a?(Hash)
+        error_msg = "Invalid step format. Expected { tool: :symbol, params: {...} }"
+        ADK.logger.error(error_msg)
+        return { status: :error, error_message: error_msg }
       end
 
-      # --- Handle Sequential Sub-Agent Execution ---
-      if step[:step_type] == :sequential_sub_agent && step[:sub_agent_name] && step[:sub_agent_task]
-        sub_agent_name = step[:sub_agent_name]
-        sub_agent_task = step[:sub_agent_task]
+      tool_name = step[:tool].to_sym
+      params = step[:params].to_h
 
-        # Log the sub-agent execution as a specialized request
-        ADK.logger.info("Executing sequential sub-agent '#{sub_agent_name}' with task: #{sub_agent_task}")
-        request_event = ADK::Event.new(role: :tool_request, tool_name: :sequential_sub_agent,
-                                       content: { sub_agent: sub_agent_name, task: sub_agent_task })
-        session_service.append_event(session_id: session_id, event: request_event)
-
-        # Find the sub-agent
-        sub_agent = find_sub_agent(sub_agent_name)
-        unless sub_agent
-          error_msg = "Sequential sub-agent '#{sub_agent_name}' not found"
-          ADK.logger.error(error_msg)
-          error_event = ADK::Event.new(role: :tool_result, tool_name: :sequential_sub_agent,
-                                       content: { status: :error, error_message: error_msg, error_class: 'SubAgentNotFound' })
-          session_service.append_event(session_id: session_id, event: error_event)
-          return error_event.content
-        end
-
-        # Start the sub-agent if it's not already running
-        sub_agent.start unless sub_agent.running?
-
-        # Execute the sub-agent
-        begin
-          sub_agent_result = sub_agent.run_task(
-            session_id: session_id,
-            user_input: sub_agent_task,
-            session_service: session_service
-          )
-
-          # Convert result event to hash
-          result_hash = {
-            status: :success,
-            sub_agent: sub_agent_name.to_s,
-            result: sub_agent_result.content
-          }
-
-          # Log the result
-          result_event = ADK::Event.new(role: :tool_result, tool_name: :sequential_sub_agent, content: result_hash)
-          session_service.append_event(session_id: session_id, event: result_event)
-
-          return result_hash
-        rescue StandardError => e
-          error_msg = "Error executing sub-agent '#{sub_agent_name}': #{e.message}"
-          ADK.logger.error("#{error_msg}\n#{e.backtrace.join("\n")}")
-          error_event = ADK::Event.new(role: :tool_result, tool_name: :sequential_sub_agent,
-                                       content: { status: :error, error_message: error_msg, error_class: e.class.name })
-          session_service.append_event(session_id: session_id, event: error_event)
-          return error_event.content
-        end
+      # --- Get the tool from our registry ---
+      tool = @tool_registry.create_instance(tool_name)
+      unless tool
+        error_msg = "Tool '#{tool_name}' not found in available tools."
+        ADK.logger.error(error_msg)
+        return { status: :error, error_message: error_msg }
       end
 
-      # --- Standard Tool Execution for non-special steps ---
-      tool_name = step[:tool]
-      params = step[:params]
-
-      # 1. Log Tool Request Event (No state delta typically for requests)
-      request_event = ADK::Event.new(role: :tool_request, tool_name: tool_name, content: params)
-      session_service.append_event(session_id: session_id, event: request_event)
-
-      # 2. Execute Tool
-      result_hash = nil
-      begin
-        # --- Get an *instance* of the tool from the registry ---
-        tool_instance = @tool_registry.create_instance(tool_name)
-        unless tool_instance
-          # Raise ToolError directly if tool is not found
-          raise ADK::ToolError, "Tool '#{tool_name}' not found for this agent."
-        end
-
-        # --- Create ToolContext ---
-        tool_context = ADK::ToolContext.new(
-          session_id: session.id,
-          user_id: session.user_id,
-          app_name: session.app_name,
-          tool_registry: @tool_registry
-        )
-        ADK.logger.info("Executing tool '#{tool_name}' with params: #{params.inspect} and context: #{tool_context.to_h.inspect}")
-
-        # --- Execute the tool, rescuing specific ToolErrors ---
-        begin
-          result_hash = tool_instance.execute(params, tool_context)
-
-          # Validate tool's success/pending return format.
-          # Tools should now RAISE ADK::ToolError on failure, not return {status: :error}.
-          unless result_hash.is_a?(Hash) && result_hash.key?(:status) && %i[success
-                                                                            pending].include?(result_hash[:status])
-            ADK.logger.error("Tool '#{tool_name}' returned invalid hash or status (expected success/pending): #{result_hash.inspect}")
-            # Raise a ToolError if the format is wrong, even on expected success/pending path.
-            raise ADK::ToolError, "Tool '#{tool_name}' failed to return standard hash format (status: success/pending)."
-          end
-        rescue ADK::ToolError => e # Catch specific ToolErrors raised by the tool
-          ADK.logger.error("ToolError executing tool '#{tool_name}': #{e.message} (#{e.class.name})")
-          # --- FIXED: Ensure error_class and result: nil are included --- #
-          result_hash = { status: :error, error_message: e.message, error_class: e.class.name, result: nil }
-        rescue StandardError => e # Catch unexpected errors *within* the tool's execute method
-          ADK.logger.error("Unexpected error *within* tool '#{tool_name}' execution: #{e.class} - #{e.message}")
-          ADK.logger.error(e.backtrace.join("\n"))
-          # --- FIXED: Ensure error_class and result: nil are included --- #
-          result_hash = { status: :error, error_message: "Internal error executing tool '#{tool_name}': #{e.message}",
-                          error_class: e.class.name, result: nil }
-        end
-        # --- End tool execution block ---
-      rescue ADK::ToolError => e # Catch ToolError from setup (e.g., tool not found)
-        ADK.logger.error("ToolError preparing tool '#{tool_name}': #{e.message} (#{e.class.name})")
-        # --- FIXED: Ensure error_class and result: nil are included --- #
-        result_hash = { status: :error, error_message: e.message, error_class: e.class.name, result: nil }
-      rescue StandardError => e # Catch unexpected errors during tool preparation (e.g., context creation)
-        ADK.logger.error("Unexpected error preparing tool '#{tool_name}': #{e.class} - #{e.message}")
-        ADK.logger.error(e.backtrace.join("\n"))
-        # --- FIXED: Ensure error_class and result: nil are included --- #
-        result_hash = { status: :error, error_message: "Internal error preparing tool '#{tool_name}': #{e.message}",
-                        error_class: e.class.name, result: nil }
-      end
-
-      # 3. Log Tool Result Event
-      result_event = ADK::Event.new(
-        role: :tool_result,
-        tool_name: tool_name,
-        content: result_hash # Log the entire result hash as content
+      # --- Prepare tool context with invocation_id ---
+      tool_context = ADK::ToolContext.new(
+        session_id: session.id,
+        user_id: session.user_id,
+        app_name: session.app_name,
+        session_service: session_service,
+        tool_registry: @tool_registry,
+        invocation_id: invocation_id
       )
-      session_service.append_event(session_id: session_id, event: result_event)
 
-      # 4. Return the result hash from the tool execution
-      result_hash
+      # --- Log the tool request event ---
+      tool_request_event = ADK::Event.new(
+        role: :tool_request,
+        tool_name: tool_name,
+        content: params
+      )
+      session_service.append_event(session_id: session_id, event: tool_request_event)
+
+      # --- Execute before_tool_callback if defined ---
+      if @before_tool_callback.is_a?(Proc)
+        ADK.logger.debug { "Agent '#{@name}': Executing before_tool_callback for tool '#{tool_name}'." }
+        
+        begin
+          # Execute the callback and check if it returns a result
+          override_result = @before_tool_callback.call(tool, params.dup, tool_context)
+          
+          # If the callback returns a result (not nil), use it instead of normal tool execution
+          if override_result
+            ADK.logger.info { "Agent '#{@name}': before_tool_callback provided an override result for tool '#{tool_name}'." }
+            
+            # Create a tool result event with the override result and any state changes
+            tool_result_event = ADK::Event.new(
+              role: :tool_result,
+              tool_name: tool_name,
+              content: override_result,
+              state_delta: tool_context.pending_state_delta
+            )
+            session_service.append_event(session_id: session_id, event: tool_result_event)
+            
+            return override_result
+          end
+        rescue StandardError => e
+          ADK.logger.error { "Agent '#{@name}': Error in before_tool_callback for tool '#{tool_name}': #{e.message}\n#{e.backtrace.join("\n")}" }
+          
+          error_result = { 
+            status: :error, 
+            error_message: "Error in before_tool_callback: #{e.message}",
+            error_class: e.class.name
+          }
+          
+          # Create a tool result event with the error
+          tool_result_event = ADK::Event.new(
+            role: :tool_result,
+            tool_name: tool_name,
+            content: error_result,
+            state_delta: tool_context.pending_state_delta
+          )
+          session_service.append_event(session_id: session_id, event: tool_result_event)
+          
+          return error_result
+        end
+      end
+
+      # --- Execute the tool ---
+      begin
+        ADK.logger.debug { "Executing tool '#{tool_name}' with params #{params.inspect}" }
+        final_tool_name_to_execute = tool_name
+        
+        # For delegate_task tool, capture the delegate to show in logs
+        if tool_name == :delegate_task && params[:agent_name]
+          final_tool_name_to_execute = "#{tool_name} -> #{params[:agent_name]}"
+        end
+        
+        result = tool.execute(params, tool_context)
+        
+        # --- Execute after_tool_callback if defined ---
+        if @after_tool_callback.is_a?(Proc)
+          ADK.logger.debug { "Agent '#{@name}': Executing after_tool_callback for tool '#{final_tool_name_to_execute}'." }
+          
+          begin
+            # Execute the callback and let it modify the result if needed
+            modified_result = @after_tool_callback.call(tool, params.dup, tool_context, result.dup)
+            
+            # If the callback returned a modified result, use it
+            if modified_result && modified_result != result
+              ADK.logger.info { "Agent '#{@name}': after_tool_callback modified the result for tool '#{final_tool_name_to_execute}'." }
+              result = modified_result
+            end
+          rescue StandardError => e
+            ADK.logger.error { "Agent '#{@name}': Error in after_tool_callback for tool '#{final_tool_name_to_execute}': #{e.message}\n#{e.backtrace.join("\n")}" }
+            # Don't override the result completely on error, just log it
+          end
+        end
+        
+        # --- Log the tool result event ---
+        tool_result_event = ADK::Event.new(
+          role: :tool_result,
+          tool_name: tool_name,
+          content: result,
+          state_delta: tool_context.pending_state_delta
+        )
+        session_service.append_event(session_id: session_id, event: tool_result_event)
+
+        return result
+      rescue StandardError => e
+        ADK.logger.error { "Error executing tool '#{tool_name}': #{e.message}\n#{e.backtrace.join("\n")}" }
+        
+        error_result = {
+          status: :error,
+          error_message: "Tool '#{tool_name}' execution error: #{e.message}",
+          exception: e.class.name
+        }
+        
+        # Create a tool result event with the error
+        tool_result_event = ADK::Event.new(
+          role: :tool_result,
+          tool_name: tool_name,
+          content: error_result
+        )
+        session_service.append_event(session_id: session_id, event: tool_result_event)
+
+        return error_result
+      end
     end
 
     # Connects to all configured MCP servers.
@@ -1780,5 +1888,40 @@ module ADK
         current_agent = parent
       end
     end
+
+    # --- MAS: Store result in session state if output_key is defined --- #
+    def _store_output_in_session(event, session_id, session_service)
+      return unless @definition.respond_to?(:output_key) && @definition.output_key && event
+
+      output_value = event.content # Store the entire content hash
+      serialized_value = begin
+        # If the value is a Hash or Array, deep transform keys and symbolized values
+        if output_value.is_a?(Hash) || output_value.is_a?(Array)
+          # Convert to JSON and back to remove symbols
+          JSON.parse(output_value.to_json)
+        else
+          # For other values, just pass through
+          output_value
+        end
+      rescue => e
+        # If serialization fails, log and return the original
+        ADK.logger.warn("Agent '#{@name}': Failed to serialize output value: #{e.message}. Using original value.")
+        output_value
+      end
+
+      ADK.logger.info("Agent '#{@name}' storing output to session state with key '#{@definition.output_key}' for session '#{session_id}'.")
+
+      begin
+        # Ensure session_service has set_state. Add if missing for base/inmemory.
+        if session_service.respond_to?(:set_state)
+          session_service.set_state(session_id: session_id, key: @definition.output_key, value: serialized_value)
+        else
+          ADK.logger.warn("Agent '#{@name}': Session service does not support :set_state. Cannot store output for key '#{@definition.output_key}'.")
+        end
+      rescue StandardError => e
+        ADK.logger.error("Agent '#{@name}': Failed to set state for key '#{@definition.output_key}' in session '#{session_id}': #{e.class} - #{e.message}")
+      end
+    end
+    # --- End MAS State Management ---
   end # End Agent class
 end # End ADK module

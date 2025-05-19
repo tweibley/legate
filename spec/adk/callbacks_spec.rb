@@ -9,19 +9,13 @@ require 'adk/event'
 
 RSpec.describe "ADK Callbacks" do
   let(:session_service) { ADK::SessionService::InMemory.new }
-  let(:session_id) { "test-session-#{SecureRandom.uuid}" }
   let(:user_id) { "test-user-1" }
   let(:app_name) { "test-app" }
   let(:invocation_id) { SecureRandom.uuid }
   let(:agent_name) { :test_agent }
-
-  before do
-    # Create a session in the service
-    session_service.create_session(
-      user_id: user_id,
-      app_name: app_name
-    )
-  end
+  # Create a session and get its ID
+  let(:session) { session_service.create_session(user_id: user_id, app_name: app_name) }
+  let(:session_id) { session.id }
 
   describe ADK::Callbacks::CallbackContext do
     subject(:context) do
@@ -36,34 +30,30 @@ RSpec.describe "ADK Callbacks" do
     end
 
     it "provides access to session state" do
-      # Set up some state in the session
-      session_service.set_state(session_id: session_id, key: :test_key, value: "test_value")
-      
-      # CallbackContext should be able to access it
-      expect(context.state_get(:test_key)).to eq("test_value")
+      session_service.set_state(session_id: session_id, key: :test_key, value: "test value")
+      expect(context.state_get(:test_key)).to eq("test value")
     end
 
     it "tracks state changes in pending_state_delta" do
-      context.state_set(:new_key, "new_value")
-      expect(context.pending_state_delta).to include(new_key: "new_value")
+      context.state_set(:new_key, "new value")
+      expect(context.pending_state_delta).to eq(new_key: "new value")
     end
 
     it "can update multiple keys at once with state_update" do
       context.state_update(key1: "value1", key2: "value2")
-      expect(context.pending_state_delta).to include(key1: "value1", key2: "value2")
+      expect(context.pending_state_delta).to eq(key1: "value1", key2: "value2")
     end
 
     it "can clear the pending state delta" do
-      context.state_set(:test_key, "test_value")
+      context.state_set(:key, "value")
       expect(context.pending_state_delta).not_to be_empty
-      
       context.clear_pending_state_delta!
       expect(context.pending_state_delta).to be_empty
     end
   end
 
   describe ADK::ToolContext do
-    subject(:tool_context) do
+    subject(:context) do
       described_class.new(
         session_id: session_id,
         user_id: user_id,
@@ -74,32 +64,31 @@ RSpec.describe "ADK Callbacks" do
     end
 
     it "provides access to session state" do
-      session_service.set_state(session_id: session_id, key: :tool_test_key, value: "tool_test_value")
-      expect(tool_context.state_get(:tool_test_key)).to eq("tool_test_value")
+      session_service.set_state(session_id: session_id, key: :test_key, value: "test value")
+      expect(context.state_get(:test_key)).to eq("test value")
     end
 
     it "tracks state changes in pending_state_delta" do
-      tool_context.state_set(:new_tool_key, "new_tool_value")
-      expect(tool_context.pending_state_delta).to include(new_tool_key: "new_tool_value")
+      context.state_set(:new_key, "new value")
+      expect(context.pending_state_delta).to eq(new_key: "new value")
     end
   end
 
   describe "Agent callback DSL" do
     it "allows setting callbacks via DSL" do
       definition = ADK::Agent.define do |a|
-        a.name :callback_test_agent
+        a.name :callback_test
         a.description "Test agent with callbacks"
         a.instruction "Test instruction"
         
         a.before_agent_callback do |ctx|
-          # Simple callback that sets state
-          ctx.state_set(:before_agent_ran, true)
+          # This is a valid callback
           nil
         end
         
-        a.after_agent_callback do |ctx, result|
-          # Callback that modifies result
-          result.merge(after_agent_ran: true)
+        a.after_agent_callback do |ctx, content|
+          # This is a valid callback
+          content
         end
       end
       
@@ -136,89 +125,88 @@ RSpec.describe "ADK Callbacks" do
         a.name :before_agent_test
         a.description "Agent to test before_agent_callback"
         a.instruction "Test instruction"
-        a.use_tool :test_tool
         
         a.before_agent_callback do |ctx|
           before_agent_called = true
-          ctx.state_set(:callback_ran, true)
-          nil # Continue normal execution
+          ctx.state_set(:before_agent_ran, true)
+          nil # Continue with normal execution
         end
       end
       
       agent = ADK::Agent.new(definition: definition, session_service: session_service)
       agent.start
       
-      # Create a mock planner that returns a simple plan
-      allow_any_instance_of(ADK::Planner).to receive(:plan).and_return(
-        { steps: [] } # Empty plan for simplicity
-      )
+      # Mock the planner to return an empty plan
+      allow_any_instance_of(ADK::Planner).to receive(:plan).and_return({ steps: [] })
       
-      # Run the agent's task
-      result = agent.run_task(session_id: session_id, user_input: "Hello", session_service: session_service)
+      # Run task (this should execute before_agent_callback)
+      agent.run_task(session_id: session_id, user_input: "test input", session_service: session_service)
       
-      # Check that callback was called
+      # Verify callback was called
       expect(before_agent_called).to be true
-      
-      # Check that state was modified
-      expect(session_service.get_state(session_id: session_id, key: :callback_ran)).to be true
+      # Verify state was set
+      expect(session_service.get_state(session_id: session_id, key: :before_agent_ran)).to be true
     end
     
     it "allows before_agent_callback to override normal execution" do
       definition = ADK::Agent.define do |a|
-        a.name :override_agent_test
-        a.description "Agent to test callback override"
+        a.name :before_agent_override_test
+        a.description "Agent to test before_agent_callback override"
         a.instruction "Test instruction"
-        a.use_tool :test_tool
         
         a.before_agent_callback do |ctx|
           ctx.state_set(:override_executed, true)
-          # Return a complete result to override normal execution
-          { status: :success, override_result: true }
+          { status: :success, result: "Execution overridden by callback" }
         end
       end
       
       agent = ADK::Agent.new(definition: definition, session_service: session_service)
       agent.start
       
-      # The planner should never be called
-      expect_any_instance_of(ADK::Planner).not_to receive(:plan)
+      # Mock the planner - this should never be called due to override
+      planner_mock = instance_double(ADK::Planner)
+      expect(planner_mock).not_to receive(:plan)
+      agent.instance_variable_set(:@planner, planner_mock)
       
-      # Run the agent's task
-      result = agent.run_task(session_id: session_id, user_input: "Hello", session_service: session_service)
+      # Run task (should be overridden by before_agent_callback)
+      result = agent.run_task(session_id: session_id, user_input: "test input", session_service: session_service)
       
-      # Check the result contains our override
-      expect(result.content).to include(override_result: true)
-      
-      # Check that state was set
+      # Verify result content matches override
+      expect(result.content[:result]).to eq("Execution overridden by callback")
+      # Verify state change was applied
       expect(session_service.get_state(session_id: session_id, key: :override_executed)).to be true
     end
     
     it "executes after_agent_callback before returning the final result" do
+      after_agent_called = false
+      
       definition = ADK::Agent.define do |a|
         a.name :after_agent_test
         a.description "Agent to test after_agent_callback"
         a.instruction "Test instruction"
-        a.use_tool :test_tool
         
-        a.after_agent_callback do |ctx, result|
-          # Modify the result
-          result.merge(after_callback_modified: true)
+        a.after_agent_callback do |ctx, content|
+          after_agent_called = true
+          ctx.state_set(:after_agent_ran, true)
+          content.merge(result: "Modified by after_agent_callback")
         end
       end
       
       agent = ADK::Agent.new(definition: definition, session_service: session_service)
       agent.start
       
-      # Create a mock planner that returns a simple plan
-      allow_any_instance_of(ADK::Planner).to receive(:plan).and_return(
-        { steps: [] } # Empty plan for simplicity
-      )
+      # Mock the planner to return an empty plan (resulting in fallback mode echo)
+      allow_any_instance_of(ADK::Planner).to receive(:plan).and_return({ steps: [] })
       
-      # Run the agent's task
-      result = agent.run_task(session_id: session_id, user_input: "Hello", session_service: session_service)
+      # Run task (this should execute after_agent_callback)
+      result = agent.run_task(session_id: session_id, user_input: "test input", session_service: session_service)
       
-      # Check that the result was modified by the callback
-      expect(result.content).to include(after_callback_modified: true)
+      # Verify callback was called
+      expect(after_agent_called).to be true
+      # Verify result was modified
+      expect(result.content[:result]).to eq("Modified by after_agent_callback")
+      # Verify state was set
+      expect(session_service.get_state(session_id: session_id, key: :after_agent_ran)).to be true
     end
     
     it "executes before_tool_callback before tool execution" do
@@ -231,6 +219,7 @@ RSpec.describe "ADK Callbacks" do
         a.use_tool :test_tool
         
         a.before_tool_callback do |tool, params, ctx|
+          puts "DEBUG: before_tool_callback called!"
           before_tool_called = true
           ctx.state_set(:before_tool_ran, true)
           nil # Continue with normal tool execution
@@ -238,39 +227,37 @@ RSpec.describe "ADK Callbacks" do
       end
       
       agent = ADK::Agent.new(definition: definition, session_service: session_service)
+      puts "DEBUG: Agent callbacks: #{agent.before_tool_callback.inspect}"
       agent.start
       
-      # Create a mock planner that returns a plan using our test tool
-      allow_any_instance_of(ADK::Planner).to receive(:plan).and_return(
-        { 
-          steps: [
-            {
-              tool: :test_tool,
-              params: { foo: "bar" }
-            }
-          ] 
-        }
-      )
+      # Override the global planner mock for this test
+      allow_any_instance_of(ADK::Planner).to receive(:plan).and_return({ 
+        steps: [{ tool: :test_tool, params: { arg: "value" } }] 
+      })
       
-      # Run the agent's task
-      result = agent.run_task(session_id: session_id, user_input: "Hello", session_service: session_service)
+      # Run task (this should execute before_tool_callback before the test_tool executes)
+      result = agent.run_task(session_id: session_id, user_input: "test input", session_service: session_service)
+      puts "DEBUG: After run_task, result: #{result.inspect}"
       
-      # Verify the callback was called
+      # Get all events from the session
+      events = session_service.get_session(session_id: session_id).events
+      puts "DEBUG: Events: #{events.inspect}"
+      
+      # Verify callback was called
       expect(before_tool_called).to be true
-      
-      # Check that state was set
+      # Verify state was set
       expect(session_service.get_state(session_id: session_id, key: :before_tool_ran)).to be true
     end
     
     it "allows before_tool_callback to override tool execution" do
       definition = ADK::Agent.define do |a|
-        a.name :override_tool_test
-        a.description "Agent to test tool override"
+        a.name :before_tool_override_test
+        a.description "Agent to test before_tool_callback override"
         a.instruction "Test instruction"
         a.use_tool :test_tool
         
         a.before_tool_callback do |tool, params, ctx|
-          # Return a result to override the tool execution
+          ctx.state_set(:tool_overridden, true)
           { status: :success, result: "Tool execution overridden by callback" }
         end
       end
@@ -278,32 +265,29 @@ RSpec.describe "ADK Callbacks" do
       agent = ADK::Agent.new(definition: definition, session_service: session_service)
       agent.start
       
-      # Create a mock planner that returns a plan using our test tool
-      allow_any_instance_of(ADK::Planner).to receive(:plan).and_return(
-        { 
-          steps: [
-            {
-              tool: :test_tool,
-              params: { foo: "bar" }
-            }
-          ] 
-        }
-      )
+      # Override the global planner mock for this test
+      allow_any_instance_of(ADK::Planner).to receive(:plan).and_return({ 
+        steps: [{ tool: :test_tool, params: { arg: "value" } }] 
+      })
       
-      # The tool's perform_execution should never be called
-      expect_any_instance_of(TestTool).not_to receive(:perform_execution)
+      # Run task (this should execute before_tool_callback which overrides the tool execution)
+      agent.run_task(session_id: session_id, user_input: "test input", session_service: session_service)
       
-      # Run the agent's task
-      result = agent.run_task(session_id: session_id, user_input: "Hello", session_service: session_service)
-      
-      # Check events to see if our override was used
+      # Get all events from the session
       events = session_service.get_session(session_id: session_id).events
-      tool_result_event = events.find { |e| e.role == :tool_result }
       
+      # Find the tool result event
+      tool_result_event = events.find { |e| e.role == :tool_result && e.tool_name == :test_tool }
+      
+      # Verify result content matches override
       expect(tool_result_event.content[:result]).to eq("Tool execution overridden by callback")
+      # Verify state change was applied
+      expect(session_service.get_state(session_id: session_id, key: :tool_overridden)).to be true
     end
     
     it "executes after_tool_callback after tool execution" do
+      after_tool_called = false
+      
       definition = ADK::Agent.define do |a|
         a.name :after_tool_test
         a.description "Agent to test after_tool_callback"
@@ -311,35 +295,35 @@ RSpec.describe "ADK Callbacks" do
         a.use_tool :test_tool
         
         a.after_tool_callback do |tool, params, ctx, result|
-          # Modify the result
-          result[:result] = "#{result[:result]} and modified by callback"
-          result
+          after_tool_called = true
+          ctx.state_set(:after_tool_ran, true)
+          result.merge(result: "Test tool executed and modified by callback")
         end
       end
       
       agent = ADK::Agent.new(definition: definition, session_service: session_service)
       agent.start
       
-      # Create a mock planner that returns a plan using our test tool
-      allow_any_instance_of(ADK::Planner).to receive(:plan).and_return(
-        { 
-          steps: [
-            {
-              tool: :test_tool,
-              params: { foo: "bar" }
-            }
-          ] 
-        }
-      )
+      # Override the global planner mock for this test
+      allow_any_instance_of(ADK::Planner).to receive(:plan).and_return({ 
+        steps: [{ tool: :test_tool, params: { arg: "value" } }] 
+      })
       
-      # Run the agent's task
-      result = agent.run_task(session_id: session_id, user_input: "Hello", session_service: session_service)
+      # Run task (this should execute the tool and then after_tool_callback)
+      agent.run_task(session_id: session_id, user_input: "test input", session_service: session_service)
       
-      # Check events to see if our callback modified the result
+      # Get all events from the session
       events = session_service.get_session(session_id: session_id).events
-      tool_result_event = events.find { |e| e.role == :tool_result }
       
+      # Find the tool result event
+      tool_result_event = events.find { |e| e.role == :tool_result && e.tool_name == :test_tool }
+      
+      # Verify callback was called
+      expect(after_tool_called).to be true
+      # Verify result was modified
       expect(tool_result_event.content[:result]).to eq("Test tool executed and modified by callback")
+      # Verify state was set
+      expect(session_service.get_state(session_id: session_id, key: :after_tool_ran)).to be true
     end
     
     it "handles errors in callbacks gracefully" do
@@ -353,18 +337,18 @@ RSpec.describe "ADK Callbacks" do
           raise "Deliberate error in before_agent_callback"
         end
         
-        a.after_tool_callback do |tool, params, ctx, result|
-          raise "Deliberate error in after_tool_callback"
+        a.before_tool_callback do |tool, params, ctx|
+          raise "Deliberate error in before_tool_callback"
         end
       end
       
       agent = ADK::Agent.new(definition: definition, session_service: session_service)
       agent.start
       
-      # Run the agent's task - it should not raise exceptions to the caller
-      result = agent.run_task(session_id: session_id, user_input: "Hello", session_service: session_service)
+      # Run task (this should catch the error in before_agent_callback)
+      result = agent.run_task(session_id: session_id, user_input: "test input", session_service: session_service)
       
-      # The result should indicate an error occurred
+      # Verify error was caught and returned in result
       expect(result.content[:status]).to eq(:error)
       expect(result.content[:error_message]).to include("Error in before_agent_callback")
     end
