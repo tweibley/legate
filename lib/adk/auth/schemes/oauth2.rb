@@ -5,6 +5,7 @@ require 'oauth2'
 require 'securerandom'
 require 'digest'
 require 'base64'
+require_relative '../scheme'
 
 module ADK
   module Auth
