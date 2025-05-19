@@ -1,6 +1,13 @@
 # File: lib/adk/auth/schemes/openid_connect.rb
 # frozen_string_literal: true
 
+require 'oauth2'
+require 'securerandom'
+require 'net/http'
+require 'json'
+require 'jwt'
+require_relative 'oauth2'
+
 module ADK
   module Auth
     module Schemes
@@ -10,36 +17,53 @@ module ADK
         # @return [String, nil] The URL for the OpenID Connect discovery document
         attr_reader :discovery_url
         
+        # @return [String, nil] The URL for the JWK Set
+        attr_reader :jwks_url
+        
         # Initialize a new OpenID Connect scheme
         # @param authorization_url [String, nil] The URL for the authorization endpoint (optional if discovery_url is provided)
         # @param token_url [String, nil] The URL for the token endpoint (optional if discovery_url is provided)
         # @param discovery_url [String, nil] The URL for the OpenID Connect discovery document
         # @param jwks_url [String, nil] The URL for the JWKS endpoint
         # @param scopes [Array<String>, String, nil] The requested scopes
+        # @param use_pkce [Boolean] Whether to use PKCE
         # @param additional_params [Hash, nil] Additional parameters for authorization requests
         def initialize(authorization_url: nil, token_url: nil, discovery_url: nil, jwks_url: nil,
-                       scopes: nil, additional_params: nil)
+                       scopes: nil, use_pkce: true, additional_params: nil)
           @discovery_url = discovery_url
           @jwks_url = jwks_url
           
           # If discovery URL is provided, attempt to fetch the endpoints
-          if @discovery_url && (!authorization_url || !token_url)
-            discovery_data = fetch_discovery_document
-            authorization_url ||= discovery_data[:authorization_endpoint]
-            token_url ||= discovery_data[:token_endpoint]
-            @jwks_url ||= discovery_data[:jwks_uri]
+          if @discovery_url && (!authorization_url || !token_url || !@jwks_url)
+            begin
+              discovery_data = fetch_discovery_document
+              authorization_url ||= discovery_data[:authorization_endpoint]
+              token_url ||= discovery_data[:token_endpoint]
+              @jwks_url ||= discovery_data[:jwks_uri]
+              @userinfo_url = discovery_data[:userinfo_endpoint]
+              @issuer = discovery_data[:issuer]
+            rescue StandardError => e
+              # Log the error but don't fail immediately, as endpoints might be provided directly
+              warn "Failed to fetch OIDC discovery document: #{e.message}"
+            end
           end
           
           # Ensure the openid scope is included
           full_scopes = parse_scopes(scopes)
           full_scopes << 'openid' unless full_scopes.include?('openid')
           
+          # Initialize the OAuth2 parent class
           super(
             authorization_url: authorization_url,
             token_url: token_url,
             scopes: full_scopes,
+            use_pkce: use_pkce,
             additional_params: additional_params
           )
+          
+          # Store discovery-specific information
+          @jwks_cache = {}
+          @jwks_cache_timestamp = nil
         end
         
         # @return [Symbol] The scheme type
@@ -61,69 +85,110 @@ module ADK
         # @param config [ADK::Auth::Config] The authentication configuration
         # @param redirect_uri [String, nil] The redirect URI for the authorization request
         # @param state [String, nil] A state parameter for CSRF protection
-        # @return [String] The authorization URI
+        # @return [Hash] The authorization URI and additional parameters
         def build_authorization_uri(config, redirect_uri = nil, state = nil)
           # Make sure we have loaded configuration from discovery if needed
           ensure_endpoints_available
           
-          # Ensure the credential is for OIDC
-          credential = config.credential
-          unless credential && [:oauth2, :oidc].include?(credential.auth_type)
-            raise ADK::Auth::CredentialError, 'OpenID Connect requires a credential with auth_type :oauth2 or :oidc'
-          end
-          
           # Generate a nonce for OIDC
-          require 'securerandom'
           nonce = SecureRandom.hex(16)
+          
+          # Initialize options hash if not present
+          config.options ||= {}
           
           # Store the nonce in the config options
           config.options[:nonce] = nonce
           
           # Add OIDC-specific parameters
-          params = { 
+          additional_params = (@additional_params || {}).merge({
             'response_type' => 'code',
             'nonce' => nonce
-          }
+          })
           
-          # Add to the additional_params
-          additional = @additional_params.merge(params)
-          
-          # Create a new instance with the updated additional_params
-          temp_scheme = self.class.new(
+          # Create a temporary scheme for URI building
+          temp_scheme = OAuth2.new(
             authorization_url: @authorization_url,
             token_url: @token_url,
-            discovery_url: @discovery_url,
-            jwks_url: @jwks_url,
             scopes: @scopes,
-            additional_params: additional
+            use_pkce: @use_pkce,
+            additional_params: additional_params
           )
           
-          # Use the OAuth2 implementation with our updated parameters
+          # Use the OAuth2 implementation to build the URI
           temp_scheme.build_authorization_uri(config, redirect_uri, state)
         end
         
         # Exchanges an authorization code for tokens
-        # @param config [ADK::Auth::Config] The authentication configuration with response URI
+        # @param config [ADK::Auth::Config] The authentication configuration
         # @param credential [ADK::Auth::Credential] The credential with client information
         # @return [ADK::Auth::ExchangedCredential] The exchanged credential with tokens
         # @raise [ADK::Auth::TokenExchangeError] If token exchange fails
         def exchange_token(config, credential)
-          # This is a stub implementation for now
-          # In the actual implementation, we would:
-          # 1. Extract the authorization code from the response URI
-          # 2. Make a token request to the token endpoint
-          # 3. Parse the response and return an ExchangedCredential with ID token
+          # First, get the tokens using OAuth2's implementation
+          oauth2_credential = super
           
-          # For testing purposes, return a dummy credential with ID token
+          # Extract the ID token from the token response
+          id_token = oauth2_credential[:id_token]
+          
+          # Verify the ID token if present
+          if id_token
+            begin
+              # Verify the token's signature and claims
+              decoded_token = verify_id_token(id_token, config.options[:nonce])
+              
+              # Extract user information from the ID token
+              user_info = extract_user_info(decoded_token)
+            rescue StandardError => e
+              raise ADK::Auth::TokenExchangeError, "ID token verification failed: #{e.message}"
+            end
+          end
+          
+          # Create an exchanged credential with OIDC specifics
           ADK::Auth::ExchangedCredential.new(
             auth_type: :openid_connect,
-            access_token: 'dummy_access_token',
-            refresh_token: 'dummy_refresh_token',
-            token_type: 'Bearer',
-            expires_in: 3600,
-            id_token: 'dummy_id_token',
-            scope: @scopes.join(' ')
+            access_token: oauth2_credential.access_token,
+            refresh_token: oauth2_credential.refresh_token,
+            token_type: oauth2_credential.token_type,
+            expires_at: oauth2_credential.expires_at,
+            expires_in: oauth2_credential.expires_in,
+            scope: oauth2_credential.scope,
+            id_token: id_token,
+            user_info: user_info
           )
+        end
+        
+        # Fetches user information using the userinfo endpoint
+        # @param exchanged_credential [ADK::Auth::ExchangedCredential] The credential with the access token
+        # @return [Hash] The user information
+        # @raise [ADK::Auth::Error] If the userinfo request fails
+        def fetch_userinfo(exchanged_credential)
+          unless @userinfo_url
+            ensure_endpoints_available
+            
+            unless @userinfo_url
+              raise ADK::Auth::ConfigurationError, 'Userinfo endpoint URL not available'
+            end
+          end
+          
+          begin
+            # Create a request with the access token
+            uri = URI.parse(@userinfo_url)
+            http = Net::HTTP.new(uri.host, uri.port)
+            http.use_ssl = uri.scheme == 'https'
+            
+            request = Net::HTTP::Get.new(uri.request_uri)
+            request['Authorization'] = "Bearer #{exchanged_credential.access_token}"
+            
+            response = http.request(request)
+            
+            if response.is_a?(Net::HTTPSuccess)
+              JSON.parse(response.body, symbolize_names: true)
+            else
+              raise ADK::Auth::Error, "Userinfo request failed: #{response.code} #{response.message}"
+            end
+          rescue StandardError => e
+            raise ADK::Auth::Error, "Failed to fetch user information: #{e.message}"
+          end
         end
         
         # Convert to a hash
@@ -150,6 +215,8 @@ module ADK
           @authorization_url ||= discovery_data[:authorization_endpoint]
           @token_url ||= discovery_data[:token_endpoint]
           @jwks_url ||= discovery_data[:jwks_uri]
+          @userinfo_url ||= discovery_data[:userinfo_endpoint]
+          @issuer ||= discovery_data[:issuer]
           
           unless @authorization_url && @token_url
             raise ADK::Auth::ConfigurationError, 'Could not resolve endpoints from discovery document'
@@ -160,17 +227,157 @@ module ADK
         # @return [Hash] The parsed discovery document
         # @raise [ADK::Auth::ConfigurationError] If the discovery document cannot be fetched or parsed
         def fetch_discovery_document
-          # This is a stub implementation for now
-          # In the actual implementation, we would:
-          # 1. Fetch the discovery document from the discovery URL
-          # 2. Parse the JSON and return a hash with symbolized keys
+          begin
+            uri = URI.parse(@discovery_url)
+            http = Net::HTTP.new(uri.host, uri.port)
+            http.use_ssl = uri.scheme == 'https'
+            
+            request = Net::HTTP::Get.new(uri.request_uri)
+            response = http.request(request)
+            
+            if response.is_a?(Net::HTTPSuccess)
+              JSON.parse(response.body, symbolize_names: true)
+            else
+              raise ADK::Auth::ConfigurationError, "Discovery request failed: #{response.code} #{response.message}"
+            end
+          rescue StandardError => e
+            raise ADK::Auth::ConfigurationError, "Failed to fetch discovery document: #{e.message}"
+          end
+        end
+        
+        # Verify an ID token's signature and claims
+        # @param id_token [String] The ID token to verify
+        # @param nonce [String, nil] The nonce to verify against
+        # @return [Hash] The decoded token payload
+        # @raise [StandardError] If verification fails
+        def verify_id_token(id_token, nonce = nil)
+          # Decode the token header to get the key ID and algorithm
+          header = JWT.decode(id_token, nil, false)[1]
+          kid = header['kid']
+          alg = header['alg']
           
-          # For testing purposes, return a dummy discovery document
-          {
-            authorization_endpoint: 'https://example.com/oauth2/auth',
-            token_endpoint: 'https://example.com/oauth2/token',
-            jwks_uri: 'https://example.com/oauth2/jwks'
-          }
+          # Fetch the JWK Set if needed
+          jwks = fetch_jwks
+          
+          # Find the JWK with the matching key ID
+          jwk = jwks[:keys].find { |key| key[:kid] == kid }
+          unless jwk
+            raise ADK::Auth::TokenExchangeError, "JWK with key ID #{kid} not found"
+          end
+          
+          # Convert the JWK to a public key
+          public_key = jwk_to_key(jwk, alg)
+          
+          # Verify the token
+          decoded_token = JWT.decode(
+            id_token,
+            public_key,
+            true,
+            {
+              algorithm: alg,
+              verify_iat: true,
+              verify_iss: true,
+              iss: @issuer,
+              verify_aud: true,
+              aud: credential[:client_id, resolve_env: true],
+              verify_nonce: !!nonce,
+              nonce: nonce
+            }
+          )
+          
+          # Return the payload
+          decoded_token[0]
+        end
+        
+        # Extract user information from an ID token
+        # @param decoded_token [Hash] The decoded ID token payload
+        # @return [Hash] The extracted user information
+        def extract_user_info(decoded_token)
+          # Extract standard claims
+          user_info = {}
+          
+          # Standard OIDC claims
+          standard_claims = %i[
+            sub name given_name family_name middle_name nickname preferred_username
+            profile picture website email email_verified gender birthdate zoneinfo
+            locale phone_number phone_number_verified address updated_at
+          ]
+          
+          # Copy claims from token to user info
+          standard_claims.each do |claim|
+            user_info[claim] = decoded_token[claim] if decoded_token.key?(claim)
+          end
+          
+          user_info
+        end
+        
+        # Fetch the JWK Set from the jwks_url
+        # @return [Hash] The JWK Set
+        # @raise [ADK::Auth::ConfigurationError] If the JWK Set cannot be fetched
+        def fetch_jwks
+          # Check if we have a cached JWK Set and if it's still valid (cache for 1 hour)
+          if @jwks_cache.any? && @jwks_cache_timestamp && (Time.now - @jwks_cache_timestamp) < 3600
+            return @jwks_cache
+          end
+          
+          # Ensure we have a JWKS URL
+          unless @jwks_url
+            ensure_endpoints_available
+            
+            unless @jwks_url
+              raise ADK::Auth::ConfigurationError, 'JWKS URL not available'
+            end
+          end
+          
+          begin
+            # Fetch the JWK Set
+            uri = URI.parse(@jwks_url)
+            http = Net::HTTP.new(uri.host, uri.port)
+            http.use_ssl = uri.scheme == 'https'
+            
+            request = Net::HTTP::Get.new(uri.request_uri)
+            response = http.request(request)
+            
+            if response.is_a?(Net::HTTPSuccess)
+              # Parse the JWK Set
+              @jwks_cache = JSON.parse(response.body, symbolize_names: true)
+              @jwks_cache_timestamp = Time.now
+              @jwks_cache
+            else
+              raise ADK::Auth::ConfigurationError, "JWKS request failed: #{response.code} #{response.message}"
+            end
+          rescue StandardError => e
+            raise ADK::Auth::ConfigurationError, "Failed to fetch JWKS: #{e.message}"
+          end
+        end
+        
+        # Convert a JWK to a public key
+        # @param jwk [Hash] The JWK to convert
+        # @param alg [String] The algorithm
+        # @return [OpenSSL::PKey::PKey] The public key
+        # @raise [ADK::Auth::ConfigurationError] If the key cannot be converted
+        def jwk_to_key(jwk, alg)
+          begin
+            case jwk[:kty]
+            when 'RSA'
+              # Convert an RSA JWK to a public key
+              rsa_key = OpenSSL::PKey::RSA.new
+              rsa_key.set_key(
+                OpenSSL::BN.new(Base64.urlsafe_decode64(jwk[:n]), 2),
+                OpenSSL::BN.new(Base64.urlsafe_decode64(jwk[:e]), 2),
+                nil
+              )
+              rsa_key
+            when 'EC'
+              # For EC keys, convert the JWK to a public key
+              # This is more complex and would require additional implementation
+              raise ADK::Auth::ConfigurationError, 'EC keys are not supported yet'
+            else
+              raise ADK::Auth::ConfigurationError, "Unsupported key type: #{jwk[:kty]}"
+            end
+          rescue StandardError => e
+            raise ADK::Auth::ConfigurationError, "Failed to convert JWK to key: #{e.message}"
+          end
         end
       end
     end

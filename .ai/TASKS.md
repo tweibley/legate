@@ -19,7 +19,7 @@
 > Dependencies: 1, 2, 3
 > Implement the OAuth2 authentication scheme and flows, focusing on the interactive authorization code flow.
 
-- [ ] **ID 6: OpenID Connect Authentication Support** (Priority: medium)
+- [x] **ID 6: OpenID Connect Authentication Support** (Priority: medium)
 > Dependencies: 5
 > Add support for OpenID Connect authentication, extending the OAuth2 implementation.
 
