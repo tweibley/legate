@@ -2,6 +2,8 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'adk/auth/scheme'
+require 'adk/auth/error'
 require 'adk/auth/schemes/api_key'
 require 'adk/auth/credential'
 
@@ -114,8 +116,14 @@ RSpec.describe ADK::Auth::Schemes::APIKey do
     end
     
     it 'raises an error if the credential is missing the API key' do
+      # Create a credential with the required auth_type but with nil api_key
       scheme = described_class.new
-      credential_without_key = ADK::Auth::Credential.new(auth_type: :api_key)
+      credential_without_key = instance_double(
+        'ADK::Auth::Credential',
+        '[]': nil, # Return nil for any key access
+        is_a?: true # Pretend to be a Credential
+      )
+      allow(credential_without_key).to receive(:[]).with(any_args).and_return(nil)
       
       expect {
         scheme.apply_to_request({}, credential_without_key)

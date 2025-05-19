@@ -2,6 +2,8 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'adk/auth/scheme'
+require 'adk/auth/error'
 require 'adk/auth/schemes/http_bearer'
 require 'adk/auth/credential'
 require 'adk/auth/exchanged_credential'
@@ -66,21 +68,31 @@ RSpec.describe ADK::Auth::Schemes::HTTPBearer do
       end
       
       it 'raises an error if the bearer token is missing' do
-        credential = ADK::Auth::Credential.new(auth_type: :http_bearer)
+        # Create a double that simulates a credential without a bearer token
+        credential_without_token = instance_double(
+          'ADK::Auth::Credential',
+          '[]': nil, # Return nil for any key access
+          is_a?: true # Pretend to be a Credential
+        )
+        allow(credential_without_token).to receive(:[]).with(any_args).and_return(nil)
         
         expect {
-          scheme.apply_to_request({}, credential)
+          scheme.apply_to_request({}, credential_without_token)
         }.to raise_error(ADK::Auth::CredentialError)
       end
     end
     
     context 'with an ExchangedCredential' do
       it 'uses the access token as the bearer token' do
-        exchanged_credential = ADK::Auth::ExchangedCredential.new(
+        # Create a double that behaves like an ExchangedCredential
+        exchanged_credential = instance_double(
+          'ADK::Auth::ExchangedCredential',
           access_token: 'access-token',
-          token_type: 'Bearer',
-          expires_at: Time.now + 3600
+          is_a?: false # Not a Credential
         )
+        # Make is_a? work correctly
+        allow(exchanged_credential).to receive(:is_a?).with(ADK::Auth::Credential).and_return(false)
+        allow(exchanged_credential).to receive(:is_a?).with(ADK::Auth::ExchangedCredential).and_return(true)
         
         request = {}
         result = scheme.apply_to_request(request, exchanged_credential)
@@ -89,13 +101,18 @@ RSpec.describe ADK::Auth::Schemes::HTTPBearer do
       end
       
       it 'raises an error if the access token is missing' do
-        exchanged_credential = ADK::Auth::ExchangedCredential.new(
-          token_type: 'Bearer',
-          expires_at: Time.now + 3600
+        # Create a double that behaves like an ExchangedCredential without an access token
+        exchanged_credential_without_token = instance_double(
+          'ADK::Auth::ExchangedCredential',
+          access_token: nil,
+          is_a?: false # Not a Credential
         )
+        # Make is_a? work correctly
+        allow(exchanged_credential_without_token).to receive(:is_a?).with(ADK::Auth::Credential).and_return(false)
+        allow(exchanged_credential_without_token).to receive(:is_a?).with(ADK::Auth::ExchangedCredential).and_return(true)
         
         expect {
-          scheme.apply_to_request({}, exchanged_credential)
+          scheme.apply_to_request({}, exchanged_credential_without_token)
         }.to raise_error(ADK::Auth::CredentialError)
       end
     end

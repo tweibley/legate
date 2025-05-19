@@ -1,6 +1,11 @@
 # File: lib/adk/auth/schemes/http_bearer.rb
 # frozen_string_literal: true
 
+require_relative '../scheme'
+require_relative '../error'
+require_relative '../credential'
+require_relative '../exchanged_credential'
+
 module ADK
   module Auth
     module Schemes
