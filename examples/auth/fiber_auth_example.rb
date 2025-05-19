@@ -6,12 +6,17 @@ require 'adk/auth'
 require 'adk/auth/runner'
 require 'adk/auth/schemes/oauth2'
 require 'adk/tool_context'
+require 'adk/web/server'
+require 'launchy'
+require 'securerandom'
 
 # This example demonstrates the fiber-based authentication flow
 # It shows how to:
 # 1. Set up an authentication runner
 # 2. Use the auth_session method within a tool
 # 3. Handle authentication requests and responses
+# 4. Launch a browser for OAuth2 authorization
+# 5. Start a temporary web server to receive the OAuth2 callback
 
 class ExampleTool < ADK::Tool::Base
   name :example_tool
@@ -19,11 +24,15 @@ class ExampleTool < ADK::Tool::Base
   version "1.0.0"
   
   parameter :action, type: :symbol, required: true, 
-            description: "Action to perform (call_api, handle_response)"
+            description: "Action to perform (call_api, handle_response, run_with_server)"
   parameter :request_id, type: :string, required: false,
             description: "The authentication request ID for handling responses"
   parameter :response_uri, type: :string, required: false,
             description: "The response URI from the OAuth2 callback"
+  parameter :client_id, type: :string, required: false,
+            description: "OAuth2 client ID"
+  parameter :client_secret, type: :string, required: false,
+            description: "OAuth2 client secret"
   
   def execute
     case parameters[:action]
@@ -35,6 +44,9 @@ class ExampleTool < ADK::Tool::Base
     when :handle_response
       # Handle an authentication response
       handle_auth_response
+    when :run_with_server
+      # Run with a local server to automatically handle the OAuth2 callback
+      run_with_local_server
     else
       raise ADK::ToolError, "Unknown action: #{parameters[:action]}"
     end
@@ -44,19 +56,10 @@ class ExampleTool < ADK::Tool::Base
   
   def call_api_with_auth
     # Define an OAuth2 scheme
-    oauth2_scheme = ADK::Auth::Schemes::OAuth2.new(
-      authorization_url: 'https://accounts.google.com/o/oauth2/auth',
-      token_url: 'https://oauth2.googleapis.com/token',
-      scopes: ['email', 'profile'],
-      use_pkce: true
-    )
+    oauth2_scheme = create_oauth2_scheme
     
     # Define a credential
-    credential = ADK::Auth::Credential.new(
-      auth_type: :oauth2,
-      client_id: 'your-client-id',
-      client_secret: 'your-client-secret'
-    )
+    credential = create_credential
     
     # Start an authentication session
     # This will yield the fiber if authentication is needed
@@ -68,12 +71,16 @@ class ExampleTool < ADK::Tool::Base
     
     # If we get here, we have a valid token
     if token
+      # Simulate an API call with the token
+      api_call_result = simulate_api_call(token)
+      
       {
         status: :success,
-        message: "Successfully authenticated",
+        message: "Successfully authenticated and called API",
         token_type: token.token_type,
         expires_in: token.expires_in,
-        scope: token.scope
+        scope: token.scope,
+        api_result: api_call_result
       }
     else
       { status: :error, message: "Failed to authenticate" }
@@ -102,6 +109,128 @@ class ExampleTool < ADK::Tool::Base
       details: result
     }
   end
+  
+  def run_with_local_server
+    # Create a web server to handle the OAuth2 callback
+    server = create_callback_server
+    
+    begin
+      # Start the server
+      server_thread = Thread.new { server.start }
+      
+      # Use with_authentication to create a fiber context with auth support
+      result = context.with_authentication do
+        # This callback will be called when an authentication request is yielded
+        lambda do |auth_request|
+          handle_auth_request_with_browser(auth_request)
+        end
+        
+        # Call API with authentication
+        call_api_with_auth
+      end
+      
+      result
+    ensure
+      # Stop the server
+      server.stop
+      # Wait for server thread to finish
+      server_thread.join if server_thread
+    end
+  end
+  
+  def create_oauth2_scheme
+    ADK::Auth::Schemes::OAuth2.new(
+      authorization_url: 'https://accounts.google.com/o/oauth2/auth',
+      token_url: 'https://oauth2.googleapis.com/token',
+      scopes: ['email', 'profile'],
+      use_pkce: true,
+      additional_params: {
+        prompt: 'consent',
+        access_type: 'offline'
+      }
+    )
+  end
+  
+  def create_credential
+    client_id = parameters[:client_id] || ENV['OAUTH_CLIENT_ID'] || 'your-client-id'
+    client_secret = parameters[:client_secret] || ENV['OAUTH_CLIENT_SECRET'] || 'your-client-secret'
+    
+    ADK::Auth::Credential.new(
+      auth_type: :oauth2,
+      client_id: client_id,
+      client_secret: client_secret
+    )
+  end
+  
+  def simulate_api_call(token)
+    # In a real application, you would make an actual API call using the token
+    # This is just a simulation
+    {
+      api_name: "Example API",
+      called_at: Time.now.iso8601,
+      authorization: "#{token.token_type} #{token.access_token[0..5]}...[truncated]"
+    }
+  end
+  
+  def create_callback_server
+    # Create a simple web server to handle OAuth2 callbacks
+    server = ADK::Web::Server.new(port: 3000)
+    
+    # Add a route to handle the OAuth2 callback
+    server.add_route('GET', '/auth/callback') do |req, res|
+      # Extract the authorization code from the query parameters
+      code = req.query['code']
+      state = req.query['state']
+      error = req.query['error']
+      
+      if error
+        res.status = 400
+        res.body = "Authentication failed: #{error}"
+      elsif code
+        # Convert the request to a response URI
+        response_uri = "http://localhost:3000/auth/callback?#{req.query_string}"
+        
+        # Find the active auth request
+        active_requests = context.instance_variable_get(:@auth_runner)&.instance_variable_get(:@active_coordinators)
+        request_id = active_requests&.keys&.first
+        
+        if request_id
+          # Handle the auth response
+          result = context.handle_auth_response(request_id, { 'response_uri' => response_uri })
+          
+          # Show a success page
+          res.status = 200
+          res.body = "<html><body><h1>Authentication Successful</h1><p>You can close this window and return to the application.</p></body></html>"
+        else
+          res.status = 400
+          res.body = "No active authentication request found"
+        end
+      else
+        res.status = 400
+        res.body = "Missing required parameters"
+      end
+    end
+    
+    server
+  end
+  
+  def handle_auth_request_with_browser(auth_request)
+    # Extract the authorization URL from the auth request
+    if auth_request[:auth_request][:type] == 'authorization_request'
+      auth_url = auth_request[:auth_request][:url]
+      
+      # Open the browser with the authorization URL
+      puts "Opening browser to authorize: #{auth_url}"
+      Launchy.open(auth_url)
+      
+      puts "Waiting for OAuth2 callback..."
+    else
+      puts "Unhandled auth request type: #{auth_request[:auth_request][:type]}"
+    end
+    
+    # Return nil to continue waiting for the callback
+    nil
+  end
 end
 
 # Register the tool
@@ -112,10 +241,11 @@ ADK.register_tool(ExampleTool)
 #    - This will start authentication and yield an auth request
 # 2. Use the request_id from the first call and pass it along with a response_uri
 #    - Call with action: :handle_response, request_id: "...", response_uri: "..."
+# 3. Or use action: :run_with_server to launch a browser and handle the callback automatically
 if $PROGRAM_NAME == __FILE__
   # Setup a session service for the example
-  require 'adk/session_service/memory'
-  session_service = ADK::SessionService::Memory.new
+  require 'adk/session_service/in_memory'
+  session_service = ADK::SessionService::InMemory.new
   
   # Create a tool context with the session service
   context = ADK::ToolContext.new(session_service: session_service)
@@ -124,15 +254,33 @@ if $PROGRAM_NAME == __FILE__
   tool = ExampleTool.new
   
   begin
-    # Attempt to call API - this will yield for authentication
-    result = tool.run(context, action: :call_api)
-    puts "Result: #{result.inspect}"
-  rescue => e
-    if e.message.include?('Authentication session not available')
-      puts "Note: This example requires a real implementation that can handle the authentication flow."
-      puts "In a real application, you would handle the auth request and call the tool again with action: :handle_response"
+    # Run with a local server to automatically handle the OAuth2 callback
+    # This is the most user-friendly approach for a CLI tool
+    if ARGV.include?('--with-server')
+      result = tool.run(context, action: :run_with_server)
+      puts "Result: #{result.inspect}"
     else
-      puts "Error: #{e.class}: #{e.message}"
+      # Attempt to call API - this will yield for authentication
+      result = tool.run(context, action: :call_api)
+      
+      # The result will include auth_request if authentication is needed
+      if result.is_a?(Hash) && result[:auth_request]
+        puts "Authentication required. Please visit:"
+        puts result[:auth_request][:url] if result[:auth_request][:url]
+        puts "\nAfter completing authentication, run:"
+        puts "ruby #{__FILE__} --handle-response --request-id #{result[:request_id]} --response-uri 'PASTE_RESPONSE_URI_HERE'"
+      else
+        puts "Result: #{result.inspect}"
+      end
+    end
+  rescue => e
+    puts "Error: #{e.class}: #{e.message}"
+    puts e.backtrace.join("\n") if ENV['DEBUG']
+    
+    if e.message.include?('Authentication session not available')
+      puts "\nNote: This example requires proper OAuth2 credentials."
+      puts "You can provide them as environment variables:"
+      puts "OAUTH_CLIENT_ID='your-client-id' OAUTH_CLIENT_SECRET='your-client-secret' ruby #{__FILE__} --with-server"
     end
   end
 end 

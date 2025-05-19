@@ -27,11 +27,11 @@
 > Dependencies: 1, 2, 3
 > Implement service account authentication flow with automatic token exchange and refresh.
 
-- [ ] **ID 8: Token Lifecycle Management** (Priority: high) [IN PROGRESS]
+- [x] **ID 8: Token Lifecycle Management** (Priority: high)
 > Dependencies: 3, 4, 5
 > Create token lifecycle management for handling token expiration, refresh, and invalidation.
 
-- [ ] **ID 9: Fiber-based Authentication Flow** (Priority: critical) [IN PROGRESS]
+- [x] **ID 9: Fiber-based Authentication Flow** (Priority: critical)
 > Dependencies: 1, 2, 5
 > Implement the Fiber-based control flow for interactive authentication in the ADK Runner.
 

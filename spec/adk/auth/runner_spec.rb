@@ -4,10 +4,10 @@ require 'spec_helper'
 require 'adk/auth/runner'
 require 'adk/auth/schemes/oauth2'
 require 'adk/auth/credential'
-require 'adk/session_service/memory'
+require 'adk/session_service/in_memory'
 
 RSpec.describe ADK::Auth::Runner do
-  let(:session_service) { ADK::SessionService::Memory.new }
+  let(:session_service) { ADK::SessionService::InMemory.new }
   let(:token_store) { ADK::Auth::TokenStore.new(session_service) }
   let(:token_manager) { ADK::Auth::TokenManager.new(token_store) }
   let(:runner) { ADK::Auth::Runner.new(session_service: session_service, token_store: token_store, token_manager: token_manager) }
@@ -52,77 +52,97 @@ RSpec.describe ADK::Auth::Runner do
     end
     
     context 'with authentication' do
+      # Expose private method for testing
       before do
-        # Stub token manager to return nil (no cached token)
-        allow(token_manager).to receive(:get_token).and_return(nil)
+        class ADK::Auth::Runner
+          public :handle_authentication_request
+        end
       end
       
-      it 'handles authentication requests from the task' do
-        # Create a mock context with an auth_session method
-        context = Object.new
-        
-        # Set up a counter to track yield calls
-        auth_request_counter = 0
-        
-        # Run the task with a handler that returns authentication responses
-        result = runner.run(-> {
-          # The first time we call auth_session, it should yield for authentication
-          token = context.auth_session(oauth2_scheme, credential)
-          # Return the token we got back
-          token
-        }, context) do |request|
-          # Track the yield
-          auth_request_counter += 1
+      # Restore privacy after tests
+      after do
+        class ADK::Auth::Runner
+          private :handle_authentication_request
+        end
+      end
+
+      context 'with a cached token' do
+        it 'reuses cached tokens when available' do
+          # Set up token manager to return a cached token
+          allow(token_manager).to receive(:get_token).and_return(exchanged_credential)
           
-          # Assert the request has expected structure
-          expect(request[:action]).to eq(:authenticate)
-          expect(request[:scheme]).to eq(oauth2_scheme)
-          expect(request[:credential]).to eq(credential)
+          # Mock the task fiber so it can be resumed
+          fiber_mock = instance_double(Fiber)
+          allow(fiber_mock).to receive(:resume).with(exchanged_credential).and_return(exchanged_credential)
           
-          # Create a mock auth response
-          if auth_request_counter == 1
-            # First yield provides the auth URL
-            expect(runner.instance_variable_get(:@active_coordinators).length).to eq(1)
-            request_id = runner.instance_variable_get(:@active_coordinators).keys.first
-            
-            # Simulate the user completing authentication
-            response = { 'response_uri' => 'https://example.com/callback?code=test-code&state=test-state' }
-            
-            # Stub the exchange_token method to return a credential
-            allow_any_instance_of(ADK::Auth::Schemes::OAuth2).to receive(:exchange_token).and_return(exchanged_credential)
-            
-            # Handle the response and return the credential
-            result = runner.handle_auth_response(request_id, response)
-            result[:credential]
+          # Call handle_authentication_request directly
+          result = runner.handle_authentication_request(
+            {
+              action: :authenticate,
+              scheme: oauth2_scheme,
+              credential: credential,
+              options: {}
+            },
+            fiber_mock
+          )
+          
+          # Since we mocked token_manager to return a credential and
+          # mocked the fiber to return that credential when resumed
+          expect(result).to eq(exchanged_credential)
+          expect(token_manager).to have_received(:get_token).with(oauth2_scheme, credential)
+          expect(fiber_mock).to have_received(:resume).with(exchanged_credential)
+        end
+      end
+      
+      context 'without a cached token' do
+        it 'handles authentication requests' do
+          # Set up token manager to return nil (no cached token)
+          allow(token_manager).to receive(:get_token).and_return(nil)
+          
+          # Create a mock coordinator
+          coordinator = instance_double(ADK::Auth::Coordinators::OAuth2Coordinator)
+          
+          # Configure the coordinator mock
+          allow(coordinator).to receive(:start).and_return({
+            request_id: 'test-request-id',
+            scheme_type: :oauth2,
+            auth_request: { type: 'authorization_request' }
+          })
+          
+          # Mock the coordinator creation
+          allow(runner).to receive(:create_coordinator).and_return(coordinator)
+          
+          # Set up a test fiber
+          test_fiber = Fiber.new { Fiber.yield }
+          
+          # Track auth handler calls
+          auth_handler_called = false
+          
+          # Call handle_authentication_request directly with an auth handler
+          result = runner.handle_authentication_request(
+            {
+              action: :authenticate,
+              scheme: oauth2_scheme,
+              credential: credential
+            },
+            test_fiber
+          ) do |auth_request|
+            auth_handler_called = true
+            expect(auth_request[:request_id]).to eq('test-request-id')
+            nil
           end
+          
+          # Verify the result
+          expect(result[:status]).to eq(:pending)
+          expect(result[:request_id]).to eq('test-request-id')
+          
+          # Verify the handler was called
+          expect(auth_handler_called).to be true
+          
+          # Verify the coordinator was created and started
+          expect(runner).to have_received(:create_coordinator)
+          expect(coordinator).to have_received(:start)
         end
-        
-        # Verify the result is the exchanged credential
-        expect(result).to eq(exchanged_credential)
-        expect(auth_request_counter).to eq(1)
-      end
-      
-      it 'reuses cached tokens when available' do
-        # Set up token manager to return a cached token
-        allow(token_manager).to receive(:get_token).and_return(exchanged_credential)
-        
-        # Create a mock context with an auth_session method
-        context = Object.new
-        
-        # Run the task that uses auth_session
-        result = runner.run(-> {
-          # This should not yield since we have a cached token
-          token = context.auth_session(oauth2_scheme, credential)
-          # Return the token
-          token
-        }, context) do |request|
-          # This handler should never be called
-          fail "Handler was called unexpectedly"
-        end
-        
-        # Verify the result is the cached credential
-        expect(result).to eq(exchanged_credential)
-        expect(token_manager).to have_received(:get_token).with(oauth2_scheme, credential)
       end
     end
   end

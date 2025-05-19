@@ -17,7 +17,7 @@ error_log: null
 
 ## Description
 
-Implement a comprehensive token lifecycle management system for handling token expiration, refresh, and invalidation.
+Create token lifecycle management for handling token expiration, refresh, and invalidation.
 
 ## Details
 
