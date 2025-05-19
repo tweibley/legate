@@ -26,6 +26,9 @@ module ADK
 
       # @return [String, nil] ID token for OIDC
       attr_reader :id_token
+      
+      # @return [String, nil] The provider ID for this credential
+      attr_accessor :provider_id
 
       # @return [Hash] Additional attributes specific to the auth type
       attr_reader :attributes
@@ -37,14 +40,16 @@ module ADK
       # @param token_type [String, nil] The token type
       # @param expires_in [Integer, nil] Seconds until the token expires
       # @param id_token [String, nil] ID token for OIDC
+      # @param provider_id [String, nil] The provider ID for this credential
       # @param attributes [Hash] Additional attributes
       def initialize(auth_type:, access_token:, refresh_token: nil, token_type: 'Bearer',
-                    expires_in: nil, id_token: nil, **attributes)
+                    expires_in: nil, id_token: nil, provider_id: nil, **attributes)
         @auth_type = auth_type.to_sym
         @access_token = access_token
         @refresh_token = refresh_token
         @token_type = token_type || 'Bearer'
         @id_token = id_token
+        @provider_id = provider_id
         @attributes = attributes || {}
         
         # Calculate expiration time if expires_in is provided
@@ -80,7 +85,8 @@ module ADK
           refresh_token: @refresh_token,
           token_type: @token_type,
           expires_at: @expires_at&.iso8601,
-          id_token: @id_token
+          id_token: @id_token,
+          provider_id: @provider_id
         }.merge(@attributes).compact
       end
 
@@ -95,6 +101,7 @@ module ADK
         token_type = attrs.delete(:token_type) || attrs.delete('token_type')
         expires_at = attrs.delete(:expires_at) || attrs.delete('expires_at')
         id_token = attrs.delete(:id_token) || attrs.delete('id_token')
+        provider_id = attrs.delete(:provider_id) || attrs.delete('provider_id')
         
         # Convert string keys to symbols
         attributes = {}
@@ -111,6 +118,7 @@ module ADK
           refresh_token: refresh_token,
           token_type: token_type,
           id_token: id_token,
+          provider_id: provider_id,
           **attributes
         )
       end
@@ -132,6 +140,8 @@ module ADK
           @id_token
         when :auth_type
           @auth_type
+        when :provider_id
+          @provider_id
         else
           @attributes[name.to_sym]
         end
@@ -147,8 +157,9 @@ module ADK
           refresh_token: attrs[:refresh_token] || @refresh_token,
           token_type: attrs[:token_type] || @token_type,
           id_token: attrs[:id_token] || @id_token,
+          provider_id: attrs[:provider_id] || @provider_id,
           **@attributes.merge(attrs.reject { |k, _| 
-            [:auth_type, :access_token, :refresh_token, :token_type, :id_token].include?(k) 
+            [:auth_type, :access_token, :refresh_token, :token_type, :id_token, :provider_id].include?(k) 
           })
         )
       end

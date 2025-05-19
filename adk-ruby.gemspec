@@ -42,6 +42,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'faraday'
   spec.add_dependency 'faraday-net_http'
   spec.add_dependency 'gemini-ai', '~> 4.2.0'
+  spec.add_dependency 'oauth2', '~> 2.0'
   spec.add_dependency 'puma', '~> 6.4'
   spec.add_dependency 'rbnacl', '~> 7.1'
   spec.add_dependency 'sass-embedded', '~> 1.72'

@@ -1,6 +1,8 @@
 # File: lib/adk/auth/config.rb
 # frozen_string_literal: true
 
+require 'securerandom'
+
 module ADK
   module Auth
     # Configuration container used during the authentication flow.
@@ -24,9 +26,16 @@ module ADK
 
       # @return [String, nil] The state parameter for CSRF protection
       attr_accessor :state
+      
+      # @return [Hash, nil] The PKCE parameters (code_verifier, etc.)
+      attr_accessor :pkce
 
       # @return [String, nil] The authorization response URI from the provider
-      attr_accessor :auth_response_uri
+      attr_accessor :response_uri
+      
+      # For backwards compatibility
+      alias_method :auth_response_uri, :response_uri
+      alias_method :auth_response_uri=, :response_uri=
 
       # @return [Hash, nil] Additional options for the authentication process
       attr_accessor :options
@@ -44,17 +53,30 @@ module ADK
         @auth_uri = nil
         @redirect_uri = nil
         @state = nil
-        @auth_response_uri = nil
+        @pkce = nil
+        @response_uri = nil
       end
 
       # Build the authorization URI for interactive flows
       # @param redirect_uri [String, nil] The redirect URI for the authorization request
       # @param state [String, nil] A state parameter for CSRF protection
-      # @return [String, nil] The authorization URI, or nil if not applicable
+      # @return [String, Hash] The authorization URI or a hash with URI and additional parameters
       def build_authorization_uri(redirect_uri = nil, state = nil)
         @redirect_uri = redirect_uri
         @state = state || @options[:state] || SecureRandom.hex(16)
-        @auth_uri = @scheme.build_authorization_uri(self, @redirect_uri, @state)
+        
+        # For OAuth2 schemes with detailed return values including PKCE
+        result = @scheme.build_authorization_uri(self, @redirect_uri, @state)
+        
+        if result.is_a?(Hash) && result[:uri]
+          @auth_uri = result[:uri]
+          @state = result[:state] if result[:state]
+          @pkce = result[:pkce] if result[:pkce]
+          @auth_uri
+        else
+          # For backwards compatibility with simpler schemes
+          @auth_uri = result
+        end
       end
 
       # Convert to a hash for serialization
@@ -67,7 +89,8 @@ module ADK
           auth_uri: @auth_uri,
           redirect_uri: @redirect_uri,
           state: @state,
-          auth_response_uri: @auth_response_uri,
+          pkce: @pkce,
+          response_uri: @response_uri,
           options: @options
         }.tap do |h|
           h[:credential] = @credential.to_h if include_credentials
@@ -98,7 +121,10 @@ module ADK
         config.auth_uri = hash[:auth_uri]
         config.redirect_uri = hash[:redirect_uri]
         config.state = hash[:state]
-        config.auth_response_uri = hash[:auth_response_uri]
+        config.pkce = hash[:pkce]
+        
+        # Handle both new and old response URI keys
+        config.response_uri = hash[:response_uri] || hash[:auth_response_uri]
         
         config
       end
@@ -114,7 +140,7 @@ module ADK
         end
         
         # Check that we have an auth response URI
-        unless response_config.auth_response_uri
+        unless response_config.response_uri
           raise ADK::Auth::ConfigurationError, 'Authentication response does not contain a response URI'
         end
         
