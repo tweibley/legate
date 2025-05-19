@@ -1187,8 +1187,8 @@ module ADK
         )
         session_service.append_event(session_id: session_id, event: user_message_event)
 
-        # Use planner to generate a plan
-        plan = @planner.plan(user_input)
+        # Use planner to generate a plan - pass invocation_id to support model callbacks
+        plan = @planner.plan(user_input, invocation_id)
 
         # Execute the plan and get result
         result_hash = execute_plan(plan, session, session_service, invocation_id)
