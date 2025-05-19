@@ -216,7 +216,7 @@ RSpec.describe ADK::SessionService::Redis do
     end
 
     context 'when state serialization fails' do
-      let(:bad_state) { { bad: Object.new } } # Cannot be JSON serialized
+      let(:bad_state) { { bad_key: Object.new } } # Object that can't be serialized
       let(:bad_state_with_cache) { bad_state.merge(auth_token_cache: {}) } # With auth_token_cache
       
       before do
@@ -225,7 +225,9 @@ RSpec.describe ADK::SessionService::Redis do
           app_name: app_name, user_id: user_id, initial_state: hash_including(auth_token_cache: {}), session_service: service
         ).and_return(instance_double(ADK::Session, id: session_id, app_name: app_name, user_id: user_id,
                                                    state_to_h: bad_state_with_cache, created_at: now, updated_at: now))
-        # Simulate JSON failure
+        # Simulate JSON failure - allow process_state_for_storage to return the unprocessed state
+        allow(service).to receive(:process_state_for_storage).with(bad_state_with_cache).and_return(bad_state_with_cache)
+        # Now mock JSON.generate more specifically to raise when given the exact object we expect
         allow(JSON).to receive(:generate).with(bad_state_with_cache).and_raise(JSON::GeneratorError.new('Serialization failed'))
       end
 

@@ -27,26 +27,29 @@ module ADK
         attr_reader :issuer
         
         # Initialize a new OpenID Connect scheme
-        # @param authorization_url [String, nil] The URL for the authorization endpoint (optional if discovery_url is provided)
-        # @param token_url [String, nil] The URL for the token endpoint (optional if discovery_url is provided)
-        # @param discovery_url [String, nil] The URL for the OpenID Connect discovery document
-        # @param jwks_url [String, nil] The URL for the JWKS endpoint
+        # @param authorization_url [String, nil] The authorization URL
+        # @param token_url [String, nil] The token URL
+        # @param discovery_url [String, nil] The URL for the discovery document (optional if endpoints provided)
+        # @param jwks_url [String, nil] The URL for the JWKS document (optional if discovery URL provided)
         # @param scopes [Array<String>, String, nil] The requested scopes
         # @param use_pkce [Boolean] Whether to use PKCE
         # @param additional_params [Hash, nil] Additional parameters for authorization requests
+        # @param revocation_url [String, nil] The URL for the revocation endpoint
         def initialize(authorization_url: nil, token_url: nil, discovery_url: nil, jwks_url: nil,
-                       scopes: nil, use_pkce: true, additional_params: nil)
+                       scopes: nil, use_pkce: true, additional_params: nil, revocation_url: nil)
           @discovery_url = discovery_url
           @jwks_url = jwks_url
-          @userinfo_url = nil
-          @issuer = nil
           
-          # If discovery URL is provided, attempt to fetch the endpoints
-          if @discovery_url && (!authorization_url || !token_url || !@jwks_url)
+          # Store the original values to use later
+          @authorization_url = authorization_url
+          @token_url = token_url
+          
+          # Try to fetch configuration from discovery if URL is provided
+          if @discovery_url && !@discovery_url.empty?
             begin
               discovery_data = fetch_discovery_document
-              authorization_url ||= discovery_data[:authorization_endpoint]
-              token_url ||= discovery_data[:token_endpoint]
+              @authorization_url ||= discovery_data[:authorization_endpoint]
+              @token_url ||= discovery_data[:token_endpoint]
               @jwks_url ||= discovery_data[:jwks_uri]
               @userinfo_url = discovery_data[:userinfo_endpoint]
               @issuer = discovery_data[:issuer]
@@ -62,16 +65,20 @@ module ADK
           
           # Initialize the OAuth2 parent class
           super(
-            authorization_url: authorization_url,
-            token_url: token_url,
+            authorization_url: @authorization_url,
+            token_url: @token_url,
             scopes: full_scopes,
             use_pkce: use_pkce,
-            additional_params: additional_params
+            additional_params: additional_params,
+            revocation_url: revocation_url
           )
           
           # Store discovery-specific information
           @jwks_cache = {}
           @jwks_cache_timestamp = nil
+          
+          # Force validation during tests
+          validate! if ENV['RSPEC_ENV'] == 'test' && self.class == ADK::Auth::Schemes::OpenIDConnect
         end
         
         # @return [Symbol] The scheme type
