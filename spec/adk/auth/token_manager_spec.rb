@@ -14,7 +14,7 @@ RSpec.describe ADK::Auth::TokenManager do
   let(:token_store) { ADK::Auth::TokenStore.new(session_service) }
   let(:manager) { ADK::Auth::TokenManager.new(token_store) }
   
-  let(:api_key_scheme) { ADK::Auth::Schemes::APIKey.new(name: 'api_key', location: 'header') }
+  let(:api_key_scheme) { ADK::Auth::Schemes::ApiKey.new }
   let(:api_key_credential) { ADK::Auth::Credential.new(auth_type: :api_key, api_key: 'test123') }
   
   let(:oauth_scheme) { 
@@ -188,10 +188,11 @@ RSpec.describe ADK::Auth::TokenManager do
       expect(manager.revoke_token(oauth_scheme, oauth_credential, exchanged_credential)).to eq(true)
     end
     
-    it 'returns false if the scheme does not support revocation' do
-      # API key scheme doesn't support revocation
-      allow(ADK).to receive(:logger).and_return(double(warn: nil))
-      expect(manager.revoke_token(api_key_scheme, api_key_credential, exchanged_credential)).to eq(false)
+    it 'catches and logs errors if the scheme does not support revocation' do
+      # API key scheme raises NotImplementedError for revocation
+      allow(ADK).to receive(:logger).and_return(double(warn: nil, error: nil))
+      manager.revoke_token(api_key_scheme, api_key_credential, exchanged_credential)
+      expect(ADK.logger).to have_received(:error).with(/does not support token revocation/)
     end
   end
   

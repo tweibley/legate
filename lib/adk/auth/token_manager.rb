@@ -157,6 +157,9 @@ module ADK
         rescue ADK::Auth::Error => e
           ADK.logger.error("Failed to revoke token: #{e.message}")
           false
+        rescue NotImplementedError => e
+          ADK.logger.error("#{e.message}")
+          false
         end
       end
 

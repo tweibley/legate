@@ -35,7 +35,7 @@
 > Dependencies: 1, 2, 5
 > Implement the Fiber-based control flow for interactive authentication in the ADK Runner.
 
-- [ ] **ID 10: Integration with Tool Context** (Priority: high)
+- [x] **ID 10: Integration with Tool Context** (Priority: high)
 > Dependencies: 1, 9
 > Enhance the ToolContext with authentication methods for tool-side handling.
 

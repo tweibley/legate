@@ -8,16 +8,11 @@ require 'adk/auth/schemes/http_bearer'
 require 'adk/auth/credential'
 require 'adk/auth/exchanged_credential'
 
-RSpec.describe ADK::Auth::Schemes::HTTPBearer do
+RSpec.describe ADK::Auth::Schemes::HttpBearer do
   describe '#initialize' do
-    it 'creates a new HTTP Bearer scheme with default values' do
+    it 'creates a new HTTP Bearer scheme' do
       scheme = described_class.new
-      expect(scheme.instance_variable_get(:@bearer_format)).to be_nil
-    end
-    
-    it 'accepts a custom bearer format' do
-      scheme = described_class.new(bearer_format: 'JWT')
-      expect(scheme.instance_variable_get(:@bearer_format)).to eq('JWT')
+      expect(scheme).to be_a(ADK::Auth::Schemes::HttpBearer)
     end
   end
   
@@ -25,13 +20,6 @@ RSpec.describe ADK::Auth::Schemes::HTTPBearer do
     it 'returns :http_bearer' do
       scheme = described_class.new
       expect(scheme.scheme_type).to eq(:http_bearer)
-    end
-  end
-  
-  describe '#validate!' do
-    it 'does not raise an error' do
-      scheme = described_class.new
-      expect { scheme.validate! }.not_to raise_error
     end
   end
   
@@ -78,21 +66,21 @@ RSpec.describe ADK::Auth::Schemes::HTTPBearer do
         
         expect {
           scheme.apply_to_request({}, credential_without_token)
-        }.to raise_error(ADK::Auth::CredentialError)
+        }.to raise_error(ADK::Auth::Error, /Bearer token not found in credential/)
       end
     end
     
     context 'with an ExchangedCredential' do
       it 'uses the access token as the bearer token' do
-        # Create a double that behaves like an ExchangedCredential
-        exchanged_credential = instance_double(
-          'ADK::Auth::ExchangedCredential',
-          access_token: 'access-token',
-          is_a?: false # Not a Credential
-        )
-        # Make is_a? work correctly
-        allow(exchanged_credential).to receive(:is_a?).with(ADK::Auth::Credential).and_return(false)
+        # Create a mock ExchangedCredential with an access token
+        exchanged_credential = instance_double('ADK::Auth::ExchangedCredential')
+        allow(exchanged_credential).to receive(:is_a?).with(anything).and_return(false)
         allow(exchanged_credential).to receive(:is_a?).with(ADK::Auth::ExchangedCredential).and_return(true)
+        
+        # Set up the [] method to handle different arguments
+        allow(exchanged_credential).to receive(:[]).with(:bearer_token).and_return(nil)
+        allow(exchanged_credential).to receive(:[]).with(:access_token).and_return('access-token')
+        allow(exchanged_credential).to receive(:[]).with(:token).and_return(nil)
         
         request = {}
         result = scheme.apply_to_request(request, exchanged_credential)
@@ -101,19 +89,19 @@ RSpec.describe ADK::Auth::Schemes::HTTPBearer do
       end
       
       it 'raises an error if the access token is missing' do
-        # Create a double that behaves like an ExchangedCredential without an access token
-        exchanged_credential_without_token = instance_double(
-          'ADK::Auth::ExchangedCredential',
-          access_token: nil,
-          is_a?: false # Not a Credential
-        )
-        # Make is_a? work correctly
-        allow(exchanged_credential_without_token).to receive(:is_a?).with(ADK::Auth::Credential).and_return(false)
+        # Create a mock ExchangedCredential without an access token
+        exchanged_credential_without_token = instance_double('ADK::Auth::ExchangedCredential')
+        allow(exchanged_credential_without_token).to receive(:is_a?).with(anything).and_return(false)
         allow(exchanged_credential_without_token).to receive(:is_a?).with(ADK::Auth::ExchangedCredential).and_return(true)
+        
+        # Set up the [] method to return nil for all token types
+        allow(exchanged_credential_without_token).to receive(:[]).with(:bearer_token).and_return(nil)
+        allow(exchanged_credential_without_token).to receive(:[]).with(:access_token).and_return(nil)
+        allow(exchanged_credential_without_token).to receive(:[]).with(:token).and_return(nil)
         
         expect {
           scheme.apply_to_request({}, exchanged_credential_without_token)
-        }.to raise_error(ADK::Auth::CredentialError)
+        }.to raise_error(ADK::Auth::Error, /Bearer token not found in credential/)
       end
     end
     
@@ -137,11 +125,6 @@ RSpec.describe ADK::Auth::Schemes::HTTPBearer do
     it 'returns a hash with the scheme type' do
       scheme = described_class.new
       expect(scheme.to_h).to eq({ type: :http_bearer })
-    end
-    
-    it 'includes bearer format if specified' do
-      scheme = described_class.new(bearer_format: 'JWT')
-      expect(scheme.to_h).to eq({ type: :http_bearer, bearer_format: 'JWT' })
     end
   end
 end 

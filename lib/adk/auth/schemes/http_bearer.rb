@@ -9,71 +9,61 @@ require_relative '../exchanged_credential'
 module ADK
   module Auth
     module Schemes
-      # Implements HTTP Bearer token authentication
-      # Sends authentication using the standard Authorization header with Bearer scheme
-      class HTTPBearer < ADK::Auth::Scheme
-        # Initialize a new HTTP Bearer scheme
-        # @param bearer_format [String, nil] Optional format for the bearer token (e.g., 'JWT')
-        def initialize(bearer_format: nil)
-          @bearer_format = bearer_format
-        end
-        
-        # @return [Symbol] The scheme type
+      # HTTP Bearer authentication scheme.
+      # This scheme applies a bearer token to requests via the Authorization header.
+      class HttpBearer < Scheme
+        # Get the type of authentication scheme
+        # @return [Symbol] The scheme type identifier
         def scheme_type
           :http_bearer
         end
         
-        # Validates the scheme configuration
-        # @raise [ADK::Auth::SchemeValidationError] If the configuration is invalid
-        def validate!
-          # Nothing to validate for the basic configuration
-        end
-        
-        # Applies the Bearer token to a request
-        # @param request [Hash] The request to apply the token to
-        # @param credential [ADK::Auth::Credential, ADK::Auth::ExchangedCredential] The credential with the token
-        # @return [Hash] The updated request
-        # @raise [ADK::Auth::CredentialError] If the credential is missing the token
+        # Apply authentication to a request
+        # @param request [Hash] The request hash to modify
+        # @param credential [ADK::Auth::Credential, ADK::Auth::ExchangedCredential] The credential to use
+        # @return [Hash] The modified request with authentication applied
+        # @raise [ADK::Auth::Error] If the bearer token cannot be applied
         def apply_to_request(request, credential)
-          token = get_token(credential)
-          request = request.dup
+          # Extract the bearer token from the credential
+          bearer_token = extract_bearer_token(credential)
+          raise ADK::Auth::Error, 'Bearer token not found in credential' unless bearer_token
           
+          # Apply the bearer token to the Authorization header
           request[:headers] ||= {}
-          request[:headers]['Authorization'] = "Bearer #{token}"
-          
+          request[:headers]['Authorization'] = "Bearer #{bearer_token}"
           request
         end
         
-        # Convert to a hash
-        # @return [Hash] A hash representation of the scheme
-        def to_h
-          super.merge(
-            bearer_format: @bearer_format
-          ).compact
+        # Exchange a credential for a token
+        # @param credential [ADK::Auth::Credential] The credential to exchange
+        # @return [ADK::Auth::ExchangedCredential] The exchanged token
+        def exchange_token(credential)
+          # For bearer tokens, we simply create a "token" that wraps the bearer token
+          # This is useful for token management consistency
+          bearer_token = extract_bearer_token(credential)
+          raise ADK::Auth::TokenExchangeError, 'Bearer token not found in credential' unless bearer_token
+          
+          # Create a simple exchanged credential that never expires
+          ADK::Auth::ExchangedCredential.new(
+            auth_type: :http_bearer,
+            bearer_token: bearer_token
+          )
         end
         
         private
         
-        # Extract the token from a credential
+        # Extract the bearer token from a credential
         # @param credential [ADK::Auth::Credential, ADK::Auth::ExchangedCredential] The credential
-        # @return [String] The token
-        # @raise [ADK::Auth::CredentialError] If the credential is missing the token
-        def get_token(credential)
-          if credential.is_a?(ADK::Auth::Credential)
-            # For initial credentials
-            token = credential[:bearer_token, resolve_env: true]
-          elsif credential.is_a?(ADK::Auth::ExchangedCredential)
-            # For exchanged credentials
-            token = credential.access_token
-          else
-            token = nil
-          end
+        # @return [String, nil] The bearer token or nil if not found
+        def extract_bearer_token(credential)
+          # First try bearer_token
+          return credential[:bearer_token] if credential[:bearer_token]
           
-          unless token && !token.empty?
-            raise ADK::Auth::CredentialError, 'Bearer token is missing from credential'
-          end
+          # Next try access_token
+          return credential[:access_token] if credential[:access_token]
           
-          token
+          # Finally try token
+          credential[:token]
         end
       end
     end

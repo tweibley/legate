@@ -3,19 +3,54 @@
 
 module ADK
   module Auth
-    # Abstract base class for all authentication schemes.
-    # Defines the interface that all authentication schemes must implement.
-    #
-    # Authentication schemes define how an API expects credentials to be provided
-    # and processed. Concrete implementations include APIKey, HTTPBearer, OAuth2, etc.
-    #
-    # @abstract Subclass and override the required methods to implement a new authentication scheme
+    # Base class for all authentication schemes.
+    # Schemes provide logic for applying authentication to requests,
+    # refreshing tokens, and other operations specific to their authentication type.
     class Scheme
-      # Returns the unique identifier for this type of authentication scheme
-      # @return [Symbol] The scheme identifier
-      # @abstract
+      # Get the type of authentication scheme
+      # @return [Symbol] The scheme type identifier
       def scheme_type
-        raise NotImplementedError, 'Subclasses must implement scheme_type'
+        raise NotImplementedError, "#{self.class} must implement #scheme_type"
+      end
+      
+      # Apply authentication to a request
+      # @param request [Hash] The request hash to modify
+      # @param credential [ADK::Auth::Credential, ADK::Auth::ExchangedCredential] The credential to use
+      # @return [Hash] The modified request with authentication applied
+      def apply_to_request(request, credential)
+        raise NotImplementedError, "#{self.class} must implement #apply_to_request"
+      end
+      
+      # Check if this scheme supports token refresh
+      # @return [Boolean] True if this scheme supports token refresh
+      def supports_refresh?
+        false
+      end
+      
+      # Refresh an authentication token
+      # @param token [ADK::Auth::ExchangedCredential] The token to refresh
+      # @param credential [ADK::Auth::Credential] The credential containing refresh parameters
+      # @return [ADK::Auth::ExchangedCredential] The refreshed token
+      # @raise [ADK::Auth::TokenRefreshError] If the token cannot be refreshed
+      def refresh_token(token, credential)
+        raise NotImplementedError, "#{self.class} does not support token refresh"
+      end
+      
+      # Exchange a credential for a token
+      # @param credential [ADK::Auth::Credential] The credential to exchange
+      # @return [ADK::Auth::ExchangedCredential] The exchanged token
+      # @raise [ADK::Auth::TokenExchangeError] If the credential cannot be exchanged
+      def exchange_token(credential)
+        raise NotImplementedError, "#{self.class} does not support token exchange"
+      end
+      
+      # Revoke a token
+      # @param token [ADK::Auth::ExchangedCredential] The token to revoke
+      # @param credential [ADK::Auth::Credential] The credential for revocation parameters
+      # @return [Boolean] True if the token was revoked successfully
+      # @raise [ADK::Auth::TokenRevokeError] If the token cannot be revoked
+      def revoke_token(token, credential)
+        raise NotImplementedError, "#{self.class} does not support token revocation"
       end
 
       # Validates the scheme configuration
@@ -46,41 +81,6 @@ module ADK
       # @abstract
       def build_authorization_uri(config, redirect_uri = nil, state = nil)
         nil # No-op in base class, override in subclasses that support interactive flows
-      end
-
-      # Applies the authentication to a request
-      # @param request [Hash] The request to apply authentication to
-      # @param credential [ADK::Auth::Credential, ADK::Auth::ExchangedCredential] The credential to use
-      # @return [Hash] The updated request with authentication applied
-      # @abstract
-      def apply_to_request(request, credential)
-        raise NotImplementedError, 'Subclasses must implement apply_to_request'
-      end
-
-      # Checks if the scheme supports token refresh
-      # @return [Boolean] True if the scheme supports token refresh, false otherwise
-      def supports_refresh?
-        false # Default to false, override in subclasses that support refresh
-      end
-
-      # Performs token refresh using the provided refresh token
-      # @param exchanged_credential [ADK::Auth::ExchangedCredential] The credential containing the refresh token
-      # @param credential [ADK::Auth::Credential] The original credential with client information
-      # @return [ADK::Auth::ExchangedCredential] The refreshed credential
-      # @raise [ADK::Auth::TokenRefreshError] If token refresh fails
-      # @abstract
-      def refresh_token(exchanged_credential, credential)
-        raise ADK::Auth::TokenRefreshError, 'This scheme does not support token refresh'
-      end
-
-      # Exchanges a code or other temporary credential for a token
-      # @param config [ADK::Auth::Config] The authentication configuration with response
-      # @param credential [ADK::Auth::Credential] The credential with client information
-      # @return [ADK::Auth::ExchangedCredential] The exchanged credential
-      # @raise [ADK::Auth::TokenExchangeError] If token exchange fails
-      # @abstract
-      def exchange_token(config, credential)
-        raise ADK::Auth::TokenExchangeError, 'This scheme does not support token exchange'
       end
 
       # Checks if a response indicates an authentication error

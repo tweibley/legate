@@ -14,12 +14,12 @@ RSpec.describe ADK::Auth::ToolIntegration do
   describe '.apply_authentication' do
     let(:request) { { url: 'https://api.example.com/data' } }
     let(:credential) { ADK::Auth::Credential.new(auth_type: :api_key, api_key: 'test-api-key') }
-    let(:scheme) { ADK::Auth::Schemes::APIKey.new }
+    let(:scheme) { ADK::Auth::Schemes::ApiKey.new }
     
     it 'applies the authentication to the request' do
       result = described_class.apply_authentication(request, scheme, credential)
       
-      expect(result[:headers]).to include('X-Api-Key' => 'test-api-key')
+      expect(result[:headers]).to include('X-API-Key' => 'test-api-key')
     end
     
     it 'raises an error for an invalid request' do
@@ -99,7 +99,7 @@ RSpec.describe ADK::Auth::ToolIntegration do
   
   describe '.generate_cache_key' do
     it 'generates a unique key for API key schemes' do
-      scheme = ADK::Auth::Schemes::APIKey.new
+      scheme = ADK::Auth::Schemes::ApiKey.new
       credential = ADK::Auth::Credential.new(auth_type: :api_key, api_key: 'test-api-key')
       
       key = described_class.generate_cache_key(scheme, credential)
@@ -109,7 +109,7 @@ RSpec.describe ADK::Auth::ToolIntegration do
     end
     
     it 'generates a unique key for HTTP Bearer schemes' do
-      scheme = ADK::Auth::Schemes::HTTPBearer.new
+      scheme = ADK::Auth::Schemes::HttpBearer.new
       credential = ADK::Auth::Credential.new(auth_type: :http_bearer, bearer_token: 'test-token')
       
       key = described_class.generate_cache_key(scheme, credential)
@@ -119,8 +119,8 @@ RSpec.describe ADK::Auth::ToolIntegration do
     end
     
     it 'generates different keys for different schemes' do
-      api_key_scheme = ADK::Auth::Schemes::APIKey.new
-      bearer_scheme = ADK::Auth::Schemes::HTTPBearer.new
+      api_key_scheme = ADK::Auth::Schemes::ApiKey.new
+              bearer_scheme = ADK::Auth::Schemes::HttpBearer.new
       api_key_credential = ADK::Auth::Credential.new(auth_type: :api_key, api_key: 'test-api-key')
       bearer_credential = ADK::Auth::Credential.new(auth_type: :http_bearer, bearer_token: 'test-token')
       

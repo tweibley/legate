@@ -7,26 +7,11 @@ require 'adk/auth/error'
 require 'adk/auth/schemes/api_key'
 require 'adk/auth/credential'
 
-RSpec.describe ADK::Auth::Schemes::APIKey do
+RSpec.describe ADK::Auth::Schemes::ApiKey do
   describe '#initialize' do
-    it 'creates a new API key scheme with default values' do
+    it 'creates a new API key scheme' do
       scheme = described_class.new
-      
-      expect(scheme.location).to eq(:header)
-      expect(scheme.name).to eq('X-Api-Key')
-    end
-    
-    it 'accepts custom location and name' do
-      scheme = described_class.new(location: :query, name: 'api_key')
-      
-      expect(scheme.location).to eq(:query)
-      expect(scheme.name).to eq('api_key')
-    end
-    
-    it 'raises an error for invalid location' do
-      expect {
-        described_class.new(location: :invalid)
-      }.to raise_error(ADK::Auth::SchemeValidationError)
+      expect(scheme).to be_a(ADK::Auth::Schemes::ApiKey)
     end
   end
   
@@ -38,15 +23,23 @@ RSpec.describe ADK::Auth::Schemes::APIKey do
   end
   
   describe '#apply_to_request' do
+    let(:scheme) { described_class.new }
     let(:credential) { ADK::Auth::Credential.new(auth_type: :api_key, api_key: 'test-api-key') }
     
     context 'with header location' do
-      let(:scheme) { described_class.new(location: :header, name: 'API-Key') }
+      let(:credential_with_header) { 
+        ADK::Auth::Credential.new(
+          auth_type: :api_key, 
+          api_key: 'test-api-key',
+          location: 'header',
+          name: 'API-Key'
+        )
+      }
       
       it 'adds the API key to the request headers' do
         request = {}
         
-        result = scheme.apply_to_request(request, credential)
+        result = scheme.apply_to_request(request, credential_with_header)
         
         expect(result[:headers]).to include('API-Key' => 'test-api-key')
       end
@@ -54,54 +47,57 @@ RSpec.describe ADK::Auth::Schemes::APIKey do
       it 'preserves existing headers' do
         request = { headers: { 'Content-Type' => 'application/json' } }
         
-        result = scheme.apply_to_request(request, credential)
+        result = scheme.apply_to_request(request, credential_with_header)
         
         expect(result[:headers]).to include(
           'API-Key' => 'test-api-key',
           'Content-Type' => 'application/json'
         )
       end
-      
-      it 'applies a prefix if configured' do
-        scheme_with_prefix = described_class.new(location: :header, name: 'API-Key', prefix: 'Key ')
-        
-        request = {}
-        result = scheme_with_prefix.apply_to_request(request, credential)
-        
-        expect(result[:headers]).to include('API-Key' => 'Key test-api-key')
-      end
     end
     
     context 'with query location' do
-      let(:scheme) { described_class.new(location: :query, name: 'api_key') }
+      let(:credential_with_query) { 
+        ADK::Auth::Credential.new(
+          auth_type: :api_key, 
+          api_key: 'test-api-key',
+          location: 'query',
+          name: 'api_key'
+        )
+      }
       
       it 'adds the API key to the query parameters' do
-        request = {}
+        request = { url: 'https://example.com/api' }
         
-        result = scheme.apply_to_request(request, credential)
+        result = scheme.apply_to_request(request, credential_with_query)
         
-        expect(result[:query]).to include('api_key' => 'test-api-key')
+        expect(result[:url]).to include('api_key=test-api-key')
       end
       
       it 'preserves existing query parameters' do
-        request = { query: { 'version' => '1.0' } }
+        request = { url: 'https://example.com/api?version=1.0' }
         
-        result = scheme.apply_to_request(request, credential)
+        result = scheme.apply_to_request(request, credential_with_query)
         
-        expect(result[:query]).to include(
-          'api_key' => 'test-api-key',
-          'version' => '1.0'
-        )
+        expect(result[:url]).to include('version=1.0')
+        expect(result[:url]).to include('api_key=test-api-key')
       end
     end
     
     context 'with cookie location' do
-      let(:scheme) { described_class.new(location: :cookie, name: 'api_key') }
+      let(:credential_with_cookie) { 
+        ADK::Auth::Credential.new(
+          auth_type: :api_key, 
+          api_key: 'test-api-key',
+          location: 'cookie',
+          name: 'api_key'
+        )
+      }
       
       it 'adds the API key to the cookie header' do
         request = {}
         
-        result = scheme.apply_to_request(request, credential)
+        result = scheme.apply_to_request(request, credential_with_cookie)
         
         expect(result[:headers]['Cookie']).to eq('api_key=test-api-key')
       end
@@ -109,7 +105,7 @@ RSpec.describe ADK::Auth::Schemes::APIKey do
       it 'appends to existing cookies' do
         request = { headers: { 'Cookie' => 'session=abc123' } }
         
-        result = scheme.apply_to_request(request, credential)
+        result = scheme.apply_to_request(request, credential_with_cookie)
         
         expect(result[:headers]['Cookie']).to eq('session=abc123; api_key=test-api-key')
       end
@@ -117,7 +113,6 @@ RSpec.describe ADK::Auth::Schemes::APIKey do
     
     it 'raises an error if the credential is missing the API key' do
       # Create a credential with the required auth_type but with nil api_key
-      scheme = described_class.new
       credential_without_key = instance_double(
         'ADK::Auth::Credential',
         '[]': nil, # Return nil for any key access
@@ -127,7 +122,7 @@ RSpec.describe ADK::Auth::Schemes::APIKey do
       
       expect {
         scheme.apply_to_request({}, credential_without_key)
-      }.to raise_error(ADK::Auth::CredentialError)
+      }.to raise_error(ADK::Auth::Error, /API key not found in credential/)
     end
     
     it 'works with environment variable resolution' do
@@ -140,9 +135,9 @@ RSpec.describe ADK::Auth::Schemes::APIKey do
         api_key: 'ENV:TEST_API_KEY'
       )
       
-      result = scheme.apply_to_request({}, credential_with_env)
+      result = scheme.apply_to_request({ url: 'https://example.com/api' }, credential_with_env)
       
-      expect(result[:headers]['X-Api-Key']).to eq('env-api-key')
+      expect(result[:headers]['X-API-Key']).to eq('env-api-key')
       
       # Clean up
       ENV.delete('TEST_API_KEY')
@@ -150,21 +145,12 @@ RSpec.describe ADK::Auth::Schemes::APIKey do
   end
   
   describe '#to_h' do
-    it 'returns a hash representation with all properties' do
-      scheme = described_class.new(
-        location: :query,
-        name: 'apikey',
-        prefix: 'Key-'
-      )
+    it 'returns a hash representation with the scheme type' do
+      scheme = described_class.new
       
       hash = scheme.to_h
       
-      expect(hash).to include(
-        type: :api_key,
-        location: :query,
-        name: 'apikey',
-        prefix: 'Key-'
-      )
+      expect(hash).to include(type: :api_key)
     end
   end
 end 
