@@ -252,7 +252,7 @@ RSpec.describe ADK do
 
     it 'calls configure_sidekiq' do
       expect(ADK).to receive(:configure_sidekiq)
-      ADK.redis_url = 'redis://testhost:6379/1'
+      ADK.redis_url = 'redis://localhost:6379/2'
     end
   end
 

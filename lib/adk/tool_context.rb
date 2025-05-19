@@ -1,12 +1,13 @@
 # File: lib/adk/tool_context.rb
 # frozen_string_literal: true
+
 module ADK
   # Provides contextual information to ADK::Tool#perform_execution
   # Includes session details and a reference to the agent's tool registry.
   # Read-only.
   class ToolContext
     attr_reader :session_id, :user_id, :app_name, :tool_registry, :session_service, :logger, :invocation_id
-    
+
     # Expose pending state delta for inspection but not direct modification
     attr_reader :pending_state_delta
 
@@ -35,7 +36,7 @@ module ADK
         ADK.logger.warn { "[ToolContext] state_get called but no session_service available." }
         return nil
       end
-      
+
       ADK.logger.debug { "[ToolContext] state_get for key: #{key} in session: #{@session_id}" }
       @session_service.get_state(session_id: @session_id, key: key)
     rescue => e
@@ -58,7 +59,7 @@ module ADK
         ADK.logger.warn { "[ToolContext] state_update called with non-hash: #{hash_to_merge.class}" }
         return
       end
-      
+
       ADK.logger.debug { "[ToolContext] state_update with hash: #{hash_to_merge.inspect} (pending)" }
       @pending_state_delta.merge!(hash_to_merge.transform_keys(&:to_sym))
     end

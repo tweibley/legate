@@ -165,7 +165,14 @@ RSpec.describe ADK::Agent do
                     webhook_transformer: nil,
                     webhook_session_extractor: nil,
                     sub_agent_names: Set.new, # Allow and provide default
-                    output_key: nil) # Allow and provide default
+                    output_key: nil, # Allow and provide default
+                    # Add callback methods
+                    before_agent_callback: nil,
+                    after_agent_callback: nil,
+                    before_model_callback: nil,
+                    after_model_callback: nil,
+                    before_tool_callback: nil,
+                    after_tool_callback: nil)
   end
   let(:mock_store) { instance_double(ADK::DefinitionStore::RedisStore, save_definition: true, get_definition: nil) }
   let(:mock_config) {

@@ -146,6 +146,7 @@ require_relative 'adk/errors'
 require_relative 'adk/event'
 require_relative 'adk/session'
 require_relative 'adk/tool_context'
+require_relative 'adk/callbacks/callback_context' # Add callbacks module
 require_relative 'adk/tool' # Logger is definitely ready now
 require_relative 'adk/tool_registry'
 require_relative 'adk/global_tool_manager'

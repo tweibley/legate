@@ -32,7 +32,9 @@ RSpec.describe ADK::Planner do
                               { name: :echo, description: 'Echo tool', parameters: { message: { type: 'string', required: true, description: 'Message to echo' } } }
                             ],
                             instruction: nil,
-                            definition: agent_definition_without_delegation)
+                            definition: agent_definition_without_delegation,
+                            before_model_callback: nil,
+                            after_model_callback: nil)
     # Configure proper respond_to? behavior for the agent definition
     allow(agent_definition_without_delegation).to receive(:respond_to?).with(:sequential_sub_agent_names).and_return(true)
     allow(agent_definition_without_delegation).to receive(:sequential_sub_agent_names).and_return([])
@@ -45,7 +47,9 @@ RSpec.describe ADK::Planner do
                             name: :test_agent,
                             available_tools_metadata: [],
                             instruction: nil,
-                            definition: agent_definition_without_delegation)
+                            definition: agent_definition_without_delegation,
+                            before_model_callback: nil,
+                            after_model_callback: nil)
     # Configure proper respond_to? behavior for the agent definition
     allow(agent_definition_without_delegation).to receive(:respond_to?).with(:sequential_sub_agent_names).and_return(true)
     allow(agent_definition_without_delegation).to receive(:sequential_sub_agent_names).and_return([])

@@ -44,8 +44,9 @@ module ADK
 
     # Plan a task using the gemini-ai gem
     # @param task [String] The task to plan
+    # @param invocation_id [String] The invocation ID from the agent run
     # @return [Array] The plan (array of step hashes) or a fallback plan on error
-    def plan(user_input)
+    def plan(user_input, invocation_id = nil)
       # Check if client is available, fallback if not
       unless @client
         logger.error("Gemini client not initialized. Falling back to default plan.")
@@ -58,11 +59,41 @@ module ADK
       # Build and send the planning prompt to the LLM
       prompt = build_multi_step_gemini_prompt(user_input, tools_description)
 
+      # Execute before_model_callback if defined
+      modified_prompt = prompt
+      if @agent.before_model_callback && invocation_id
+        # Create callback context
+        callback_context = ADK::Callbacks::CallbackContext.new(
+          agent_name: @agent.name,
+          invocation_id: invocation_id,
+          session_id: nil, # Will be set by the agent in run_task
+          user_id: nil,
+          app_name: nil,
+          session_service: nil
+        )
+
+        # Call the callback and get modified prompt if returned
+        logger.debug { "Agent '#{@agent.name}': Executing before_model_callback for model input." }
+        callback_result = begin
+          @agent.before_model_callback.call(modified_prompt, callback_context)
+        rescue => e
+          logger.error("Error in before_model_callback: #{e.class}: #{e.message}")
+          logger.debug(e.backtrace.join("\n"))
+          nil # Continue execution on error
+        end
+
+        # If the callback returned a string, use it as the modified prompt
+        if callback_result.is_a?(String)
+          modified_prompt = callback_result
+          logger.debug { "Agent '#{@agent.name}': Prompt modified by before_model_callback." }
+        end
+      end
+
       # Use the LLM client from the Gemini wrapper
       begin
         response = @client.generate_content(
           {
-            contents: [{ role: 'user', parts: { text: prompt } }]
+            contents: [{ role: 'user', parts: { text: modified_prompt } }]
           }
         )
 
@@ -74,8 +105,38 @@ module ADK
           return { error: 'Gemini response was empty or unparseable.' }
         end
 
+        # Execute after_model_callback if defined
+        modified_response = raw_response_text
+        if @agent.after_model_callback && invocation_id
+          # Create callback context if not already created
+          callback_context ||= ADK::Callbacks::CallbackContext.new(
+            agent_name: @agent.name,
+            invocation_id: invocation_id,
+            session_id: nil,
+            user_id: nil,
+            app_name: nil,
+            session_service: nil
+          )
+
+          # Call the callback and get modified response if returned
+          logger.debug { "Agent '#{@agent.name}': Executing after_model_callback for model output." }
+          callback_result = begin
+            @agent.after_model_callback.call(modified_response, callback_context)
+          rescue => e
+            logger.error("Error in after_model_callback: #{e.class}: #{e.message}")
+            logger.debug(e.backtrace.join("\n"))
+            nil # Continue execution on error
+          end
+
+          # If the callback returned a string, use it as the modified response
+          if callback_result.is_a?(String)
+            modified_response = callback_result
+            logger.debug { "Agent '#{@agent.name}': Response modified by after_model_callback." }
+          end
+        end
+
         # Extract and validate the plan
-        validated_result = validate_and_format_multi_step_plan(raw_response_text)
+        validated_result = validate_and_format_multi_step_plan(modified_response)
 
         # Check for errors in validation
         if validated_result[:error]

@@ -9,9 +9,9 @@ module ADK
     # Context object passed to agent lifecycle and model interaction callbacks.
     class CallbackContext
       attr_reader :agent_name, :invocation_id, :session_id, :user_id, :app_name, :session_service, :logger
-      
+
       # Expose pending state delta for inspection but not direct modification
-      attr_reader :pending_state_delta 
+      attr_reader :pending_state_delta
 
       # @param agent_name [Symbol]
       # @param invocation_id [String]
@@ -57,7 +57,7 @@ module ADK
           ADK.logger.warn { "[CallbackContext] state_update called with non-hash: #{hash_to_merge.class}" }
           return
         end
-        
+
         ADK.logger.debug { "[CallbackContext] state_update with hash: #{hash_to_merge.inspect} (pending)" }
         @pending_state_delta.merge!(hash_to_merge.transform_keys(&:to_sym))
       end
@@ -68,4 +68,4 @@ module ADK
       end
     end
   end
-end 
+end

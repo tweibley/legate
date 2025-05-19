@@ -392,6 +392,103 @@ ADK::Event.new(
 )
 ```
 
+### Callbacks
+
+Callbacks provide powerful hooks to observe, customize, and control agent behavior at specific points in execution without modifying core code.
+
+**Types of callbacks:**
+- **Agent Callbacks**: Executed before and after an agent processes a request
+- **Model Callbacks**: Run before and after an LLM request in the planner
+- **Tool Callbacks**: Triggered before and after a tool executes
+
+**Adding callbacks to an agent definition:**
+
+```ruby
+agent_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :agent_with_callbacks
+  a.instruction "You are a helpful assistant."
+  a.use_tool :echo
+  
+  # Agent lifecycle callbacks
+  a.before_agent_callback do |context|
+    puts "Starting agent task. Session: #{context.session_id}"
+    # Store timestamp
+    context.state_set(:task_start_time, Time.now.to_s)
+    nil # Continue normal execution
+  end
+  
+  a.after_agent_callback do |context, response_content|
+    duration = Time.now - Time.parse(context.state_get(:task_start_time))
+    puts "Agent completed in #{duration.round(2)}s"
+    
+    # Add a disclaimer to all responses
+    response_content[:result] = "#{response_content[:result]}\n\nNote: Response by AI."
+    nil # Use the modified response
+  end
+  
+  # Model callbacks (LLM interaction)
+  a.before_model_callback do |context, llm_request_params|
+    # Modify prompt before sending to LLM
+    llm_request_params[:prompt] = "#{llm_request_params[:prompt]}\n\nBe concise."
+    
+    # Cache check example
+    cached_plan = context.state_get("cache:#{Digest::MD5.hexdigest(llm_request_params[:prompt])}")
+    return cached_plan if cached_plan # Skip LLM call if cached
+    
+    nil # Proceed with (modified) LLM call
+  end
+  
+  a.after_model_callback do |context, llm_response|
+    # Store in cache
+    context.state_set("cache:#{Digest::MD5.hexdigest(context.last_prompt)}", llm_response)
+    
+    nil # Use the response as-is
+  end
+  
+  # Tool callbacks
+  a.before_tool_callback do |tool, args, context|
+    puts "About to use tool: #{tool.name} with args: #{args.inspect}"
+    
+    # Authorization example
+    if tool.name == :sensitive_tool && !context.state_get(:is_authorized)
+      return { status: :error, error_message: "Not authorized to use this tool" }
+    end
+    
+    nil # Proceed with tool execution
+  end
+  
+  a.after_tool_callback do |tool, args, context, result|
+    puts "Tool #{tool.name} returned: #{result.inspect}"
+    
+    # Log important tool results
+    if tool.name == :important_operation
+      context.state_set(:last_important_result, result[:result])
+    end
+    
+    nil # Use the result as-is
+  end
+end
+```
+
+**Callback Return Values:**
+- Return `nil` to continue normal execution (possibly with modified parameters)
+- Return a specific object (typically a Hash) to override default behavior:
+  - In `before_agent_callback`: Return a Hash to skip agent execution and use it as the agent result
+  - In `before_model_callback`: Return a Hash to skip LLM call and use it as the plan
+  - In `before_tool_callback`: Return a Hash to skip tool execution and use it as the tool result
+  - In `after_*` callbacks: Return a Hash to replace the original result
+
+**Use Cases:**
+- Monitoring and logging agent behavior
+- Implementing usage limits and rate controls
+- Caching expensive LLM calls
+- Adding authorization checks
+- Post-processing responses
+- Gathering metrics
+- Injecting context from external systems
+
+Each callback receives a context object (`ADK::Callbacks::CallbackContext` or `ADK::ToolContext`) that provides access to session state, agent/tool metadata, and services.
+
 ## Development
 
 After checking out the repo:
@@ -473,7 +570,32 @@ class MyApiTool < ADK::Tool
   private
 
   def perform_execution(params, context)
-    # ... use helper methods ...
+    # Simple GET request
+    resource_id = params[:id]
+    response = http_get("items/#{resource_id}", query: { fields: 'name,value' })
+    data = JSON.parse(response.body)
+
+    # POST with Hash payload (auto-JSON encoded)
+    create_payload = { name: params[:name], value: params[:value] }
+    # Override read timeout for this specific request
+    post_response = http_post("items", body: create_payload, options: { read_timeout: 5 })
+
+    # POST with string payload (e.g., XML) and custom headers
+    xml_payload = "<data><name>#{params[:name]}</name></data>"
+    xml_headers = { 'Content-Type' => 'application/xml', 'X-API-Key' => context.get_credential(:api_key) }
+    xml_response = http_post("items/import", body: xml_payload, headers: xml_headers)
+
+    # Return combined result (example)
+    { status: :success, result: { created_id: JSON.parse(post_response.body)['id'], import_status: xml_response.status } }
+  rescue ADK::ToolError => e
+    # Handle specific errors from HttpClient
+    ADK.logger.error "API Tool Error: #{e.message}"
+    if e.is_a?(ADK::ToolHttpError) && e.response&.status == 401
+      # Potentially trigger re-authentication or specific handling
+      return { status: :error, error_message: "Authentication failed: #{e.message}" }
+    end
+    # Re-raise or return generic error
+    { status: :error, error_message: e.message }
   end
 end
 ```
@@ -496,38 +618,6 @@ The module provides public helper methods for common HTTP verbs:
 *   `http_delete(path, query: {}, headers: {}, options: {})`
 
 These methods handle joining the `path` with the `base_url`, merging default/per-request headers and options, and automatic JSON encoding for `Hash` bodies in POST/PUT requests.
-
-```ruby
-# Inside perform_execution
-def perform_execution(params, context)
-  # Simple GET request
-  resource_id = params[:id]
-  response = http_get("items/#{resource_id}", query: { fields: 'name,value' })
-  data = JSON.parse(response.body)
-
-  # POST with Hash payload (auto-JSON encoded)
-  create_payload = { name: params[:name], value: params[:value] }
-  # Override read timeout for this specific request
-  post_response = http_post("items", body: create_payload, options: { read_timeout: 5 })
-
-  # POST with string payload (e.g., XML) and custom headers
-  xml_payload = "<data><name>#{params[:name]}</name></data>"
-  xml_headers = { 'Content-Type' => 'application/xml', 'X-API-Key' => context.get_credential(:api_key) }
-  xml_response = http_post("items/import", body: xml_payload, headers: xml_headers)
-
-  # Return combined result (example)
-  { status: :success, result: { created_id: JSON.parse(post_response.body)['id'], import_status: xml_response.status } }
-rescue ADK::ToolError => e
-  # Handle specific errors from HttpClient
-  ADK.logger.error "API Tool Error: #{e.message}"
-  if e.is_a?(ADK::ToolHttpError) && e.response&.status == 401
-    # Potentially trigger re-authentication or specific handling
-    return { status: :error, error_message: "Authentication failed: #{e.message}" }
-  end
-  # Re-raise or return generic error
-  { status: :error, error_message: e.message }
-end
-```
 
 **4. Authentication:**
 
