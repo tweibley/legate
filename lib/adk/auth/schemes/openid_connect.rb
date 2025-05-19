@@ -133,8 +133,11 @@ module ADK
           # Verify the ID token if present
           if id_token
             begin
+              # Get client ID for verification
+              client_id = credential[:client_id, resolve_env: true]
+              
               # Verify the token's signature and claims
-              decoded_token = verify_id_token(id_token, config.options[:nonce])
+              decoded_token = verify_id_token(id_token, config.options[:nonce], client_id)
               
               # Extract user information from the ID token
               user_info = extract_user_info(decoded_token)
@@ -151,7 +154,7 @@ module ADK
             token_type: oauth2_credential.token_type,
             expires_at: oauth2_credential.expires_at,
             expires_in: oauth2_credential.expires_in,
-            scope: oauth2_credential.scope,
+            scope: oauth2_credential[:scope],
             id_token: id_token,
             user_info: user_info
           )
@@ -248,9 +251,10 @@ module ADK
         # Verify an ID token's signature and claims
         # @param id_token [String] The ID token to verify
         # @param nonce [String, nil] The nonce to verify against
+        # @param client_id [String, nil] The client ID to verify against (defaults to nil)
         # @return [Hash] The decoded token payload
         # @raise [StandardError] If verification fails
-        def verify_id_token(id_token, nonce = nil)
+        def verify_id_token(id_token, nonce = nil, client_id = nil)
           # Decode the token header to get the key ID and algorithm
           header = JWT.decode(id_token, nil, false)[1]
           kid = header['kid']
@@ -268,21 +272,32 @@ module ADK
           # Convert the JWK to a public key
           public_key = jwk_to_key(jwk, alg)
           
+          # Prepare verify options
+          verify_options = {
+            algorithm: alg,
+            verify_iat: true,
+            verify_iss: true,
+            iss: @issuer
+          }
+          
+          # Add audience verification if client_id is provided
+          if client_id
+            verify_options[:verify_aud] = true
+            verify_options[:aud] = client_id
+          end
+          
+          # Add nonce verification if provided
+          if nonce
+            verify_options[:verify_nonce] = true
+            verify_options[:nonce] = nonce
+          end
+          
           # Verify the token
           decoded_token = JWT.decode(
             id_token,
             public_key,
             true,
-            {
-              algorithm: alg,
-              verify_iat: true,
-              verify_iss: true,
-              iss: @issuer,
-              verify_aud: true,
-              aud: credential[:client_id, resolve_env: true],
-              verify_nonce: !!nonce,
-              nonce: nonce
-            }
+            verify_options
           )
           
           # Return the payload
