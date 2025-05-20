@@ -5,6 +5,7 @@ require_relative 'error'
 require_relative 'coordinator'
 require_relative 'coordinators/oauth2_coordinator'
 require_relative 'coordinators/oidc_coordinator'
+require_relative 'coordinators/service_account_coordinator'
 require_relative 'token_store'
 require_relative 'token_manager'
 
@@ -231,10 +232,67 @@ module ADK
             timeout: options[:timeout],
             redirect_uri: options[:redirect_uri]
           )
+        when ADK::Auth::Schemes::ServiceAccount
+          ADK::Auth::Coordinators::ServiceAccountCoordinator.new(
+            scheme: scheme,
+            credential: credential,
+            session_service: @session_service,
+            token_store: @token_store,
+            timeout: options[:timeout]
+          )
         # Add more coordinator types as needed for other schemes
         else
           raise NotImplementedError, "No coordinator available for scheme type: #{scheme.class}"
         end
+      end
+
+      # Create a service account coordinator
+      # @param scheme [ADK::Auth::Schemes::ServiceAccount] The service account scheme
+      # @param credential [ADK::Auth::Credential] The credential with service account info
+      # @param options [Hash] Additional options for the coordinator
+      # @return [ADK::Auth::Coordinators::ServiceAccountCoordinator] The coordinator
+      def create_service_account_coordinator(scheme, credential, options = {})
+        unless scheme.is_a?(ADK::Auth::Schemes::ServiceAccount)
+          raise ArgumentError, "Expected a ServiceAccount scheme, got #{scheme.class}"
+        end
+        
+        unless credential.auth_type.to_sym == :service_account
+          raise ArgumentError, "Credential must have auth_type :service_account, got #{credential.auth_type}"
+        end
+        
+        ADK::Auth::Coordinators::ServiceAccountCoordinator.new(
+          scheme: scheme,
+          credential: credential,
+          session_service: @session_service,
+          token_store: @token_store,
+          timeout: options[:timeout]
+        )
+      end
+      
+      # Authenticate using a service account
+      # @param scheme [ADK::Auth::Schemes::ServiceAccount] The service account scheme
+      # @param credential [ADK::Auth::Credential] The credential with service account info
+      # @param options [Hash] Additional options for the coordinator
+      # @return [ADK::Auth::ExchangedCredential] The authenticated credential
+      # @raise [ADK::Auth::Error] If authentication fails
+      def authenticate_with_service_account(scheme, credential, options = {})
+        # Create the coordinator
+        coordinator = create_service_account_coordinator(scheme, credential, options)
+        
+        # Start the authentication flow
+        coordinator.start
+        
+        # For service accounts, authentication is non-interactive, so the result should be available immediately
+        if coordinator.complete?
+          if coordinator.success?
+            return coordinator.result
+          else
+            raise coordinator.error || ADK::Auth::Error.new("Service account authentication failed")
+          end
+        end
+        
+        # This should never happen for service accounts
+        raise ADK::Auth::Error.new("Unexpected state: service account authentication requires interaction")
       end
     end
   end

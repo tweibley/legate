@@ -23,7 +23,7 @@
 > Dependencies: 5
 > Add support for OpenID Connect authentication, extending the OAuth2 implementation.
 
-- [ ] **ID 7: Service Account Authentication** (Priority: medium) [IN PROGRESS]
+- [x] **ID 7: Service Account Authentication** (Priority: medium)
 > Dependencies: 1, 2, 3
 > Implement service account authentication flow with automatic token exchange and refresh.
 

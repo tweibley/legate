@@ -9,6 +9,10 @@ require_relative 'auth/exchanged_credential'
 require_relative 'auth/encryption'
 require_relative 'auth/token_store'
 require_relative 'auth/schemes'
+require_relative 'auth/coordinator'
+require_relative 'auth/coordinators/oauth2_coordinator'
+require_relative 'auth/coordinators/oidc_coordinator'
+require_relative 'auth/coordinators/service_account_coordinator'
 
 module ADK
   # The Auth module provides authentication capabilities for ADK tools.
@@ -75,6 +79,32 @@ module ADK
         
         # Apply the authentication to the request
         scheme.apply_to_request(request, credential)
+      end
+      
+      # Authenticate using a coordinator
+      # @param coordinator [ADK::Auth::Coordinator] The authentication coordinator
+      # @return [ADK::Auth::ExchangedCredential] The authenticated credential
+      # @raise [ADK::Auth::Error] If authentication fails
+      def authenticate_with_coordinator(coordinator)
+        # Start the authentication flow
+        auth_request = coordinator.start
+        
+        # For non-interactive coordinators, the result might be available immediately
+        if coordinator.complete?
+          if coordinator.success?
+            return coordinator.result
+          else
+            raise coordinator.error || ADK::Auth::Error.new("Authentication failed")
+          end
+        end
+        
+        # For interactive coordinators, we need to wait for user interaction
+        # This method should only be used with non-interactive coordinators
+        # or in testing scenarios where we can directly resume the coordinator
+        raise ADK::Auth::Error.new("Coordinator requires interaction but no handler provided")
+      rescue => e
+        # Wrap any errors that aren't already ADK::Auth::Error
+        raise e.is_a?(ADK::Auth::Error) ? e : ADK::Auth::Error.new(e.message)
       end
       
       # Start the OAuth2 authentication flow
