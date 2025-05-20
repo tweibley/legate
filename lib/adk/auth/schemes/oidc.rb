@@ -23,16 +23,20 @@ module ADK
         # @param client_auth_method [Symbol] The client authentication method to use
         # @param additional_params [Hash, nil] Additional parameters for authorization requests
         # @param pkce_options [Hash, nil] Options for PKCE
+        # @param jwks_url [String, nil] The URL for the JWKS endpoint
+        # @param verify_id_token [Boolean] Whether to verify the ID token
         def initialize(authorization_url: nil, token_url: nil, scopes: nil, discovery_url: nil,
                        userinfo_url: nil, fetch_userinfo: false, client_auth_method: :basic,
-                       additional_params: nil, pkce_options: nil)
+                       additional_params: nil, pkce_options: nil, jwks_url: nil, verify_id_token: true)
           # Call the parent constructor
           super(authorization_url: authorization_url, token_url: token_url)
 
           # OIDC-specific properties
           @discovery_url = discovery_url
           @userinfo_url = userinfo_url
+          @jwks_url = jwks_url
           @fetch_userinfo = fetch_userinfo
+          @verify_id_token = verify_id_token
           @pkce_options = pkce_options.is_a?(Hash) ? pkce_options : {}
         end
 
@@ -46,6 +50,12 @@ module ADK
 
         # @return [String, nil] The URL for the userinfo endpoint
         attr_reader :userinfo_url
+
+        # @return [String, nil] The URL for the JWKS endpoint
+        attr_reader :jwks_url
+
+        # @return [Boolean] Whether to verify ID tokens
+        attr_reader :verify_id_token
 
         # @return [Boolean] Whether to automatically fetch userinfo
         attr_reader :fetch_userinfo

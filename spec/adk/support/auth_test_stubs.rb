@@ -100,8 +100,8 @@ module ADK
 
     # Namespace for authentication schemes
     module Schemes
-      # API Key authentication scheme
-      class ApiKey < Scheme
+      # API Key authentication scheme stub for testing
+      class StubApiKey < Scheme
         attr_reader :name, :location, :param_name
         
         def initialize(name: 'api_key', location: 'header', param_name: 'X-API-Key', config: {})
@@ -116,22 +116,39 @@ module ADK
         end
         
         def apply_to_request(request, credential)
-          api_key = credential.api_key
-          raise ADK::Auth::Errors::AuthenticationError, "API key is missing from credential" unless api_key
+          api_key = credential[:api_key]
+          raise ADK::Auth::Error, "API key not found in credential" unless api_key
           
           case @location
           when 'header'
-            request.headers[@param_name] = api_key
+            request[:headers] ||= {}
+            request[:headers][@param_name] = api_key
           when 'query'
-            query_params = CGI.parse(request.uri.query || '')
-            query_params[@param_name] = [api_key]
-            request.uri.query = URI.encode_www_form(query_params)
+            # Parse URL
+            uri = URI(request[:url] || "https://example.com")
+            
+            # Parse query params
+            query_params = {}
+            if uri.query
+              uri.query.split('&').each do |param|
+                key, value = param.split('=')
+                query_params[key] = value if key && value
+              end
+            end
+            
+            # Add API key param
+            query_params[@param_name] = api_key
+            
+            # Update URL
+            uri.query = query_params.map { |k, v| "#{k}=#{v}" }.join('&')
+            request[:url] = uri.to_s
           when 'cookie'
-            existing_cookies = request.headers['Cookie'] || ''
+            request[:headers] ||= {}
+            existing_cookies = request[:headers]['Cookie'] || ''
             new_cookie = "#{@param_name}=#{api_key}"
-            request.headers['Cookie'] = existing_cookies.empty? ? new_cookie : "#{existing_cookies}; #{new_cookie}"
+            request[:headers]['Cookie'] = existing_cookies.empty? ? new_cookie : "#{existing_cookies}; #{new_cookie}"
           else
-            raise ADK::Auth::Errors::ConfigurationError, "Invalid API key location: #{@location}"
+            raise ADK::Auth::Error, "Invalid API key location: #{@location}"
           end
           
           request

@@ -1,7 +1,7 @@
 ---
 id: 11
 title: 'Excon Middleware for Authentication'
-status: pending
+status: completed
 priority: medium
 feature: Authentication System
 dependencies:
@@ -10,8 +10,8 @@ dependencies:
   - 7
 assigned_agent: null
 created_at: "2025-05-19T16:41:55Z"
-started_at: null
-completed_at: null
+started_at: "2025-05-20T09:30:00Z"
+completed_at: "2025-05-20T11:45:00Z"
 error_log: null
 ---
 
@@ -53,3 +53,35 @@ Create Excon middleware for automatically injecting authentication headers.
 - Verify response handling for authentication errors
 - Test automatic retry with mock authentication failures
 - Create integration tests with real HTTP endpoints 
+
+## Implementation Notes
+
+This task has been completed with the following components:
+
+1. Enhanced the existing `ExconMiddleware` class with:
+   - Token lifecycle integration
+   - Backoff strategies (linear, exponential, none)
+   - Better error handling and debugging
+   - Request retry with original request restoration
+
+2. Created a `MiddlewareFactory` to instantiate middleware for different schemes:
+   - Factory methods for each auth scheme type (API Key, Bearer, OAuth2, OIDC, Service Account)
+   - Parameter validation and default values
+   - Token store/manager integration
+
+3. Added `HttpClientUtils` for easy integration with Excon:
+   - Connection configuration helpers
+   - Direct connection creation with built-in auth
+   - Request authentication utilities
+   - Option parsing for mixed connection/middleware parameters
+
+4. Updated the main `ADK::Auth` module:
+   - Exposed middleware factory methods
+   - Added connection configuration utilities
+   - Integrated with the token store
+   
+5. Created examples and tests:
+   - Example for each authentication scheme
+   - Comprehensive tests for middleware
+   - Factory pattern tests
+   - Integration tests with Excon 

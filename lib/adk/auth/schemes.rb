@@ -18,7 +18,7 @@ module ADK
       def self.create(type, **options)
         case type.to_sym
         when :api_key
-          APIKey.new(**options)
+          ApiKey.new(**options)
         when :http_bearer
           HTTPBearer.new(**options)
         when :oauth2

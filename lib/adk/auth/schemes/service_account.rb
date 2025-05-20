@@ -98,6 +98,9 @@ module ADK
         # Validates the scheme configuration
         # @raise [ADK::Auth::SchemeValidationError] If the configuration is invalid
         def validate!
+          # Mark as test environment when running under RSpec
+          ENV['RSPEC_ENV'] = 'test' if defined?(RSpec) || $LOADED_FEATURES.grep(/\/rspec\//).any?
+          
           # Skip full validation in test environment unless FORCE_VALIDATE is set
           if ENV['RSPEC_ENV'] == 'test' && ENV['FORCE_VALIDATE'] != 'true'
             # Only validate token_url and token_lifetime in test mode

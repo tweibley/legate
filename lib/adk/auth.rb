@@ -13,27 +13,31 @@ require_relative 'auth/coordinator'
 require_relative 'auth/coordinators/oauth2_coordinator'
 require_relative 'auth/coordinators/oidc_coordinator'
 require_relative 'auth/coordinators/service_account_coordinator'
+require_relative 'auth/excon_middleware'
+require_relative 'auth/middleware_factory'
+require_relative 'auth/http_client_utils'
 
 module ADK
   # The Auth module provides authentication capabilities for ADK tools.
   # It supports various authentication schemes such as API Key, Bearer Token,
   # OAuth2, OpenID Connect, and Service Accounts.
   #
-  # @example Configure a tool with OAuth2 authentication
-  #   scheme = ADK::Auth::Schemes::OAuth2.new(
-  #     authorization_url: 'https://example.com/oauth2/auth',
-  #     token_url: 'https://example.com/oauth2/token',
-  #     scopes: ['read', 'write']
-  #   )
-  #
+  # @example Configure a tool with authentication
   #   credential = ADK::Auth::Credential.new(
-  #     auth_type: :oauth2,
-  #     client_id: 'my-client-id',
-  #     client_secret: 'ENV:MY_CLIENT_SECRET'
+  #     auth_type: :api_key,
+  #     api_key: ENV['API_KEY']
   #   )
   #
-  #   tool = MyTool.new(auth_scheme: scheme, auth_credential: credential)
+  #   scheme = ADK::Auth::Schemes::ApiKey.new(
+  #     location: :header,
+  #     name: 'X-API-Key'
+  #   )
   #
+  #   # Configure the tool with authentication
+  #   tool.configure(auth: {
+  #     scheme: scheme,
+  #     credential: credential
+  #   })
   module Auth
     # Version of the authentication module
     VERSION = '0.1.0'
@@ -54,8 +58,8 @@ module ADK
     @token_store = TokenStore.new
     
     class << self
-      # Returns a unique identifier for a request
-      # @return [String] A unique ID in UUID format
+      # Generate a unique request ID
+      # @return [String] A unique request ID
       def generate_request_id
         require 'securerandom'
         SecureRandom.uuid
@@ -269,6 +273,195 @@ module ADK
       private def get_scheme_for_provider(provider_id)
         config = @config_store[provider_id]
         config&.scheme
+      end
+
+      # Get the global token store instance
+      # @return [ADK::Auth::TokenStore] The global token store
+      def token_store
+        @token_store
+      end
+
+      # Set the global token store instance
+      # @param store [ADK::Auth::TokenStore] The token store to use
+      # @return [ADK::Auth::TokenStore] The token store
+      def token_store=(store)
+        @token_store = store
+      end
+
+      # Create an authentication middleware for the specified scheme and credential
+      # @param scheme [ADK::Auth::Scheme] The authentication scheme to use
+      # @param credential [ADK::Auth::Credential] The credential to use
+      # @param options [Hash] Additional options for the middleware
+      # @return [ADK::Auth::ExconMiddleware] The configured middleware
+      def create_middleware(scheme:, credential:, **options)
+        ADK::Auth::MiddlewareFactory.create(
+          scheme: scheme,
+          credential: credential,
+          token_store: options[:token_store] || token_store,
+          token_manager: options[:token_manager],
+          **options
+        )
+      end
+      
+      # Configure an existing Excon connection with authentication
+      # @param connection [Excon::Connection] The connection to configure
+      # @param scheme [ADK::Auth::Scheme] The authentication scheme to use
+      # @param credential [ADK::Auth::Credential] The credential to use
+      # @param options [Hash] Additional options for the middleware
+      # @return [Excon::Connection] The configured connection
+      def configure_connection(connection, scheme:, credential:, **options)
+        ADK::Auth::HttpClientUtils.configure_connection(
+          connection,
+          scheme: scheme,
+          credential: credential,
+          token_store: options[:token_store] || token_store,
+          token_manager: options[:token_manager],
+          **options
+        )
+      end
+      
+      # Create a new Excon connection with authentication
+      # @param url [String] The URL for the connection
+      # @param scheme [ADK::Auth::Scheme] The authentication scheme to use
+      # @param credential [ADK::Auth::Credential] The credential to use
+      # @param options [Hash] Additional options for the connection and middleware
+      # @return [Excon::Connection] The configured connection
+      def create_connection(url, scheme:, credential:, **options)
+        ADK::Auth::HttpClientUtils.create_connection(
+          url,
+          scheme: scheme,
+          credential: credential,
+          token_store: options[:token_store] || token_store,
+          token_manager: options[:token_manager],
+          **options
+        )
+      end
+      
+      # Create a new Excon connection with API key authentication
+      # @param url [String] The URL for the connection
+      # @param api_key [String] The API key to use
+      # @param location [String] Where to place the API key ('header', 'query', 'cookie')
+      # @param name [String] The name of the parameter/header
+      # @param options [Hash] Additional options for the connection and middleware
+      # @return [Excon::Connection] The configured connection
+      def create_api_key_connection(url, api_key:, location: 'header', name: 'X-API-Key', **options)
+        ADK::Auth::HttpClientUtils.create_api_key_connection(
+          url,
+          api_key: api_key,
+          location: location,
+          name: name,
+          token_store: options[:token_store] || token_store,
+          token_manager: options[:token_manager],
+          **options
+        )
+      end
+      
+      # Create a new Excon connection with bearer token authentication
+      # @param url [String] The URL for the connection
+      # @param token [String] The bearer token to use
+      # @param options [Hash] Additional options for the connection and middleware
+      # @return [Excon::Connection] The configured connection
+      def create_bearer_connection(url, token:, **options)
+        ADK::Auth::HttpClientUtils.create_bearer_connection(
+          url,
+          token: token,
+          token_store: options[:token_store] || token_store,
+          token_manager: options[:token_manager],
+          **options
+        )
+      end
+      
+      # Create a new Excon connection with OAuth2 authentication
+      # @param url [String] The URL for the connection
+      # @param client_id [String] The OAuth client ID
+      # @param client_secret [String] The OAuth client secret
+      # @param authorization_url [String] The authorization URL for the OAuth provider
+      # @param token_url [String] The token URL for the OAuth provider
+      # @param scopes [Array<String>, String, nil] The scopes to request
+      # @param options [Hash] Additional options for the connection and middleware
+      # @return [Excon::Connection] The configured connection
+      def create_oauth2_connection(url, client_id:, client_secret:, authorization_url:, token_url:, scopes: nil, **options)
+        ADK::Auth::HttpClientUtils.create_oauth2_connection(
+          url,
+          client_id: client_id,
+          client_secret: client_secret,
+          authorization_url: authorization_url,
+          token_url: token_url,
+          scopes: scopes,
+          token_store: options[:token_store] || token_store,
+          token_manager: options[:token_manager],
+          **options
+        )
+      end
+      
+      # Create a new Excon connection with OpenID Connect authentication
+      # @param url [String] The URL for the connection
+      # @param client_id [String] The client ID to use
+      # @param client_secret [String] The client secret to use
+      # @param discovery_url [String] The OIDC discovery URL
+      # @param options [Hash] Additional options for the connection and middleware
+      # @return [Excon::Connection] The configured connection
+      def create_oidc_connection(url, client_id:, client_secret:, discovery_url:, **options)
+        ADK::Auth::HttpClientUtils.create_oidc_connection(
+          url,
+          client_id: client_id,
+          client_secret: client_secret,
+          discovery_url: discovery_url,
+          token_store: options[:token_store] || token_store,
+          token_manager: options[:token_manager],
+          **options
+        )
+      end
+      
+      # Create a new Excon connection with service account authentication
+      # @param url [String] The URL for the connection
+      # @param service_account_key [String, Hash] The service account key as JSON string or Hash
+      # @param scopes [Array<String>, String, nil] The scopes to request
+      # @param audience [String, nil] The audience for the token
+      # @param options [Hash] Additional options for the connection and middleware
+      # @return [Excon::Connection] The configured connection
+      def create_service_account_connection(url, service_account_key:, scopes: nil, audience: nil, **options)
+        ADK::Auth::HttpClientUtils.create_service_account_connection(
+          url, 
+          service_account_key: service_account_key,
+          scopes: scopes,
+          audience: audience,
+          token_store: options[:token_store] || token_store,
+          token_manager: options[:token_manager],
+          **options
+        )
+      end
+      
+      # Create a new Excon connection with Basic authentication
+      # @param url [String] The URL for the connection
+      # @param username [String] The username to use
+      # @param password [String] The password to use
+      # @param options [Hash] Additional options for the connection and middleware
+      # @return [Excon::Connection] The configured connection
+      def create_basic_auth_connection(url, username:, password:, **options)
+        ADK::Auth::HttpClientUtils.create_basic_auth_connection(
+          url,
+          username: username,
+          password: password,
+          token_store: options[:token_store] || token_store,
+          token_manager: options[:token_manager],
+          **options
+        )
+      end
+      
+      # Create a new Excon connection using a previously configured provider
+      # @param url [String] The URL for the connection
+      # @param provider_id [String] The provider ID to use
+      # @param options [Hash] Additional options for the connection and middleware
+      # @return [Excon::Connection] The configured connection
+      def create_connection_from_provider(url, provider_id, **options)
+        ADK::Auth::HttpClientUtils.create_connection_from_provider(
+          url,
+          provider_id,
+          token_store: options[:token_store] || token_store,
+          token_manager: options[:token_manager],
+          **options
+        )
       end
     end
   end
