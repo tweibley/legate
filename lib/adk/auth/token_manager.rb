@@ -51,17 +51,50 @@ module ADK
           # Try to get the token from the store
           token = @token_store.get(cache_key)
           
-          # If no token, or force refresh, or token needs refresh, refresh it
-          if force_refresh || token.nil? || needs_refresh?(token)
-            return refresh_token(scheme, credential, token, cache_key)
+          # If no token, refresh it
+          if token.nil?
+            return refresh_token(scheme, credential, nil, cache_key)
+          end
+          
+          # Check if a scheme supports refresh
+          supports_refresh = scheme.respond_to?(:supports_refresh?) && scheme.supports_refresh?
+          is_refreshable = token.respond_to?(:refreshable?) && token.refreshable?
+          
+          # If force refresh is requested, refresh the token regardless of expiration
+          if force_refresh
+            # Check if the token is refreshable before attempting to refresh
+            if supports_refresh && is_refreshable
+              return refresh_token(scheme, credential, token, cache_key)
+            else
+              # For tokens that aren't refreshable, create a new one
+              invalidate_token(cache_key)
+              new_token = exchange_token(scheme, credential)
+              if new_token
+                @token_store.store(cache_key, new_token)
+                trigger_callback(:refresh_success, new_token, scheme, credential)
+                return new_token
+              end
+            end
+          end
+          
+          # Check if token needs refresh based on expiration
+          if needs_refresh?(token)
+            # Only try to refresh if the scheme supports it and the token is refreshable
+            if supports_refresh && is_refreshable
+              return refresh_token(scheme, credential, token, cache_key)
+            else
+              # If not refreshable, invalidate and return nil
+              invalidate_token(cache_key)
+              return nil
+            end
           end
           
           # Check if token is approaching expiration and trigger callback
           if approaching_expiration?(token)
             trigger_callback(:before_expiry, token, scheme, credential)
             
-            # If auto_refresh is enabled, refresh the token
-            if @config[:auto_refresh]
+            # If auto_refresh is enabled and we can refresh, do it
+            if @config[:auto_refresh] && supports_refresh && is_refreshable
               return refresh_token(scheme, credential, token, cache_key)
             end
           end
@@ -106,8 +139,27 @@ module ADK
         end
         
         # Token exists - attempt to refresh it if scheme supports refresh
-        if scheme.supports_refresh? && token.refreshable?
-          return perform_token_refresh(scheme, credential, token, cache_key)
+        supports_refresh = scheme.respond_to?(:supports_refresh?) && scheme.supports_refresh?
+        is_refreshable = token.respond_to?(:refreshable?) && token.refreshable?
+        
+        if supports_refresh && is_refreshable
+          begin
+            refreshed = scheme.refresh_token(token, credential)
+            if refreshed
+              @token_store.store(cache_key, refreshed)
+              trigger_callback(:refresh_success, refreshed, scheme, credential)
+              return refreshed
+            else
+              # Handle the case where refresh_token returns nil but doesn't raise an error
+              ADK.logger.error("Failed to refresh token: refresh_token returned nil")
+              trigger_callback(:refresh_failure, token, scheme, credential, error: nil)
+              return nil
+            end
+          rescue ADK::Auth::TokenRefreshError => e
+            ADK.logger.error("Failed to refresh token: #{e.message}")
+            trigger_callback(:refresh_failure, token, scheme, credential, error: e)
+            return nil
+          end
         end
         
         # Scheme doesn't support refresh or token isn't refreshable
@@ -238,9 +290,16 @@ module ADK
         loop do
           begin
             refreshed = scheme.refresh_token(token, credential)
-            @token_store.store(cache_key, refreshed)
-            trigger_callback(:refresh_success, refreshed, scheme, credential)
-            return refreshed
+            if refreshed
+              @token_store.store(cache_key, refreshed)
+              trigger_callback(:refresh_success, refreshed, scheme, credential)
+              return refreshed
+            else
+              # Handle the case where refresh_token returns nil but doesn't raise an error
+              ADK.logger.error("Failed to refresh token: refresh_token returned nil")
+              trigger_callback(:refresh_failure, token, scheme, credential, error: nil)
+              return nil
+            end
           rescue ADK::Auth::TokenRefreshError => e
             attempts += 1
             
@@ -251,8 +310,8 @@ module ADK
               return nil
             end
             
-            # Wait with exponential backoff before retrying
-            sleep(delay)
+            # Exponential backoff for retry
+            sleep delay
             delay *= @config[:retry_backoff]
           end
         end
@@ -285,26 +344,27 @@ module ADK
         end
       end
 
-      # Trigger a registered callback
+      # Trigger a callback for the given event
       # @param event [Symbol] The event that occurred
-      # @param token [ADK::Auth::ExchangedCredential, nil] The token involved
+      # @param token [ADK::Auth::ExchangedCredential, nil] The token involved in the event
       # @param scheme [ADK::Auth::Scheme, nil] The authentication scheme
       # @param credential [ADK::Auth::Credential, nil] The credential
-      # @param extras [Hash] Additional data to pass to the callback
+      # @param extras [Hash] Extra information to pass to the callback
       def trigger_callback(event, token, scheme, credential, extras = {})
         return unless @callbacks.key?(event)
         
-        callback_data = {
-          event: event,
-          token: token,
-          scheme: scheme,
-          credential: credential
-        }.merge(extras)
-        
         @callbacks[event].each do |callback|
           begin
-            callback.call(callback_data)
-          rescue => e
+            # Create a hash with all the data
+            data = {
+              event: event,
+              token: token,
+              scheme: scheme,
+              credential: credential
+            }.merge(extras)
+            
+            callback.call(data)
+          rescue StandardError => e
             ADK.logger.error("Error in #{event} callback: #{e.message}")
           end
         end

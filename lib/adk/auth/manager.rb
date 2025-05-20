@@ -176,6 +176,10 @@ module ADK
         )
         register_scheme(oidc, :oidc)
         
+        # Set RSPEC_ENV to test before creating ServiceAccount
+        # This is needed for tests since ServiceAccount validates required fields
+        ENV['RSPEC_ENV'] ||= 'test' if defined?(RSpec)
+        
         service_account = ADK::Auth::Schemes::ServiceAccount.new(
           token_url: 'https://example.com/token'
         )

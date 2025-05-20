@@ -59,6 +59,9 @@ RSpec.describe ADK::Auth::TokenManager do
     allow(session_service).to receive(:load_scoped_state).and_return(nil)
     allow(session_service).to receive(:clear_scoped_state).and_return(true)
     
+    # Set up scheme to support refresh
+    allow(oauth_scheme).to receive(:supports_refresh?).and_return(true)
+    
     # Stub the token refresh HTTP request
     stub_request(:post, "https://example.com/token")
       .with(
@@ -111,6 +114,12 @@ RSpec.describe ADK::Auth::TokenManager do
         refreshed_token = exchanged_credential.with(access_token: 'refreshed_token')
         allow(oauth_scheme).to receive(:refresh_token).and_return(refreshed_token)
         
+        # Ensure supports_refresh? returns true
+        allow(oauth_scheme).to receive(:supports_refresh?).and_return(true)
+        
+        # Ensure the token is refreshable
+        allow(exchanged_credential).to receive(:refreshable?).and_return(true)
+        
         result = manager.get_token(oauth_scheme, oauth_credential, force_refresh: true)
         expect(result.access_token).to eq('refreshed_token')
       end
@@ -123,12 +132,23 @@ RSpec.describe ADK::Auth::TokenManager do
       end
       
       it 'attempts to refresh the token' do
-        # Mock the refresh_token method instead of relying on HTTP
+        # Set up a refreshed token to be returned
         refreshed = exchanged_credential.with(access_token: 'new_token')
+        
+        # Make sure the scheme's refresh_token method returns our mocked refreshed token
         allow(oauth_scheme).to receive(:refresh_token).and_return(refreshed)
+        
+        # Make sure the token is considered refreshable
         allow(expired_credential).to receive(:refreshable?).and_return(true)
         
+        # Also make sure token store can store the token
+        allow(token_store).to receive(:store).and_return(true)
+        
+        # Call the method
         token = manager.get_token(oauth_scheme, oauth_credential)
+        
+        # Verify the result
+        expect(token).to eq(refreshed)
         expect(token.access_token).to eq('new_token')
       end
       
@@ -157,20 +177,40 @@ RSpec.describe ADK::Auth::TokenManager do
   
   describe '#refresh_token' do
     it 'attempts to refresh a token' do
+      # Set up a refreshed token to be returned
       refreshed = exchanged_credential.with(access_token: 'refreshed_token')
+      
+      # Make sure the scheme's refresh_token method returns our mocked refreshed token
       allow(oauth_scheme).to receive(:refresh_token).and_return(refreshed)
+      
+      # Make sure the token is considered refreshable
       allow(exchanged_credential).to receive(:refreshable?).and_return(true)
       
+      # Also make sure token store can store the token
+      allow(token_store).to receive(:store).and_return(true)
+      
+      # Call the method
       token = manager.refresh_token(oauth_scheme, oauth_credential, exchanged_credential)
+      
+      # Verify the result
+      expect(token).to eq(refreshed)
       expect(token.access_token).to eq('refreshed_token')
     end
     
     it 'returns nil if the token cannot be refreshed' do
-      allow(oauth_scheme).to receive(:refresh_token).and_raise(ADK::Auth::TokenRefreshError, 'Refresh failed')
+      # Make sure the token is considered refreshable
       allow(exchanged_credential).to receive(:refreshable?).and_return(true)
+      
+      # Mock refresh_token to throw an error
+      allow(oauth_scheme).to receive(:refresh_token).and_raise(ADK::Auth::TokenRefreshError, 'Refresh failed')
+      
+      # Mock logger to avoid errors
       allow(ADK).to receive(:logger).and_return(double(error: nil))
       
+      # Call the method
       token = manager.refresh_token(oauth_scheme, oauth_credential, exchanged_credential)
+      
+      # Verify the result is nil
       expect(token).to be_nil
     end
   end
@@ -201,18 +241,28 @@ RSpec.describe ADK::Auth::TokenManager do
       callback_executed = false
       event_data = nil
       
+      # Register a callback
       manager.on(:refresh_success) do |data|
         callback_executed = true
         event_data = data
       end
       
-      # Trigger a refresh success
+      # Set up a refreshed token to be returned
       refreshed = exchanged_credential.with(access_token: 'new_token')
+      
+      # Make sure the scheme's refresh_token method returns our mocked refreshed token
       allow(oauth_scheme).to receive(:refresh_token).and_return(refreshed)
+      
+      # Make sure the token is considered refreshable
       allow(exchanged_credential).to receive(:refreshable?).and_return(true)
       
+      # Also make sure token store can store the token
+      allow(token_store).to receive(:store).and_return(true)
+      
+      # Trigger a refresh success
       manager.refresh_token(oauth_scheme, oauth_credential, exchanged_credential)
       
+      # Verify callback was executed
       expect(callback_executed).to be true
       expect(event_data[:event]).to eq(:refresh_success)
       expect(event_data[:token]).to eq(refreshed)
@@ -225,10 +275,17 @@ RSpec.describe ADK::Auth::TokenManager do
       # Setup logger mock
       allow(ADK).to receive(:logger).and_return(double(error: nil))
       
-      # Trigger a refresh success
+      # Set up a refreshed token to be returned
       refreshed = exchanged_credential.with(access_token: 'new_token')
+      
+      # Make sure the scheme's refresh_token method returns our mocked refreshed token
       allow(oauth_scheme).to receive(:refresh_token).and_return(refreshed)
+      
+      # Make sure the token is considered refreshable
       allow(exchanged_credential).to receive(:refreshable?).and_return(true)
+      
+      # Also make sure token store can store the token
+      allow(token_store).to receive(:store).and_return(true)
       
       # Should not propagate the exception
       expect {

@@ -11,7 +11,7 @@ module ADK
     # Stores sessions entirely in memory. Data is lost on application restart.
     # Useful for local development, testing, and simple use cases.
     class InMemory < Base
-      attr_reader :sessions
+      attr_reader :sessions, :scoped_states
 
       def initialize
         @sessions = Concurrent::Map.new

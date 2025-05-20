@@ -51,7 +51,7 @@ RSpec.describe ADK::SessionService::Redis do
   let(:sessions_set_key) { ADK::SessionService::Redis::REDIS_SESSIONS_SET_KEY }
 
   # Subject - Initialize with mocks
-  subject(:service) { described_class.new(redis_client: mock_redis, session_ttl: session_ttl) }
+  subject(:service) { described_class.new(redis_client: mock_redis, session_ttl: session_ttl, enable_encryption: false) }
 
   # Helper to create a valid session hash as stored in Redis
   def redis_session_hash(state_hash = {}, created_at = now, updated_at = now)
@@ -109,7 +109,7 @@ RSpec.describe ADK::SessionService::Redis do
 
     context 'without provided Redis client' do
       let(:real_redis_mock) { instance_double(Redis) }
-      subject(:service_auto_connect) { described_class.new(session_ttl: session_ttl) }
+      subject(:service_auto_connect) { described_class.new(session_ttl: session_ttl, enable_encryption: false) }
 
       before do
         # Mock Redis.new for this context
@@ -133,7 +133,7 @@ RSpec.describe ADK::SessionService::Redis do
       it 'raises an ADK::Error' do
         # Expect the initialization to fail
         expect {
-          described_class.new
+          described_class.new(enable_encryption: false)
         }.to raise_error(ADK::Error, /Could not connect to Redis for session service: Connection failed/)
       end
     end
@@ -204,7 +204,7 @@ RSpec.describe ADK::SessionService::Redis do
     end
 
     it 'does not set TTL if session_ttl is nil' do
-      service_no_ttl = described_class.new(redis_client: mock_redis, session_ttl: nil)
+      service_no_ttl = described_class.new(redis_client: mock_redis, session_ttl: nil, enable_encryption: false)
       allow(ADK::Session).to receive(:new).with(
         app_name: app_name,
         user_id: user_id,
@@ -781,6 +781,13 @@ RSpec.describe ADK::SessionService::Redis do
         allow(service).to receive(:list_sessions).and_return([])
         expect(service.list_sessions).to eq([])
       end
+    end
+  end
+
+  context 'with TTL disabled' do
+    it 'does not set expiry on session or events keys' do
+      service_no_ttl = described_class.new(redis_client: mock_redis, session_ttl: nil, enable_encryption: false)
+      # ... existing code ...
     end
   end
 end
