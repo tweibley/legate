@@ -48,9 +48,8 @@ module ADK
           retry_non_idempotent = options[:retry_non_idempotent] || false
           retry_on = options[:retry_on] || []
           
-          # Create the middleware instance
-          ADK::Auth::ExconMiddleware.new(
-            nil, # Placeholder for stack, Excon manages the stack for operational middleware
+          # Create the middleware instance with nil stack (will be set by Excon later)
+          ADK::Auth::ExconMiddleware.new(nil, {
             scheme: scheme,
             credential: credential,
             token_store: token_store,
@@ -61,7 +60,7 @@ module ADK
             backoff_factor: backoff_factor,
             retry_non_idempotent: retry_non_idempotent,
             retry_on: retry_on
-          )
+          })
         end
         
         # Create middleware specifically for API key authentication

@@ -117,7 +117,7 @@ RSpec.describe ADK::Auth::HttpClientUtils do
       expect(connection).to be_a(Excon::Connection)
       expect(connection.data[:middlewares]).to include(ADK::Auth::ExconMiddleware)
       
-      middleware = connection.data[:auth_middleware]
+      middleware = connection.data[:auth_middleware_config]
       scheme = middleware.instance_variable_get(:@scheme)
       credential = middleware.instance_variable_get(:@credential)
       

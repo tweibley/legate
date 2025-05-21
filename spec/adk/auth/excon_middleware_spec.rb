@@ -223,6 +223,9 @@ RSpec.describe ADK::Auth::ExconMiddleware do
       expect(result[:request][:headers]['X-API-Key']).to eq('test-api-key')
       expect(result[:authenticated]).to be true
       
+      # Set up a mock response
+      result[:response] = { status: 200, body: '{"success": true}' }
+      
       # Now test the response handling
       response_result = middleware.response_call(result)
       
