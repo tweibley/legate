@@ -20,4 +20,5 @@ This section provides detailed guides for implementing authentication in your AD
 - [Token Lifecycle Management](./token_lifecycle.md) - Managing token expiration and refresh
 - [Custom Authentication Flow](./custom_flow.md) - Building custom authentication flows
 - [Secure Credential Storage](./secure_storage.md) - Best practices for credential security
+- [Web UI Integration](./web_ui_integration.md) - Integrating authentication with the Web UI
 - [Migrating from Earlier Versions](./migration.md) - Guide for upgrading from previous versions 
