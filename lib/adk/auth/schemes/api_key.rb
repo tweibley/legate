@@ -127,34 +127,58 @@ module ADK
           # Initialize headers if not present
           request[:headers] ||= {}
           
+          # The proper way to handle query parameters depends on the format
+          # expected by the HTTP client library
+          
           # Handle simple URL case
           if request[:url]
             # Properly append the query parameter
             separator = request[:url].include?('?') ? '&' : '?'
             request[:url] = "#{request[:url]}#{separator}#{name}=#{api_key}"
-            return request
           end
           
-          # Handle Excon middleware stack format
-          # Build the URL
-          scheme = request[:scheme] || 'https'
-          host = request[:host] || 'example.com'
-          path = request[:path] || '/'
-          port = request[:port]
-          
-          # Construct URL from components
-          port_part = port ? ":#{port}" : ""
-          base_url = "#{scheme}://#{host}#{port_part}#{path}"
-          
-          # Update query parameter
-          if request[:query]
-            request[:query] = "#{request[:query]}&#{name}=#{api_key}"
-          else
-            request[:query] = "#{name}=#{api_key}"
+          # Handle query param hash (used by Excon and other libraries)
+          if request[:query].is_a?(Hash)
+            # Simply add the param to the hash
+            request[:query][name] = api_key
+          elsif request[:query].is_a?(String)
+            # Append to existing query string
+            separator = request[:query].empty? ? '' : '&'
+            request[:query] = "#{request[:query]}#{separator}#{name}=#{api_key}"
+          elsif request[:query].nil?
+            # Create a new query hash
+            request[:query] = { name => api_key }
           end
           
-          # Set the URL in the request - necessary for the test assertions
-          request[:url] = "#{base_url}?#{request[:query]}"
+          # Also update the URL with query parameters for debugging
+          if !request[:url] && (request[:scheme] || request[:host] || request[:path])
+            # Build the URL from components for reference
+            scheme = request[:scheme] || 'https'
+            host = request[:host] || 'example.com'
+            path = request[:path] || '/'
+            port = request[:port]
+            
+            # Construct URL from components
+            port_part = port ? ":#{port}" : ""
+            url = "#{scheme}://#{host}#{port_part}#{path}"
+            
+            # Add query string if present
+            if request[:query]
+              query_str = if request[:query].is_a?(Hash)
+                params = []
+                request[:query].each do |k, v|
+                  params << "#{k}=#{v}"
+                end
+                params.join('&')
+              else
+                request[:query].to_s
+              end
+              
+              url += "?#{query_str}" unless query_str.empty?
+            end
+            
+            request[:url] = url
+          end
           
           request
         end

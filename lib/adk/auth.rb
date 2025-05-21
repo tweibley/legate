@@ -54,8 +54,11 @@ module ADK
     # Configuration store for Auth sessions
     @config_store = {}
     
-    # Token store for credentials
-    @token_store = TokenStore.new
+    # Token store for credentials - initialize with a default in-memory session service
+    @token_store = begin
+      session_service = ADK::SessionService::InMemory.new
+      TokenStore.new(session_service)
+    end
     
     class << self
       # Generate a unique request ID

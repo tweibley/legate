@@ -50,7 +50,7 @@ module ADK
           
           # Create the middleware instance
           ADK::Auth::ExconMiddleware.new(
-            [], # Use empty array as a placeholder for the middleware stack
+            nil, # Placeholder for stack, Excon manages the stack for operational middleware
             scheme: scheme,
             credential: credential,
             token_store: token_store,

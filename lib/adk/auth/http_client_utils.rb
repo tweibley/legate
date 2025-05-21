@@ -65,24 +65,62 @@ module ADK
           middleware_options = extract_middleware_options(options)
           
           # Create the middleware using the factory
-          middleware = MiddlewareFactory.create_api_key(
+          middleware_instance = MiddlewareFactory.create_api_key(
             api_key: api_key,
             location: location,
             name: name,
             **middleware_options
           )
           
+          # Prepare Excon options, ensuring we don't modify the original options hash directly
+          excon_opts = options.dup
+          # Remove our custom options that shouldn't be passed directly to Excon.new if they were in **options
+          excon_opts.delete(:token_store) # Example, add others if necessary
+          excon_opts.delete(:token_manager)
+          excon_opts.delete(:session_service) # if MiddlewareFactory might add it to options
+          # also retry options if they are only for our middleware and not excon directly
+          [:auto_retry, :max_retries, :backoff_strategy, :backoff_factor, :retry_non_idempotent, :retry_on].each do |k|
+            excon_opts.delete(k)
+          end
+
+          # Add retry configuration for Idempotent middleware
+          excon_opts[:retry_limit] = 3
+          excon_opts[:retry_interval] = 0.5
+          excon_opts[:idempotent] = true
+
+          # Ensure SSL verification is enabled
+          excon_opts[:ssl_verify_peer] = true
+
+          # Increase default timeouts if not specified
+          excon_opts[:connect_timeout] ||= 30
+          excon_opts[:read_timeout] ||= 30
+          excon_opts[:write_timeout] ||= 30
+
+          # Construct the middleware stack for Excon
+          # Order matters! The middleware stack is processed in reverse order
+          excon_actual_middlewares = [
+            Excon::Middleware::Mock,
+            Excon::Middleware::Instrumentor,
+            Excon::Middleware::Expects,
+            Excon::Middleware::Idempotent,
+            ADK::Auth::ExconMiddleware,  # Pass the class
+            Excon::Middleware::ResponseParser
+          ]
+          excon_actual_middlewares.uniq! # Avoid duplicates if any
+          
+          excon_opts[:middlewares] = excon_actual_middlewares
+          
+          ADK.logger.debug("HttpClientUtils: Options for Excon.new (before creation): #{excon_opts.inspect}") if defined?(ADK.logger)
           # Create the connection
-          connection = Excon.new(url, options)
+          connection = Excon.new(url, excon_opts) # Pass the modified excon_opts
+          ADK.logger.debug("HttpClientUtils: Connection created. data[:middlewares]: #{connection.data[:middlewares].map(&:class).inspect}") if defined?(ADK.logger) # Log classes for clarity
           
-          # Add the middleware to the connection
-          connection.data[:middlewares] ||= connection.data[:middlewares].dup
-          connection.data[:middlewares].reject! { |m| m == ADK::Auth::ExconMiddleware }
-          connection.data[:middlewares] << middleware.class unless connection.data[:middlewares].include?(middleware.class)
+          # Store the fully configured middleware instance for our class to pick up its config
+          connection.data[:auth_middleware_config] = middleware_instance 
           
-          # Store the middleware instance in the connection
-          connection.data[:auth_middleware] = middleware
-          
+          ADK.logger.debug("HttpClientUtils: Final connection.data[:middlewares] (from connection.data): #{connection.data[:middlewares].map(&:class).inspect}") if defined?(ADK.logger) # Log classes
+          ADK.logger.debug("HttpClientUtils: Stored :auth_middleware_config: #{connection.data[:auth_middleware_config].inspect}") if defined?(ADK.logger)
+
           connection
         end
         
