@@ -21,6 +21,17 @@ module ADK
       # handles base URL joining, JSON encoding/decoding (optional), logging,
       # and wraps Excon errors into standardized ADK::ToolError subclasses.
       module HttpClient
+        # Custom instrumentor that only logs errors
+        class QuietInstrumentor < Excon::StandardInstrumentor
+          def instrument(name, params = {}, &block)
+            # Only log if there's an error
+            if params[:error]
+              ADK.logger.error("[#{name}] #{params[:error]}")
+            end
+            yield if block_given?
+          end
+        end
+
         attr_reader :http_client
         attr_reader :http_base_url
 
@@ -71,12 +82,9 @@ module ADK
           default_headers = { 'User-Agent' => default_user_agent }
           merged_headers = default_headers.merge(headers)
           default_options = { persistent: true, connect_timeout: 5, read_timeout: 15, write_timeout: 15,
-                              instrumentor: Excon::LoggingInstrumentor }
+                              instrumentor: QuietInstrumentor.new }
           final_options = default_options.merge(options)
           final_options[:headers] = merged_headers unless merged_headers.empty?
-          if final_options[:instrumentor] == Excon::LoggingInstrumentor && defined?(ADK.logger)
-            final_options[:instrumentor_params] = { logger: ADK.logger }
-          end
 
           # Store connection options for potential use in make_request for absolute URLs
           @http_connection_options = final_options.dup
