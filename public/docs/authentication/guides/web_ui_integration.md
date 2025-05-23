@@ -504,9 +504,9 @@ window.addEventListener('message', function(event) {
 });
 ```
 
-## Related Resources
+## Related Topics
 
-- [OAuth2 Authentication Guide](./oauth2.md)
-- [OpenID Connect Guide](./oidc.md)
-- [Token Lifecycle Management](./token_lifecycle.md)
-- [ADK Web UI Documentation](../../web_ui/index.md) 
+- [OAuth2 Authentication Guide](./oauth2)
+- [OpenID Connect Guide](./oidc)
+- [Token Lifecycle Management](./token_lifecycle)
+- [ADK Web UI Documentation](../../web_ui/index) 

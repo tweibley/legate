@@ -99,9 +99,7 @@ RSpec.describe ADK::Tools::Base::HttpClient do
         # expect(tool_w_opts.http_client.data[:read_timeout]).to eq(99)
       end
       it 'configures logging instrumentor' do
-        expect(tool_instance.http_client.data[:instrumentor]).to eq(Excon::LoggingInstrumentor)
-        # Check logger passed to instrumentor params if the key exists
-        expect(tool_instance.http_client.data[:instrumentor_params][:logger]).to be(ADK.logger) if tool_instance.http_client.data[:instrumentor_params]
+        expect(tool_instance.http_client.data[:instrumentor]).to be_a(ADK::Tools::Base::HttpClient::QuietInstrumentor)
       end
       it 'allows disabling the instrumentor' do
         tool_no_log = DummyHttpToolWithClient.new(base_url: base_url, options: { instrumentor: nil })

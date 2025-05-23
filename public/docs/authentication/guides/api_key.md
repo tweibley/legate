@@ -10,71 +10,63 @@ API Key authentication works by including a key in the request, typically in one
 - **Query Parameter**: The API key is added to the URL query string
 - **Cookie**: The API key is included in a cookie
 
-## Configuration
+## Basic Setup
+
+### Session Service and Token Store
+
+For enhanced functionality and token management, you can set up a session service and token store:
+
+```ruby
+# Create session service for token storage
+session_service = ADK::SessionService::InMemory.new
+
+# Create a basic token store for caching
+token_store = ADK::Auth::TokenStore.new(session_service)
+```
 
 ### Creating an API Key Scheme
 
 ```ruby
-# Create an API Key scheme with default settings (header-based)
-scheme = Adk::Auth::Schemes::ApiKey.new
-
-# Customize with specific parameters
-scheme = Adk::Auth::Schemes::ApiKey.new
+# Create an API Key scheme
+scheme = ADK::Auth::Schemes::ApiKey.new
 ```
 
 ### Creating an API Key Credential
 
 ```ruby
 # Direct API key value
-credential = Adk::Auth::Credential.new(
+credential = ADK::Auth::Credential.new(
   auth_type: :api_key,
   api_key: 'your-api-key-value'
 )
 
 # API key from environment variable (recommended for security)
-credential = Adk::Auth::Credential.new(
+credential = ADK::Auth::Credential.new(
   auth_type: :api_key,
   api_key: ENV['API_KEY']
 )
 
-# With custom location and name
-credential = Adk::Auth::Credential.new(
+# With custom location and name (e.g., for query parameter)
+credential = ADK::Auth::Credential.new(
   auth_type: :api_key,
   api_key: ENV['API_KEY'],
-  location: 'header',          # Options: 'header', 'query', 'cookie'
-  name: 'X-Custom-API-Key'     # Default: 'X-API-Key' for header
+  location: 'query',          # Options: 'header', 'query', 'cookie'
+  name: 'api_key'            # Parameter name in the chosen location
 )
 ```
 
 ## Usage Examples
 
-### Basic Usage with Default Settings (Header)
+### Tool-Based Approach
+
+The most straightforward way to use API key authentication is with ADK tools:
 
 ```ruby
 # Create an API Key scheme
-scheme = Adk::Auth::Schemes::ApiKey.new
+scheme = ADK::Auth::Schemes::ApiKey.new
 
 # Create a credential with the API key
-credential = Adk::Auth::Credential.new(
-  auth_type: :api_key,
-  api_key: ENV['API_KEY']
-)
-
-# Configure a tool with the scheme and credential
-tool = Adk::Tools::SomeTool.new(
-  auth_scheme: scheme,
-  auth_credential: credential
-)
-
-# The API key will be automatically applied as an 'X-API-Key' header
-result = tool.execute(params)
-```
-
-### Query Parameter API Key
-
-```ruby
-# Create a credential with query parameter configuration
-credential = Adk::Auth::Credential.new(
+credential = ADK::Auth::Credential.new(
   auth_type: :api_key,
   api_key: ENV['API_KEY'],
   location: 'query',
@@ -82,87 +74,114 @@ credential = Adk::Auth::Credential.new(
 )
 
 # Configure a tool with the scheme and credential
-tool = Adk::Tools::SomeTool.new(
-  auth_scheme: Adk::Auth::Schemes::ApiKey.new,
+tool = ADK::Tools::YourTool.new(
+  auth_scheme: scheme,
   auth_credential: credential
 )
 
-# The API key will be automatically applied as '?api_key=value' in the URL
+# The API key will be automatically applied
 result = tool.execute(params)
 ```
 
-### Cookie-based API Key
+### Middleware Approach
+
+For more direct HTTP client usage, you can use the ADK Auth middleware:
 
 ```ruby
-# Create a credential with cookie configuration
-credential = Adk::Auth::Credential.new(
-  auth_type: :api_key,
+# Create a connection with API key middleware
+connection = ADK::Auth.create_api_key_connection(
+  'https://api.example.com',
   api_key: ENV['API_KEY'],
-  location: 'cookie',
-  name: 'session_token'
+  location: 'query',
+  name: 'api_key',
+  token_store: token_store  # Optional
 )
 
-# Configure a tool with the scheme and credential
-tool = Adk::Tools::SomeTool.new(
-  auth_scheme: Adk::Auth::Schemes::ApiKey.new,
-  auth_credential: credential
+# Make requests through the middleware
+response = connection.request(
+  method: :get,
+  path: '/api/endpoint',
+  query: { param: 'value' }
 )
-
-# The API key will be automatically applied as a cookie
-result = tool.execute(params)
 ```
 
-## API Key Rotation and Security
+### Manual Authentication Application
 
-For enhanced security:
-
-1. **Use Environment Variables**: Store API keys in environment variables rather than hardcoding them
-2. **Rotate Keys Regularly**: Update your API keys periodically
-3. **Use Specific Permissions**: Use API keys with the minimum required permissions
-4. **Monitor Usage**: Keep track of API key usage for suspicious activity
-
-To update an API key:
+For cases where you need more control, you can manually apply authentication:
 
 ```ruby
-# Create a new credential with the updated API key
-new_credential = Adk::Auth::Credential.new(
-  auth_type: :api_key,
-  api_key: ENV['NEW_API_KEY'],
-  location: credential.location,
-  name: credential.name
+# Create a request hash
+request = {
+  method: :get,
+  path: '/api/endpoint',
+  query: { param: 'value' },
+  headers: {}
+}
+
+# Apply authentication manually
+request_with_auth = ADK::Auth::ToolIntegration.apply_authentication(
+  request,
+  scheme,
+  credential,
+  token_store  # Optional
 )
 
-# Update the tool with the new credential
-tool.auth_credential = new_credential
+# Use the authenticated request with your HTTP client
+connection = Excon.new('https://api.example.com')
+response = connection.request(request_with_auth)
 ```
+
+### Direct HTTP Client Usage
+
+For the simplest cases, you can directly include the API key:
+
+```ruby
+# Create connection
+connection = Excon.new('https://api.example.com')
+
+# Include API key in query parameters
+response = connection.request(
+  method: :get,
+  path: '/api/endpoint',
+  query: {
+    api_key: ENV['API_KEY'],
+    param: 'value'
+  }
+)
+```
+
+## API Key Security Best Practices
+
+1. **Environment Variables**: Store API keys in environment variables
+2. **Token Store**: Use token store for caching and management when appropriate
+3. **Secure Transport**: Always use HTTPS for API requests
+4. **Key Rotation**: Update API keys periodically
+5. **Minimal Permissions**: Use keys with the minimum required access
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **API Key Not Applied**: Check that the location ('header', 'query', 'cookie') matches what the API expects
-2. **Wrong Header Name**: Verify the API key header name required by the service
-3. **Expired or Invalid Key**: Confirm the API key is valid and hasn't expired
-4. **Missing Environment Variable**: Ensure the environment variable is set correctly
+1. **Authentication Failure**: Verify the API key location and name match the API requirements
+2. **Token Store Issues**: Ensure session service is properly initialized
+3. **Middleware Configuration**: Check connection parameters when using `create_api_key_connection`
 
-### Debugging
-
-To debug API key application:
+### Debugging Tips
 
 ```ruby
-# Create a scheme and credential
-scheme = Adk::Auth::Schemes::ApiKey.new
-credential = Adk::Auth::Credential.new(
-  auth_type: :api_key,
-  api_key: ENV['API_KEY']
-)
-
-# Create a sample request
-request = { headers: {} }
-
-# Apply the API key manually to see the result
+# Debug authentication application
+request = { headers: {}, query: {} }
 modified_request = scheme.apply_to_request(request, credential)
 puts "Modified request: #{modified_request.inspect}"
+
+# Debug middleware setup
+connection = ADK::Auth.create_api_key_connection(
+  'https://api.example.com',
+  api_key: ENV['API_KEY'],
+  location: 'query',
+  name: 'api_key',
+  debug: true  # Enable debug logging
+)
 ```
 
 ## Next Steps

@@ -204,9 +204,6 @@ result = runner.run(tool)
 puts result
 ```
 
-## Related Resources
-
-- [Bearer Token Specification](https://tools.ietf.org/html/rfc6750)
-- [JSON Web Tokens (JWT)](https://jwt.io/)
-- [Adk::Auth::Schemes::HTTPBearer API Reference](../api_reference/schemes/http_bearer.md)
-- [Excon Middleware for Authentication](../api_reference/excon_middleware.md) 
+## Related Topics
+- [Adk::Auth::Schemes::HTTPBearer API Reference](../api_reference/schemes/http_bearer)
+- [Excon Middleware for Authentication](../api_reference/excon_middleware) 

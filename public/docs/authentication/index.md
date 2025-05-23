@@ -44,15 +44,15 @@ The ADK Ruby library provides a comprehensive framework for handling various aut
 
 ## Documentation Sections
 
-- [Guides](./guides/index.md): Detailed guides for implementing authentication
-- [API Reference](./api_reference/index.md): Documentation of all authentication classes and methods
-- [Troubleshooting](./troubleshooting/index.md): Solutions for common authentication issues
+- [Guides](./guides/index): Detailed guides for implementing authentication
+- [API Reference](./api_reference/index): Documentation of all authentication classes and methods
+- [Troubleshooting](./troubleshooting/index): Solutions for common authentication issues
 
 ## Getting Started
 
-For most cases, you'll want to start with the [Authentication Overview Guide](./guides/overview.md) to understand the basic concepts, then follow the specific guide for your authentication needs:
+For most cases, you'll want to start with the [Authentication Overview Guide](./guides/overview) to understand the basic concepts, then follow the specific guide for your authentication needs:
 
-- [API Key Authentication](./guides/api_key.md)
-- [OAuth2 Authentication](./guides/oauth2.md)
-- [OpenID Connect](./guides/oidc.md)
-- [Service Account Authentication](./guides/service_account.md) 
+- [API Key Authentication](./guides/api_key)
+- [OAuth2 Authentication](./guides/oauth2)
+- [OpenID Connect](./guides/oidc)
+- [Service Account Authentication](./guides/service_account) 

@@ -218,8 +218,7 @@ If you encounter issues with service account authentication:
 - Verify that the audience value matches what the provider expects
 - Check that the token URL is correct for your provider
 
-## Next Steps
-
-- [Token Lifecycle Management](./token_lifecycle.md): Advanced token management techniques
-- [Secure Credential Storage](./secure_storage.md): Best practices for credential security
-- [OAuth2 Authentication](./oauth2.md): Learn about OAuth2 authentication for user-based flows 
+## Related Topics
+- [Token Lifecycle Management](./token_lifecycle) - Advanced token management techniques
+- [Secure Credential Storage](./secure_storage) - Best practices for credential security
+- [OAuth2 Authentication](./oauth2) - Learn about OAuth2 authentication for user-based flows 

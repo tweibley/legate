@@ -20,8 +20,25 @@ puts "--------------------------------"
 # Create a basic token store
 token_store = ADK::Auth::TokenStore.new
 
+# Enable mock mode for Excon to simulate HTTP requests
+Excon.defaults[:mock] = true
+
 # 1. Example with API Key Authentication
 puts "\n1. API Key Authentication Example:"
+
+# Set up our mock response for API Key authentication
+Excon.stub({}) do |params|
+  if params[:headers] && params[:headers]['X-API-Key'] == 'test-api-key'
+    { 
+      status: 200,
+      body: JSON.generate({
+        headers: params[:headers]
+      })
+    }
+  else
+    { status: 401, body: '{"error": "Unauthorized"}' }
+  end
+end
 
 # Create a middleware using the factory
 api_key_middleware = ADK::Auth::MiddlewareFactory.create_api_key(
@@ -31,10 +48,16 @@ api_key_middleware = ADK::Auth::MiddlewareFactory.create_api_key(
   token_store: token_store
 )
 
-# Configure a connection with the middleware (long form)
+# Create a connection with the middleware properly configured
 connection = Excon.new('https://httpbin.org')
-connection.data[:middlewares] ||= connection.data[:middlewares].dup
-connection.data[:middlewares] << ADK::Auth::ExconMiddleware unless connection.data[:middlewares].include?(ADK::Auth::ExconMiddleware)
+
+# Add our middleware to the stack if not already present
+connection.data[:middlewares] = connection.data[:middlewares].dup
+unless connection.data[:middlewares].include?(ADK::Auth::ExconMiddleware)
+  connection.data[:middlewares] << ADK::Auth::ExconMiddleware
+end
+
+# Set our configured middleware instance
 connection.data[:auth_middleware] = api_key_middleware
 
 # Make a request - the middleware will automatically add the API key header
@@ -43,7 +66,7 @@ begin
   
   puts "Request Headers:"
   headers = JSON.parse(response.body)['headers']
-  puts "  X-API-Key: #{headers['X-Api-Key']}"
+  puts "  X-API-Key: #{headers['X-Api-Key'] || headers['X-API-Key']}"
 rescue => e
   puts "Error: #{e.message}"
 end
@@ -51,19 +74,36 @@ end
 # 2. Example with Bearer Token Authentication
 puts "\n2. Bearer Token Authentication Example:"
 
-# Use the convenience method from ADK::Auth
-begin
-  connection = ADK::Auth.create_bearer_connection(
-    'https://httpbin.org',
-    token: 'test-bearer-token',
-    token_store: token_store
-  )
-  
-  # Make sure the middleware is added to the connection's middlewares
-  unless connection.data[:middlewares].include?(ADK::Auth::ExconMiddleware)
-    connection.data[:middlewares] << ADK::Auth::ExconMiddleware
+# Set up our mock response for Bearer authentication
+Excon.stub({}) do |params|
+  if params[:headers] && params[:headers]['Authorization'] == 'Bearer test-bearer-token'
+    { 
+      status: 200,
+      body: JSON.generate({
+        headers: params[:headers]
+      })
+    }
+  else
+    { status: 401, body: '{"error": "Unauthorized"}' }
   end
-  
+end
+
+# Create a connection with bearer token middleware
+connection = Excon.new('https://httpbin.org')
+bearer_middleware = ADK::Auth::MiddlewareFactory.create_bearer(
+  token: 'test-bearer-token',
+  token_store: token_store
+)
+
+# Configure the connection to use our middleware
+connection.data[:middlewares] = connection.data[:middlewares].dup
+unless connection.data[:middlewares].include?(ADK::Auth::ExconMiddleware)
+  connection.data[:middlewares] << ADK::Auth::ExconMiddleware
+end
+connection.data[:auth_middleware] = bearer_middleware
+
+# Make a request with bearer authentication
+begin
   response = connection.request(method: :get, path: '/headers')
   
   puts "Request Headers:"
@@ -125,6 +165,20 @@ class MockOAuth2Scheme < ADK::Auth::Scheme
   end
 end
 
+# Set up stub for OAuth2 authentication to capture any Bearer token
+Excon.stub({}) do |params|
+  if params[:headers] && params[:headers]['Authorization'] && params[:headers]['Authorization'].start_with?('Bearer ')
+    { 
+      status: 200,
+      body: JSON.generate({
+        headers: params[:headers]
+      })
+    }
+  else
+    { status: 401, body: '{"error": "Unauthorized"}' }
+  end
+end
+
 begin
   # Create the scheme and credential
   oauth2_scheme = MockOAuth2Scheme.new
@@ -134,9 +188,12 @@ begin
     client_secret: 'test-client-secret'
   )
   
-  # Create a connection using the middleware factory
-  connection = ADK::Auth.create_connection(
-    'https://httpbin.org',
+  # Create a connection
+  connection = Excon.new('https://httpbin.org')
+  
+  # Create the middleware instance
+  oauth2_middleware = ADK::Auth::ExconMiddleware.new(
+    nil,
     scheme: oauth2_scheme,
     credential: oauth2_credential,
     token_store: token_store,
@@ -146,10 +203,12 @@ begin
     backoff_factor: 0.5
   )
   
-  # Make sure the middleware is added to the connection's middlewares
+  # Properly configure the connection
+  connection.data[:middlewares] = connection.data[:middlewares].dup
   unless connection.data[:middlewares].include?(ADK::Auth::ExconMiddleware)
     connection.data[:middlewares] << ADK::Auth::ExconMiddleware
   end
+  connection.data[:auth_middleware] = oauth2_middleware
   
   # Make a request - middleware will handle token exchange and apply the token
   response = connection.request(method: :get, path: '/headers')
@@ -179,7 +238,7 @@ puts "\n4. Authentication Failure and Retry Example (Simulated):"
 
 class MockRetryAuthScheme < ADK::Auth::Scheme
   def initialize
-    @fail_next = true
+    @fail_count = 1  # Fail the first request, then succeed
   end
   
   def scheme_type
@@ -189,10 +248,10 @@ class MockRetryAuthScheme < ADK::Auth::Scheme
   def apply_to_request(request, credential)
     request[:headers] ||= {}
     
-    if @fail_next
+    if @fail_count > 0
+      @fail_count -= 1
       # This will cause a 401 response
       request[:headers]['X-Should-Fail'] = 'true'
-      @fail_next = false
     else
       # This will succeed
       request[:headers]['X-Auth-Success'] = 'true'
@@ -203,12 +262,39 @@ class MockRetryAuthScheme < ADK::Auth::Scheme
 end
 
 begin
+  # Set up stubs for retry test
+  Excon.stub({}) do |params|
+    if params[:headers] && params[:headers]['X-Should-Fail'] == 'true'
+      # Simulate an authentication failure
+      {
+        status: 401,
+        body: '{"error": "Unauthorized"}'
+      }
+    elsif params[:headers] && params[:headers]['X-Auth-Success'] == 'true'
+      # Simulate success after retry
+      {
+        status: 200,
+        body: JSON.generate({
+          status: "success",
+          headers: params[:headers]
+        })
+      }
+    else
+      # Default response
+      {
+        status: 400,
+        body: '{"error": "Bad Request"}'
+      }
+    end
+  end
+
   # Create a simple middleware for the retry test
   retry_scheme = MockRetryAuthScheme.new
   retry_credential = ADK::Auth::Credential.new(auth_type: :custom)
   
   # Create a middleware that will automatically retry on auth failure
-  retry_middleware = ADK::Auth::MiddlewareFactory.create(
+  retry_middleware = ADK::Auth::ExconMiddleware.new(
+    nil,
     scheme: retry_scheme,
     credential: retry_credential,
     auto_retry: true,
@@ -217,33 +303,19 @@ begin
   
   # Set up a connection with our middleware
   connection = Excon.new('https://httpbin.org')
-  connection.data[:middlewares] ||= connection.data[:middlewares].dup
-  connection.data[:middlewares] << ADK::Auth::ExconMiddleware unless connection.data[:middlewares].include?(ADK::Auth::ExconMiddleware)
-  connection.data[:auth_middleware] = retry_middleware
-  
-  # Use a stub to simulate a 401 response followed by success
-  Excon.stub({}) do |params|
-    if params[:headers] && params[:headers]['X-Should-Fail'] == 'true'
-      # Simulate an authentication failure
-      {
-        status: 401,
-        body: '{"error": "Unauthorized"}'
-      }
-    else
-      # Simulate success
-      {
-        status: 200,
-        body: '{"status": "success"}'
-      }
-    end
+  connection.data[:middlewares] = connection.data[:middlewares].dup
+  unless connection.data[:middlewares].include?(ADK::Auth::ExconMiddleware)
+    connection.data[:middlewares] << ADK::Auth::ExconMiddleware
   end
+  connection.data[:auth_middleware] = retry_middleware
   
   # Make a request that will fail and then retry automatically
   puts "Making request that will fail authentication and automatically retry:"
   response = connection.request(method: :get, path: '/anything')
   
-  puts "Final response status: #{response[:status]}"
-  puts "Response body: #{response[:body]}"
+  response_data = JSON.parse(response.body)
+  puts "Final response status: #{response.status}"
+  puts "Response contains X-Auth-Success header: #{!response_data['headers']['X-Auth-Success'].nil?}"
   
   # Clean up stubs
   Excon.stubs.clear

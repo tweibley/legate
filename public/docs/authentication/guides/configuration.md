@@ -281,12 +281,11 @@ connection = Adk::Auth.create_connection(
 6. **Token Lifecycle**: Configure appropriate token refresh thresholds
 7. **Error Handling**: Implement proper error handling for authentication failures
 
-## Related Resources
-
-- [API Key Authentication](./api_key.md)
-- [HTTP Bearer Authentication](./bearer.md)
-- [OAuth2 Authentication](./oauth2.md)
-- [OpenID Connect](./oidc.md)
-- [Service Account Authentication](./service_account.md)
-- [Token Lifecycle Management](./token_lifecycle.md)
-- [Secure Credential Storage](./secure_storage.md) 
+## Related Topics
+- [API Key Authentication](./api_key)
+- [HTTP Bearer Authentication](./bearer)
+- [OAuth2 Authentication](./oauth2)
+- [OpenID Connect](./oidc)
+- [Service Account Authentication](./service_account)
+- [Token Lifecycle Management](./token_lifecycle)
+- [Secure Credential Storage](./secure_storage) 

@@ -322,11 +322,10 @@ Use this checklist to ensure you're following security best practices:
 - [ ] Implement proper logging for authentication events (but don't log sensitive data)
 - [ ] Keep the ADK Ruby library updated to get security fixes
 
-## Related Resources
-
-- [Authentication Configuration](./configuration.md)
-- [Token Lifecycle Management](./token_lifecycle.md)
-- [OAuth2 Authentication](./oauth2.md)
-- [Service Account Authentication](./service_account.md)
-- [`Adk::Auth::TokenStore` API Reference](../api_reference/token_store.md)
-- [`Adk::Auth::Encryption` API Reference](../api_reference/encryption.md) 
+## Related Topics
+- [Authentication Configuration](./configuration)
+- [Token Lifecycle Management](./token_lifecycle)
+- [OAuth2 Authentication](./oauth2)
+- [Service Account Authentication](./service_account)
+- [`Adk::Auth::TokenStore` API Reference](../api_reference/token_store)
+- [`Adk::Auth::Encryption` API Reference](../api_reference/encryption) 

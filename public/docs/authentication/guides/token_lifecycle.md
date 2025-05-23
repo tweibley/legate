@@ -281,6 +281,11 @@ If tokens aren't being properly stored:
 
 ## Next Steps
 
-- [OAuth2 Authentication](./oauth2.md): Learn more about OAuth2 authentication flows
-- [Service Account Authentication](./service_account.md): Use service accounts for server-to-server authentication
-- [Secure Credential Storage](./secure_storage.md): Best practices for credential security 
+- [OAuth2 Authentication](./oauth2) - Learn more about OAuth2 authentication flows
+- [Service Account Authentication](./service_account) - Use service accounts for server-to-server authentication
+- [Secure Credential Storage](./secure_storage) - Best practices for credential security
+
+## Related Topics
+- [OAuth2 Authentication](./oauth2) - Learn more about OAuth2 authentication flows
+- [Service Account Authentication](./service_account) - Use service accounts for server-to-server authentication
+- [Secure Credential Storage](./secure_storage) - Best practices for credential security 

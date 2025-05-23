@@ -531,10 +531,9 @@ end
 6. **Token Management**: Implement proper token lifecycle management (expiration, refresh)
 7. **Follow Standards**: When possible, follow existing standards and conventions
 
-## Related Resources
-
-- [Authentication Configuration](./configuration.md)
-- [Token Lifecycle Management](./token_lifecycle.md)
-- [Secure Credential Storage](./secure_storage.md)
-- [`Adk::Auth::Scheme` API Reference](../api_reference/scheme.md)
-- [`Adk::ToolContext` Authentication Extensions](../api_reference/tool_context_extension.md) 
+## Related Topics
+- [Authentication Configuration](./configuration)
+- [Token Lifecycle Management](./token_lifecycle)
+- [Secure Credential Storage](./secure_storage)
+- [`Adk::Auth::Scheme` API Reference](../api_reference/scheme)
+- [`Adk::ToolContext` Authentication Extensions](../api_reference/tool_context_extension) 

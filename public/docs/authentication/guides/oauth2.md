@@ -249,7 +249,13 @@ If you encounter issues with OAuth2 authentication:
 - Check that all URLs and credentials are correct
 - Verify that redirect URIs exactly match those registered with the provider
 - Ensure scopes are properly formatted and allowed by the provider
-- See the [OAuth2 Troubleshooting Guide](../troubleshooting/oauth2_issues.md) for detailed solutions
+- See the [OAuth2 Troubleshooting Guide](../troubleshooting/oauth2_issues) for detailed solutions
+
+## Related Topics
+
+- [OpenID Connect](./oidc) - Learn about OpenID Connect, an identity layer built on top of OAuth2
+- [Token Lifecycle Management](./token_lifecycle) - Advanced token management techniques
+- [Secure Credential Storage](./secure_storage) - Best practices for credential security
 
 ## Next Steps
 

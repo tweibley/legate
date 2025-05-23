@@ -32,7 +32,7 @@ RSpec.describe ADK::Auth::Manager do
   describe '#initialize' do
     it 'registers default built-in schemes' do
       expect(manager.get_scheme(:api_key)).to be_a(ADK::Auth::Schemes::ApiKey)
-      expect(manager.get_scheme(:http_bearer)).to be_a(ADK::Auth::Schemes::HttpBearer)
+      expect(manager.get_scheme(:http_bearer)).to be_a(ADK::Auth::Schemes::HTTPBearer)
       expect(manager.get_scheme(:oauth2)).to be_a(ADK::Auth::Schemes::OAuth2)
       expect(manager.get_scheme(:oidc)).to be_a(ADK::Auth::Schemes::OIDC)
       expect(manager.get_scheme(:service_account)).to be_a(ADK::Auth::Schemes::ServiceAccount)

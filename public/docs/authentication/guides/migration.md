@@ -483,11 +483,10 @@ token_manager = Adk::Auth::TokenManager.new(
 )
 ```
 
-## Related Resources
-
-- [Authentication Configuration](./configuration.md)
-- [Token Lifecycle Management](./token_lifecycle.md)
-- [Secure Credential Storage](./secure_storage.md)
-- [OAuth2 Authentication](./oauth2.md)
-- [OpenID Connect](./oidc.md)
-- [Service Account Authentication](./service_account.md) 
+## Related Topics
+- [Authentication Configuration](./configuration)
+- [Token Lifecycle Management](./token_lifecycle)
+- [Secure Credential Storage](./secure_storage)
+- [OAuth2 Authentication](./oauth2)
+- [OpenID Connect](./oidc)
+- [Service Account Authentication](./service_account) 

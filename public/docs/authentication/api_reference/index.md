@@ -4,16 +4,16 @@ This section provides comprehensive documentation for all authentication-related
 
 ## Core Classes
 
-- [Adk::Auth::Scheme](./scheme.md) - Abstract base class for authentication schemes
-- [Adk::Auth::Credential](./credential.md) - Container for authentication credentials
-- [Adk::Auth::Config](./config.md) - Configuration for authentication flows
-- [Adk::Auth::ExchangedCredential](./exchanged_credential.md) - Container for exchanged credentials
+- [Adk::Auth::Scheme](./scheme) - Abstract base class for authentication schemes
+- [Adk::Auth::Credential](./credential) - Container for authentication credentials
+- [Adk::Auth::Config](./config) - Configuration for authentication flows
+- [Adk::Auth::ExchangedCredential](./exchanged_credential) - Container for exchanged credentials
 
 ## Authentication Schemes
 
-- [Adk::Auth::Schemes::APIKey](./schemes/api_key.md) - API Key authentication scheme
-- [Adk::Auth::Schemes::HTTPBearer](./schemes/http_bearer.md) - HTTP Bearer authentication scheme
-- [Adk::Auth::Schemes::OAuth2](./schemes/oauth2.md) - OAuth2 authentication scheme
+- [Adk::Auth::Schemes::APIKey](./schemes/api_key) - API Key authentication scheme
+- [Adk::Auth::Schemes::HTTPBearer](./schemes/http_bearer) - HTTP Bearer authentication scheme
+- [Adk::Auth::Schemes::OAuth2](./schemes/oauth2) - OAuth2 authentication scheme
 - [Adk::Auth::Schemes::OpenIDConnect](./schemes/openid_connect.md) - OpenID Connect authentication scheme
 - [Adk::Auth::Schemes::ServiceAccount](./schemes/service_account.md) - Service Account authentication scheme
 - [Adk::Auth::Schemes::GoogleServiceAccount](./schemes/google_service_account.md) - Google Service Account authentication scheme

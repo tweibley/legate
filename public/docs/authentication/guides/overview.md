@@ -159,7 +159,7 @@ The ADK Ruby library implements several security measures:
 
 ## Next Steps
 
-- [Authentication Configuration](./configuration.md): How to configure authentication for different scenarios
-- [API Key Authentication](./api_key.md): Detailed guide for API key authentication
-- [OAuth2 Authentication](./oauth2.md): Complete guide for implementing OAuth2 flows
-- [Token Lifecycle Management](./token_lifecycle.md): Managing token expiration and refresh 
+- [Authentication Configuration](./configuration) - How to configure authentication for different scenarios
+- [API Key Authentication](./api_key) - Detailed guide for API key authentication
+- [OAuth2 Authentication](./oauth2) - Complete guide for implementing OAuth2 flows
+- [Token Lifecycle Management](./token_lifecycle) - Managing token expiration and refresh 

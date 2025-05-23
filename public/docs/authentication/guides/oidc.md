@@ -241,7 +241,13 @@ If you encounter issues with OpenID Connect authentication:
 - Ensure 'openid' is included in the requested scopes
 - Verify that your client is properly registered with the identity provider
 - Check that redirect URIs exactly match those registered with the provider
-- See the [OpenID Connect Troubleshooting Guide](../troubleshooting/oidc_issues.md) for detailed solutions
+- See the [OpenID Connect Troubleshooting Guide](../troubleshooting/oidc_issues) for detailed solutions
+
+## Related Topics
+
+- [OAuth2 Authentication](./oauth2) - Learn more about the underlying OAuth2 protocol
+- [Service Account Authentication](./service_account) - Use service accounts for server-to-server authentication
+- [Token Lifecycle Management](./token_lifecycle) - Advanced token management techniques
 
 ## Next Steps
 

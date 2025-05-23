@@ -91,7 +91,7 @@ module ADK
         # @return [ADK::Auth::ExconMiddleware] The configured middleware
         def create_bearer(token:, **options)
           # Create the scheme
-          scheme = ADK::Auth::Schemes::HttpBearer.new
+          scheme = ADK::Auth::Schemes::HTTPBearer.new
           
           # Create the credential
           credential = ADK::Auth::Credential.new(

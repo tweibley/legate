@@ -8,11 +8,11 @@ require 'adk/auth/schemes/http_bearer'
 require 'adk/auth/credential'
 require 'adk/auth/exchanged_credential'
 
-RSpec.describe ADK::Auth::Schemes::HttpBearer do
+RSpec.describe ADK::Auth::Schemes::HTTPBearer do
   describe '#initialize' do
     it 'creates a new HTTP Bearer scheme' do
       scheme = described_class.new
-      expect(scheme).to be_a(ADK::Auth::Schemes::HttpBearer)
+      expect(scheme).to be_a(ADK::Auth::Schemes::HTTPBearer)
     end
   end
   
