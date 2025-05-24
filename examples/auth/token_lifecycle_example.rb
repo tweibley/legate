@@ -22,6 +22,20 @@ require 'optparse'
 require 'json'
 require 'time'
 
+# Helper method to get auth-related keys from the session service
+def get_auth_keys(session_service)
+  if session_service.respond_to?(:scoped_states)
+    # For InMemory session service, check the scoped_states directly
+    auth_keys = session_service.scoped_states.keys.select { |key| key.start_with?('auth:') }
+    auth_keys
+  elsif session_service.respond_to?(:keys)
+    # For Redis-based session service
+    session_service.keys('auth:*')
+  else
+    []
+  end
+end
+
 # Parse command line options
 options = {
   scheme: 'oauth2',
@@ -60,7 +74,7 @@ session_service = ADK::SessionService::InMemory.new
 puts "✓ Session service initialized"
 
 # Create token store for persistent token management
-token_store = ADK::Auth::TokenStore.new(session_service: session_service)
+token_store = ADK::Auth::TokenStore.new(session_service)
 puts "✓ Token store created"
 
 # Create token manager for automatic lifecycle management
@@ -115,6 +129,9 @@ def create_auth_components(scheme_type, demo_mode: false)
     [scheme, credential]
     
   when 'service_account'
+    # Set test environment for demo mode to skip full validation
+    ENV['RSPEC_ENV'] = 'test' if demo_mode
+    
     scheme = ADK::Auth::Schemes::GoogleServiceAccount.new(
       scopes: ['https://www.googleapis.com/auth/cloud-platform']
     )
@@ -134,7 +151,8 @@ def create_auth_components(scheme_type, demo_mode: false)
       
       credential = ADK::Auth::Credential.new(
         auth_type: :google_service_account,
-        service_account_key: demo_key.to_json
+        service_account_key: demo_key.to_json,
+        client_email: demo_key['client_email']
       )
     else
       credential = ADK::Auth::Credential.new(
@@ -203,7 +221,7 @@ if options[:demo_mode]
 else
   # In real mode, attempt to get a token through the token manager
   puts "Attempting to acquire token through token manager..."
-  current_token = token_manager.get_token(token_key, scheme, credential)
+  current_token = token_manager.get_token(scheme, credential)
   
   if current_token
     puts "✓ Token acquired successfully"
@@ -305,7 +323,7 @@ if options[:demo_mode] && current_expires_in > 0 && current_expires_in < 60
     
     # Demonstrate automatic refresh on next access
     puts "Attempting to get token (should trigger refresh if expired)..."
-    fresh_token = token_manager.get_token(token_key, scheme, credential, force_refresh: current_token.expired?)
+    fresh_token = token_manager.get_token(scheme, credential, force_refresh: current_token.expired?)
     
     if fresh_token && fresh_token.access_token != current_token.access_token
       puts "✓ Automatic refresh triggered on expired token access"
@@ -326,7 +344,7 @@ if options[:demo_mode]
   token_store.store(token_key, new_demo_token)
   puts "✓ Demo token force refreshed"
 else
-  force_refreshed = token_manager.get_token(token_key, scheme, credential, force_refresh: true)
+  force_refreshed = token_manager.get_token(scheme, credential, force_refresh: true)
   if force_refreshed
     puts "✓ Token force refreshed"
   else
@@ -336,7 +354,7 @@ end
 
 # Check for multiple tokens
 puts "\nChecking all stored tokens..."
-all_tokens = token_store.session_service.scan_keys("auth:*")
+all_tokens = get_auth_keys(session_service)
 puts "Found #{all_tokens.length} authentication-related keys in storage:"
 all_tokens.each { |key| puts "  - #{key}" }
 
@@ -345,7 +363,10 @@ puts "\n7. Token Invalidation"
 puts "─" * 40
 
 puts "Invalidating token..."
-token_manager.invalidate_token(token_key)
+# Generate the proper cache key for the token manager
+require_relative '../../lib/adk/auth/tool_integration'
+cache_key = ADK::Auth::ToolIntegration.generate_cache_key(scheme, credential)
+token_manager.invalidate_token(cache_key)
 
 # Verify invalidation
 invalidated_token = token_store.get(token_key)
@@ -360,7 +381,7 @@ puts "\n8. Error Handling"
 puts "─" * 40
 
 puts "Attempting to get invalidated token..."
-result = token_manager.get_token(token_key, scheme, credential)
+result = token_manager.get_token(scheme, credential)
 if result.nil?
   puts "✓ Correctly returned nil for invalidated token"
 else
@@ -388,7 +409,7 @@ puts "─" * 40
 
 puts "Clearing all tokens..."
 token_store.clear_all
-remaining_tokens = token_store.session_service.scan_keys("auth:*")
+remaining_tokens = get_auth_keys(session_service)
 puts "Remaining auth tokens after cleanup: #{remaining_tokens.length}"
 
 if remaining_tokens.empty?
