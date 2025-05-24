@@ -93,6 +93,37 @@ module ADK
         @credentials[name.to_sym]
       end
 
+      # Find a scheme by type without requiring credentials
+      # @param scheme_type [Symbol, String] The scheme type to find
+      # @return [ADK::Auth::Scheme, nil] The scheme or nil if not found
+      def find_scheme(scheme_type)
+        scheme_sym = scheme_type.to_sym
+        
+        # Try to find by exact scheme_type match first
+        scheme = @schemes.values.find { |s| s.scheme_type == scheme_sym }
+        
+        # If not found by scheme_type, try to find by registration name
+        # This handles cases like :oidc -> OpenIDConnect where scheme_type is :openid_connect
+        scheme ||= @schemes[scheme_sym]
+        
+        # Special mappings for backward compatibility and aliases
+        if scheme.nil?
+          scheme_mappings = {
+            oidc: :openid_connect,
+            openid_connect: :oidc
+          }
+          
+          # Try the mapped scheme type
+          mapped_type = scheme_mappings[scheme_sym]
+          if mapped_type
+            scheme = @schemes.values.find { |s| s.scheme_type == mapped_type } ||
+                     @schemes[mapped_type]
+          end
+        end
+        
+        scheme
+      end
+
       # Find the appropriate scheme and credential for a URL
       # @param url [String] The URL to find a scheme and credential for
       # @param scheme_type [Symbol, nil] Optional scheme type to filter by
@@ -144,7 +175,30 @@ module ADK
         
         # Case 3: Just trying to find by scheme_type with any credential
         if scheme_type
-          scheme = @schemes.values.find { |s| s.scheme_type == scheme_type.to_sym }
+          scheme_sym = scheme_type.to_sym
+          
+          # Try to find by exact scheme_type match first
+          scheme = @schemes.values.find { |s| s.scheme_type == scheme_sym }
+          
+          # If not found by scheme_type, try to find by registration name
+          # This handles cases like :oidc -> OpenIDConnect where scheme_type is :openid_connect
+          scheme ||= @schemes[scheme_sym]
+          
+          # Special mappings for backward compatibility and aliases
+          if scheme.nil?
+            scheme_mappings = {
+              oidc: :openid_connect,
+              openid_connect: :oidc
+            }
+            
+            # Try the mapped scheme type
+            mapped_type = scheme_mappings[scheme_sym]
+            if mapped_type
+              scheme = @schemes.values.find { |s| s.scheme_type == mapped_type } ||
+                       @schemes[mapped_type]
+            end
+          end
+          
           return nil unless scheme
           
           # Find any compatible credential
@@ -206,7 +260,9 @@ module ADK
       # @param scheme [ADK::Auth::Scheme] The scheme
       # @return [Boolean] True if compatible
       def credential_compatible_with_scheme?(credential, scheme)
-        case scheme.scheme_type
+        scheme_type = scheme.scheme_type
+        
+        case scheme_type
         when :api_key
           credential[:api_key, resolve_env: false]
         when :http_bearer
