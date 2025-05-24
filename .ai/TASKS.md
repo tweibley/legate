@@ -69,3 +69,35 @@
 - [ ] **ID 15: Authentication Web UI Integration** (Priority: medium)
 > Dependencies: 5, 6, 7, 9, 10
 > Enhance the ADK Web UI to provide seamless integration with the authentication system, including visual flows for OAuth and OIDC.
+
+- [ ] **ID 16: Fix Orphaned OIDC Scheme Integration** (Priority: critical)
+> Dependencies: 4, 5, 6
+> Integrate the orphaned OIDC authentication scheme into the main schemes loader and ensure all references work consistently.
+
+- [ ] **ID 17: Resolve Bearer Token Implementation Duplication** (Priority: high)
+> Dependencies: 4
+> Choose a canonical Bearer token implementation, remove duplicates, and ensure consistent interfaces across the authentication system.
+
+- [ ] **ID 18: Fix Service Account Scheme Loading** (Priority: high)
+> Dependencies: 7
+> Properly integrate both ServiceAccount and GoogleServiceAccount schemes into the main schemes loader to make them available through the standard factory.
+
+- [ ] **ID 19: Standardize HTTPBearer Naming** (Priority: medium)
+> Dependencies: 17
+> Standardize all references to use consistent class names (HTTPBearer vs HttpBearer) across the codebase.
+
+- [ ] **ID 20: Ensure Credential Type Consistency** (Priority: high)
+> Dependencies: 16, 17, 18
+> Align credential auth_types with actually available schemes and fix any mismatches between credential types and scheme availability.
+
+- [ ] **ID 21: Complete Test Coverage for All Schemes** (Priority: high)
+> Dependencies: 16, 17, 18
+> Add comprehensive tests for all authentication schemes that should be available and remove tests for deprecated schemes.
+
+- [ ] **ID 22: Update Documentation and Examples** (Priority: medium)
+> Dependencies: 16, 17, 18, 19, 20
+> Update all documentation and examples to reference only canonical, working authentication schemes with consistent naming.
+
+- [ ] **ID 23: Validate Authentication Manager Integration** (Priority: medium)
+> Dependencies: 16, 17, 18, 20
+> Ensure the authentication manager properly registers and provides access to all supported schemes without referencing orphaned implementations.
