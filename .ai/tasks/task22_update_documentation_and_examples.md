@@ -1,7 +1,7 @@
 ---
 id: 22
 title: 'Update Documentation and Examples'
-status: inprogress
+status: completed
 priority: medium
 feature: Authentication Scheme Cleanup
 dependencies:
@@ -13,7 +13,7 @@ dependencies:
 assigned_agent: claude
 created_at: "2025-05-24T02:04:53Z"
 started_at: "2025-05-24T03:23:03Z"
-completed_at: null
+completed_at: "2025-05-24T03:29:46Z"
 error_log: null
 ---
 
@@ -77,4 +77,77 @@ Update all documentation and examples to reference only canonical, working authe
 3. Check remaining documentation files for similar issues
 4. Verify examples directory for any deprecated references
 5. Update any guides that might reference wrong class names
-6. Ensure all credential `auth_type` examples use correct values 
+6. Ensure all credential `auth_type` examples use correct values
+
+### Phase 3: Implementation (Completed)
+
+**Major Fixes Applied:**
+
+1. **✅ OIDC Documentation Corrected**: 
+   - Updated `public/docs/authentication/api_reference/schemes/oidc.md`
+   - Changed title from `Adk::Auth::Schemes::Oidc` to `Adk::Auth::Schemes::OpenIDConnect (OIDC)`
+   - Added backward compatibility note about OIDC alias
+   - Updated all class references from `Oidc` to `OpenIDConnect`
+   - Fixed method name from `.type` to `.scheme_type`
+   - Updated return value from `:oidc` to `:openid_connect`
+
+2. **✅ OIDC Examples Fixed**:
+   - Updated `examples/auth/oidc_auth.rb`
+   - Changed require from `'adk/auth/schemes/oidc'` to `'adk/auth/schemes/openid_connect'`
+   - Updated all class references from `ADK::Auth::Schemes::OIDC` to `ADK::Auth::Schemes::OpenIDConnect`
+   - Updated `examples/auth/fiber_oidc_example.rb` with same fixes
+
+3. **✅ Migration Guide Corrections**:
+   - Fixed class name from `Adk::Auth::Schemes::APIKey` to `Adk::Auth::Schemes::ApiKey`
+   - Maintained HTTPBearer naming consistency (was already correct)
+
+4. **✅ Cross-Reference Updates**:
+   - Updated OpenIDConnect documentation to reference correct OIDC class name
+   - Ensured consistent naming across all documentation
+
+### Phase 4: Validation (Completed)
+
+**Created Comprehensive Test Suite:**
+- Created `test_documentation_examples.rb` to validate all documentation examples
+- Tested 9 different example patterns from documentation
+- All examples now work correctly with canonical scheme names
+- 100% success rate on documentation example validation
+
+**Test Results:**
+- ✅ API Key Migration Example: Fixed and working
+- ✅ HTTP Bearer Guide Example: Working
+- ✅ OAuth2 Migration Example: Working  
+- ✅ OIDC Documentation Example: Fixed and working
+- ✅ Service Account Example: Working
+- ✅ Google Service Account Example: Working
+- ✅ Scheme Type Consistency: Fixed and working
+- ✅ Manager Integration: Working
+- ✅ Factory Creation Consistency: Working
+
+### Completion Summary
+
+✅ **Task Completed Successfully**
+
+**Key Achievements:**
+1. **Documentation Accuracy**: All documentation now references correct, canonical class names
+2. **Example Functionality**: All authentication examples work without modification
+3. **Naming Consistency**: Consistent use of `OpenIDConnect` (not `Oidc`) throughout
+4. **Backward Compatibility**: Clear documentation of aliases and compatibility
+5. **Class Name Corrections**: Fixed `APIKey` vs `ApiKey` inconsistencies
+6. **Comprehensive Validation**: Created test suite proving all examples work
+
+**Files Updated:**
+- `public/docs/authentication/api_reference/schemes/oidc.md` - Major corrections
+- `public/docs/authentication/api_reference/schemes/openid_connect.md` - Cross-reference update
+- `public/docs/authentication/guides/migration.md` - Class name fixes
+- `examples/auth/oidc_auth.rb` - Class reference updates
+- `examples/auth/fiber_oidc_example.rb` - Class reference updates
+
+**Technical Notes:**
+- OIDC and OpenIDConnect both map to the same `ADK::Auth::Schemes::OpenIDConnect` class
+- ApiKey scheme takes no constructor parameters (configuration comes from credential)
+- All scheme types return correct values from `.scheme_type` method
+- Manager and factory integration working perfectly for all schemes
+
+**Result:**
+Documentation and examples now accurately reflect the current authentication implementation with canonical naming and fully functional code examples. Users will no longer encounter class reference errors when following the documentation. 

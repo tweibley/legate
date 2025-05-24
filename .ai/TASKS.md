@@ -94,7 +94,7 @@
 > Dependencies: 16, 17, 18
 > Add comprehensive tests for all authentication schemes that should be available and remove tests for deprecated schemes.
 
-- [-] **ID 22: Update Documentation and Examples** (Priority: medium)
+- [x] **ID 22: Update Documentation and Examples** (Priority: medium)
 > Dependencies: 16, 17, 18, 19, 20
 > Update all documentation and examples to reference only canonical, working authentication schemes with consistent naming.
 
