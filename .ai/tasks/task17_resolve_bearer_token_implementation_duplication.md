@@ -19,21 +19,30 @@ Choose a canonical Bearer token implementation, remove duplicates, and ensure co
 
 ## Details
 
-- There are currently two separate Bearer token implementations:
-  - `Bearer` (in bearer.rb) - scheme_type is `:bearer`, stores token as `bearer_token` in ExchangedCredential
-  - `HTTPBearer` (in http_bearer.rb) - scheme_type is `:http_bearer`, stores token as `access_token` in ExchangedCredential
-- The `http_bearer.rb` file requires `bearer.rb` but doesn't use it, indicating duplication
-- The main `schemes.rb` only loads `HTTPBearer`, making `Bearer` orphaned
-- Different interfaces for essentially the same functionality create confusion
-- Need to choose one implementation and deprecate the other
-- Ensure consistent token storage field names across the chosen implementation
-- Remove the orphaned implementation and any unused code
-- Update any references to use the canonical implementation
+Based on git history analysis, the duplication occurred as follows:
+- `HTTPBearer` was created first in the core authentication infrastructure
+- `Bearer` was created later as an improved copy to fix bugs with request handling
+- `Bearer` includes important fixes: deep copying requests, better Excon stack handling
+- However, `Bearer` was never integrated into the main schemes loader, making it orphaned
+
+**Current state:**
+- `HTTPBearer` (in http_bearer.rb) - scheme_type `:http_bearer`, stores as `access_token`, widely used but has bugs
+- `Bearer` (in bearer.rb) - scheme_type `:bearer`, stores as `bearer_token`, has bug fixes but orphaned
+- Main `schemes.rb` only loads `HTTPBearer`, making `Bearer` unreachable
+- `http_bearer.rb` requires `bearer.rb` but doesn't use it
+
+**Resolution strategy:**
+- Merge the bug fixes from `Bearer` into `HTTPBearer` 
+- Keep `HTTPBearer` as the canonical implementation (widely used, properly loaded)
+- Remove the orphaned `Bearer` class and file
+- Ensure consistent token storage and interfaces
+- Update any references to use the improved `HTTPBearer`
 
 ## Test Strategy
 
-- Verify that Bearer token authentication works consistently through the chosen implementation
-- Ensure all Bearer token tests pass with the canonical implementation
-- Confirm that no "class not found" errors occur for documented Bearer token usage
-- Test that Bearer tokens are stored consistently in ExchangedCredentials
-- Verify that Bearer token middleware works correctly with the chosen implementation 
+- Verify that the improved `HTTPBearer` implementation handles request copying correctly
+- Ensure all existing HTTP Bearer token tests continue to pass
+- Test that the bug fixes from `Bearer` are properly integrated (deep copying, Excon stack handling)
+- Confirm that Bearer tokens work correctly with middleware and don't modify original requests
+- Verify that `HTTPBearer` maintains backward compatibility with existing usage patterns
+- Test that removing the orphaned `Bearer` class doesn't break any existing functionality 
