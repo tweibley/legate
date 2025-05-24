@@ -5,6 +5,8 @@ require_relative 'schemes/api_key'
 require_relative 'schemes/http_bearer'
 require_relative 'schemes/oauth2'
 require_relative 'schemes/openid_connect'
+require_relative 'schemes/service_account'
+require_relative 'schemes/google_service_account'
 
 module ADK
   module Auth
@@ -25,6 +27,10 @@ module ADK
           OAuth2.new(**options)
         when :oidc, :openid_connect
           OpenIDConnect.new(**options)
+        when :service_account
+          ServiceAccount.new(**options)
+        when :google_service_account
+          GoogleServiceAccount.new(**options)
         else
           raise ADK::Auth::ConfigurationError, "Unknown scheme type: #{type}"
         end

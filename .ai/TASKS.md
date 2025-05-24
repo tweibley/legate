@@ -78,7 +78,7 @@
 > Dependencies: 4
 > Choose a canonical Bearer token implementation, remove duplicates, and ensure consistent interfaces across the authentication system.
 
-- [ ] **ID 18: Fix Service Account Scheme Loading** (Priority: high)
+- [x] **ID 18: Fix Service Account Scheme Loading** (Priority: high)
 > Dependencies: 7
 > Properly integrate both ServiceAccount and GoogleServiceAccount schemes into the main schemes loader to make them available through the standard factory.
 
