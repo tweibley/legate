@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative '../coordinator'
-require_relative '../schemes/oidc'
+require_relative '../schemes/openid_connect'
 require_relative 'oauth2_coordinator'
 
 module ADK
@@ -11,7 +11,7 @@ module ADK
       # It extends the OAuth2Coordinator with OIDC-specific functionality.
       class OIDCCoordinator < OAuth2Coordinator
         # Initialize a new OIDC coordinator
-        # @param scheme [ADK::Auth::Schemes::OIDC] The OIDC scheme
+        # @param scheme [ADK::Auth::Schemes::OpenIDConnect] The OIDC scheme
         # @param credential [ADK::Auth::Credential] The credential with client information
         # @param session_service [ADK::SessionService::Base] The session service
         # @param token_store [ADK::Auth::TokenStore, nil] Optional token store

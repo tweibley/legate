@@ -70,7 +70,7 @@
 > Dependencies: 5, 6, 7, 9, 10
 > Enhance the ADK Web UI to provide seamless integration with the authentication system, including visual flows for OAuth and OIDC.
 
-- [ ] **ID 16: Fix Orphaned OIDC Scheme Integration** (Priority: critical)
+- [x] **ID 16: Fix Orphaned OIDC Scheme Integration** (Priority: critical)
 > Dependencies: 4, 5, 6
 > Integrate the orphaned OIDC authentication scheme into the main schemes loader and ensure all references work consistently.
 

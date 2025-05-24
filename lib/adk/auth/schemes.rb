@@ -23,7 +23,7 @@ module ADK
           HTTPBearer.new(**options)
         when :oauth2
           OAuth2.new(**options)
-        when :openid_connect
+        when :oidc, :openid_connect
           OpenIDConnect.new(**options)
         else
           raise ADK::Auth::ConfigurationError, "Unknown scheme type: #{type}"

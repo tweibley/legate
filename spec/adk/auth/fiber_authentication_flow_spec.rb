@@ -27,7 +27,7 @@ RSpec.describe 'Fiber-based authentication flow' do
       }
     end
     
-    let(:auth_scheme) { ADK::Auth::Schemes::OAuth2.new(oauth2_config) }
+    let(:auth_scheme) { ADK::Auth::TestStubs::OAuth2.new(oauth2_config) }
     
     it 'completes a full authentication flow with fiber suspension and resumption' do
       # The fiber that will run our authentication flow

@@ -7,7 +7,7 @@ require_relative 'credential'
 require_relative 'schemes/api_key'
 require_relative 'schemes/http_bearer'
 require_relative 'schemes/oauth2'
-require_relative 'schemes/oidc'
+require_relative 'schemes/openid_connect'
 require_relative 'schemes/service_account'
 
 module ADK
@@ -169,10 +169,9 @@ module ADK
         )
         register_scheme(oauth2, :oauth2)
         
-        oidc = ADK::Auth::Schemes::OIDC.new(
+        oidc = ADK::Auth::Schemes::OpenIDConnect.new(
           authorization_url: 'https://example.com/oidc/authorize',
-          token_url: 'https://example.com/oidc/token',
-          discovery_url: 'https://example.com/.well-known/openid-configuration'
+          token_url: 'https://example.com/oidc/token'
         )
         register_scheme(oidc, :oidc)
         

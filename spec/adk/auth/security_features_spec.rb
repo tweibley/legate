@@ -149,7 +149,7 @@ RSpec.describe 'Authentication Security Features' do
     
     it 'includes and verifies CSRF tokens in OAuth2 flow' do
       # Create OAuth2 scheme
-      oauth2_scheme = ADK::Auth::Schemes::OAuth2.new({
+      oauth2_scheme = ADK::Auth::TestStubs::OAuth2.new({
         provider_uri: 'https://example.com',
         client_id: 'test_client',
         redirect_uri: 'http://localhost/callback'

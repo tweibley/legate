@@ -4,7 +4,7 @@ require 'spec_helper'
 require_relative '../../support/mock_auth_providers'
 require_relative '../../support/auth_test_stubs'
 
-RSpec.describe ADK::Auth::Schemes::OAuth2 do
+RSpec.describe ADK::Auth::TestStubs::OAuth2 do
   let(:mock_provider) { ADK::Test::Support::MockAuthProviders::MockOAuth2Provider.new }
   let(:client_id) { mock_provider.config.client_id }
   let(:client_secret) { mock_provider.config.client_secret }

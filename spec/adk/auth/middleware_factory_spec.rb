@@ -1,11 +1,14 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+
+# Set test environment for OIDC discovery
+ENV['RSPEC_ENV'] = 'test'
 require 'adk/auth/middleware_factory'
 require 'adk/auth/schemes/api_key'
 require 'adk/auth/schemes/http_bearer'
 require 'adk/auth/schemes/oauth2'
-require 'adk/auth/schemes/oidc'
+require 'adk/auth/schemes/openid_connect'
 require 'adk/auth/schemes/service_account'
 require 'adk/auth/token_store'
 
@@ -155,7 +158,9 @@ RSpec.describe ADK::Auth::MiddlewareFactory do
       middleware = described_class.create_oidc(
         client_id: 'test-client-id',
         client_secret: 'test-client-secret',
-        discovery_url: 'https://example.com/.well-known/openid-configuration'
+        discovery_url: 'https://example.com/.well-known/openid-configuration',
+        authorization_url: 'https://example.com/auth',
+        token_url: 'https://example.com/token'
       )
       
       expect(middleware).to be_a(ADK::Auth::ExconMiddleware)

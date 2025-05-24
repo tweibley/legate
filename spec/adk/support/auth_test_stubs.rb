@@ -98,8 +98,8 @@ module ADK
       end
     end
 
-    # Namespace for authentication schemes
-    module Schemes
+    # Namespace for authentication scheme test stubs
+    module TestStubs
       # API Key authentication scheme stub for testing
       class StubApiKey < Scheme
         attr_reader :name, :location, :param_name
@@ -603,7 +603,7 @@ module ADK
           
           # Initialize the scheme if it's a string
           if @scheme.is_a?(String)
-            @scheme = ADK::Auth::Schemes::OAuth2.new(@config)
+            @scheme = ADK::Auth::TestStubs::OAuth2.new(@config)
           end
           
           # Get authorization URL from the scheme
@@ -644,7 +644,7 @@ module ADK
           
           # Initialize the scheme if it's a string
           if @scheme.is_a?(String)
-            @scheme = ADK::Auth::Schemes::OAuth2.new(@config)
+            @scheme = ADK::Auth::TestStubs::OAuth2.new(@config)
           end
           
           begin

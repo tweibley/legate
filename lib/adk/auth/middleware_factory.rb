@@ -7,7 +7,7 @@ require_relative 'token_manager'
 require_relative 'schemes/api_key'
 require_relative 'schemes/http_bearer'
 require_relative 'schemes/oauth2'
-require_relative 'schemes/oidc'
+require_relative 'schemes/openid_connect'
 require_relative 'schemes/service_account'
 
 module ADK

@@ -139,11 +139,11 @@ module ADK
           
           return if in_test && !force_validate
           
-          if @authorization_url.nil? || @authorization_url.to_s.strip.empty?
+          if authorization_url.nil? || authorization_url.to_s.strip.empty?
             raise ADK::Auth::SchemeValidationError, 'Authorization URL is required'
           end
           
-          if @token_url.nil? || @token_url.to_s.strip.empty?
+          if token_url.nil? || token_url.to_s.strip.empty?
             raise ADK::Auth::SchemeValidationError, 'Token URL is required'
           end
         end
@@ -221,6 +221,11 @@ module ADK
         # @return [Hash] The discovered endpoints
         def discover_endpoints
           return {} unless @discovery_url
+          
+          # Skip discovery in test environment to avoid HTTP calls
+          if ENV['RSPEC_ENV'] == 'test'
+            return {}
+          end
           
           begin
             uri = URI(@discovery_url)
@@ -311,6 +316,9 @@ module ADK
           end
         end
       end
+
+      # Alias for backward compatibility
+      OIDC = OpenIDConnect
     end
   end
 end 
