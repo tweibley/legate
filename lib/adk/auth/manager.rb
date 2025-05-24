@@ -9,6 +9,7 @@ require_relative 'schemes/http_bearer'
 require_relative 'schemes/oauth2'
 require_relative 'schemes/openid_connect'
 require_relative 'schemes/service_account'
+require_relative 'schemes/google_service_account'
 
 module ADK
   module Auth
@@ -183,6 +184,11 @@ module ADK
           token_url: 'https://example.com/token'
         )
         register_scheme(service_account, :service_account)
+        
+        google_service_account = ADK::Auth::Schemes::GoogleServiceAccount.new(
+          scopes: ['https://www.googleapis.com/auth/cloud-platform']
+        )
+        register_scheme(google_service_account, :google_service_account)
       end
 
       # Find a compatible scheme for a credential
@@ -204,13 +210,20 @@ module ADK
         when :api_key
           credential[:api_key, resolve_env: false]
         when :http_bearer
-          credential[:bearer_token, resolve_env: false]
-        when :oauth2, :oidc
+          # Check for bearer token or basic auth credentials
+          credential[:bearer_token, resolve_env: false] ||
+          (credential[:username, resolve_env: false] && credential[:password, resolve_env: false])
+        when :oauth2, :oidc, :openid_connect
           credential[:client_id, resolve_env: false] && 
           credential[:client_secret, resolve_env: false]
-        when :service_account
-          credential[:client_email, resolve_env: false] &&
-          credential[:private_key, resolve_env: false]
+        when :service_account, :google_service_account
+          # For service accounts, check for either service_account_key or individual fields
+          credential[:service_account_key, resolve_env: false] ||
+          (credential[:client_email, resolve_env: false] &&
+           credential[:private_key, resolve_env: false])
+        when :basic
+          credential[:username, resolve_env: false] &&
+          credential[:password, resolve_env: false]
         else
           false
         end
