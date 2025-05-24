@@ -1,6 +1,8 @@
-# Adk::Auth::Schemes::Oidc
+# Adk::Auth::Schemes::OpenIDConnect (OIDC)
 
-The `Oidc` class implements the OpenID Connect (OIDC) authentication scheme, which provides a layer of identity verification on top of OAuth 2.0 protocols. It handles the secure authentication and authorization flow between your application and OIDC providers.
+The `OpenIDConnect` class implements the OpenID Connect (OIDC) authentication scheme, which provides a layer of identity verification on top of OAuth 2.0 protocols. It handles the secure authentication and authorization flow between your application and OIDC providers.
+
+> **Note**: This class is also available via the `OIDC` alias for backward compatibility. Both `:oidc` and `:openid_connect` scheme types map to this same `OpenIDConnect` class.
 
 ## Overview
 
@@ -25,7 +27,7 @@ Creates a new OpenID Connect authentication scheme.
 
 ```ruby
 # Create a basic OIDC scheme with discovery
-scheme = Adk::Auth::Schemes::Oidc.new(
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(
   issuer: 'https://accounts.google.com',
   client_id: 'ENV:OIDC_CLIENT_ID',
   client_secret: 'ENV:OIDC_CLIENT_SECRET',
@@ -33,7 +35,7 @@ scheme = Adk::Auth::Schemes::Oidc.new(
 )
 
 # With custom scopes
-scheme = Adk::Auth::Schemes::Oidc.new(
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(
   issuer: 'https://login.microsoftonline.com/tenant-id/v2.0',
   client_id: 'ENV:OIDC_CLIENT_ID',
   client_secret: 'ENV:OIDC_CLIENT_SECRET',
@@ -44,18 +46,18 @@ scheme = Adk::Auth::Schemes::Oidc.new(
 
 ## Instance Methods
 
-### `type`
+### `scheme_type`
 
 Returns the type of the authentication scheme.
 
 **Returns:**
-- Symbol: `:oidc`
+- Symbol: `:openid_connect`
 
 **Examples:**
 
 ```ruby
-scheme = Adk::Auth::Schemes::Oidc.new(issuer: 'https://accounts.google.com')
-scheme.type  # => :oidc
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(issuer: 'https://accounts.google.com')
+scheme.scheme_type  # => :openid_connect
 ```
 
 ### `validate_credential`
@@ -82,7 +84,7 @@ credential = Adk::Auth::Credential.new(
 )
 
 # Validate the credential
-scheme = Adk::Auth::Schemes::Oidc.new(issuer: 'https://accounts.google.com')
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(issuer: 'https://accounts.google.com')
 scheme.validate_credential(credential)  # => true
 ```
 
@@ -112,7 +114,7 @@ credential = Adk::Auth::Credential.new(
 )
 
 # Generate an authorization URL
-scheme = Adk::Auth::Schemes::Oidc.new(
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(
   issuer: 'https://accounts.google.com',
   redirect_uri: 'http://localhost:3000/auth/callback'
 )
@@ -149,7 +151,7 @@ credential = Adk::Auth::Credential.new(
 )
 
 # Authenticate a request
-scheme = Adk::Auth::Schemes::Oidc.new(issuer: 'https://accounts.google.com')
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(issuer: 'https://accounts.google.com')
 result = scheme.authenticate(credential, headers: {})
 
 # The result contains the updated headers
@@ -181,7 +183,7 @@ credential = Adk::Auth::Credential.new(
 )
 
 # Exchange authorization code for tokens
-scheme = Adk::Auth::Schemes::Oidc.new(
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(
   issuer: 'https://accounts.google.com',
   redirect_uri: 'http://localhost:3000/auth/callback'
 )
@@ -223,7 +225,7 @@ token = Adk::Auth::ExchangedCredential.new(
 )
 
 # Refresh the token
-scheme = Adk::Auth::Schemes::Oidc.new(issuer: 'https://accounts.google.com')
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(issuer: 'https://accounts.google.com')
 refreshed_token = scheme.refresh_token(credential, token)
 
 # The refreshed token has a new access token
@@ -250,7 +252,7 @@ Verifies the ID token from the OIDC provider.
 
 ```ruby
 # Verify an ID token
-scheme = Adk::Auth::Schemes::Oidc.new(
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(
   issuer: 'https://accounts.google.com',
   client_id: 'my-client-id'
 )
@@ -276,7 +278,7 @@ end
 require 'securerandom'
 
 # Step 1: Create the OIDC scheme
-scheme = Adk::Auth::Schemes::Oidc.new(
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(
   issuer: 'https://accounts.google.com',
   redirect_uri: 'http://localhost:3000/auth/callback',
   scopes: ['openid', 'email', 'profile']
@@ -332,7 +334,7 @@ end
 
 ```ruby
 # Create OIDC scheme and credential
-scheme = Adk::Auth::Schemes::Oidc.new(
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(
   issuer: 'https://login.microsoftonline.com/tenant-id/v2.0',
   redirect_uri: 'http://localhost:3000/auth/callback'
 )
@@ -376,7 +378,7 @@ http.use_ssl = true
 request = Net::HTTP::Get.new(uri)
 
 # Authenticate the request
-scheme = Adk::Auth::Schemes::Oidc.new
+scheme = Adk::Auth::Schemes::OpenIDConnect.new
 authenticated = scheme.authenticate(token, headers: {})
 
 # Add authentication header to request
@@ -391,7 +393,7 @@ response = http.request(request)
 ### Google
 
 ```ruby
-scheme = Adk::Auth::Schemes::Oidc.new(
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(
   issuer: 'https://accounts.google.com',
   client_id: 'ENV:GOOGLE_CLIENT_ID',
   client_secret: 'ENV:GOOGLE_CLIENT_SECRET',
@@ -403,7 +405,7 @@ scheme = Adk::Auth::Schemes::Oidc.new(
 ### Microsoft Azure AD
 
 ```ruby
-scheme = Adk::Auth::Schemes::Oidc.new(
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(
   issuer: 'https://login.microsoftonline.com/tenant-id/v2.0',
   client_id: 'ENV:AZURE_CLIENT_ID',
   client_secret: 'ENV:AZURE_CLIENT_SECRET',
@@ -415,7 +417,7 @@ scheme = Adk::Auth::Schemes::Oidc.new(
 ### Auth0
 
 ```ruby
-scheme = Adk::Auth::Schemes::Oidc.new(
+scheme = Adk::Auth::Schemes::OpenIDConnect.new(
   issuer: 'https://your-tenant.auth0.com',
   client_id: 'ENV:AUTH0_CLIENT_ID',
   client_secret: 'ENV:AUTH0_CLIENT_SECRET',

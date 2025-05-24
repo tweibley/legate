@@ -4,7 +4,7 @@ require 'bundler/setup'
 require 'adk'
 require 'adk/auth'
 require 'adk/auth/runner'
-require 'adk/auth/schemes/oidc'
+require 'adk/auth/schemes/openid_connect'
 require 'adk/tool_context'
 require 'adk/web/server'
 require 'launchy'
@@ -150,7 +150,7 @@ class OIDCExampleTool < ADK::Tool::Base
     # Configure based on the selected provider
     case parameters[:provider]&.downcase
     when 'google'
-      ADK::Auth::Schemes::OIDC.new(
+      ADK::Auth::Schemes::OpenIDConnect.new(
         authorization_url: 'https://accounts.google.com/o/oauth2/auth',
         token_url: 'https://oauth2.googleapis.com/token',
         userinfo_url: 'https://openidconnect.googleapis.com/v1/userinfo',
@@ -166,7 +166,7 @@ class OIDCExampleTool < ADK::Tool::Base
       # Your Auth0 domain - replace with your actual domain
       domain = ENV['AUTH0_DOMAIN'] || 'your-domain.auth0.com'
       
-      ADK::Auth::Schemes::OIDC.new(
+      ADK::Auth::Schemes::OpenIDConnect.new(
         authorization_url: "https://#{domain}/authorize",
         token_url: "https://#{domain}/oauth/token",
         userinfo_url: "https://#{domain}/userinfo",
@@ -176,7 +176,7 @@ class OIDCExampleTool < ADK::Tool::Base
       )
     else
       # Default to a generic configuration
-      ADK::Auth::Schemes::OIDC.new(
+      ADK::Auth::Schemes::OpenIDConnect.new(
         authorization_url: 'https://example.com/authorize',
         token_url: 'https://example.com/token',
         userinfo_url: 'https://example.com/userinfo',

@@ -612,7 +612,7 @@ end
 
 ## See Also
 
-- [Adk::Auth::Schemes::Oidc](./oidc.md)
+- [Adk::Auth::Schemes::OpenIDConnect (OIDC)](./oidc.md)
 - [Adk::Auth::Credential](../credential.md)
 - [Adk::Auth::ExchangedCredential](../exchanged_credential.md)
 - [Adk::Auth::Scheme](../scheme.md)

@@ -20,7 +20,7 @@ require 'bundler/setup'
 require 'adk'
 require 'adk/auth'
 require 'adk/auth/runner'
-require 'adk/auth/schemes/oidc'
+require 'adk/auth/schemes/openid_connect'
 require 'adk/tool_context'
 require 'adk/web/server'
 require 'launchy'
@@ -115,7 +115,7 @@ context = ADK::ToolContext.new(session_service: session_service)
 # Create an OIDC scheme based on the selected provider
 oidc_scheme = case options[:provider]&.downcase
 when 'google'
-  ADK::Auth::Schemes::OIDC.new(
+  ADK::Auth::Schemes::OpenIDConnect.new(
     authorization_url: 'https://accounts.google.com/o/oauth2/auth',
     token_url: 'https://oauth2.googleapis.com/token',
     userinfo_url: 'https://openidconnect.googleapis.com/v1/userinfo',
@@ -132,7 +132,7 @@ when 'auth0'
   # Your Auth0 domain - replace with your actual domain
   domain = ENV['AUTH0_DOMAIN'] || 'your-domain.auth0.com'
   
-  ADK::Auth::Schemes::OIDC.new(
+  ADK::Auth::Schemes::OpenIDConnect.new(
     authorization_url: "https://#{domain}/authorize",
     token_url: "https://#{domain}/oauth/token",
     userinfo_url: "https://#{domain}/userinfo",
@@ -144,7 +144,7 @@ when 'auth0'
 else
   puts "Warning: Unsupported provider '#{options[:provider]}'. Using Google as default."
   
-  ADK::Auth::Schemes::OIDC.new(
+  ADK::Auth::Schemes::OpenIDConnect.new(
     authorization_url: 'https://accounts.google.com/o/oauth2/auth',
     token_url: 'https://oauth2.googleapis.com/token',
     userinfo_url: 'https://openidconnect.googleapis.com/v1/userinfo',

@@ -37,7 +37,7 @@ toolset = Adk::Tool::OpenAPIToolset.new(
 )
 
 # New (v0.5.x)
-api_key_scheme = Adk::Auth::Schemes::APIKey.new(
+api_key_scheme = Adk::Auth::Schemes::ApiKey.new(
   name: 'api_key',
   in: :header,
   header_name: 'X-API-Key'
@@ -104,7 +104,7 @@ end
 # New (v0.5.x)
 class MyApiTool < Adk::Tool::FunctionTool
   def initialize
-    api_key_scheme = Adk::Auth::Schemes::APIKey.new(
+    api_key_scheme = Adk::Auth::Schemes::ApiKey.new(
       name: 'api_key',
       in: :header,
       header_name: 'X-API-Key'
@@ -317,7 +317,7 @@ toolset = Adk::Tool::OpenAPIToolset.new(
 )
 
 # New (v0.5.x)
-api_key_scheme = Adk::Auth::Schemes::APIKey.new(
+api_key_scheme = Adk::Auth::Schemes::ApiKey.new(
   name: 'api_key',
   in: :header,
   header_name: 'X-API-Key'
@@ -422,7 +422,7 @@ Make sure you've created and passed the appropriate scheme:
 
 ```ruby
 # Create the appropriate scheme
-api_key_scheme = Adk::Auth::Schemes::APIKey.new(
+api_key_scheme = Adk::Auth::Schemes::ApiKey.new(
   name: 'api_key',
   in: :header,
   header_name: 'X-API-Key'
