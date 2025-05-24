@@ -90,7 +90,7 @@
 > Dependencies: 16, 17, 18
 > Align credential auth_types with actually available schemes and fix any mismatches between credential types and scheme availability.
 
-- [-] **ID 21: Complete Test Coverage for All Schemes** (Priority: high)
+- [x] **ID 21: Complete Test Coverage for All Schemes** (Priority: high)
 > Dependencies: 16, 17, 18
 > Add comprehensive tests for all authentication schemes that should be available and remove tests for deprecated schemes.
 
