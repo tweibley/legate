@@ -5,7 +5,6 @@ require_relative '../scheme'
 require_relative '../error'
 require_relative '../credential'
 require_relative '../exchanged_credential'
-require_relative 'bearer'
 
 module ADK
   module Auth
@@ -25,14 +24,31 @@ module ADK
         # @return [Hash] The modified request with authentication applied
         # @raise [ADK::Auth::Error] If the bearer token cannot be applied
         def apply_to_request(request, credential)
+          # Create a deep copy of the request to avoid modifying the original
+          request_copy = Marshal.load(Marshal.dump(request))
+          
+          # Handle the case where we get a stack object from Excon
+          if request_copy.is_a?(Hash)
+            if request_copy[:stack]
+              # Extract the data from stack (Excon middleware format)
+              [:scheme, :method, :path, :host, :port, :query].each do |key|
+                if request_copy[:stack][key] && !request_copy[key]
+                  request_copy[key] = request_copy[:stack][key]
+                end
+              end
+            end
+            
+            # Ensure headers hash exists
+            request_copy[:headers] ||= {}
+          end
+          
           # Extract the bearer token from the credential
           bearer_token = extract_bearer_token(credential)
           raise ADK::Auth::Error, 'Bearer token not found in credential' unless bearer_token
           
           # Apply the bearer token to the Authorization header
-          request[:headers] ||= {}
-          request[:headers]['Authorization'] = "Bearer #{bearer_token}"
-          request
+          request_copy[:headers]['Authorization'] = "Bearer #{bearer_token}"
+          request_copy
         end
         
         # Exchange a credential for a token
@@ -49,6 +65,14 @@ module ADK
             auth_type: :http_bearer,
             access_token: bearer_token
           )
+        end
+        
+        # Get hash representation of the scheme
+        # @return [Hash] Scheme configuration as a hash
+        def to_h
+          {
+            type: scheme_type
+          }
         end
         
         private

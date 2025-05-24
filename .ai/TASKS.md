@@ -74,7 +74,7 @@
 > Dependencies: 4, 5, 6
 > Integrate the orphaned OIDC authentication scheme into the main schemes loader and ensure all references work consistently.
 
-- [ ] **ID 17: Resolve Bearer Token Implementation Duplication** (Priority: high)
+- [x] **ID 17: Resolve Bearer Token Implementation Duplication** (Priority: high)
 > Dependencies: 4
 > Choose a canonical Bearer token implementation, remove duplicates, and ensure consistent interfaces across the authentication system.
 
