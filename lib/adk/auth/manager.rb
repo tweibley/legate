@@ -160,7 +160,7 @@ module ADK
       # Register the default built-in schemes
       def register_default_schemes
         register_scheme(ADK::Auth::Schemes::ApiKey.new, :api_key)
-        register_scheme(ADK::Auth::Schemes::HttpBearer.new, :http_bearer)
+        register_scheme(ADK::Auth::Schemes::HTTPBearer.new, :http_bearer)
 
         # Set default values for OAuth2 and other schemes regardless of environment
         oauth2 = ADK::Auth::Schemes::OAuth2.new(

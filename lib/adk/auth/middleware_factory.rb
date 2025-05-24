@@ -254,8 +254,8 @@ module ADK
         # @param options [Hash] Additional options for the middleware
         # @return [ADK::Auth::ExconMiddleware] The configured middleware
         def create_basic_auth(username:, password:, **options)
-          # Basic auth is handled by the HttpBearer scheme with a different type
-          scheme = ADK::Auth::Schemes::HttpBearer.new(auth_type: :basic)
+          # Basic auth is handled by the HTTPBearer scheme with a different type
+          scheme = ADK::Auth::Schemes::HTTPBearer.new(auth_type: :basic)
           
           # Create the credential
           credential = ADK::Auth::Credential.new(

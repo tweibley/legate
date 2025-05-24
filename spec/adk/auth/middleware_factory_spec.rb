@@ -115,7 +115,7 @@ RSpec.describe ADK::Auth::MiddlewareFactory do
       scheme = middleware.instance_variable_get(:@scheme)
       credential = middleware.instance_variable_get(:@credential)
       
-      expect(scheme).to be_a(ADK::Auth::Schemes::HttpBearer)
+      expect(scheme).to be_a(ADK::Auth::Schemes::HTTPBearer)
       
       expect(credential).to be_a(ADK::Auth::Credential)
       expect(credential.auth_type).to eq(:http_bearer)

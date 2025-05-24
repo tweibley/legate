@@ -173,7 +173,7 @@ The `Scheme` class supports different types of authentication flows:
 1. **Non-Interactive Authentication**:
    - Direct authentication using API keys or bearer tokens
    - No user interaction required
-   - Implemented by schemes like `ApiKey` and `HttpBearer`
+   - Implemented by schemes like `ApiKey` and `HTTPBearer`
 
 2. **Token-Based Authentication**:
    - Uses tokens for authentication
@@ -190,7 +190,7 @@ The `Scheme` class supports different types of authentication flows:
 The ADK Ruby library includes the following concrete implementations of `Scheme`:
 
 - [Adk::Auth::Schemes::ApiKey](./schemes/api_key.md): For API key authentication
-- [Adk::Auth::Schemes::HttpBearer](./schemes/http_bearer.md): For HTTP Bearer token authentication
+- [Adk::Auth::Schemes::HTTPBearer](./schemes/http_bearer.md): For HTTP Bearer token authentication
 - [Adk::Auth::Schemes::OAuth2](./schemes/oauth2.md): For OAuth2 authentication
 - [Adk::Auth::Schemes::OpenIDConnect](./schemes/oidc.md): For OpenID Connect authentication
 - [Adk::Auth::Schemes::ServiceAccount](./schemes/service_account.md): For service account authentication

@@ -1,6 +1,6 @@
-# Adk::Auth::Schemes::HttpBearer
+# Adk::Auth::Schemes::HTTPBearer
 
-The `HttpBearer` class implements the HTTP Bearer authentication scheme, which uses a bearer token to authenticate API requests. This is one of the simpler authentication schemes, used when you already have a bearer token.
+The `HTTPBearer` class implements the HTTP Bearer authentication scheme, which uses a bearer token to authenticate API requests. This is one of the simpler authentication schemes, used when you already have a bearer token.
 
 ## Overview
 
@@ -19,7 +19,7 @@ Creates a new HTTP Bearer authentication scheme.
 
 ```ruby
 # Create a basic HTTP Bearer scheme
-scheme = Adk::Auth::Schemes::HttpBearer.new
+scheme = Adk::Auth::Schemes::HTTPBearer.new
 ```
 
 ## Instance Methods
@@ -34,7 +34,7 @@ Returns the type of the authentication scheme.
 **Examples:**
 
 ```ruby
-scheme = Adk::Auth::Schemes::HttpBearer.new
+scheme = Adk::Auth::Schemes::HTTPBearer.new
 scheme.type  # => :http_bearer
 ```
 
@@ -61,7 +61,7 @@ credential = Adk::Auth::Credential.new(
 )
 
 # Validate the credential
-scheme = Adk::Auth::Schemes::HttpBearer.new
+scheme = Adk::Auth::Schemes::HTTPBearer.new
 scheme.validate_credential(credential)  # => true
 ```
 
@@ -88,7 +88,7 @@ credential = Adk::Auth::Credential.new(
 )
 
 # Authenticate a request
-scheme = Adk::Auth::Schemes::HttpBearer.new
+scheme = Adk::Auth::Schemes::HTTPBearer.new
 result = scheme.authenticate(credential, headers: {})
 
 # The result contains the updated headers
@@ -116,7 +116,7 @@ credential = Adk::Auth::Credential.new(
 )
 
 # Exchange for a token
-scheme = Adk::Auth::Schemes::HttpBearer.new
+scheme = Adk::Auth::Schemes::HTTPBearer.new
 token = scheme.exchange_token(credential)
 
 # The token is a wrapped version of the bearer token
@@ -129,7 +129,7 @@ puts token[:access_token]  # => "my-bearer-token"
 
 ```ruby
 # Create an HTTP Bearer scheme
-scheme = Adk::Auth::Schemes::HttpBearer.new
+scheme = Adk::Auth::Schemes::HTTPBearer.new
 
 # Create a credential with the bearer token
 credential = Adk::Auth::Credential.new(
@@ -149,7 +149,7 @@ puts authenticated[:headers]['Authorization']  # => "Bearer my-bearer-token"
 
 ```ruby
 # Create an HTTP Bearer scheme
-scheme = Adk::Auth::Schemes::HttpBearer.new
+scheme = Adk::Auth::Schemes::HTTPBearer.new
 
 # Create a credential with the bearer token
 credential = Adk::Auth::Credential.new(
@@ -169,7 +169,7 @@ token = token_manager.get_token(scheme, credential)
 
 ```ruby
 # Create an HTTP Bearer scheme
-scheme = Adk::Auth::Schemes::HttpBearer.new
+scheme = Adk::Auth::Schemes::HTTPBearer.new
 
 # Create a credential with the bearer token
 credential = Adk::Auth::Credential.new(

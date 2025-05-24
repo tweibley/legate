@@ -109,7 +109,7 @@ RSpec.describe ADK::Auth::ToolIntegration do
     end
     
     it 'generates a unique key for HTTP Bearer schemes' do
-      scheme = ADK::Auth::Schemes::HttpBearer.new
+      scheme = ADK::Auth::Schemes::HTTPBearer.new
       credential = ADK::Auth::Credential.new(auth_type: :http_bearer, bearer_token: 'test-token')
       
       key = described_class.generate_cache_key(scheme, credential)
@@ -120,7 +120,7 @@ RSpec.describe ADK::Auth::ToolIntegration do
     
     it 'generates different keys for different schemes' do
       api_key_scheme = ADK::Auth::Schemes::ApiKey.new
-              bearer_scheme = ADK::Auth::Schemes::HttpBearer.new
+              bearer_scheme = ADK::Auth::Schemes::HTTPBearer.new
       api_key_credential = ADK::Auth::Credential.new(auth_type: :api_key, api_key: 'test-api-key')
       bearer_credential = ADK::Auth::Credential.new(auth_type: :http_bearer, bearer_token: 'test-token')
       
