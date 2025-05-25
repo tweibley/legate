@@ -9,6 +9,12 @@
 
   h1.title.is-2 URL Mappings
   p.subtitle.is-4 Configure which authentication to use for specific URLs
+  
+  .buttons.mb-4
+    a.button.is-primary#add-mapping-btn(href="/auth/mappings/new")
+      span.icon
+        i.fas.fa-plus
+      span Add New Mapping
 
 - if @mappings && @mappings.any?
   .table-container
@@ -19,6 +25,9 @@
           th Type
           th Scheme
           th Credential
+          th Priority
+          th Status
+          th Actions
       tbody
         - @mappings.each do |mapping|
           tr
@@ -31,6 +40,21 @@
               span.tag.is-primary.is-light = mapping[:scheme_name]
             td
               span.tag.is-info.is-light = mapping[:credential_name]
+            td
+              = mapping[:priority] || 1
+            td
+              span.tag class=(mapping[:active] == false ? 'is-danger' : 'is-success')
+                = mapping[:active] == false ? 'Inactive' : 'Active'
+            td
+              .buttons.are-small
+                a.button.is-info.is-light(href="/auth/mappings/#{mapping[:id]}")
+                  span.icon.is-small
+                    i.fas.fa-edit
+                  span Edit
+                button.button.is-danger.is-light.delete-mapping-btn(data-id="#{mapping[:id]}")
+                  span.icon.is-small
+                    i.fas.fa-trash
+                  span Delete
 
 - else
   .columns.is-centered
@@ -59,4 +83,38 @@
             i.fas.fa-cogs
           span  Automatic Application
         p Once a URL matches a pattern, the corresponding scheme and credential are automatically applied.
-        p This means agents don't need to worry about authentication details - it's handled automatically. 
+        p This means agents don't need to worry about authentication details - it's handled automatically.
+
+/! JS for delete action
+javascript:
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.delete-mapping-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        const id = btn.getAttribute('data-id');
+        if (confirm('Are you sure you want to delete this mapping?')) {
+          fetch(`/auth/mappings/${id}`, {
+            method: 'DELETE'
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              if (typeof showToast === 'function') {
+                showToast(data.message, 'is-success');
+              }
+              window.location.reload();
+            } else {
+              if (typeof showToast === 'function') {
+                showToast(data.error || 'Failed to delete mapping', 'is-danger');
+              }
+            }
+          })
+          .catch(error => {
+            if (typeof showToast === 'function') {
+              showToast('Network error occurred', 'is-danger');
+            }
+          });
+        }
+      });
+    });
+  }); 

@@ -1,0 +1,151 @@
+/ File: lib/adk/web/views/auth_mapping_detail.slim
+.content.mb-6
+  nav.breadcrumb(aria-label="breadcrumbs")
+    ul
+      li
+        a(href="/auth") Authentication
+      li
+        a(href="/auth/mappings") URL Mappings
+      li.is-active
+        a(href="/auth/mappings/#{@mapping[:id]}" aria-current="page") Mapping #{@mapping[:id]}
+
+  h1.title.is-2 Edit URL Mapping
+  p.subtitle.is-4 Update the mapping from URL pattern to authentication
+
+  form#edit-mapping-form
+    .columns
+      .column.is-half
+        - @mapping_fields.each do |field|
+          .field
+            label.label = field[:label]
+            .control
+              - if field[:type] == 'select'
+                .select.is-fullwidth
+                  select(name="#{field[:name]}" required=field[:required])
+                    - if field[:name] == 'scheme_name'
+                      - @schemes.each do |name, scheme|
+                        option(value="#{name}" selected=(@mapping[:scheme_name] == name)) = name
+                    - elsif field[:name] == 'credential_name'
+                      - @credentials.each do |name, cred|
+                        option(value="#{name}" selected=(@mapping[:credential_name] == name)) = name
+                    - else
+                      - field[:options].each do |option|
+                        option(value="#{option}" selected=(@mapping[:pattern_type] == option || field[:default] == option)) = option
+              - elsif field[:type] == 'checkbox'
+                label.checkbox
+                  input(type="checkbox" name="#{field[:name]}" checked=(@mapping[:active] != false))
+                  = " #{field[:label]}"
+              - else
+                input.input(type=field[:type] name=field[:name] value=@mapping[field[:name].to_sym] placeholder=field[:placeholder] required=field[:required])
+      .column.is-half
+        .box
+          h3.title.is-5 Pattern Tester
+          .field
+            label.label Test URL
+            .control
+              input.input(type="text" id="test-url-input" placeholder="Enter a URL to test against the pattern")
+          .field
+            .control
+              button.button.is-info#test-pattern-btn(type="button")
+                span.icon
+                  i.fas.fa-vial
+                span Test Pattern
+          .notification.is-hidden#pattern-test-result
+
+    .field.mt-5
+      .control
+        button.button.is-primary(type="submit") Update Mapping
+        a.button(href="/auth/mappings") Cancel
+        button.button.is-danger#delete-mapping-btn(type="button") Delete Mapping
+
+javascript:
+  document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('edit-mapping-form');
+    const testBtn = document.getElementById('test-pattern-btn');
+    const testUrlInput = document.getElementById('test-url-input');
+    const patternInput = form.querySelector('input[name="pattern"]');
+    const patternTypeSelect = form.querySelector('select[name="pattern_type"]');
+    const resultBox = document.getElementById('pattern-test-result');
+    const deleteBtn = document.getElementById('delete-mapping-btn');
+
+    testBtn.addEventListener('click', function() {
+      const pattern = patternInput.value;
+      const patternType = patternTypeSelect.value;
+      const url = testUrlInput.value;
+      resultBox.classList.add('is-hidden');
+      fetch('/auth/mappings/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `pattern=${encodeURIComponent(pattern)}&pattern_type=${encodeURIComponent(patternType)}&url=${encodeURIComponent(url)}`
+      })
+      .then(response => response.json())
+      .then(data => {
+        resultBox.classList.remove('is-hidden');
+        if (data.success) {
+          resultBox.className = 'notification is-success';
+          resultBox.textContent = data.matched ? 'Pattern matches the URL!' : 'Pattern does NOT match the URL.';
+        } else {
+          resultBox.className = 'notification is-danger';
+          resultBox.textContent = data.error || 'Pattern test failed.';
+        }
+      })
+      .catch(error => {
+        resultBox.className = 'notification is-danger';
+        resultBox.textContent = 'Network error: ' + error.message;
+        resultBox.classList.remove('is-hidden');
+      });
+    });
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const formData = new FormData(form);
+      fetch(`/auth/mappings/#{@mapping[:id]}`, {
+        method: 'PUT',
+        body: formData
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          if (typeof showToast === 'function') {
+            showToast(data.message, 'is-success');
+          }
+          window.location.reload();
+        } else {
+          if (typeof showToast === 'function') {
+            showToast(data.error || 'Failed to update mapping', 'is-danger');
+          }
+        }
+      })
+      .catch(error => {
+        if (typeof showToast === 'function') {
+          showToast('Network error occurred', 'is-danger');
+        }
+      });
+    });
+
+    deleteBtn.addEventListener('click', function() {
+      if (confirm('Are you sure you want to delete this mapping?')) {
+        fetch(`/auth/mappings/#{@mapping[:id]}`, {
+          method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            if (typeof showToast === 'function') {
+              showToast(data.message, 'is-success');
+            }
+            window.location.href = '/auth/mappings';
+          } else {
+            if (typeof showToast === 'function') {
+              showToast(data.error || 'Failed to delete mapping', 'is-danger');
+            }
+          }
+        })
+        .catch(error => {
+          if (typeof showToast === 'function') {
+            showToast('Network error occurred', 'is-danger');
+          }
+        });
+      }
+    });
+  }); 

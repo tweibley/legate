@@ -250,6 +250,40 @@ module ADK
             
             compatible_schemes.keys
           end
+
+          # Helper method to get mapping configuration fields
+          def get_mapping_config_fields
+            [
+              { name: 'pattern', type: 'text', required: true, label: 'URL Pattern', placeholder: 'e.g. https://api.example.com/v1/* or ^https://.*\\.example\\.com/.*$' },
+              { name: 'pattern_type', type: 'select', required: true, label: 'Pattern Type', options: ['string', 'regex'], default: 'string' },
+              { name: 'scheme_name', type: 'select', required: true, label: 'Authentication Scheme' },
+              { name: 'credential_name', type: 'select', required: true, label: 'Credential' },
+              { name: 'priority', type: 'number', required: false, label: 'Priority', placeholder: '1' },
+              { name: 'active', type: 'checkbox', required: false, label: 'Active', default: true }
+            ]
+          end
+
+          # Helper to validate a mapping pattern
+          def valid_mapping_pattern?(pattern, pattern_type)
+            return false if pattern.nil? || pattern.strip.empty?
+            if pattern_type == 'regex'
+              begin
+                Regexp.new(pattern)
+                true
+              rescue RegexpError
+                false
+              end
+            else
+              true
+            end
+          end
+
+          # Helper to check scheme/credential compatibility
+          def mapping_scheme_credential_compatible?(scheme, credential)
+            return false unless scheme && credential
+            compatible_types = get_compatible_credential_types(scheme.scheme_type)
+            compatible_types.include?(credential.auth_type.to_s) || compatible_types.include?(credential.auth_type)
+          end
         end
 
         # GET /auth - Main authentication management dashboard
@@ -918,7 +952,138 @@ module ADK
           logger.error("Error in /auth/debug route (from AuthenticationRoutes): #{e.class} - #{e.message}")
           halt 500, "Error gathering debug information: #{e.message}"
         end
-            end
+
+        # GET /auth/mappings/new - Form for creating new mapping
+        app.get '/auth/mappings/new' do
+          auth_manager = ADK::Auth::Manager.instance
+          schemes = auth_manager.instance_variable_get(:@schemes) || {}
+          credentials = auth_manager.instance_variable_get(:@credentials) || {}
+          mapping_fields = get_mapping_config_fields
+          self.instance_variable_set(:@schemes, schemes)
+          self.instance_variable_set(:@credentials, credentials)
+          self.instance_variable_set(:@mapping_fields, mapping_fields)
+          slim :auth_mapping_new
+        end
+
+        # GET /auth/mappings/:id - Mapping detail/edit
+        app.get '/auth/mappings/:id' do
+          auth_manager = ADK::Auth::Manager.instance
+          mappings = auth_manager.instance_variable_get(:@url_mappings) || []
+          id = params[:id].to_i
+          mapping = mappings[id] or halt 404, "Mapping not found"
+          schemes = auth_manager.instance_variable_get(:@schemes) || {}
+          credentials = auth_manager.instance_variable_get(:@credentials) || {}
+          mapping_fields = get_mapping_config_fields
+          self.instance_variable_set(:@mapping, mapping)
+          self.instance_variable_set(:@schemes, schemes)
+          self.instance_variable_set(:@credentials, credentials)
+          self.instance_variable_set(:@mapping_fields, mapping_fields)
+          slim :auth_mapping_detail
+        end
+
+        # POST /auth/mappings - Create new mapping
+        app.post '/auth/mappings' do
+          content_type :json
+          auth_manager = ADK::Auth::Manager.instance
+          mappings = auth_manager.instance_variable_get(:@url_mappings) || []
+          pattern = params[:pattern]
+          pattern_type = params[:pattern_type]
+          scheme_name = params[:scheme_name]&.to_sym
+          credential_name = params[:credential_name]&.to_sym
+          priority = params[:priority]&.to_i || 1
+          active = params[:active] == 'on' || params[:active] == 'true'
+          # Validate pattern
+          unless valid_mapping_pattern?(pattern, pattern_type)
+            halt 400, { error: 'Invalid pattern' }.to_json
+          end
+          # Validate scheme/credential
+          scheme = auth_manager.get_scheme(scheme_name)
+          credential = auth_manager.get_credential(credential_name)
+          unless mapping_scheme_credential_compatible?(scheme, credential)
+            halt 400, { error: 'Scheme and credential are not compatible' }.to_json
+          end
+          # Build mapping
+          mapping = {
+            pattern: pattern_type == 'regex' ? Regexp.new(pattern) : pattern,
+            pattern_type: pattern_type,
+            scheme_name: scheme_name,
+            credential_name: credential_name,
+            priority: priority,
+            active: active
+          }
+          mappings << mapping
+          auth_manager.instance_variable_set(:@url_mappings, mappings)
+          { success: true, message: 'Mapping created', id: mappings.size - 1 }.to_json
+        end
+
+        # PUT /auth/mappings/:id - Update mapping
+        app.put '/auth/mappings/:id' do
+          content_type :json
+          auth_manager = ADK::Auth::Manager.instance
+          mappings = auth_manager.instance_variable_get(:@url_mappings) || []
+          id = params[:id].to_i
+          mapping = mappings[id] or halt 404, { error: 'Mapping not found' }.to_json
+          pattern = params[:pattern]
+          pattern_type = params[:pattern_type]
+          scheme_name = params[:scheme_name]&.to_sym
+          credential_name = params[:credential_name]&.to_sym
+          priority = params[:priority]&.to_i || 1
+          active = params[:active] == 'on' || params[:active] == 'true'
+          unless valid_mapping_pattern?(pattern, pattern_type)
+            halt 400, { error: 'Invalid pattern' }.to_json
+          end
+          scheme = auth_manager.get_scheme(scheme_name)
+          credential = auth_manager.get_credential(credential_name)
+          unless mapping_scheme_credential_compatible?(scheme, credential)
+            halt 400, { error: 'Scheme and credential are not compatible' }.to_json
+          end
+          mapping[:pattern] = pattern_type == 'regex' ? Regexp.new(pattern) : pattern
+          mapping[:pattern_type] = pattern_type
+          mapping[:scheme_name] = scheme_name
+          mapping[:credential_name] = credential_name
+          mapping[:priority] = priority
+          mapping[:active] = active
+          { success: true, message: 'Mapping updated' }.to_json
+        end
+
+        # DELETE /auth/mappings/:id - Remove mapping
+        app.delete '/auth/mappings/:id' do
+          content_type :json
+          auth_manager = ADK::Auth::Manager.instance
+          mappings = auth_manager.instance_variable_get(:@url_mappings) || []
+          id = params[:id].to_i
+          mapping = mappings[id] or halt 404, { error: 'Mapping not found' }.to_json
+          mappings.delete_at(id)
+          { success: true, message: 'Mapping deleted' }.to_json
+        end
+
+        # POST /auth/mappings/test - Test pattern matching
+        app.post '/auth/mappings/test' do
+          content_type :json
+          pattern = params[:pattern]
+          pattern_type = params[:pattern_type]
+          url = params[:url]
+          unless valid_mapping_pattern?(pattern, pattern_type)
+            halt 400, { error: 'Invalid pattern' }.to_json
+          end
+          begin
+            matched =
+              if pattern_type == 'regex'
+                !!(url =~ Regexp.new(pattern))
+              else
+                if pattern.include?('*')
+                  regex = Regexp.new('^' + Regexp.escape(pattern).gsub('\\*', '.*') + '$')
+                  !!(url =~ regex)
+                else
+                  url == pattern
+                end
+              end
+            { success: true, matched: matched }.to_json
+          rescue => e
+            halt 400, { error: "Pattern test error: #{e.message}" }.to_json
+          end
+        end
+      end
     end
   end
 end 

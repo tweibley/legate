@@ -82,7 +82,7 @@
 > Dependencies: 15.1
 > Create secure interface for adding, editing, and managing authentication credentials.
 
-- [ ] **ID 15.4: URL Mapping Management Interface** (Priority: medium)
+- [x] **ID 15.4: URL Mapping Management Interface** (Priority: medium)
 > Dependencies: 15.2, 15.3
 > Build interface for configuring URL to authentication scheme/credential mappings.
 
