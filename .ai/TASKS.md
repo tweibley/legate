@@ -125,3 +125,6 @@
 - [x] **ID 23: Validate Authentication Manager Integration** (Priority: medium)
 > Dependencies: 16, 17, 18, 20
 > Ensure the authentication manager properly registers and provides access to all supported schemes without referencing orphaned implementations.
+
+- [ ] **ID 24: Boats-for-Sale Example Agent with Puppeteer MCP** (Priority: medium)
+> Create a comprehensive example agent that demonstrates web scraping capabilities using the Puppeteer MCP server to extract boat listing information from The Hull Truth forum.
