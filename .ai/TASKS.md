@@ -66,9 +66,33 @@
 > - [x] Example showing integration with Excon middleware (existing example reviewed)
 > - [x] Example showing custom authentication flows
 
-- [ ] **ID 15: Authentication Web UI Integration** (Priority: medium)
+- [ ] **ID 15: Authentication Web UI Integration** (Priority: high)
 > Dependencies: 5, 6, 7, 9, 10
-> Enhance the ADK Web UI to provide seamless integration with the authentication system, including visual flows for OAuth and OIDC.
+> Integrate the ADK Authentication system into the Web UI to provide developers with tools for configuring, testing, and debugging authentication schemes that agents use when making requests to external services. (Expanded into sub-tasks 15.1-15.6)
+
+- [ ] **ID 15.1: Authentication Routes Infrastructure** (Priority: high)
+> Dependencies: 5, 6, 7, 9, 10
+> Create the core authentication routes module and basic integration with the existing web UI architecture.
+
+- [ ] **ID 15.2: Authentication Scheme Management UI** (Priority: high)
+> Dependencies: 15.1
+> Build UI for viewing and managing authentication schemes available in the authentication manager.
+
+- [ ] **ID 15.3: Credential Management Interface** (Priority: high)
+> Dependencies: 15.1
+> Create secure interface for adding, editing, and managing authentication credentials.
+
+- [ ] **ID 15.4: URL Mapping Management Interface** (Priority: medium)
+> Dependencies: 15.2, 15.3
+> Build interface for configuring URL to authentication scheme/credential mappings.
+
+- [ ] **ID 15.5: Authentication Testing Tools** (Priority: high)
+> Dependencies: 15.2, 15.3
+> Create testing and validation interfaces for verifying authentication configurations work correctly.
+
+- [ ] **ID 15.6: Agent Authentication Integration** (Priority: medium)
+> Dependencies: 15.4, 15.5
+> Integrate authentication management with agent configuration and provide agent-specific authentication features.
 
 - [x] **ID 16: Fix Orphaned OIDC Scheme Integration** (Priority: critical)
 > Dependencies: 4, 5, 6
