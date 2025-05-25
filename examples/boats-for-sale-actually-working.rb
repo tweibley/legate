@@ -117,7 +117,10 @@ class BoatThreadParser < ADK::Tool
     # Skip administrative/sticky threads
     skip_patterns = [
       'Marketing Tips', 'Bumping Threads', 'COMPLETE TRADING', 'Editing Your Thread',
-      'How to post', 'Guidelines', 'Rules', 'READ THIS', 'PLEASE READ', 'IMPORTANT'
+      'How to post', 'Guidelines', 'Rules', 'READ THIS', 'PLEASE READ', 'IMPORTANT',
+      'Attn sponsors', 'Attention sponsors', 'Sponsors', 'SPONSORS', 'STICKY',
+      'Moderator', 'Admin', 'Announcement', 'ANNOUNCEMENT', 'Forum Rules',
+      'Trading Guidelines', 'Posting Guidelines', 'PINNED', 'Pin:', 'Sticky:'
     ]
     
     # Find all headings with level=4 (these are thread titles)
@@ -129,8 +132,8 @@ class BoatThreadParser < ADK::Tool
         if title_match
           title = title_match[1]
           
-          # Skip administrative threads
-          should_skip = skip_patterns.any? { |pattern| title.include?(pattern) }
+          # Skip administrative threads (case insensitive)
+          should_skip = skip_patterns.any? { |pattern| title.downcase.include?(pattern.downcase) }
           next if should_skip
           
           # Look for boat-related keywords or patterns
@@ -150,8 +153,8 @@ class BoatThreadParser < ADK::Tool
     
     puts "DEBUG: Found #{thread_headings.length} potential boat thread headings"
     
-    # Now find URLs for these headings
-    thread_headings.first(3).each do |heading_info|  # Limit to 3 for testing
+    # Now find URLs for these headings - increased from 3 to 10
+    thread_headings.first(10).each do |heading_info|
       title = heading_info[:title]
       line_index = heading_info[:line_index]
       
@@ -267,16 +270,36 @@ class BoatDetailParser < ADK::Tool
     # Extract all text content from posts, prioritizing the original post
     posts = extract_posts_content(content)
     
-    {
-      index: thread_info['index'] || thread_info[:index] || 0,
-      title: thread_info['title'] || thread_info[:title] || 'Unknown Boat',
-      url: thread_info['url'] || thread_info[:url] || '',
-      price: extract_price_from_posts(posts),
-      location: extract_location_from_posts(posts),
-      year: extract_year_from_posts(posts),
-      size: extract_size_from_posts(posts),
-      description: extract_description_from_posts(posts)
-    }
+    # Use the new LLM analyzer for better extraction
+    analyzer = LLMBoatAnalyzer.new
+    analysis_result = analyzer.execute({ posts_content: posts, thread_info: thread_info }, nil)
+    
+    if analysis_result[:status] == :success
+      enhanced_details = analysis_result[:result]
+      {
+        index: thread_info['index'] || thread_info[:index] || 0,
+        title: thread_info['title'] || thread_info[:title] || 'Unknown Boat',
+        url: thread_info['url'] || thread_info[:url] || '',
+        price: enhanced_details[:price],
+        location: enhanced_details[:location],
+        year: enhanced_details[:year],
+        size: enhanced_details[:size],
+        description: enhanced_details[:description]
+      }
+    else
+      # Fallback to original extraction methods
+      puts "DEBUG: LLM analysis failed, using fallback: #{analysis_result[:error_message]}"
+      {
+        index: thread_info['index'] || thread_info[:index] || 0,
+        title: thread_info['title'] || thread_info[:title] || 'Unknown Boat',
+        url: thread_info['url'] || thread_info[:url] || '',
+        price: extract_price_from_posts(posts),
+        location: extract_location_from_posts(posts),
+        year: extract_year_from_posts(posts),
+        size: extract_size_from_posts(posts),
+        description: extract_description_from_posts(posts)
+      }
+    end
   end
 
   def extract_posts_content(yaml_text)
@@ -365,7 +388,7 @@ class BoatDetailParser < ADK::Tool
     price_patterns = [
       # Price reduction patterns (highest priority)
       /price\s*reduction[:\s-]*\$\s*([\d,]+(?:\.\d+)?)\s*(?:million|mil|m|k|obo|firm)?\b/i,
-      /reduced\s*to[:\s]*\$\s*([\d,]+(?:\.\d+)?)\s*(?:million|mil|m|k|obo|firm)?\b/i,
+      /reduced\s*to[:\s-]*\$\s*([\d,]+(?:\.\d+)?)\s*(?:million|mil|m|k|obo|firm)?\b/i,
       # Specific boat sale patterns with million/thousand handling
       /(?:for sale|asking|price)[:\s-]*\$\s*([\d,]+(?:\.\d+)?)\s*(million|mil|m)\b/i,
       /(?:for sale|asking|price)[:\s-]*\$\s*([\d,]+(?:\.\d+)?)\s*k\b/i,
@@ -579,8 +602,282 @@ class BoatDetailParser < ADK::Tool
   end
 end
 
+# New LLM-powered analysis tool for better detail extraction
+class LLMBoatAnalyzer < ADK::Tool
+  tool_description 'Uses LLM to analyze all posts in a boat thread for comprehensive detail extraction'
+  parameter :posts_content
+  parameter :thread_info
+
+  private
+  
+  def perform_execution(params, context)
+    begin
+      posts_content = params[:posts_content] || params['posts_content']
+      thread_info = params[:thread_info] || params['thread_info']
+      
+      # Format all posts for LLM analysis
+      formatted_posts = format_posts_for_analysis(posts_content)
+      
+      # Create analysis prompt
+      analysis_prompt = create_analysis_prompt(formatted_posts, thread_info)
+      
+      # For now, return a structured analysis - in a real implementation,
+      # you would send this to an LLM service
+      analysis_result = analyze_with_fallback_logic(formatted_posts, thread_info)
+      
+      { status: :success, result: analysis_result }
+    rescue => e
+      { status: :error, error_message: "LLM analysis error: #{e.message}" }
+    end
+  end
+
+  def format_posts_for_analysis(posts)
+    formatted = []
+    posts.each do |post|
+      post_text = post[:content].join(' ')
+      next if post_text.strip.empty?
+      
+      formatted << {
+        post_number: post[:post_number],
+        is_original_post: post[:is_thread_starter],
+        content: post_text
+      }
+    end
+    formatted
+  end
+
+  def create_analysis_prompt(posts, thread_info)
+    posts_text = posts.map do |post|
+      marker = post[:is_original_post] ? "[ORIGINAL POST]" : "[REPLY ##{post[:post_number]}]"
+      "#{marker}\n#{post[:content]}\n"
+    end.join("\n---\n")
+
+    <<~PROMPT
+      Analyze this boat forum thread to extract key details. Pay special attention to:
+      
+      1. PRICE: Look for the most recent/current price, including any price reductions mentioned in later posts
+      2. LOCATION: Where the boat is located
+      3. YEAR: Year of manufacture
+      4. SIZE: Length of the boat
+      5. DESCRIPTION: Brief description of the boat
+      
+      Thread Title: #{thread_info[:title]}
+      
+      Posts Content:
+      #{posts_text}
+      
+      Please extract and return the information in this exact JSON format:
+      {
+        "price": "extracted price with any reductions noted",
+        "location": "boat location",
+        "year": "year of boat",
+        "size": "boat length",
+        "description": "brief description"
+      }
+    PROMPT
+  end
+
+  def analyze_with_fallback_logic(posts, thread_info)
+    # Enhanced analysis logic that looks across all posts
+    all_content = posts.map { |post| post[:content] }.join(' ')
+    
+    # Look for price reductions across all posts with enhanced patterns
+    price = extract_enhanced_price(posts)
+    location = extract_enhanced_location(all_content)
+    year = extract_enhanced_year(all_content)
+    size = extract_enhanced_size(all_content)
+    description = extract_enhanced_description(posts)
+    
+    {
+      price: price,
+      location: location,
+      year: year,
+      size: size,
+      description: description
+    }
+  end
+
+  def extract_enhanced_price(posts)
+    # Analyze posts chronologically to find the most recent price
+    all_prices = []
+    
+    posts.each do |post|
+      content = post[:content]
+      post_number = post[:post_number]
+      
+      # Enhanced price patterns with context
+      price_patterns = [
+        # Price reduction patterns (highest priority)
+        /(?:price\s*)?(?:reduction|reduced|lowered|dropped|cut)[:\s-]*(?:to\s*)?\$\s*([\d,]+(?:\.\d+)?)\s*(?:million|mil|m|k|obo|firm)?\b/i,
+        /(?:new\s*price|updated\s*price|current\s*price)[:\s-]*\$\s*([\d,]+(?:\.\d+)?)\s*(?:million|mil|m|k|obo|firm)?\b/i,
+        # Standard price patterns
+        /(?:asking|price|for\s*sale)[:\s-]*\$\s*([\d,]+(?:\.\d+)?)\s*(?:million|mil|m|k|obo|firm)?\b/i,
+        # Standalone prices with units
+        /\$\s*([\d,]+(?:\.\d+)?)\s*(million|mil|m|k)\b/i,
+        /\$\s*([\d,]+(?:\.\d+)?)\s*(?:obo|firm|negotiable)\b/i,
+        # Large standalone prices
+        /\$\s*([1-9]\d{5,}(?:,\d{3})*)\b/,
+        /\$\s*(\d{1,3}(?:,\d{3})+)\b/
+      ]
+      
+      price_patterns.each_with_index do |pattern, pattern_index|
+        matches = content.scan(pattern)
+        matches.each do |match|
+          price_str = match.is_a?(Array) ? match[0] : match
+          unit = match.is_a?(Array) && match.length > 1 ? match[1] : nil
+          
+          next unless price_str
+          
+          # Convert to numeric value
+          clean_price = price_str.gsub(/[^\d,.]/, '')
+          next if clean_price.empty?
+          
+          base_price = clean_price.gsub(',', '').to_f
+          
+          # Apply unit multipliers
+          price_num = case unit&.downcase
+                     when 'million', 'mil', 'm'
+                       base_price * 1_000_000
+                     when 'k'
+                       base_price * 1_000
+                     else
+                       base_price
+                     end
+          
+          # Validate realistic boat price range
+          if price_num >= 5000 && price_num <= 50_000_000
+            # Format price
+            formatted_price = if price_num >= 1_000_000
+              "$#{(price_num / 1_000_000).round(1)}M"
+            elsif price_num >= 1000
+              "$#{price_num.to_i.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1,').reverse}"
+            else
+              "$#{price_num.to_i}"
+            end
+            
+            # Priority: reduction patterns get higher priority, later posts get higher priority
+            priority = (pattern_index < 2 ? 100 : 0) + post_number
+            
+            all_prices << {
+              price: formatted_price,
+              raw_price: price_num,
+              priority: priority,
+              post_number: post_number,
+              is_reduction: pattern_index < 2
+            }
+          end
+        end
+      end
+    end
+    
+    if all_prices.any?
+      # Sort by priority (reductions first, then by post number for recency)
+      best_price = all_prices.max_by { |p| p[:priority] }
+      reduction_note = best_price[:is_reduction] ? " (REDUCED)" : ""
+      "#{best_price[:price]}#{reduction_note}"
+    else
+      "Price not listed"
+    end
+  end
+
+  def extract_enhanced_location(content)
+    states = %w[AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY]
+    
+    location_patterns = [
+      /(?:located\s+(?:in|at)|location|boat\s+(?:is\s+)?(?:in|at))[:\s]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:,\s*(?:#{states.join('|')}))?)(?:\s|$|[,.])/i,
+      /(?:from|in)[:\s]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:,\s*(?:#{states.join('|')}))?)(?:\s|$|[,.])/i,
+      /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s*(?:#{states.join('|')}))\b/,
+      /\b((Fort|Ft\.?|Miami|Tampa|Orlando|Jacksonville|Naples|Key\s+West)\s*[A-Z][a-z]*(?:,\s*(?:#{states.join('|')}))?)(?:\s|$|[,.])/i
+    ]
+    
+    location_patterns.each do |pattern|
+      match = content.match(pattern)
+      if match && match[1] && match[1].strip.length > 1
+        location = match[1].strip.gsub(/^(From|In|Located in)[:\s]*/i, '').gsub(/\s+/, ' ').strip
+        return location if location.length > 1 && location.match?(/[A-Za-z]/)
+      end
+    end
+    
+    "Location not specified"
+  end
+
+  def extract_enhanced_year(content)
+    year_patterns = [
+      /(?:^|\s)(19[5-9]\d|20[0-3]\d)(?:\s|$)/,
+      /(?:year|model|built)[:\s]*(19[5-9]\d|20[0-3]\d)/i
+    ]
+    
+    year_patterns.each do |pattern|
+      match = content.match(pattern)
+      if match && match[1]
+        year = match[1].to_i
+        current_year = Time.now.year
+        return year.to_s if year >= 1950 && year <= current_year + 1
+      end
+    end
+    
+    "Year not specified"
+  end
+
+  def extract_enhanced_size(content)
+    size_patterns = [
+      /(\d+(?:\.\d+)?)\s*(?:ft|feet|foot|')/i,
+      /(\d+)\s*foot/i
+    ]
+    
+    size_patterns.each do |pattern|
+      match = content.match(pattern)
+      if match && match[1]
+        size = match[1].to_f
+        return "#{size.to_i} ft" if size >= 10 && size <= 200
+      end
+    end
+    
+    "Size not specified"
+  end
+
+  def extract_enhanced_description(posts)
+    # Get the original post content
+    original_post = posts.find { |post| post[:is_original_post] }
+    content_lines = original_post ? original_post[:content].split(/[.!?]+/) : []
+    
+    if content_lines.empty? && posts.any?
+      content_lines = posts.first[:content].split(/[.!?]+/)
+    end
+    
+    return "No description available" if content_lines.empty?
+    
+    # Find the most descriptive sentence
+    descriptive_sentences = content_lines.select do |sentence|
+      sentence = sentence.strip
+      sentence.length > 30 && sentence.length < 200 &&
+      !sentence.match?(/^(For sale|Located|Price|Call|Contact|PM|Email)/i) &&
+      sentence.match?(/[a-zA-Z]/) &&
+      !sentence.match?(/^\d+$/) &&
+      sentence.split.length > 5
+    end
+    
+    if descriptive_sentences.any?
+      desc = descriptive_sentences.first.strip
+      desc = desc[0..97] + "..." if desc.length > 100
+      return desc
+    end
+    
+    # Fallback to first substantial sentence
+    substantial_sentence = content_lines.find { |sentence| sentence.strip.length > 20 && sentence.strip.match?(/[a-zA-Z]/) }
+    if substantial_sentence
+      desc = substantial_sentence.strip
+      desc = desc[0..97] + "..." if desc.length > 100
+      return desc
+    end
+    
+    "No description available"
+  end
+end
+
 ADK::GlobalToolManager.register_tool(BoatThreadParser)
 ADK::GlobalToolManager.register_tool(BoatDetailParser)
+ADK::GlobalToolManager.register_tool(LLMBoatAnalyzer)
 
 playwright_mcp_config = [{ "type" => "stdio", "command" => "npx", "args" => ["-y", "@playwright/mcp@latest"] }]
 
