@@ -3,7 +3,7 @@
   h1.title.is-2 Welcome to Ruby ADK
   p.subtitle.is-4 Ruby Agent Development Kit - A Ruby framework for building and managing AI agents
 
-.columns.is-centered
+.columns.is-centered.is-multiline
   .column.is-one-third
     .card.has-text-centered
       .card-content
@@ -29,6 +29,19 @@
             span.icon
               i.fas.fa-eye
             span View Tools
+
+  .column.is-one-third
+    .card.has-text-centered
+      .card-content
+        span.icon.is-large.has-text-warning.mb-3
+          i.fas.fa-shield-alt.fa-3x
+        h2.title.is-4 Authentication
+        p Configure authentication schemes and credentials for external services.
+        .buttons.is-centered.mt-4
+          a.button.is-link(href="/auth")
+            span.icon
+              i.fas.fa-eye
+            span View Authentication
 
   .column.is-one-third
     .card.has-text-centered

@@ -1,0 +1,94 @@
+/ File: lib/adk/web/views/auth_debug.slim
+.content.mb-6
+  nav.breadcrumb(aria-label="breadcrumbs")
+    ul
+      li
+        a(href="/auth") Authentication
+      li.is-active
+        a(href="/auth/debug" aria-current="page") Debug
+
+  h1.title.is-2 Authentication Debug Information
+  p.subtitle.is-4 Detailed information about the authentication manager state
+
+- if @debug_info
+  .columns
+    .column.is-half
+      .card
+        .card-header
+          p.card-header-title Authentication Manager
+        .card-content
+          .content
+            table.table.is-narrow
+              tbody
+                tr
+                  td <strong>Class:</strong>
+                  td
+                    code = @debug_info[:manager_class]
+                tr
+                  td <strong>Instance ID:</strong>
+                  td
+                    code = @debug_info[:manager_instance_id]
+                tr
+                  td <strong>Schemes Registered:</strong>
+                  td = @debug_info[:schemes_registered].size
+                tr
+                  td <strong>Credentials Registered:</strong>
+                  td = @debug_info[:credentials_registered].size
+                tr
+                  td <strong>URL Mappings:</strong>
+                  td = @debug_info[:url_mappings_count]
+
+    .column.is-half
+      .card
+        .card-header
+          p.card-header-title Registered Components
+        .card-content
+          .content
+            h4.title.is-6 Schemes
+            - if @debug_info[:schemes_registered].any?
+              .tags
+                - @debug_info[:schemes_registered].each do |scheme_name|
+                  span.tag.is-primary.is-light = scheme_name
+            - else
+              p.has-text-grey No schemes registered
+            
+            h4.title.is-6.mt-4 Credentials
+            - if @debug_info[:credentials_registered].any?
+              .tags
+                - @debug_info[:credentials_registered].each do |credential_name|
+                  span.tag.is-info.is-light = credential_name
+            - else
+              p.has-text-grey No credentials registered
+
+- else
+  .columns.is-centered
+    .column.is-half
+      .notification.is-danger
+        h3.title.is-4 Debug Information Unavailable
+        p Could not retrieve debug information from the authentication manager.
+
+.content.mt-6
+  h2.title.is-4 Troubleshooting
+  .columns
+    .column.is-half
+      .content
+        h3.title.is-5 
+          span.icon.has-text-warning
+            i.fas.fa-exclamation-triangle
+          span  Common Issues
+        ul
+          li <strong>No schemes registered:</strong> Authentication system may not be properly initialized
+          li <strong>No credentials:</strong> Add credentials for the services your agents will use
+          li <strong>Manager unavailable:</strong> Check that the authentication system dependencies are loaded
+        
+    .column.is-half
+      .content
+        h3.title.is-5
+          span.icon.has-text-info
+            i.fas.fa-lightbulb
+          span  Expected State
+        p In a properly configured system, you should see:
+        ul
+          li Default schemes (api_key, http_bearer, oauth2, oidc, service_account, google_service_account)
+          li At least one credential for each service your agents use
+          li URL mappings for automatic authentication 

@@ -1,0 +1,259 @@
+/ File: lib/adk/web/views/auth_schemes.slim
+.content.mb-6
+  nav.breadcrumb(aria-label="breadcrumbs")
+    ul
+      li
+        a(href="/auth") Authentication
+      li.is-active
+        a(href="/auth/schemes" aria-current="page") Schemes
+
+  h1.title.is-2 Authentication Schemes
+  p.subtitle.is-4 Manage authentication schemes available to ADK agents
+  
+  .buttons.mb-4
+    button.button.is-primary#add-scheme-btn
+      span.icon
+        i.fas.fa-plus
+      span Add New Scheme
+
+- if @schemes && @schemes.any?
+  .columns.is-multiline
+    - @schemes.each do |scheme|
+      .column.is-one-third
+        .card
+          .card-content
+            .media
+              .media-left
+                span.icon.is-large.has-text-primary
+                  - case scheme[:scheme_type]
+                  - when :api_key
+                    i.fas.fa-key.fa-2x
+                  - when :oauth2
+                    i.fas.fa-shield-alt.fa-2x
+                  - when :oidc, :openid_connect
+                    i.fas.fa-id-badge.fa-2x
+                  - when :service_account, :google_service_account
+                    i.fas.fa-robot.fa-2x
+                  - when :http_bearer
+                    i.fas.fa-ticket-alt.fa-2x
+                  - else
+                    i.fas.fa-question.fa-2x
+              .media-content
+                p.title.is-5 = scheme[:name]
+                p.subtitle.is-6 = scheme[:class_name]
+            .content
+              p = scheme[:description]
+              .level.is-mobile.mt-3
+                .level-left
+                  .level-item
+                    .tags
+                      span.tag.is-info.is-light = scheme[:scheme_type]
+                      - if scheme[:has_config]
+                        span.tag.is-warning.is-light
+                          span.icon.is-small
+                            i.fas.fa-cog
+                          span Configurable
+                .level-right
+                  .level-item
+                    .buttons.are-small
+                      a.button.is-primary.is-outlined(href="/auth/schemes/#{scheme[:name]}")
+                        span.icon.is-small
+                          i.fas.fa-eye
+                        span Details
+              
+              .content.is-small.mt-3
+                .columns.is-mobile.is-gapless
+                  .column
+                    .has-text-centered
+                      p.heading Compatible Credentials
+                      p.title.is-6 = scheme[:compatible_credentials_count]
+                  .column
+                    .has-text-centered
+                      p.heading URL Mappings
+                      p.title.is-6 = scheme[:url_mappings_count]
+
+- else
+  .columns.is-centered
+    .column.is-half
+      .notification.is-info
+        h3.title.is-4 No Authentication Schemes
+        p No authentication schemes are currently registered.
+        p This is unexpected as the authentication manager should register default schemes.
+
+.content.mt-6
+  h2.title.is-4 Available Scheme Types
+  .columns
+    .column.is-half
+      .content
+        h3.title.is-5 
+          span.icon.has-text-primary
+            i.fas.fa-key
+          span  API Key
+        p Simple authentication using API keys sent in headers or query parameters. Best for services that provide API keys.
+        
+        h3.title.is-5.mt-4
+          span.icon.has-text-primary
+            i.fas.fa-ticket-alt
+          span  HTTP Bearer
+        p Bearer token authentication and basic HTTP authentication. Commonly used for RESTful APIs.
+
+    .column.is-half
+      .content
+        h3.title.is-5
+          span.icon.has-text-primary
+            i.fas.fa-shield-alt
+          span  OAuth2
+        p OAuth2 authorization code flow for secure third-party authentication. Used by services like GitHub, Google, etc.
+        
+        h3.title.is-5.mt-4
+          span.icon.has-text-primary
+            i.fas.fa-robot
+          span  Service Account
+        p Service account authentication for automated systems. Includes Google Cloud service accounts with JSON keys.
+
+/! Add New Scheme Modal
+#add-scheme-modal.modal
+  .modal-background
+  .modal-card
+    header.modal-card-head
+      p.modal-card-title Add New Authentication Scheme
+      button.delete(aria-label="close")
+    section.modal-card-body
+      form#add-scheme-form
+        .field
+          label.label Scheme Type
+          .control
+            .select.is-fullwidth
+              select#scheme-type-select(name="scheme_type" required)
+                option(value="") Select scheme type...
+                option(value="api_key") API Key
+                option(value="http_bearer") HTTP Bearer
+                option(value="oauth2") OAuth2
+                option(value="oidc") OpenID Connect
+                option(value="service_account") Service Account
+                option(value="google_service_account") Google Service Account
+        
+        .field
+          label.label Scheme Name
+          .control
+            input.input(type="text" name="scheme_name" placeholder="Enter unique scheme name" required)
+          p.help Give this scheme instance a unique name (e.g., "github_oauth", "api_key_prod")
+        
+        #scheme-config-fields
+          /! Dynamic configuration fields will be inserted here
+    
+    footer.modal-card-foot
+      button.button.is-primary(type="submit" form="add-scheme-form") Add Scheme
+      button.button Cancel
+
+javascript:
+  document.addEventListener('DOMContentLoaded', function() {
+    const addSchemeBtn = document.getElementById('add-scheme-btn');
+    const addSchemeModal = document.getElementById('add-scheme-modal');
+    const schemeTypeSelect = document.getElementById('scheme-type-select');
+    const schemeConfigFields = document.getElementById('scheme-config-fields');
+    const addSchemeForm = document.getElementById('add-scheme-form');
+    
+    // Scheme configuration templates
+    const schemeConfigs = {
+      oauth2: [
+        { name: 'authorization_url', type: 'url', required: true, label: 'Authorization URL', placeholder: 'https://example.com/oauth/authorize' },
+        { name: 'token_url', type: 'url', required: true, label: 'Token URL', placeholder: 'https://example.com/oauth/token' },
+        { name: 'scopes', type: 'text', required: false, label: 'Scopes (space-separated)', placeholder: 'read write' },
+        { name: 'use_pkce', type: 'checkbox', required: false, label: 'Use PKCE', checked: true },
+        { name: 'revocation_url', type: 'url', required: false, label: 'Revocation URL', placeholder: 'https://example.com/oauth/revoke' }
+      ],
+      oidc: [
+        { name: 'authorization_url', type: 'url', required: true, label: 'Authorization URL', placeholder: 'https://example.com/oidc/authorize' },
+        { name: 'token_url', type: 'url', required: true, label: 'Token URL', placeholder: 'https://example.com/oidc/token' },
+        { name: 'userinfo_url', type: 'url', required: false, label: 'UserInfo URL', placeholder: 'https://example.com/oidc/userinfo' },
+        { name: 'scopes', type: 'text', required: false, label: 'Scopes (space-separated)', placeholder: 'openid profile email' },
+        { name: 'use_pkce', type: 'checkbox', required: false, label: 'Use PKCE', checked: true }
+      ],
+      service_account: [
+        { name: 'token_url', type: 'url', required: true, label: 'Token URL', placeholder: 'https://example.com/token' },
+        { name: 'scopes', type: 'text', required: false, label: 'Scopes (space-separated)', placeholder: 'read write' }
+      ],
+      google_service_account: [
+        { name: 'scopes', type: 'text', required: false, label: 'Scopes (space-separated)', placeholder: 'https://www.googleapis.com/auth/cloud-platform' }
+      ]
+    };
+    
+    // Show modal
+    addSchemeBtn.addEventListener('click', function() {
+      addSchemeModal.classList.add('is-active');
+    });
+    
+    // Hide modal
+    function hideModal() {
+      addSchemeModal.classList.remove('is-active');
+      addSchemeForm.reset();
+      schemeConfigFields.innerHTML = '';
+    }
+    
+    addSchemeModal.querySelectorAll('.modal-background, .delete, .button:not(.is-primary)').forEach(function(element) {
+      element.addEventListener('click', hideModal);
+    });
+    
+    // Update configuration fields when scheme type changes
+    schemeTypeSelect.addEventListener('change', function() {
+      const schemeType = this.value;
+      schemeConfigFields.innerHTML = '';
+      
+      if (schemeConfigs[schemeType]) {
+        schemeConfigs[schemeType].forEach(function(field) {
+          const fieldDiv = document.createElement('div');
+          fieldDiv.className = 'field';
+          
+          let fieldHTML = `<label class="label">${field.label}</label><div class="control">`;
+          
+          if (field.type === 'checkbox') {
+            fieldHTML += `<label class="checkbox">
+              <input type="checkbox" name="${field.name}" ${field.checked ? 'checked' : ''}>
+              ${field.label}
+            </label>`;
+          } else {
+            fieldHTML += `<input class="input" type="${field.type}" name="${field.name}" 
+              placeholder="${field.placeholder || ''}" ${field.required ? 'required' : ''}>`;
+          }
+          
+          fieldHTML += '</div>';
+          fieldDiv.innerHTML = fieldHTML;
+          schemeConfigFields.appendChild(fieldDiv);
+        });
+      }
+    });
+    
+    // Handle form submission
+    addSchemeForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const formData = new FormData(this);
+      
+      fetch('/auth/schemes', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          hideModal();
+          if (typeof showToast === 'function') {
+            showToast(data.message, 'is-success');
+          }
+          // Reload the page to show the new scheme
+          window.location.reload();
+        } else {
+          if (typeof showToast === 'function') {
+            showToast(data.error || 'Failed to add scheme', 'is-danger');
+          }
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        if (typeof showToast === 'function') {
+          showToast('Network error occurred', 'is-danger');
+        }
+      });
+    });
+  });

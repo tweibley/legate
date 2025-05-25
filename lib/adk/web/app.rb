@@ -34,6 +34,8 @@ require_relative '../tool_registry' # Manages tools within an agent instance
 require_relative '../session_service/in_memory' # Default in-memory session storage
 require_relative '../session_service/redis' # Alternative Redis-based session storage (not currently used by default)
 require_relative '../global_tool_manager' # Discovers and manages native tools available to the application
+# --- Load Authentication System ---
+require_relative '../auth/manager' # Authentication manager for handling authentication schemes and credentials
 # Explicitly require built-in native tools so GlobalToolManager can find them
 require_relative '../tools/echo'
 require_relative '../tools/calculator'
@@ -54,6 +56,7 @@ require_relative 'routes/agent_runtime_routes'
 require_relative 'routes/agent_definition_routes'
 require_relative 'routes/agent_interaction_routes'
 require_relative 'routes/documentation_routes'
+require_relative 'routes/authentication_routes'
 
 # Load dotenv for development environment variables
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
@@ -114,6 +117,7 @@ module ADK
       register ADK::Web::AgentDefinitionRoutes
       register ADK::Web::AgentInteractionRoutes
       register ADK::Web::DocumentationRoutes
+      register ADK::Web::AuthenticationRoutes
 
       # --- Instance Variables ---
       # Initializes application state, including connections and services.

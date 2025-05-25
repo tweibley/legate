@@ -1,0 +1,62 @@
+/ File: lib/adk/web/views/auth_mappings.slim
+.content.mb-6
+  nav.breadcrumb(aria-label="breadcrumbs")
+    ul
+      li
+        a(href="/auth") Authentication
+      li.is-active
+        a(href="/auth/mappings" aria-current="page") URL Mappings
+
+  h1.title.is-2 URL Mappings
+  p.subtitle.is-4 Configure which authentication to use for specific URLs
+
+- if @mappings && @mappings.any?
+  .table-container
+    table.table.is-fullwidth.is-striped.is-hoverable
+      thead
+        tr
+          th URL Pattern
+          th Type
+          th Scheme
+          th Credential
+      tbody
+        - @mappings.each do |mapping|
+          tr
+            td
+              code = mapping[:pattern]
+            td
+              span.tag class=("is-warning" if mapping[:pattern_type] == 'regex')
+                = mapping[:pattern_type] == 'regex' ? 'Regex' : 'String'
+            td
+              span.tag.is-primary.is-light = mapping[:scheme_name]
+            td
+              span.tag.is-info.is-light = mapping[:credential_name]
+
+- else
+  .columns.is-centered
+    .column.is-half
+      .notification.is-info
+        h3.title.is-4 No URL Mappings Configured
+        p No URL mappings are currently configured.
+        p URL mappings tell agents which authentication to use for specific services automatically.
+
+.content.mt-6
+  h2.title.is-4 How URL Mappings Work
+  .columns
+    .column.is-half
+      .content
+        h3.title.is-5 
+          span.icon.has-text-primary
+            i.fas.fa-sitemap
+          span  Pattern Matching
+        p When an agent makes a request to an external service, the system checks URL patterns to find the right authentication.
+        p Patterns can be simple strings (like "api.github.com") or complex regular expressions.
+        
+    .column.is-half
+      .content
+        h3.title.is-5
+          span.icon.has-text-info
+            i.fas.fa-cogs
+          span  Automatic Application
+        p Once a URL matches a pattern, the corresponding scheme and credential are automatically applied.
+        p This means agents don't need to worry about authentication details - it's handled automatically. 

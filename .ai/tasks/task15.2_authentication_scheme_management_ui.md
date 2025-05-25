@@ -1,16 +1,16 @@
 ---
 id: 15.2
 title: 'Authentication Scheme Management UI'
-status: pending
+status: completed
 priority: high
 feature: Authentication System
 dependencies:
   - 15.1
-assigned_agent: null
+assigned_agent: claude
 created_at: "2025-05-25T02:17:22Z"
-updated_at: "2025-05-25T02:17:22Z"
-started_at: null
-completed_at: null
+updated_at: "2025-05-25T02:53:30Z"
+started_at: "2025-05-25T02:38:15Z"
+completed_at: "2025-05-25T02:53:30Z"
 error_log: null
 ---
 

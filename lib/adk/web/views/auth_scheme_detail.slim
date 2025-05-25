@@ -1,0 +1,274 @@
+/ File: lib/adk/web/views/auth_scheme_detail.slim
+.content.mb-6
+  nav.breadcrumb(aria-label="breadcrumbs")
+    ul
+      li
+        a(href="/auth") Authentication
+      li
+        a(href="/auth/schemes") Schemes
+      li.is-active
+        a(href="/auth/schemes/#{@scheme[:name]}" aria-current="page") = @scheme[:name]
+
+  .level
+    .level-left
+      .level-item
+        div
+          h1.title.is-2 = @scheme[:name]
+          p.subtitle.is-4 = @scheme[:description]
+    .level-right
+      .level-item
+        .buttons
+          - if @scheme[:config_fields].any?
+            button.button.is-warning#edit-scheme-btn
+              span.icon
+                i.fas.fa-edit
+              span Configure
+          button.button.is-danger.is-outlined#delete-scheme-btn
+            span.icon
+              i.fas.fa-trash
+            span Delete
+
+.columns
+  .column.is-half
+    .card
+      .card-header
+        p.card-header-title Scheme Information
+      .card-content
+        .content
+          table.table.is-narrow.is-fullwidth
+            tbody
+              tr
+                td <strong>Name:</strong>
+                td
+                  code = @scheme[:name]
+              tr
+                td <strong>Type:</strong>
+                td
+                  span.tag.is-info.is-light = @scheme[:scheme_type]
+              tr
+                td <strong>Class:</strong>
+                td
+                  code = @scheme[:class_name]
+              tr
+                td <strong>Compatible Credential Types:</strong>
+                td
+                  .tags
+                    - @scheme[:compatible_credential_types].each do |type|
+                      span.tag.is-success.is-light = type
+
+    - if @scheme[:config_fields].any?
+      .card.mt-4
+        .card-header
+          p.card-header-title Current Configuration
+        .card-content
+          .content
+            - if @scheme[:current_config].any?
+              table.table.is-narrow.is-fullwidth
+                tbody
+                  - @scheme[:current_config].each do |key, value|
+                    tr
+                      td <strong>#{key.to_s.gsub('_', ' ').split.map(&:capitalize).join(' ')}:</strong>
+                      td
+                        - if key.include?('url')
+                          a(href="#{value}" target="_blank") = value
+                        - elsif key == 'use_pkce'
+                          span.tag class=("is-success" if value) = value ? 'Enabled' : 'Disabled'
+                        - else
+                          code = value
+            - else
+              p.has-text-grey No configuration set
+
+  .column.is-half
+    .card
+      .card-header
+        p.card-header-title Usage Information
+      .card-content
+        .content
+          .columns.is-mobile.is-gapless.has-text-centered
+            .column
+              p.heading Compatible Credentials
+              p.title.is-4 = @scheme[:compatible_credentials].size
+            .column
+              p.heading URL Mappings
+              p.title.is-4 = @scheme[:url_mappings].size
+
+    - if @scheme[:compatible_credentials].any?
+      .card.mt-4
+        .card-header
+          p.card-header-title Compatible Credentials
+        .card-content
+          .content
+            - @scheme[:compatible_credentials].each do |credential|
+              .media
+                .media-left
+                  span.icon.has-text-info
+                    i.fas.fa-id-card
+                .media-content
+                  p.title.is-6 = credential[:name]
+                  p.subtitle.is-7 = credential[:description]
+                  p.is-size-7.has-text-grey = credential[:masked_info]
+
+    - if @scheme[:url_mappings].any?
+      .card.mt-4
+        .card-header
+          p.card-header-title URL Mappings
+        .card-content
+          .content
+            .table-container
+              table.table.is-fullwidth.is-striped
+                thead
+                  tr
+                    th Pattern
+                    th Type
+                    th Credential
+                tbody
+                  - @scheme[:url_mappings].each do |mapping|
+                    tr
+                      td
+                        code = mapping[:pattern]
+                      td
+                        span.tag class=("is-warning" if mapping[:pattern_type] == 'regex')
+                          = mapping[:pattern_type] == 'regex' ? 'Regex' : 'String'
+                      td
+                        span.tag.is-info.is-light = mapping[:credential_name]
+
+- if @scheme[:config_fields].any?
+  /! Edit Scheme Configuration Modal
+  #edit-scheme-modal.modal
+    .modal-background
+    .modal-card
+      header.modal-card-head
+        p.modal-card-title Configure #{@scheme[:name]}
+        button.delete(aria-label="close")
+      section.modal-card-body
+        form#edit-scheme-form
+          - @scheme[:config_fields].each do |field|
+            .field
+              label.label = field[:label]
+              .control
+                - if field[:type] == 'checkbox'
+                  label.checkbox
+                    input(type="checkbox" name="#{field[:name]}" checked=(@scheme[:current_config][field[:name]] == true))
+                    = " #{field[:label]}"
+                - else
+                  input.input(type="#{field[:type]}" name="#{field[:name]}" value="#{@scheme[:current_config][field[:name]]}" placeholder="#{field[:placeholder] || ''}" required=field[:required])
+      
+      footer.modal-card-foot
+        button.button.is-primary(type="submit" form="edit-scheme-form") Update Configuration
+        button.button Cancel
+
+/! Delete Confirmation Modal
+#delete-scheme-modal.modal
+  .modal-background
+  .modal-card
+    header.modal-card-head
+      p.modal-card-title Delete Scheme
+      button.delete(aria-label="close")
+    section.modal-card-body
+      .content
+        p Are you sure you want to delete the scheme <strong>#{@scheme[:name]}</strong>?
+        - if @scheme[:url_mappings].any?
+          .notification.is-warning
+            p <strong>Warning:</strong> This scheme is used by #{@scheme[:url_mappings].size} URL mapping(s). You must remove these mappings first.
+        - else
+          p This action cannot be undone.
+    
+    footer.modal-card-foot
+      button.button.is-danger#confirm-delete-btn Delete Scheme
+      button.button Cancel
+
+javascript:
+  document.addEventListener('DOMContentLoaded', function() {
+    const editSchemeBtn = document.getElementById('edit-scheme-btn');
+    const editSchemeModal = document.getElementById('edit-scheme-modal');
+    const editSchemeForm = document.getElementById('edit-scheme-form');
+    const deleteSchemeBtn = document.getElementById('delete-scheme-btn');
+    const deleteSchemeModal = document.getElementById('delete-scheme-modal');
+    const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+    
+    // Show edit modal
+    if (editSchemeBtn) {
+      editSchemeBtn.addEventListener('click', function() {
+        editSchemeModal.classList.add('is-active');
+      });
+    }
+    
+    // Show delete modal
+    deleteSchemeBtn.addEventListener('click', function() {
+      deleteSchemeModal.classList.add('is-active');
+    });
+    
+    // Hide modals
+    function hideModals() {
+      if (editSchemeModal) editSchemeModal.classList.remove('is-active');
+      deleteSchemeModal.classList.remove('is-active');
+    }
+    
+    document.querySelectorAll('.modal-background, .delete, .button:not(.is-primary):not(.is-danger)').forEach(function(element) {
+      element.addEventListener('click', hideModals);
+    });
+    
+    // Handle edit form submission
+    if (editSchemeForm) {
+      editSchemeForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        
+        fetch(`/auth/schemes/#{@scheme[:name]}`, {
+          method: 'PUT',
+          body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            hideModals();
+            if (typeof showToast === 'function') {
+              showToast(data.message, 'is-success');
+            }
+            // Reload the page to show updated configuration
+            window.location.reload();
+          } else {
+            if (typeof showToast === 'function') {
+              showToast(data.error || 'Failed to update scheme', 'is-danger');
+            }
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          if (typeof showToast === 'function') {
+            showToast('Network error occurred', 'is-danger');
+          }
+        });
+      });
+    }
+    
+    // Handle delete confirmation
+    confirmDeleteBtn.addEventListener('click', function() {
+      fetch(`/auth/schemes/#{@scheme[:name]}`, {
+        method: 'DELETE'
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          if (typeof showToast === 'function') {
+            showToast(data.message, 'is-success');
+          }
+          // Redirect to schemes list
+          window.location.href = '/auth/schemes';
+        } else {
+          hideModals();
+          if (typeof showToast === 'function') {
+            showToast(data.error || 'Failed to delete scheme', 'is-danger');
+          }
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        hideModals();
+        if (typeof showToast === 'function') {
+          showToast('Network error occurred', 'is-danger');
+        }
+      });
+    });
+  }); 

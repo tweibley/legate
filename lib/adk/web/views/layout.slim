@@ -31,6 +31,7 @@ html(class="has-navbar-fixed-top is-clipped-touch")
     - current_path = request.path_info
     - is_agents_section = current_path.start_with?('/agents')
     - is_tools_section = current_path.start_with?('/tools')
+    - is_auth_section = current_path.start_with?('/auth')
     - is_docs_section = current_path.start_with?('/docs')
 
   body
@@ -47,6 +48,7 @@ html(class="has-navbar-fixed-top is-clipped-touch")
           .navbar-start
             a.navbar-item class=("is-active" if is_agents_section) href="/agents" Agents
             a.navbar-item class=("is-active" if is_tools_section) href="/tools" Tools
+            a.navbar-item class=("is-active" if is_auth_section) href="/auth" Authentication
             a.navbar-item class=("is-active" if is_docs_section) href="/docs" Documentation
 
     main role="main"

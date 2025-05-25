@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'singleton'
+require_relative '../errors'
 require_relative 'error'
 require_relative 'credential'
 require_relative 'schemes/api_key'
@@ -230,19 +231,29 @@ module ADK
         )
         register_scheme(oidc, :oidc)
         
-        # Set RSPEC_ENV to test before creating ServiceAccount
-        # This is needed for tests since ServiceAccount validates required fields
-        ENV['RSPEC_ENV'] ||= 'test' if defined?(RSpec)
+        # Set test environment before creating service account schemes
+        # This allows the schemes to be created without requiring real credentials
+        original_env = ENV['RSPEC_ENV']
+        ENV['RSPEC_ENV'] = 'test'
         
-        service_account = ADK::Auth::Schemes::ServiceAccount.new(
-          token_url: 'https://example.com/token'
-        )
-        register_scheme(service_account, :service_account)
-        
-        google_service_account = ADK::Auth::Schemes::GoogleServiceAccount.new(
-          scopes: ['https://www.googleapis.com/auth/cloud-platform']
-        )
-        register_scheme(google_service_account, :google_service_account)
+        begin
+          service_account = ADK::Auth::Schemes::ServiceAccount.new(
+            token_url: 'https://example.com/token'
+          )
+          register_scheme(service_account, :service_account)
+          
+          google_service_account = ADK::Auth::Schemes::GoogleServiceAccount.new(
+            scopes: ['https://www.googleapis.com/auth/cloud-platform']
+          )
+          register_scheme(google_service_account, :google_service_account)
+        ensure
+          # Restore original environment
+          if original_env
+            ENV['RSPEC_ENV'] = original_env
+          else
+            ENV.delete('RSPEC_ENV')
+          end
+        end
       end
 
       # Find a compatible scheme for a credential

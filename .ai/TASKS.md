@@ -70,11 +70,11 @@
 > Dependencies: 5, 6, 7, 9, 10
 > Integrate the ADK Authentication system into the Web UI to provide developers with tools for configuring, testing, and debugging authentication schemes that agents use when making requests to external services. (Expanded into sub-tasks 15.1-15.6)
 
-- [ ] **ID 15.1: Authentication Routes Infrastructure** (Priority: high)
+- [x] **ID 15.1: Authentication Routes Infrastructure** (Priority: high)
 > Dependencies: 5, 6, 7, 9, 10
 > Create the core authentication routes module and basic integration with the existing web UI architecture.
 
-- [ ] **ID 15.2: Authentication Scheme Management UI** (Priority: high)
+- [x] **ID 15.2: Authentication Scheme Management UI** (Priority: high)
 > Dependencies: 15.1
 > Build UI for viewing and managing authentication schemes available in the authentication manager.
 
