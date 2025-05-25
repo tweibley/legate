@@ -161,6 +161,95 @@ module ADK
               []
             end
           end
+
+          # Helper method to get credential configuration fields
+          def get_credential_config_fields(auth_type)
+            case auth_type.to_sym
+            when :api_key
+              [
+                { name: 'api_key', type: 'password', required: true, label: 'API Key', placeholder: 'Enter your API key' },
+                { name: 'location', type: 'select', required: false, label: 'Location', options: ['header', 'query', 'cookie'], default: 'header' },
+                { name: 'name', type: 'text', required: false, label: 'Parameter Name', placeholder: 'X-API-Key' }
+              ]
+            when :http_bearer
+              [
+                { name: 'bearer_token', type: 'password', required: true, label: 'Bearer Token', placeholder: 'Enter bearer token' }
+              ]
+            when :oauth2, :oidc
+              [
+                { name: 'client_id', type: 'text', required: true, label: 'Client ID', placeholder: 'Enter client ID' },
+                { name: 'client_secret', type: 'password', required: true, label: 'Client Secret', placeholder: 'Enter client secret' },
+                { name: 'redirect_uri', type: 'url', required: false, label: 'Redirect URI', placeholder: 'https://your-app.com/callback' },
+                { name: 'scopes', type: 'text', required: false, label: 'Scopes (space-separated)', placeholder: 'read write' }
+              ]
+            when :service_account
+              [
+                { name: 'client_email', type: 'email', required: true, label: 'Client Email', placeholder: 'service-account@project.iam.gserviceaccount.com' },
+                { name: 'private_key', type: 'textarea', required: true, label: 'Private Key', placeholder: '-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----' },
+                { name: 'project_id', type: 'text', required: false, label: 'Project ID', placeholder: 'your-project-id' }
+              ]
+            when :google_service_account
+              [
+                { name: 'service_account_key', type: 'textarea', required: true, label: 'Service Account Key (JSON)', placeholder: '{"type": "service_account", "project_id": "..."}' }
+              ]
+            when :basic
+              [
+                { name: 'username', type: 'text', required: true, label: 'Username', placeholder: 'Enter username' },
+                { name: 'password', type: 'password', required: true, label: 'Password', placeholder: 'Enter password' }
+              ]
+            else
+              []
+            end
+          end
+
+          # Helper method to get current credential configuration (masked)
+          def get_credential_current_config(credential)
+            config = {}
+            
+            # Get all attributes but mask sensitive ones
+            credential.to_h(resolve_env: false).each do |key, value|
+              next if key == :auth_type
+              
+              if sensitive_credential_field?(key)
+                config[key.to_s] = mask_sensitive_value(value)
+              else
+                config[key.to_s] = value
+              end
+            end
+            
+            config
+          end
+
+          # Helper method to check if a credential field is sensitive
+          def sensitive_credential_field?(field_name)
+            sensitive_fields = %i[api_key client_secret bearer_token password private_key service_account_key token]
+            sensitive_fields.include?(field_name.to_sym)
+          end
+
+          # Helper method to get compatible schemes for a credential type
+          def get_compatible_schemes_for_credential(auth_type)
+            auth_manager = ADK::Auth::Manager.instance
+            schemes = auth_manager.instance_variable_get(:@schemes) || {}
+            
+            compatible_schemes = schemes.select do |scheme_name, scheme|
+              case auth_type.to_sym
+              when :api_key
+                scheme.scheme_type == :api_key
+              when :http_bearer
+                scheme.scheme_type == :http_bearer
+              when :oauth2, :oidc
+                [:oauth2, :oidc, :openid_connect].include?(scheme.scheme_type)
+              when :service_account, :google_service_account
+                [:service_account, :google_service_account].include?(scheme.scheme_type)
+              when :basic
+                scheme.scheme_type == :http_bearer
+              else
+                false
+              end
+            end
+            
+            compatible_schemes.keys
+          end
         end
 
         # GET /auth - Main authentication management dashboard
@@ -446,14 +535,24 @@ module ADK
           
           auth_manager = ADK::Auth::Manager.instance
           credentials = auth_manager.instance_variable_get(:@credentials) || {}
+          url_mappings = auth_manager.instance_variable_get(:@url_mappings) || []
           
-          # Convert credentials to a view-friendly format with masked sensitive data
+          # Convert credentials to a view-friendly format with usage information
           credentials_data = credentials.map do |name, credential|
+            # Find URL mappings using this credential
+            credential_mappings = url_mappings.select { |mapping| mapping[:credential_name] == name }
+            
+            # Find compatible schemes
+            compatible_schemes = get_compatible_schemes_for_credential(credential.auth_type)
+            
             {
               name: name,
               auth_type: credential.auth_type,
-              description: self.class.get_credential_description(credential),
-              masked_info: self.class.get_masked_credential_info(credential)
+              description: get_credential_description(credential),
+              masked_info: get_masked_credential_info(credential),
+              url_mappings_count: credential_mappings.size,
+              compatible_schemes_count: compatible_schemes.size,
+              config_fields: get_credential_config_fields(credential.auth_type)
             }
           end
           
@@ -462,6 +561,313 @@ module ADK
         rescue => e
           logger.error("Error in /auth/credentials route (from AuthenticationRoutes): #{e.class} - #{e.message}")
           halt 500, "Error loading authentication credentials: #{e.message}"
+        end
+
+        # GET /auth/credentials/:name - Individual credential details and configuration
+        app.get '/auth/credentials/:name' do
+          logger.info("GET /auth/credentials/#{params[:name]} route handler entered (from AuthenticationRoutes)")
+          content_type :html
+          
+          credential_name = params[:name].to_sym
+          auth_manager = ADK::Auth::Manager.instance
+          credential = auth_manager.get_credential(credential_name)
+          
+          halt 404, "Credential not found: #{params[:name]}" unless credential
+          
+          url_mappings = auth_manager.instance_variable_get(:@url_mappings) || []
+          
+          # Find URL mappings using this credential
+          credential_mappings = url_mappings.select { |mapping| mapping[:credential_name] == credential_name }
+          .map.with_index do |mapping, index|
+            {
+              id: index,
+              pattern: mapping[:pattern].is_a?(Regexp) ? mapping[:pattern].source : mapping[:pattern].to_s,
+              pattern_type: mapping[:pattern].is_a?(Regexp) ? 'regex' : 'string',
+              scheme_name: mapping[:scheme_name]
+            }
+          end
+          
+          # Find compatible schemes
+          compatible_schemes = get_compatible_schemes_for_credential(credential.auth_type)
+          
+          credential_data = {
+            name: credential_name,
+            auth_type: credential.auth_type,
+            description: get_credential_description(credential),
+            config_fields: get_credential_config_fields(credential.auth_type),
+            current_config: get_credential_current_config(credential),
+            compatible_schemes: compatible_schemes,
+            url_mappings: credential_mappings
+          }
+          
+          self.instance_variable_set(:@credential, credential_data)
+          slim :auth_credential_detail
+        rescue => e
+          logger.error("Error in /auth/credentials/#{params[:name]} route (from AuthenticationRoutes): #{e.class} - #{e.message}")
+          halt 500, "Error loading credential details: #{e.message}"
+        end
+
+        # POST /auth/credentials - Create new credential
+        app.post '/auth/credentials' do
+          logger.info('POST /auth/credentials route handler entered (from AuthenticationRoutes)')
+          content_type :json
+          
+          auth_type = params[:auth_type]&.to_sym
+          credential_name = params[:credential_name]&.to_sym
+          
+          halt 400, { error: 'Credential type is required' }.to_json unless auth_type
+          halt 400, { error: 'Credential name is required' }.to_json unless credential_name
+          
+          auth_manager = ADK::Auth::Manager.instance
+          
+          # Check if credential name already exists
+          if auth_manager.get_credential(credential_name)
+            halt 400, { error: "Credential with name '#{credential_name}' already exists" }.to_json
+          end
+          
+          begin
+            # Build credential attributes based on type
+            credential_attrs = { auth_type: auth_type }
+            
+            case auth_type
+            when :api_key
+              credential_attrs[:api_key] = params[:api_key]
+              credential_attrs[:location] = params[:location] if params[:location] && !params[:location].empty?
+              credential_attrs[:name] = params[:name] if params[:name] && !params[:name].empty?
+            when :http_bearer
+              credential_attrs[:bearer_token] = params[:bearer_token]
+            when :oauth2, :oidc
+              credential_attrs[:client_id] = params[:client_id]
+              credential_attrs[:client_secret] = params[:client_secret]
+              credential_attrs[:redirect_uri] = params[:redirect_uri] if params[:redirect_uri] && !params[:redirect_uri].empty?
+              credential_attrs[:scopes] = params[:scopes] if params[:scopes] && !params[:scopes].empty?
+            when :service_account
+              credential_attrs[:client_email] = params[:client_email]
+              credential_attrs[:private_key] = params[:private_key]
+              credential_attrs[:project_id] = params[:project_id] if params[:project_id] && !params[:project_id].empty?
+            when :google_service_account
+              credential_attrs[:service_account_key] = params[:service_account_key]
+            when :basic
+              credential_attrs[:username] = params[:username]
+              credential_attrs[:password] = params[:password]
+            else
+              halt 400, { error: "Unsupported credential type: #{auth_type}" }.to_json
+            end
+            
+            # Create new credential
+            credential = ADK::Auth::Credential.new(**credential_attrs)
+            
+            # Register the new credential
+            auth_manager.register_credential(credential, credential_name)
+            
+            logger.info("Successfully registered new credential '#{credential_name}' of type '#{auth_type}'")
+            { success: true, message: "Credential '#{credential_name}' created successfully" }.to_json
+          rescue ADK::Auth::CredentialError => e
+            logger.error("Credential validation error for '#{credential_name}': #{e.message}")
+            halt 400, { error: "Invalid credential: #{e.message}" }.to_json
+          rescue => e
+            logger.error("Error creating credential '#{credential_name}': #{e.class} - #{e.message}")
+            halt 500, { error: "Failed to create credential: #{e.message}" }.to_json
+          end
+        end
+
+        # PUT /auth/credentials/:name - Update existing credential
+        app.put '/auth/credentials/:name' do
+          logger.info("PUT /auth/credentials/#{params[:name]} route handler entered (from AuthenticationRoutes)")
+          content_type :json
+          
+          credential_name = params[:name].to_sym
+          auth_manager = ADK::Auth::Manager.instance
+          existing_credential = auth_manager.get_credential(credential_name)
+          
+          halt 404, { error: "Credential not found: #{params[:name]}" }.to_json unless existing_credential
+          
+          begin
+            # Build updated credential attributes
+            auth_type = existing_credential.auth_type
+            credential_attrs = { auth_type: auth_type }
+            
+            case auth_type
+            when :api_key
+              credential_attrs[:api_key] = params[:api_key]
+              credential_attrs[:location] = params[:location] if params[:location] && !params[:location].empty?
+              credential_attrs[:name] = params[:name] if params[:name] && !params[:name].empty?
+            when :http_bearer
+              credential_attrs[:bearer_token] = params[:bearer_token]
+            when :oauth2, :oidc
+              credential_attrs[:client_id] = params[:client_id]
+              credential_attrs[:client_secret] = params[:client_secret]
+              credential_attrs[:redirect_uri] = params[:redirect_uri] if params[:redirect_uri] && !params[:redirect_uri].empty?
+              credential_attrs[:scopes] = params[:scopes] if params[:scopes] && !params[:scopes].empty?
+            when :service_account
+              credential_attrs[:client_email] = params[:client_email]
+              credential_attrs[:private_key] = params[:private_key]
+              credential_attrs[:project_id] = params[:project_id] if params[:project_id] && !params[:project_id].empty?
+            when :google_service_account
+              credential_attrs[:service_account_key] = params[:service_account_key]
+            when :basic
+              credential_attrs[:username] = params[:username]
+              credential_attrs[:password] = params[:password]
+            else
+              halt 400, { error: "Credential type '#{auth_type}' does not support updates" }.to_json
+            end
+            
+            # Create updated credential
+            updated_credential = ADK::Auth::Credential.new(**credential_attrs)
+            
+            # Replace the existing credential
+            auth_manager.register_credential(updated_credential, credential_name)
+            
+            logger.info("Successfully updated credential '#{credential_name}'")
+            { success: true, message: "Credential '#{credential_name}' updated successfully" }.to_json
+          rescue ADK::Auth::CredentialError => e
+            logger.error("Credential validation error for '#{credential_name}': #{e.message}")
+            halt 400, { error: "Invalid credential: #{e.message}" }.to_json
+          rescue => e
+            logger.error("Error updating credential '#{credential_name}': #{e.class} - #{e.message}")
+            halt 500, { error: "Failed to update credential: #{e.message}" }.to_json
+          end
+        end
+
+        # DELETE /auth/credentials/:name - Remove credential
+        app.delete '/auth/credentials/:name' do
+          logger.info("DELETE /auth/credentials/#{params[:name]} route handler entered (from AuthenticationRoutes)")
+          content_type :json
+          
+          credential_name = params[:name].to_sym
+          auth_manager = ADK::Auth::Manager.instance
+          credential = auth_manager.get_credential(credential_name)
+          
+          halt 404, { error: "Credential not found: #{params[:name]}" }.to_json unless credential
+          
+          # Check if credential is used in URL mappings
+          url_mappings = auth_manager.instance_variable_get(:@url_mappings) || []
+          dependent_mappings = url_mappings.select { |mapping| mapping[:credential_name] == credential_name }
+          
+          if dependent_mappings.any?
+            mapping_patterns = dependent_mappings.map { |m| m[:pattern] }.join(', ')
+            halt 400, { 
+              error: "Cannot delete credential '#{credential_name}' - it is used by URL mappings: #{mapping_patterns}" 
+            }.to_json
+          end
+          
+          begin
+            # Remove the credential from the manager
+            credentials = auth_manager.instance_variable_get(:@credentials)
+            credentials.delete(credential_name)
+            
+            logger.info("Successfully deleted credential '#{credential_name}'")
+            { success: true, message: "Credential '#{credential_name}' deleted successfully" }.to_json
+          rescue => e
+            logger.error("Error deleting credential '#{credential_name}': #{e.class} - #{e.message}")
+            halt 500, { error: "Failed to delete credential: #{e.message}" }.to_json
+          end
+        end
+
+        # POST /auth/credentials/:name/test - Test credential validity
+        app.post '/auth/credentials/:name/test' do
+          logger.info("POST /auth/credentials/#{params[:name]}/test route handler entered (from AuthenticationRoutes)")
+          content_type :json
+          
+          credential_name = params[:name].to_sym
+          auth_manager = ADK::Auth::Manager.instance
+          credential = auth_manager.get_credential(credential_name)
+          
+          halt 404, { error: "Credential not found: #{params[:name]}" }.to_json unless credential
+          
+          begin
+            # Basic validation - check if credential can resolve environment variables
+            test_result = { success: true, tests: [] }
+            
+            # Test 1: Environment variable resolution
+            begin
+              credential.to_h(resolve_env: true)
+              test_result[:tests] << {
+                name: 'Environment Variable Resolution',
+                status: 'passed',
+                message: 'All environment variables resolved successfully'
+              }
+            rescue ADK::Auth::EnvironmentVariableNotFoundError => e
+              test_result[:success] = false
+              test_result[:tests] << {
+                name: 'Environment Variable Resolution',
+                status: 'failed',
+                message: "Environment variable not found: #{e.message}"
+              }
+            end
+            
+            # Test 2: Required fields validation
+            begin
+              # Create a new credential with the same attributes to validate
+              ADK::Auth::Credential.new(**credential.to_h(resolve_env: false))
+              test_result[:tests] << {
+                name: 'Required Fields Validation',
+                status: 'passed',
+                message: 'All required fields are present'
+              }
+            rescue ADK::Auth::CredentialError => e
+              test_result[:success] = false
+              test_result[:tests] << {
+                name: 'Required Fields Validation',
+                status: 'failed',
+                message: e.message
+              }
+            end
+            
+            # Test 3: Format validation for specific types
+            case credential.auth_type
+            when :google_service_account
+              begin
+                key_data = credential[:service_account_key]
+                if key_data
+                  JSON.parse(key_data)
+                  test_result[:tests] << {
+                    name: 'Service Account Key Format',
+                    status: 'passed',
+                    message: 'Service account key is valid JSON'
+                  }
+                end
+              rescue JSON::ParserError
+                test_result[:success] = false
+                test_result[:tests] << {
+                  name: 'Service Account Key Format',
+                  status: 'failed',
+                  message: 'Service account key is not valid JSON'
+                }
+              end
+            when :service_account
+              begin
+                private_key = credential[:private_key]
+                if private_key && !private_key.include?('BEGIN PRIVATE KEY')
+                  test_result[:success] = false
+                  test_result[:tests] << {
+                    name: 'Private Key Format',
+                    status: 'failed',
+                    message: 'Private key does not appear to be in PEM format'
+                  }
+                else
+                  test_result[:tests] << {
+                    name: 'Private Key Format',
+                    status: 'passed',
+                    message: 'Private key appears to be in correct PEM format'
+                  }
+                end
+              rescue => e
+                test_result[:success] = false
+                test_result[:tests] << {
+                  name: 'Private Key Format',
+                  status: 'failed',
+                  message: "Private key validation error: #{e.message}"
+                }
+              end
+            end
+            
+            logger.info("Credential test completed for '#{credential_name}': #{test_result[:success] ? 'PASSED' : 'FAILED'}")
+            test_result.to_json
+          rescue => e
+            logger.error("Error testing credential '#{credential_name}': #{e.class} - #{e.message}")
+            halt 500, { error: "Failed to test credential: #{e.message}" }.to_json
+          end
         end
 
         # GET /auth/mappings - List all URL mappings
