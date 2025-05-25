@@ -49,14 +49,15 @@ require_relative '../tools/sleepy_tool' # Example async tool
 require_relative '../definition_store'
 
 # --- Route Modules ---
-require_relative 'routes/core_routes'
-require_relative 'routes/api_routes'
-require_relative 'routes/tools_ui_routes'
-require_relative 'routes/agent_runtime_routes'
-require_relative 'routes/agent_definition_routes'
-require_relative 'routes/agent_interaction_routes'
-require_relative 'routes/documentation_routes'
-require_relative 'routes/authentication_routes'
+        require_relative 'routes/core_routes'
+        require_relative 'routes/api_routes'
+        require_relative 'routes/tools_ui_routes'
+        require_relative 'routes/agent_runtime_routes'
+        require_relative 'routes/agent_definition_routes'
+        require_relative 'routes/agent_interaction_routes'
+        require_relative 'routes/documentation_routes'
+        require_relative 'routes/authentication_routes'
+        require_relative 'routes/agent_authentication_routes'
 
 # Load dotenv for development environment variables
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
@@ -110,14 +111,15 @@ module ADK
       AVAILABLE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro'].freeze
 
       # --- Register Route Modules ---
-      register ADK::Web::CoreRoutes
-      register ADK::Web::ApiRoutes
-      register ADK::Web::ToolsUIRoutes
-      register ADK::Web::AgentRuntimeRoutes
-      register ADK::Web::AgentDefinitionRoutes
-      register ADK::Web::AgentInteractionRoutes
-      register ADK::Web::DocumentationRoutes
-      register ADK::Web::AuthenticationRoutes
+              register ADK::Web::CoreRoutes
+        register ADK::Web::ApiRoutes
+        register ADK::Web::ToolsUIRoutes
+        register ADK::Web::AgentRuntimeRoutes
+        register ADK::Web::AgentDefinitionRoutes
+        register ADK::Web::AgentInteractionRoutes
+        register ADK::Web::DocumentationRoutes
+        register ADK::Web::AuthenticationRoutes
+        register ADK::Web::AgentAuthenticationRoutes
 
       # --- Instance Variables ---
       # Initializes application state, including connections and services.

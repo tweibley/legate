@@ -50,6 +50,11 @@ section.section
               span.icon.is-small
                 i.fas.fa-tools aria-hidden="true"
               span Tools
+          li data-tab="auth"
+            a href="#auth"
+              span.icon.is-small
+                i.fas.fa-shield-alt aria-hidden="true"
+              span Authentication
 
     div#tab-content
 
@@ -135,6 +140,42 @@ section.section
           div#agent-tools-table-container
             == slim :_agent_tool_table, locals: { agent_data: agent_data, view_configured_tools: view_configured_tools, mcp_tool_results: mcp_tool_results }
 
+      div.content-tab.is-hidden#auth-tab
+        .box
+          .level.mb-4
+            .level-left
+              h3.title.is-5 Authentication Configuration
+            .level-right
+              a.button.is-link.is-light href="/agents/#{agent_name}/auth"
+                span.icon.is-small
+                  i.fas.fa-shield-alt
+                span Manage Authentication
+          
+          .content
+            p This agent can have specific authentication settings that override global defaults.
+            p Authentication includes scheme assignments, credential assignments, and URL mappings.
+            
+            .columns.is-mobile.mt-4
+              .column.has-text-centered
+                .heading Authentication Status
+                .title.is-4#auth-status-indicator
+                  span.icon.is-large
+                    i.fas.fa-spinner.fa-pulse
+                  | Loading...
+              .column.has-text-centered
+                .heading Quick Actions
+                .buttons.is-centered
+                  a.button.is-small.is-primary href="/agents/#{agent_name}/auth"
+                    span.icon
+                      i.fas.fa-cogs
+                    span Configure
+                  button.button.is-small.is-info onclick="testAgentAuth()"
+                    span.icon
+                      i.fas.fa-vial
+                    span Test
+          
+          #auth-test-results.mt-4 style="display: none;"
+
 
     .mt-6.has-text-centered
       a.button.is-link.is-light(href="/agents")
@@ -215,5 +256,76 @@ section.section
                }
             }
          }
+
+      });
+
+      // Authentication status loading
+      function loadAuthStatus() {
+        fetch(`/agents/${encodeURIComponent('#{agent_name}')}/auth/status`)
+          .then(response => response.json())
+          .then(data => {
+            const indicator = document.getElementById('auth-status-indicator');
+            if (data.status === 'success') {
+              indicator.innerHTML = '<span class="icon is-large has-text-success"><i class="fas fa-check-circle fa-2x"></i></span><br>Configured';
+            } else if (data.status === 'warning') {
+              indicator.innerHTML = '<span class="icon is-large has-text-warning"><i class="fas fa-exclamation-triangle fa-2x"></i></span><br>Using Defaults';
+            } else {
+              indicator.innerHTML = '<span class="icon is-large has-text-danger"><i class="fas fa-times-circle fa-2x"></i></span><br>Issues Found';
+            }
+          })
+          .catch(error => {
+            console.error('Error loading auth status:', error);
+            const indicator = document.getElementById('auth-status-indicator');
+            indicator.innerHTML = '<span class="icon is-large has-text-grey"><i class="fas fa-question-circle fa-2x"></i></span><br>Unknown';
+          });
+      }
+
+      // Test agent authentication
+      function testAgentAuth() {
+        const resultsDiv = document.getElementById('auth-test-results');
+        resultsDiv.style.display = 'block';
+        resultsDiv.innerHTML = '<div class="notification is-info">Running authentication tests...</div>';
+
+        fetch(`/agents/${encodeURIComponent('#{agent_name}')}/auth/test`, {
+          method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success !== undefined) {
+            let html = `<div class="notification is-${data.success ? 'success' : 'danger'}">`;
+            html += `<strong>Test Results:</strong> ${data.success ? 'PASSED' : 'FAILED'}<br>`;
+            html += `Agent-specific Authentication: ${data.has_agent_auth ? 'Yes' : 'No (using global defaults)'}`;
+            html += '</div>';
+            
+            if (data.tests && data.tests.length > 0) {
+              html += '<div class="content is-small"><strong>Details:</strong><ul>';
+              data.tests.forEach(test => {
+                const statusClass = test.status === 'passed' ? 'has-text-success' : 
+                                   test.status === 'warning' ? 'has-text-warning' : 'has-text-danger';
+                html += `<li class="${statusClass}"><strong>${test.name}:</strong> ${test.message}</li>`;
+              });
+              html += '</ul></div>';
+            }
+            
+            resultsDiv.innerHTML = html;
+          } else {
+            resultsDiv.innerHTML = `<div class="notification is-danger">Error: ${data.error}</div>`;
+          }
+        })
+        .catch(error => {
+          console.error('Error testing auth:', error);
+          resultsDiv.innerHTML = '<div class="notification is-danger">Error running authentication tests</div>';
+        });
+      }
+
+      // Load auth status when auth tab is activated
+      document.addEventListener('DOMContentLoaded', function() {
+        const authTab = document.querySelector('.custom-rounded-tabs-container .tabs li[data-tab="auth"]');
+        if (authTab) {
+          authTab.querySelector('a').addEventListener('click', function() {
+            setTimeout(loadAuthStatus, 100); // Small delay to ensure tab is active
+          });
+        }
+      });
 
       });

@@ -19,7 +19,8 @@ module ADK
       # Expected field names in the Redis hash
       AGENT_DEFINITION_FIELDS = %w[name description tools model fallback_mode mcp_servers_json instruction
                                    webhook_enabled webhook_secret persistent_status agent_type
-                                   sub_agent_names sequential_sub_agent_names parallel_sub_agent_names loop_sub_agent_names].freeze
+                                   sub_agent_names sequential_sub_agent_names parallel_sub_agent_names loop_sub_agent_names
+                                   auth_scheme_assignments auth_credential_assignments auth_url_mappings].freeze
 
       # Expects a keyword argument for the Redis client instance.
       # @param redis_client [Redis] An instance of the Redis client.
@@ -50,13 +51,17 @@ module ADK
       # @param sequential_sub_agent_names [Array<String>] Names of sub-agents for sequential workflows. Defaults to empty array.
       # @param parallel_sub_agent_names [Array<String>] Names of sub-agents for parallel workflows. Defaults to empty array.
       # @param loop_sub_agent_names [Array<String>] Names of sub-agents for loop workflows. Defaults to empty array.
+      # @param auth_scheme_assignments [Hash] Agent-specific authentication scheme assignments. Defaults to empty hash.
+      # @param auth_credential_assignments [Hash] Agent-specific authentication credential assignments. Defaults to empty hash.
+      # @param auth_url_mappings [Array] Agent-specific URL to authentication mappings. Defaults to empty array.
       # @return [Boolean] true if successful, false otherwise.
       # @raise [ArgumentError] if required fields (name) are missing or invalid.
       # @raise [ConfigurationError] if Redis client is not available.
       # @raise [StoreError] for Redis errors during save.
       def save_definition(name:, description:, tools:, model:, fallback_mode:, mcp_servers_json:, instruction: nil,
                           webhook_enabled: false, webhook_secret: nil, agent_type: :llm, sub_agent_names: [],
-                          sequential_sub_agent_names: [], parallel_sub_agent_names: [], loop_sub_agent_names: [])
+                          sequential_sub_agent_names: [], parallel_sub_agent_names: [], loop_sub_agent_names: [],
+                          auth_scheme_assignments: {}, auth_credential_assignments: {}, auth_url_mappings: [])
         raise ConfigurationError, 'Redis client not available.' unless @redis
         raise ArgumentError, 'Agent name cannot be empty.' if name.nil? || name.strip.empty?
 
@@ -98,6 +103,9 @@ module ADK
             multi.hset(agent_key, 'sequential_sub_agent_names', sequential_sub_agent_names.to_json)
             multi.hset(agent_key, 'parallel_sub_agent_names', parallel_sub_agent_names.to_json)
             multi.hset(agent_key, 'loop_sub_agent_names', loop_sub_agent_names.to_json)
+            multi.hset(agent_key, 'auth_scheme_assignments', auth_scheme_assignments.to_json)
+            multi.hset(agent_key, 'auth_credential_assignments', auth_credential_assignments.to_json)
+            multi.hset(agent_key, 'auth_url_mappings', auth_url_mappings.to_json)
             multi.sadd(AGENTS_SET_KEY, name)
           end
 
@@ -247,7 +255,44 @@ module ADK
             definition_hash['loop_sub_agent_names'] = [] # Default to empty array if not present
           end
 
-          # --- END Webhook Fields ---
+          # --- Process Authentication Fields ---
+          # Process auth_scheme_assignments
+          auth_scheme_assignments_json = definition_hash['auth_scheme_assignments']
+          if auth_scheme_assignments_json && !auth_scheme_assignments_json.empty?
+            begin
+              definition_hash['auth_scheme_assignments'] = JSON.parse(auth_scheme_assignments_json)
+            rescue JSON::ParserError
+              definition_hash['auth_scheme_assignments'] = {} # Default to empty hash if parsing fails
+            end
+          else
+            definition_hash['auth_scheme_assignments'] = {} # Default to empty hash if not present
+          end
+
+          # Process auth_credential_assignments
+          auth_credential_assignments_json = definition_hash['auth_credential_assignments']
+          if auth_credential_assignments_json && !auth_credential_assignments_json.empty?
+            begin
+              definition_hash['auth_credential_assignments'] = JSON.parse(auth_credential_assignments_json)
+            rescue JSON::ParserError
+              definition_hash['auth_credential_assignments'] = {} # Default to empty hash if parsing fails
+            end
+          else
+            definition_hash['auth_credential_assignments'] = {} # Default to empty hash if not present
+          end
+
+          # Process auth_url_mappings
+          auth_url_mappings_json = definition_hash['auth_url_mappings']
+          if auth_url_mappings_json && !auth_url_mappings_json.empty?
+            begin
+              definition_hash['auth_url_mappings'] = JSON.parse(auth_url_mappings_json)
+            rescue JSON::ParserError
+              definition_hash['auth_url_mappings'] = [] # Default to empty array if parsing fails
+            end
+          else
+            definition_hash['auth_url_mappings'] = [] # Default to empty array if not present
+          end
+
+          # --- END Authentication Fields ---
           # --- Return symbol-keyed hash for consistency? ---
           # Let's convert keys to symbols for internal consistency, matching save_definition inputs.
           symbolized_hash = definition_hash.transform_keys(&:to_sym)
@@ -419,6 +464,30 @@ module ADK
             rescue JSON::GeneratorError => e
               @logger.error("JSON error serializing loop_sub_agent_names for agent '#{agent_name}': #{e.message}")
               raise StoreError, "Failed to serialize loop sub-agent names for agent '#{agent_name}'."
+            end
+          when 'auth_scheme_assignments'
+            # Handle auth_scheme_assignments hash
+            begin
+              redis_updates[field_str] = value.is_a?(Hash) ? value.to_json : '{}'
+            rescue JSON::GeneratorError => e
+              @logger.error("JSON error serializing auth_scheme_assignments for agent '#{agent_name}': #{e.message}")
+              raise StoreError, "Failed to serialize authentication scheme assignments for agent '#{agent_name}'."
+            end
+          when 'auth_credential_assignments'
+            # Handle auth_credential_assignments hash
+            begin
+              redis_updates[field_str] = value.is_a?(Hash) ? value.to_json : '{}'
+            rescue JSON::GeneratorError => e
+              @logger.error("JSON error serializing auth_credential_assignments for agent '#{agent_name}': #{e.message}")
+              raise StoreError, "Failed to serialize authentication credential assignments for agent '#{agent_name}'."
+            end
+          when 'auth_url_mappings'
+            # Handle auth_url_mappings array
+            begin
+              redis_updates[field_str] = value.is_a?(Array) ? value.to_json : '[]'
+            rescue JSON::GeneratorError => e
+              @logger.error("JSON error serializing auth_url_mappings for agent '#{agent_name}': #{e.message}")
+              raise StoreError, "Failed to serialize authentication URL mappings for agent '#{agent_name}'."
             end
           when 'description', 'persistent_status', 'webhook_validator', 'temperature'
             # These are valid fields that can be updated directly
