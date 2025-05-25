@@ -264,80 +264,317 @@ class BoatDetailParser < ADK::Tool
   def extract_boat_details(yaml_text, thread_info)
     content = yaml_text
     
+    # Extract all text content from posts, prioritizing the original post
+    posts = extract_posts_content(content)
+    
     {
       index: thread_info['index'] || thread_info[:index] || 0,
       title: thread_info['title'] || thread_info[:title] || 'Unknown Boat',
       url: thread_info['url'] || thread_info[:url] || '',
-      price: extract_price(content),
-      location: extract_location(content),
-      year: extract_year(content),
-      size: extract_size(content),
-      description: extract_description(content)
+      price: extract_price_from_posts(posts),
+      location: extract_location_from_posts(posts),
+      year: extract_year_from_posts(posts),
+      size: extract_size_from_posts(posts),
+      description: extract_description_from_posts(posts)
     }
   end
 
-  def extract_price(content)
-    price_patterns = [ 
-      /\$[\d,]+(?:\.?\d{2})?/, 
-      /asking[:\s]*\$?[\d,]+/i, 
-      /price[:\s]*\$?[\d,]+/i,
-      /\b[\d,]+\s*(?:dollars?|k|K)\b/i
-    ]
-    price_patterns.each do |pattern|
-      match = content.match(pattern)
-      if match
-        price = match[0].strip.gsub(/asking[:\s]*/i, '').gsub(/price[:\s]*/i, '')
-        price = "$#{price}" unless price.start_with?('$')
-        return price
+  def extract_posts_content(yaml_text)
+    posts = []
+    lines = yaml_text.split("\n")
+    current_post = nil
+    in_post_content = false
+    
+    puts "DEBUG: Starting post extraction from #{lines.length} lines"
+    
+    lines.each_with_index do |line, index|
+      # Look for post markers (post numbers like #1, #2, etc.)
+      if line.match?(/link\s+"(\d+)"\s+.*cursor=pointer.*:/)
+        post_number = line.match(/link\s+"(\d+)"/)[1].to_i
+        if current_post
+          puts "DEBUG: Completed post ##{current_post[:post_number]} with #{current_post[:content].length} content items"
+          posts << current_post
+        end
+        current_post = { post_number: post_number, content: [], is_thread_starter: false }
+        in_post_content = false
+        puts "DEBUG: Started new post ##{post_number}"
+      elsif line.include?('Thread Starter') && current_post
+        current_post[:is_thread_starter] = true
+        puts "DEBUG: Post ##{current_post[:post_number]} marked as thread starter"
+      elsif line.include?('- separator') && current_post
+        # Separator often indicates start of actual post content
+        in_post_content = true
+      elsif line.include?('- text:') && current_post
+        # Extract the actual text content
+        text_match = line.match(/- text:\s*(.+)/)
+        if text_match && text_match[1]
+          text_content = text_match[1].strip
+          
+          # Skip user metadata and UI elements more aggressively
+          skip_patterns = [
+            /^(Reply|Like|Quote|#\d+|Joined|Posts|From|Likes|Admirals Club|\d+\s+Year Member)$/i,
+            /^\d+$/,
+            /cursor=pointer/,
+            /^(Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar|Apr|May)\s+\d{4}$/,
+            /^Received\s+\d+\s+Likes/i,
+            /^(Naples|Tampa|Fort|Miami|Orlando),?\s+(Florida|FL)$/i,
+            /^"(Joined|Posts|From|Likes):"$/,
+            /^(Thread Starter|Admiral|Member)$/i,
+            /^\d{2}-\d{2}-\d{4}\s+\|\s+\d{2}:\d{2}\s+(AM|PM)$/,
+            /^(Old|Default)$/i
+          ]
+          
+          should_skip = text_content.length < 5 || 
+                       skip_patterns.any? { |pattern| text_content.match?(pattern) }
+          
+          # Only include content that seems like actual post text
+          if !should_skip && (in_post_content || text_content.length > 15)
+            current_post[:content] << text_content
+          end
+        end
       end
     end
-    "Price not listed"
+    
+    # Add the last post
+    if current_post
+      puts "DEBUG: Completed final post ##{current_post[:post_number]} with #{current_post[:content].length} content items"
+      posts << current_post
+    end
+    
+    # Sort posts by post number, with thread starter first
+    sorted_posts = posts.sort_by { |post| [post[:is_thread_starter] ? 0 : 1, post[:post_number]] }
+    
+    puts "DEBUG: Found #{sorted_posts.length} total posts"
+    sorted_posts.each do |post|
+      puts "DEBUG: Post ##{post[:post_number]} (#{post[:is_thread_starter] ? 'STARTER' : 'reply'}): #{post[:content].length} items"
+      if post[:content].length > 0
+        puts "DEBUG:   First few items: #{post[:content].first(3).join(' | ')}"
+      end
+    end
+    
+    sorted_posts
   end
 
-  def extract_location(content)
-    states = %w[AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY]
-    location_patterns = [ 
-      /(?:location|located)[:\s]*([^,\n]+(?:,\s*(?:#{states.join('|')}))?)(?:\s|$)/i, 
-      /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s*(?:#{states.join('|')}))(?:\s|$)/, 
-      /(#{states.join('|')})(?:\s|$)/ 
+  def extract_price_from_posts(posts)
+    # Look for price information across all posts, prioritizing original post
+    all_content = posts.map { |post| post[:content].join(' ') }.join(' ')
+    
+    puts "DEBUG: Price extraction analyzing content: #{all_content[0..300]}..."
+    
+    # Enhanced price patterns that are more specific to boat listings
+    price_patterns = [
+      # Price reduction patterns (highest priority)
+      /price\s*reduction[:\s-]*\$\s*([\d,]+(?:\.\d+)?)\s*(?:million|mil|m|k|obo|firm)?\b/i,
+      /reduced\s*to[:\s]*\$\s*([\d,]+(?:\.\d+)?)\s*(?:million|mil|m|k|obo|firm)?\b/i,
+      # Specific boat sale patterns with million/thousand handling
+      /(?:for sale|asking|price)[:\s-]*\$\s*([\d,]+(?:\.\d+)?)\s*(million|mil|m)\b/i,
+      /(?:for sale|asking|price)[:\s-]*\$\s*([\d,]+(?:\.\d+)?)\s*k\b/i,
+      /(?:for sale|asking|price)[:\s-]*\$\s*([\d,]+(?:\.\d+)?)\s*(?:obo|firm)?\s*$/i,
+      # Standalone price with context indicators
+      /\$\s*([\d,]+(?:\.\d+)?)\s*(million|mil|m)\b/i,
+      /\$\s*([\d,]+(?:\.\d+)?)\s*k\b/i,
+      /\$\s*([\d,]+(?:\.\d+)?)\s*(?:obo|firm|negotiable)\b/i,
+      # Large amounts that are clearly boat prices (6+ digits or with commas)
+      /\$\s*([1-9]\d{5,}(?:,\d{3})*)\b/,
+      /\$\s*(\d{1,3}(?:,\d{3})+)\b/
     ]
-    location_patterns.each do |pattern|
-      match = content.match(pattern)
-      if match && match[1] && match[1].strip.length > 2
-        return match[1].strip
+    
+    found_prices = []
+    
+    price_patterns.each_with_index do |pattern, pattern_index|
+      matches = all_content.scan(pattern)
+      puts "DEBUG: Pattern #{pattern_index + 1} found #{matches.length} matches: #{matches.inspect}"
+      matches.each do |match|
+        if match.is_a?(Array)
+          price_str = match[0]
+          unit = match[1] if match.length > 1
+        else
+          price_str = match
+          unit = nil
+        end
+        
+        next unless price_str
+        
+        puts "DEBUG: Processing price string: '#{price_str}' with unit: '#{unit}'"
+        
+        # Clean up the price string
+        clean_price = price_str.gsub(/[^\d,.]/, '')
+        next if clean_price.empty?
+        
+        # Convert to number for validation
+        base_price = clean_price.gsub(',', '').to_f
+        
+        # Apply unit multipliers
+        price_num = case unit&.downcase
+                   when 'million', 'mil', 'm'
+                     base_price * 1_000_000
+                   when 'k'
+                     base_price * 1_000
+                   else
+                     base_price
+                   end
+        
+        puts "DEBUG: Cleaned price: '#{clean_price}' -> base: #{base_price}, unit: #{unit}, final: #{price_num}"
+        
+        # Only consider realistic boat prices (over $5,000 and under $50M)
+        if price_num >= 5000 && price_num <= 50_000_000
+          # Format nicely
+          formatted_price = if price_num >= 1_000_000
+            "$#{(price_num / 1_000_000).round(1)}M"
+          elsif price_num >= 1000
+            "$#{price_num.to_i.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1,').reverse}"
+          else
+            "$#{price_num.to_i}"
+          end
+          
+          # Give priority to price reductions (patterns 1-2)
+          priority = pattern_index < 2 ? 1 : 0
+          
+          puts "DEBUG: Valid price found: #{formatted_price} (raw: #{price_num}, priority: #{priority})"
+          found_prices << { price: formatted_price, raw_price: price_num, priority: priority }
+        else
+          puts "DEBUG: Price #{price_num} out of realistic range, skipping"
+        end
       end
     end
+    
+    puts "DEBUG: Total valid prices found: #{found_prices.length}"
+    found_prices.each { |p| puts "DEBUG:   - #{p[:price]} (#{p[:raw_price]}, priority: #{p[:priority]})" }
+    
+    if found_prices.any?
+      # Return the highest priority price, then highest price
+      best_price = found_prices.max_by { |p| [p[:priority], p[:raw_price]] }
+      puts "DEBUG: Selected best price: #{best_price[:price]}"
+      best_price[:price]
+    else
+      puts "DEBUG: No valid prices found"
+      "Price not listed"
+    end
+  end
+
+  def extract_location_from_posts(posts)
+    all_content = posts.map { |post| post[:content].join(' ') }.join(' ')
+    
+    puts "DEBUG: Location extraction analyzing content: #{all_content[0..200]}..."
+    
+    states = %w[AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY]
+    
+    location_patterns = [
+      # Specific location indicators with better boundaries
+      /(?:located\s+in|location)[:\s]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:,\s*(?:#{states.join('|')}))?)(?:\s+\d|\s*$|\s*[,.])/i,
+      /(?:from)[:\s]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:,\s*(?:#{states.join('|')}))?)(?:\s+\d|\s*$|\s*[,.])/i,
+      # Specific pattern for "Ft Lauderdale" which appears in our content
+      /\b(Ft\.?\s+Lauderdale)(?:\s+\d|\s*$|\s*[,.])/i,
+      # City, State patterns with word boundaries
+      /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s*(?:#{states.join('|')}))\b/,
+      # Specific city names with state abbreviations
+      /\b((Fort|Ft\.?|Miami|Tampa|Orlando|Jacksonville|Naples)\s+[A-Z][a-z]*(?:,\s*(?:#{states.join('|')}))?)(?:\s+\d|\s*$|\s*[,.])/i,
+      # State abbreviations as fallback
+      /\b(#{states.join('|')})\b/
+    ]
+    
+    location_patterns.each_with_index do |pattern, index|
+      match = all_content.match(pattern)
+      puts "DEBUG: Location pattern #{index + 1} match: #{match ? match[1] : 'none'}"
+      if match && match[1] && match[1].strip.length > 1
+        location = match[1].strip
+        # Clean up common artifacts
+        location = location.gsub(/^(From|In|Located in)[:\s]*/i, '')
+        location = location.gsub(/\s+/, ' ').strip
+        location = location.gsub(/[,.]$/, '') # Remove trailing punctuation
+        
+        # Validate it's a reasonable location (not just a number or single letter)
+        if location.length > 1 && !location.match?(/^\d+$/) && location.match?(/[A-Za-z]/)
+          puts "DEBUG: Found location: '#{location}'"
+          return location
+        end
+      end
+    end
+    
+    puts "DEBUG: No location found"
     "Location not specified"
   end
 
-  def extract_year(content)
-    year_match = content.match(/\b(19[5-9]\d|20[0-3]\d)\b/)
-    year_match ? year_match[1] : "Year not specified"
-  end
-
-  def extract_size(content)
-    size_patterns = [ /(\d+(?:\.\d+)?)\s*(?:ft|feet|')/i, /(\d+)\s*foot/i ]
-    size_patterns.each do |pattern|
-      match = content.match(pattern)
+  def extract_year_from_posts(posts)
+    all_content = posts.map { |post| post[:content].join(' ') }.join(' ')
+    
+    # Look for years in boat context
+    year_patterns = [
+      /(?:^|\s)(19[5-9]\d|20[0-3]\d)(?:\s|$)/,
+      /(?:year|model)[:\s]*(19[5-9]\d|20[0-3]\d)/i
+    ]
+    
+    year_patterns.each do |pattern|
+      match = all_content.match(pattern)
       if match && match[1]
-        return "#{match[1]} ft"
+        year = match[1].to_i
+                 # Validate reasonable boat year range
+         current_year = Time.now.year
+         if year >= 1950 && year <= current_year + 1
+           return year.to_s
+         end
       end
     end
+    
+    "Year not specified"
+  end
+
+  def extract_size_from_posts(posts)
+    all_content = posts.map { |post| post[:content].join(' ') }.join(' ')
+    
+    size_patterns = [
+      /(\d+(?:\.\d+)?)\s*(?:ft|feet|foot|')/i,
+      /(\d+)\s*foot/i
+    ]
+    
+    size_patterns.each do |pattern|
+      match = all_content.match(pattern)
+      if match && match[1]
+        size = match[1].to_f
+        # Validate reasonable boat size (10-200 feet)
+        if size >= 10 && size <= 200
+          return "#{size.to_i} ft"
+        end
+      end
+    end
+    
     "Size not specified"
   end
 
-  def extract_description(content)
-    lines = content.split("\n")
-    descriptive_lines = lines.select do |line|
-      line.strip.length > 20 && line.strip.length < 200 &&
-      !line.match?(/(?:text:|generic|link|button|heading)/i) &&
-      line.match?(/[a-zA-Z]/)
+  def extract_description_from_posts(posts)
+    # Get content from the original post (thread starter)
+    original_post = posts.find { |post| post[:is_thread_starter] }
+    content_lines = original_post ? original_post[:content] : []
+    
+    if content_lines.empty?
+      # Fallback to first post
+      content_lines = posts.first[:content] if posts.any?
     end
+    
+    return "No description available" if content_lines.empty?
+    
+    # Find the most descriptive line
+    descriptive_lines = content_lines.select do |line|
+      line.length > 20 && line.length < 200 &&
+      !line.match?(/^(For sale|Located|Price|Call|Contact|PM)/i) &&
+      line.match?(/[a-zA-Z]/) &&
+      !line.match?(/^\d+$/)
+    end
+    
     if descriptive_lines.any?
-      desc = descriptive_lines.first.strip.gsub(/^[:\-\s]+/, '')
+      desc = descriptive_lines.first.strip
       desc = desc[0..97] + "..." if desc.length > 100
       return desc
     end
+    
+    # Fallback to first substantial line
+    substantial_line = content_lines.find { |line| line.length > 10 && line.match?(/[a-zA-Z]/) }
+    if substantial_line
+      desc = substantial_line.strip
+      desc = desc[0..97] + "..." if desc.length > 100
+      return desc
+    end
+    
     "No description available"
   end
 end
