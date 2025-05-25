@@ -48,7 +48,20 @@
               span View Mappings
 
   .columns.is-centered.mt-5
-    .column.is-half
+    .column.is-one-third
+      .card.has-text-centered
+        .card-content
+          span.icon.is-large.has-text-danger.mb-3
+            i.fas.fa-vial.fa-3x
+          h2.title.is-4 Testing Tools
+          p Test and validate your authentication configurations
+          .buttons.is-centered.mt-4
+            a.button.is-danger(href="/auth/test")
+              span.icon
+                i.fas.fa-play
+              span Test Authentication
+
+    .column.is-one-third
       .card.has-text-centered
         .card-content
           span.icon.is-large.has-text-warning.mb-3

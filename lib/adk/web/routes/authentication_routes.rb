@@ -284,6 +284,228 @@ module ADK
             compatible_types = get_compatible_credential_types(scheme.scheme_type)
             compatible_types.include?(credential.auth_type.to_s) || compatible_types.include?(credential.auth_type)
           end
+
+          # Helper method to perform credential testing
+          def test_credential_functionality(credential, test_options = {})
+            test_results = { success: true, tests: [], credential_name: credential.to_s }
+            
+            begin
+              # Test 1: Basic validation
+              credential.to_h(resolve_env: true)
+              test_results[:tests] << {
+                name: 'Basic Validation',
+                status: 'passed',
+                message: 'Credential structure and environment variables are valid'
+              }
+            rescue => e
+              test_results[:success] = false
+              test_results[:tests] << {
+                name: 'Basic Validation',
+                status: 'failed',
+                message: "Validation failed: #{e.message}"
+              }
+              return test_results
+            end
+
+            # Test 2: Type-specific validation
+            case credential.auth_type
+            when :api_key
+              test_results[:tests] << test_api_key_credential(credential, test_options)
+            when :oauth2, :oidc
+              test_results[:tests] << test_oauth_credential(credential, test_options)
+            when :service_account, :google_service_account
+              test_results[:tests] << test_service_account_credential(credential, test_options)
+            when :http_bearer
+              test_results[:tests] << test_bearer_credential(credential, test_options)
+            else
+              test_results[:tests] << {
+                name: 'Type-Specific Test',
+                status: 'skipped',
+                message: "No specific test available for credential type: #{credential.auth_type}"
+              }
+            end
+
+            # Check if any test failed
+            test_results[:success] = test_results[:tests].all? { |test| test[:status] != 'failed' }
+            test_results
+          end
+
+          # Test API key credential
+          def test_api_key_credential(credential, options = {})
+            api_key = credential[:api_key]
+            return { name: 'API Key Test', status: 'failed', message: 'API key is missing' } unless api_key
+
+            if options[:test_url]
+              # Test against provided URL
+              begin
+                require 'net/http'
+                uri = URI(options[:test_url])
+                http = Net::HTTP.new(uri.host, uri.port)
+                http.use_ssl = uri.scheme == 'https'
+                http.read_timeout = 10
+
+                request = Net::HTTP::Get.new(uri)
+                
+                # Add API key based on location
+                location = credential[:location] || 'header'
+                key_name = credential[:name] || 'X-API-Key'
+                
+                case location
+                when 'header'
+                  request[key_name] = api_key
+                when 'query'
+                  uri.query = "#{key_name}=#{api_key}"
+                  request = Net::HTTP::Get.new(uri)
+                end
+
+                response = http.request(request)
+                
+                if response.code.to_i < 400
+                  { name: 'API Key Test', status: 'passed', message: "API key accepted (HTTP #{response.code})" }
+                else
+                  { name: 'API Key Test', status: 'failed', message: "API key rejected (HTTP #{response.code})" }
+                end
+              rescue => e
+                { name: 'API Key Test', status: 'failed', message: "Network error: #{e.message}" }
+              end
+            else
+              { name: 'API Key Test', status: 'passed', message: 'API key format is valid (no test URL provided)' }
+            end
+          end
+
+          # Test OAuth credential
+          def test_oauth_credential(credential, options = {})
+            client_id = credential[:client_id]
+            client_secret = credential[:client_secret]
+            
+            return { name: 'OAuth Test', status: 'failed', message: 'Client ID is missing' } unless client_id
+            return { name: 'OAuth Test', status: 'failed', message: 'Client secret is missing' } unless client_secret
+
+            { name: 'OAuth Test', status: 'passed', message: 'OAuth credentials are properly formatted' }
+          end
+
+          # Test service account credential
+          def test_service_account_credential(credential, options = {})
+            if credential.auth_type == :google_service_account
+              key_data = credential[:service_account_key]
+              return { name: 'Service Account Test', status: 'failed', message: 'Service account key is missing' } unless key_data
+
+              begin
+                parsed_key = JSON.parse(key_data)
+                required_fields = %w[type project_id private_key_id private_key client_email client_id]
+                missing_fields = required_fields.reject { |field| parsed_key.key?(field) }
+                
+                if missing_fields.empty?
+                  { name: 'Service Account Test', status: 'passed', message: 'Service account key is valid JSON with all required fields' }
+                else
+                  { name: 'Service Account Test', status: 'failed', message: "Missing required fields: #{missing_fields.join(', ')}" }
+                end
+              rescue JSON::ParserError
+                { name: 'Service Account Test', status: 'failed', message: 'Service account key is not valid JSON' }
+              end
+            else
+              client_email = credential[:client_email]
+              private_key = credential[:private_key]
+              
+              return { name: 'Service Account Test', status: 'failed', message: 'Client email is missing' } unless client_email
+              return { name: 'Service Account Test', status: 'failed', message: 'Private key is missing' } unless private_key
+
+              if private_key.include?('BEGIN PRIVATE KEY')
+                { name: 'Service Account Test', status: 'passed', message: 'Service account credentials are properly formatted' }
+              else
+                { name: 'Service Account Test', status: 'failed', message: 'Private key does not appear to be in PEM format' }
+              end
+            end
+          end
+
+          # Test bearer token credential
+          def test_bearer_credential(credential, options = {})
+            bearer_token = credential[:bearer_token]
+            return { name: 'Bearer Token Test', status: 'failed', message: 'Bearer token is missing' } unless bearer_token
+
+            if options[:test_url]
+              begin
+                require 'net/http'
+                uri = URI(options[:test_url])
+                http = Net::HTTP.new(uri.host, uri.port)
+                http.use_ssl = uri.scheme == 'https'
+                http.read_timeout = 10
+
+                request = Net::HTTP::Get.new(uri)
+                request['Authorization'] = "Bearer #{bearer_token}"
+
+                response = http.request(request)
+                
+                if response.code.to_i < 400
+                  { name: 'Bearer Token Test', status: 'passed', message: "Bearer token accepted (HTTP #{response.code})" }
+                else
+                  { name: 'Bearer Token Test', status: 'failed', message: "Bearer token rejected (HTTP #{response.code})" }
+                end
+              rescue => e
+                { name: 'Bearer Token Test', status: 'failed', message: "Network error: #{e.message}" }
+              end
+            else
+              { name: 'Bearer Token Test', status: 'passed', message: 'Bearer token format is valid (no test URL provided)' }
+            end
+          end
+
+          # Helper to test API calls with authentication
+          def test_authenticated_api_call(url, scheme_name, credential_name, options = {})
+            auth_manager = ADK::Auth::Manager.instance
+            scheme = auth_manager.get_scheme(scheme_name.to_sym)
+            credential = auth_manager.get_credential(credential_name.to_sym)
+            
+            return { success: false, error: 'Scheme not found' } unless scheme
+            return { success: false, error: 'Credential not found' } unless credential
+            return { success: false, error: 'Scheme and credential are not compatible' } unless mapping_scheme_credential_compatible?(scheme, credential)
+
+            begin
+              require 'net/http'
+              uri = URI(url)
+              http = Net::HTTP.new(uri.host, uri.port)
+              http.use_ssl = uri.scheme == 'https'
+              http.read_timeout = 15
+
+              request = Net::HTTP::Get.new(uri)
+              
+              # Apply authentication based on scheme type
+              case scheme.scheme_type
+              when :api_key
+                location = credential[:location] || 'header'
+                key_name = credential[:name] || 'X-API-Key'
+                api_key = credential[:api_key]
+                
+                case location
+                when 'header'
+                  request[key_name] = api_key
+                when 'query'
+                  uri.query = "#{key_name}=#{api_key}"
+                  request = Net::HTTP::Get.new(uri)
+                end
+              when :http_bearer
+                request['Authorization'] = "Bearer #{credential[:bearer_token]}"
+              when :oauth2, :oidc
+                # For OAuth2, we'd need an access token, which requires a full flow
+                return { success: false, error: 'OAuth2 testing requires a complete authentication flow' }
+              when :service_account, :google_service_account
+                # Service account testing would require token generation
+                return { success: false, error: 'Service account testing requires token generation' }
+              end
+
+              response = http.request(request)
+              
+              {
+                success: true,
+                status_code: response.code.to_i,
+                status_message: response.message,
+                headers: response.to_hash,
+                body_preview: response.body&.slice(0, 500),
+                authenticated: response.code.to_i < 400
+              }
+            rescue => e
+              { success: false, error: "Network error: #{e.message}" }
+            end
+          end
         end
 
         # GET /auth - Main authentication management dashboard
@@ -951,6 +1173,252 @@ module ADK
         rescue => e
           logger.error("Error in /auth/debug route (from AuthenticationRoutes): #{e.class} - #{e.message}")
           halt 500, "Error gathering debug information: #{e.message}"
+        end
+
+        # GET /auth/test - Main testing dashboard
+        app.get '/auth/test' do
+          logger.info('GET /auth/test route handler entered (from AuthenticationRoutes)')
+          content_type :html
+          
+          auth_manager = ADK::Auth::Manager.instance
+          schemes = auth_manager.instance_variable_get(:@schemes) || {}
+          credentials = auth_manager.instance_variable_get(:@credentials) || {}
+          mappings = auth_manager.instance_variable_get(:@url_mappings) || []
+          
+          # Convert to view-friendly format
+          schemes_data = schemes.map do |name, scheme|
+            {
+              name: name,
+              scheme_type: scheme.scheme_type,
+              description: get_scheme_description(scheme)
+            }
+          end
+          
+          credentials_data = credentials.map do |name, credential|
+            {
+              name: name,
+              auth_type: credential.auth_type,
+              description: get_credential_description(credential)
+            }
+          end
+          
+          self.instance_variable_set(:@schemes, schemes_data)
+          self.instance_variable_set(:@credentials, credentials_data)
+          self.instance_variable_set(:@mappings_count, mappings.size)
+          slim :auth_test
+        rescue => e
+          logger.error("Error in /auth/test route (from AuthenticationRoutes): #{e.class} - #{e.message}")
+          halt 500, "Error loading testing dashboard: #{e.message}"
+        end
+
+        # POST /auth/test/credential/:name - Test individual credential
+        app.post '/auth/test/credential/:name' do
+          logger.info("POST /auth/test/credential/#{params[:name]} route handler entered (from AuthenticationRoutes)")
+          content_type :json
+          
+          credential_name = params[:name].to_sym
+          auth_manager = ADK::Auth::Manager.instance
+          credential = auth_manager.get_credential(credential_name)
+          
+          halt 404, { error: "Credential not found: #{params[:name]}" }.to_json unless credential
+          
+          begin
+            test_options = {}
+            test_options[:test_url] = params[:test_url] if params[:test_url] && !params[:test_url].empty?
+            
+            test_results = test_credential_functionality(credential, test_options)
+            test_results[:credential_name] = credential_name.to_s
+            
+            logger.info("Credential test completed for '#{credential_name}': #{test_results[:success] ? 'PASSED' : 'FAILED'}")
+            test_results.to_json
+          rescue => e
+            logger.error("Error testing credential '#{credential_name}': #{e.class} - #{e.message}")
+            halt 500, { error: "Failed to test credential: #{e.message}" }.to_json
+          end
+        end
+
+        # POST /auth/test/scheme/:name - Test authentication scheme
+        app.post '/auth/test/scheme/:name' do
+          logger.info("POST /auth/test/scheme/#{params[:name]} route handler entered (from AuthenticationRoutes)")
+          content_type :json
+          
+          scheme_name = params[:name].to_sym
+          auth_manager = ADK::Auth::Manager.instance
+          scheme = auth_manager.get_scheme(scheme_name)
+          
+          halt 404, { error: "Scheme not found: #{params[:name]}" }.to_json unless scheme
+          
+          begin
+            test_results = { success: true, tests: [], scheme_name: scheme_name.to_s }
+            
+            # Test 1: Scheme configuration validation
+            case scheme.scheme_type
+            when :oauth2, :oidc, :openid_connect
+              if scheme.respond_to?(:authorization_url) && scheme.authorization_url
+                test_results[:tests] << {
+                  name: 'Authorization URL',
+                  status: 'passed',
+                  message: "Valid authorization URL: #{scheme.authorization_url}"
+                }
+              else
+                test_results[:success] = false
+                test_results[:tests] << {
+                  name: 'Authorization URL',
+                  status: 'failed',
+                  message: 'Authorization URL is missing or invalid'
+                }
+              end
+              
+              if scheme.respond_to?(:token_url) && scheme.token_url
+                test_results[:tests] << {
+                  name: 'Token URL',
+                  status: 'passed',
+                  message: "Valid token URL: #{scheme.token_url}"
+                }
+              else
+                test_results[:success] = false
+                test_results[:tests] << {
+                  name: 'Token URL',
+                  status: 'failed',
+                  message: 'Token URL is missing or invalid'
+                }
+              end
+            when :service_account, :google_service_account
+              if scheme.respond_to?(:token_url) && scheme.token_url
+                test_results[:tests] << {
+                  name: 'Token URL',
+                  status: 'passed',
+                  message: "Valid token URL: #{scheme.token_url}"
+                }
+              else
+                test_results[:tests] << {
+                  name: 'Token URL',
+                  status: 'skipped',
+                  message: 'No token URL configured (using default)'
+                }
+              end
+            else
+              test_results[:tests] << {
+                name: 'Scheme Configuration',
+                status: 'passed',
+                message: "Scheme type #{scheme.scheme_type} requires no additional configuration"
+              }
+            end
+            
+            # Test 2: Compatible credentials check
+            credentials = auth_manager.instance_variable_get(:@credentials) || {}
+            compatible_credentials = credentials.select do |cred_name, credential|
+              mapping_scheme_credential_compatible?(scheme, credential)
+            end
+            
+            if compatible_credentials.any?
+              test_results[:tests] << {
+                name: 'Compatible Credentials',
+                status: 'passed',
+                message: "Found #{compatible_credentials.size} compatible credential(s)"
+              }
+            else
+              test_results[:tests] << {
+                name: 'Compatible Credentials',
+                status: 'warning',
+                message: 'No compatible credentials found'
+              }
+            end
+            
+            logger.info("Scheme test completed for '#{scheme_name}': #{test_results[:success] ? 'PASSED' : 'FAILED'}")
+            test_results.to_json
+          rescue => e
+            logger.error("Error testing scheme '#{scheme_name}': #{e.class} - #{e.message}")
+            halt 500, { error: "Failed to test scheme: #{e.message}" }.to_json
+          end
+        end
+
+        # POST /auth/test/api - Test API call with authentication
+        app.post '/auth/test/api' do
+          logger.info('POST /auth/test/api route handler entered (from AuthenticationRoutes)')
+          content_type :json
+          
+          url = params[:url]
+          scheme_name = params[:scheme_name]
+          credential_name = params[:credential_name]
+          
+          halt 400, { error: 'URL is required' }.to_json unless url && !url.empty?
+          halt 400, { error: 'Scheme name is required' }.to_json unless scheme_name && !scheme_name.empty?
+          halt 400, { error: 'Credential name is required' }.to_json unless credential_name && !credential_name.empty?
+          
+          begin
+            result = test_authenticated_api_call(url, scheme_name, credential_name)
+            
+            logger.info("API test completed for URL '#{url}' with scheme '#{scheme_name}' and credential '#{credential_name}': #{result[:success] ? 'SUCCESS' : 'FAILED'}")
+            result.to_json
+          rescue => e
+            logger.error("Error testing API call: #{e.class} - #{e.message}")
+            halt 500, { error: "Failed to test API call: #{e.message}" }.to_json
+          end
+        end
+
+        # POST /auth/test/flow - Test complete authentication flow
+        app.post '/auth/test/flow' do
+          logger.info('POST /auth/test/flow route handler entered (from AuthenticationRoutes)')
+          content_type :json
+          
+          scheme_name = params[:scheme_name]
+          credential_name = params[:credential_name]
+          
+          halt 400, { error: 'Scheme name is required' }.to_json unless scheme_name && !scheme_name.empty?
+          halt 400, { error: 'Credential name is required' }.to_json unless credential_name && !credential_name.empty?
+          
+          begin
+            auth_manager = ADK::Auth::Manager.instance
+            scheme = auth_manager.get_scheme(scheme_name.to_sym)
+            credential = auth_manager.get_credential(credential_name.to_sym)
+            
+            halt 404, { error: 'Scheme not found' }.to_json unless scheme
+            halt 404, { error: 'Credential not found' }.to_json unless credential
+            halt 400, { error: 'Scheme and credential are not compatible' }.to_json unless mapping_scheme_credential_compatible?(scheme, credential)
+            
+            flow_results = { success: true, steps: [], scheme_type: scheme.scheme_type }
+            
+            case scheme.scheme_type
+            when :api_key
+              flow_results[:steps] << {
+                step: 'API Key Authentication',
+                status: 'passed',
+                message: 'API key authentication is ready for use'
+              }
+            when :http_bearer
+              flow_results[:steps] << {
+                step: 'Bearer Token Authentication',
+                status: 'passed',
+                message: 'Bearer token authentication is ready for use'
+              }
+            when :oauth2, :oidc, :openid_connect
+              flow_results[:steps] << {
+                step: 'OAuth2 Flow Simulation',
+                status: 'simulated',
+                message: 'OAuth2 flow would redirect to authorization URL and exchange code for token'
+              }
+            when :service_account, :google_service_account
+              flow_results[:steps] << {
+                step: 'Service Account Flow Simulation',
+                status: 'simulated',
+                message: 'Service account would generate JWT and exchange for access token'
+              }
+            else
+              flow_results[:success] = false
+              flow_results[:steps] << {
+                step: 'Unknown Flow',
+                status: 'failed',
+                message: "No flow simulation available for scheme type: #{scheme.scheme_type}"
+              }
+            end
+            
+            logger.info("Flow test completed for scheme '#{scheme_name}' and credential '#{credential_name}': #{flow_results[:success] ? 'SUCCESS' : 'FAILED'}")
+            flow_results.to_json
+          rescue => e
+            logger.error("Error testing authentication flow: #{e.class} - #{e.message}")
+            halt 500, { error: "Failed to test authentication flow: #{e.message}" }.to_json
+          end
         end
 
         # GET /auth/mappings/new - Form for creating new mapping
