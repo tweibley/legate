@@ -121,7 +121,7 @@ GEM
       faraday-typhoeus (~> 1.1)
       googleauth (~> 1.8)
       typhoeus (~> 1.4, >= 1.4.1)
-    google-cloud-env (2.3.0)
+    google-cloud-env (2.3.1)
       base64 (~> 0.2)
       faraday (>= 1.0, < 3.a)
     google-logging-utils (0.2.0)
@@ -155,7 +155,7 @@ GEM
     hashie (5.0.0)
     ice_nine (0.11.2)
     io-console (0.8.0)
-    json (2.11.3)
+    json (2.12.2)
     jwt (2.10.1)
       base64
     kramdown (2.5.1)
