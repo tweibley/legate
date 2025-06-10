@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'gemini-ai'
+require_relative 'gemini_ai_beta_patch' # Apply monkey patch for v1beta API
 require 'json'
 require 'logger'
 

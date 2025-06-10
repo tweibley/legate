@@ -49,15 +49,15 @@ require_relative '../tools/sleepy_tool' # Example async tool
 require_relative '../definition_store'
 
 # --- Route Modules ---
-        require_relative 'routes/core_routes'
-        require_relative 'routes/api_routes'
-        require_relative 'routes/tools_ui_routes'
-        require_relative 'routes/agent_runtime_routes'
-        require_relative 'routes/agent_definition_routes'
-        require_relative 'routes/agent_interaction_routes'
-        require_relative 'routes/documentation_routes'
-        require_relative 'routes/authentication_routes'
-        require_relative 'routes/agent_authentication_routes'
+require_relative 'routes/core_routes'
+require_relative 'routes/api_routes'
+require_relative 'routes/tools_ui_routes'
+require_relative 'routes/agent_runtime_routes'
+require_relative 'routes/agent_definition_routes'
+require_relative 'routes/agent_interaction_routes'
+require_relative 'routes/documentation_routes'
+require_relative 'routes/authentication_routes'
+require_relative 'routes/agent_authentication_routes'
 
 # Load dotenv for development environment variables
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
@@ -108,18 +108,28 @@ module ADK
       # Redis key for the set containing all defined agent names.
       REDIS_AGENTS_SET_KEY = 'adk:agents:all_names'
       # List of available Gemini models selectable in the UI.
-      AVAILABLE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro'].freeze
+      # Now includes beta models since we're using v1beta API endpoint
+      AVAILABLE_MODELS = [
+        'gemini-2.0-flash',
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
+        'gemini-1.0-pro',
+        # Beta models
+        'gemini-2.5-flash-preview-05-20',
+        'gemini-2.0-flash-exp',
+        'gemini-flash-exp-0827'
+      ].freeze
 
       # --- Register Route Modules ---
-              register ADK::Web::CoreRoutes
-        register ADK::Web::ApiRoutes
-        register ADK::Web::ToolsUIRoutes
-        register ADK::Web::AgentRuntimeRoutes
-        register ADK::Web::AgentDefinitionRoutes
-        register ADK::Web::AgentInteractionRoutes
-        register ADK::Web::DocumentationRoutes
-        register ADK::Web::AuthenticationRoutes
-        register ADK::Web::AgentAuthenticationRoutes
+      register ADK::Web::CoreRoutes
+      register ADK::Web::ApiRoutes
+      register ADK::Web::ToolsUIRoutes
+      register ADK::Web::AgentRuntimeRoutes
+      register ADK::Web::AgentDefinitionRoutes
+      register ADK::Web::AgentInteractionRoutes
+      register ADK::Web::DocumentationRoutes
+      register ADK::Web::AuthenticationRoutes
+      register ADK::Web::AgentAuthenticationRoutes
 
       # --- Instance Variables ---
       # Initializes application state, including connections and services.
