@@ -1,6 +1,6 @@
 # Task 55: Actions Dropdown Visibility
 
-## Status: Pending
+## Status: Complete
 
 ## Priority: Medium
 
@@ -10,12 +10,20 @@ Make the table row actions dropdown (ellipsis menu) more visible and discoverabl
 
 ## Acceptance Criteria
 
-- [ ] Actions button is more visible than current ellipsis icon
-- [ ] Clear affordance that it's clickable/interactive
-- [ ] Consistent styling across agent and tool tables
-- [ ] Works in both light and dark modes
-- [ ] Maintains dropdown functionality
-- [ ] Mobile-friendly touch target
+- [x] Actions button is more visible than current ellipsis icon
+- [x] Clear affordance that it's clickable/interactive
+- [x] Consistent styling across agent and tool tables
+- [x] Works in both light and dark modes
+- [x] Maintains dropdown functionality
+- [x] Mobile-friendly touch target
+
+## Implementation Notes
+
+The actions were implemented as inline icon buttons (Gmail/Notion style) rather than a dropdown menu. This provides:
+- Better discoverability with colored action buttons (green for start, red for stop/delete)
+- Clear visual feedback on hover with background color changes
+- 32px touch targets for mobile usability
+- Consistent styling in both light and dark modes
 
 ## Implementation Details
 
