@@ -16,41 +16,57 @@ section.section
         li.is-active
           a(href="#" aria-current="page")= agent_name
 
-    / Hero Header - Agent Profile Style
+    / Hero Header - Streamlined Agent Profile
     .agent-header-hero.mb-5
-      .agent-header-hero-main
+      / Top row: Name/badges on left, Status/action on right
+      .agent-header-top-row
         / Left side: Agent identity (name, badges)
-        div#agent-name-display
+        div#agent-name-display.agent-header-identity
           == slim :_display_agent_name, locals: { agent_data: agent_data }
         
-        / Right side: Status and controls
-        div#agent-status-controls-container
+        / Right side: Status and action button (same row)
+        div#agent-status-controls-container.agent-header-actions
           == slim :_agent_status_controls, locals: { agent_data: agent_data }
 
-      / Description - full width below
+      / Description - integrated into header
       div#agent-description-display.agent-header-description hx-swap="outerHTML"
         == slim :_display_agent_description, locals: { agent_data: agent_data }
 
-      / Collapsible Agent Details (Type & Hierarchy)
-      details.agent-details-collapsible
-        summary.agent-details-summary
-          span.icon
-            i.fas.fa-chevron-right
-          span Agent Details
-          span.tag.is-light.ml-2
-            - agent_type = agent_data[:agent_type]&.to_sym || :llm
-            - sub_count = agent_data[:sub_agent_names]&.size || 0
-            = "#{agent_type.to_s.capitalize}"
-            - if sub_count > 0
-              |  · #{sub_count} sub-agents
-        .agent-details-content
-          .columns.is-desktop
-            .column
-              div#agent-type-display hx-swap="outerHTML"
-                == slim :_display_agent_type, locals: { agent_data: agent_data }
-            .column
-              div#agent-hierarchy-display hx-swap="outerHTML"
-                == slim :_display_agent_hierarchy, locals: { agent_data: agent_data }
+      / Stats bar - tool count, last run, status
+      .agent-stats-bar
+        a.agent-stat(href="#tools" data-tab-link="tools")
+          span.icon.is-small
+            i.fas.fa-tools
+          span.agent-stat-value= agent_data[:tool_count] || 0
+          span.agent-stat-label Tool#{'s' if (agent_data[:tool_count] || 0) != 1}
+        .agent-stat
+          span.icon.is-small
+            i.fas.fa-clock
+          span.agent-stat-value= agent_data[:last_run] || 'Never'
+          span.agent-stat-label Last Run
+        .agent-stat
+          - if is_running
+            span.icon.is-small.has-text-success
+              i.fas.fa-check-circle
+            span.agent-stat-value.has-text-success Active
+          - else
+            span.icon.is-small.has-text-grey
+              i.fas.fa-pause-circle
+            span.agent-stat-value.has-text-grey Idle
+          span.agent-stat-label Status
+
+      / Collapsible Agent Details (Type & Hierarchy) - simplified
+      - sub_count = agent_data[:sub_agent_names]&.size || 0
+      - if sub_count > 0
+        details.agent-details-collapsible
+          summary.agent-details-summary
+            span.icon.is-small
+              i.fas.fa-chevron-right
+            span Sub-Agents
+            span.tag.is-light.is-small.ml-2= "#{sub_count} configured"
+          .agent-details-content
+            div#agent-hierarchy-display hx-swap="outerHTML"
+              == slim :_display_agent_hierarchy, locals: { agent_data: agent_data }
 
     .custom-rounded-tabs-container
       .tabs

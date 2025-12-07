@@ -2,37 +2,41 @@
 / Expects locals: agent_data (Hash)
 
 - if agent_data && agent_data[:name]
-  .agent-hero-header
-    .agent-hero-identity
-      h1.agent-hero-name= agent_data[:name]
-      .agent-hero-badges
-        / Model badge
-        - if agent_data[:model]
-          span.tag.is-info.is-rounded.agent-model-badge
-            span.icon.is-small
-              i.fas.fa-microchip
-            span= agent_data[:model]
-        / Type badge
-        - agent_type = agent_data[:agent_type]&.to_sym || :llm
-        - type_class = case agent_type
-        - when :sequential then "is-primary"
-        - when :parallel then "is-link"
-        - when :loop then "is-warning"
-        - else "is-dark"
-        - type_label = case agent_type
-        - when :sequential then "Sequential"
-        - when :parallel then "Parallel"
-        - when :loop then "Loop"
-        - else "LLM"
-        span.tag.is-rounded(class=type_class)
+  .agent-hero-identity
+    / Agent name - large and prominent
+    h1.agent-hero-name= agent_data[:name]
+    
+    / Badges row - model and type
+    .agent-hero-badges
+      / Model badge
+      - if agent_data[:model]
+        span.tag.is-info.is-light.is-rounded.agent-model-badge
           span.icon.is-small
-            - type_icon = case agent_type
-            - when :sequential then "fa-list-ol"
-            - when :parallel then "fa-layer-group"
-            - when :loop then "fa-sync-alt"
-            - else "fa-robot"
-            i(class="fas #{type_icon}")
-          span= type_label
+            i.fas.fa-microchip
+          span= agent_data[:model]
+      
+      / Type badge
+      - agent_type = agent_data[:agent_type]&.to_sym || :llm
+      - type_class = case agent_type
+      - when :sequential then "is-primary is-light"
+      - when :parallel then "is-link is-light"
+      - when :loop then "is-warning is-light"
+      - else "is-dark is-light"
+      - type_label = case agent_type
+      - when :sequential then "Sequential"
+      - when :parallel then "Parallel"
+      - when :loop then "Loop"
+      - else "LLM"
+      span.tag.is-rounded(class=type_class)
+        span.icon.is-small
+          - type_icon = case agent_type
+          - when :sequential then "fa-list-ol"
+          - when :parallel then "fa-layer-group"
+          - when :loop then "fa-sync-alt"
+          - else "fa-robot"
+          i(class="fas #{type_icon}")
+        span= type_label
+
 - else
-  .agent-hero-header
+  .agent-hero-identity
     h1.agent-hero-name.has-text-danger [Error: Agent Name Unavailable]

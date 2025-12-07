@@ -4,51 +4,33 @@
 - tool_count = agent_data.is_a?(Hash) ? (agent_data[:tool_count] || 0) : 0
 - container_id = "agent-status-controls-#{agent_name.gsub(/[^a-zA-Z0-9_-]/, '-')}"
 
-div.agent-hero-controls(id=container_id)
-  / Status badge - large and prominent
-  .agent-status-display
-    span.tag.is-large.is-rounded.agent-status-badge class=(is_running ? 'is-success is-running' : 'is-danger')
-      span.icon
+div.agent-header-controls(id=container_id)
+  / Status and action on same row
+  .agent-status-action-row
+    / Status badge
+    span.tag.is-medium.is-rounded.agent-status-badge class=(is_running ? 'is-success is-running' : 'is-danger')
+      span.icon.is-small
         i(class="fas #{is_running ? 'fa-circle' : 'fa-circle'}")
       span= is_running ? 'Running' : 'Stopped'
 
-  / Action buttons - large and prominent
-  .agent-action-buttons
+    / Action button - compact
     - if is_running
-      button.button.is-danger.is-medium.agent-action-btn(
+      button.button.is-danger.agent-action-btn(
         hx-post="/agents/#{agent_name}/stop/detail"
         hx-target="##{container_id}"
-        hx-swap="innerHTML"
-        hx-indicator="this .htmx-indicator")
-        span.icon.htmx-indicator
+        hx-swap="innerHTML")
+        span.icon.is-small.htmx-indicator
           i.fas.fa-spinner.fa-spin
-        span.icon
+        span.icon.is-small
           i.fas.fa-stop
-        span Stop Agent
+        span Stop
     - else
-      button.button.is-success.is-medium.agent-action-btn(
+      button.button.is-success.agent-action-btn(
         hx-post="/agents/#{agent_name}/start/detail"
         hx-target="##{container_id}"
-        hx-swap="innerHTML"
-        hx-indicator="this .htmx-indicator")
-        span.icon.htmx-indicator
+        hx-swap="innerHTML")
+        span.icon.is-small.htmx-indicator
           i.fas.fa-spinner.fa-spin
-        span.icon
+        span.icon.is-small
           i.fas.fa-play
-        span Start Agent
-
-  / Quick stats row
-  .agent-quick-stats
-    .agent-stat
-      span.agent-stat-value= tool_count
-      span.agent-stat-label Tools
-    - if is_running
-      .agent-stat
-        span.agent-stat-value.has-text-success
-          i.fas.fa-check-circle
-        span.agent-stat-label Active
-    - else
-      .agent-stat
-        span.agent-stat-value.has-text-grey
-          i.fas.fa-pause-circle
-        span.agent-stat-label Idle
+        span Start

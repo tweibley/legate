@@ -574,7 +574,7 @@ strong.has-text-link { /* Navbar Brand */
   background: linear-gradient(135deg, var(--color-bg-secondary) 0%, var(--color-bg-tertiary) 100%);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: 1.5rem;
+  padding: 1.25rem 1.5rem;
   position: relative;
   overflow: hidden;
 }
@@ -592,25 +592,37 @@ strong.has-text-link { /* Navbar Brand */
   pointer-events: none;
 }
 
-.agent-header-hero-main {
-  display: flex;
+/* Top row: Name/badges on left, status/action on right */
+.agent-header-top-row {
+  display: flex !important;
+  flex-direction: row !important;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 2rem;
-  flex-wrap: wrap;
+  gap: 1.5rem;
+  flex-wrap: nowrap;
+}
+
+.agent-header-identity {
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+.agent-header-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
 }
 
 /* Agent Identity (Name + Badges) */
-.agent-hero-header {
-  flex: 1;
-  min-width: 250px;
+.agent-hero-identity {
+  /* Container for name and badges */
 }
 
 .agent-hero-name {
-  font-size: 2rem;
+  font-size: 1.75rem;
   font-weight: 700;
   color: var(--color-text-primary);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
   line-height: 1.2;
 }
 
@@ -623,7 +635,8 @@ strong.has-text-link { /* Navbar Brand */
 
 .agent-hero-badges .tag {
   font-weight: 500;
-  padding: 0.5em 0.75em;
+  padding: 0.4em 0.7em;
+  font-size: 0.85rem;
 }
 
 .agent-model-badge {
@@ -632,22 +645,22 @@ strong.has-text-link { /* Navbar Brand */
   border: 1px solid var(--color-border);
 }
 
-/* Agent Status Controls */
-.agent-hero-controls {
+/* Agent Status Controls - Horizontal Row */
+.agent-header-controls {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 1rem;
-  min-width: 200px;
+  align-items: center;
 }
 
-.agent-status-display {
-  text-align: right;
+.agent-status-action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .agent-status-badge {
   font-weight: 600;
-  padding: 0.75em 1.25em !important;
+  padding: 0.5em 1em !important;
+  font-size: 0.9rem;
 }
 
 .agent-status-badge .icon {
@@ -664,28 +677,124 @@ strong.has-text-link { /* Navbar Brand */
   50% { opacity: 0.5; }
 }
 
-.agent-action-buttons {
-  display: flex;
-  gap: 0.5rem;
-}
-
 .agent-action-btn {
   font-weight: 600;
-  min-width: 140px;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .agent-action-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
-/* Quick Stats Row */
-.agent-quick-stats {
+/* Description - inside header */
+.agent-header-description {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border-light);
+}
+
+/* Stats Bar */
+.agent-stats-bar {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+  margin-top: 1rem;
+  background: var(--color-bg-tertiary);
+  margin-left: -1.5rem;
+  margin-right: -1.5rem;
+  margin-bottom: -1.25rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.agent-stat {
   display: flex;
-  gap: 1.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--color-border);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.5rem 2rem;
+  border-right: 1px solid var(--color-border);
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+  text-align: center;
+}
+
+.agent-stat:last-child {
+  border-right: none;
+}
+
+.agent-stat:first-child {
+  padding-left: 0;
+}
+
+a.agent-stat:hover {
+  color: var(--color-primary);
+}
+
+a.agent-stat:hover .icon {
+  color: var(--color-primary);
+}
+
+.agent-stat .icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.agent-stat-value {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+
+.agent-stat-label {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Collapsible Agent Details - Simplified */
+.agent-details-collapsible {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.agent-details-summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  user-select: none;
+  transition: color var(--transition-fast);
+}
+
+.agent-details-summary:hover {
+  color: var(--color-text-primary);
+}
+
+.agent-details-summary .icon {
+  transition: transform var(--transition-fast);
+}
+
+.agent-details-collapsible[open] .agent-details-summary .icon {
+  transform: rotate(90deg);
+}
+
+.agent-details-content {
+  padding-top: 0.75rem;
+  padding-left: 1.5rem;
 }
 
 .agent-stat {
@@ -976,25 +1085,30 @@ strong.has-text-link { /* Navbar Brand */
 
 /* Responsive adjustments */
 @media screen and (max-width: 768px) {
-  .agent-header-hero-main {
+  .agent-header-top-row {
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1rem;
   }
 
-  .agent-hero-controls {
-    align-items: stretch;
+  .agent-header-actions {
     width: 100%;
   }
 
-  .agent-status-display {
-    text-align: center;
+  .agent-status-action-row {
+    justify-content: space-between;
+    width: 100%;
   }
 
-  .agent-action-buttons {
-    justify-content: center;
+  .agent-stats-bar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
-  .agent-quick-stats {
+  .agent-stat {
+    border-right: none;
+    padding: 0.5rem 0;
+    flex: 1 1 auto;
+    min-width: 100px;
     justify-content: center;
   }
 

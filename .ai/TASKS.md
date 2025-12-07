@@ -268,3 +268,22 @@
 - [x] **ID 61: Tools Tab Card Grid Layout** (Priority: low)
 > Dependencies: 59
 > Convert the Tools tab from a table layout to a card grid for better visual scanning and a more modern appearance.
+
+---
+
+## Agent Header Improvements Tasks
+
+- [x] **ID 62: Header Layout Consolidation** (Priority: high)
+> Streamline the agent header by putting status badge and action button on the same row, and integrating the description into the main header box.
+
+- [x] **ID 63: Enhanced Stats Bar** (Priority: high)
+> Dependencies: 62
+> Add a horizontal stats bar showing tool count (clickable), last run time, and current status with visual icons.
+
+- [ ] **ID 64: Quick Actions Menu** (Priority: medium)
+> Dependencies: 62
+> Add an overflow menu ("...") with Edit, Duplicate, Export, and Delete actions.
+
+- [ ] **ID 65: Header Polish & Cleanup** (Priority: low)
+> Dependencies: 62, 63, 64
+> Remove redundant information, simplify collapsible section, final styling polish.
