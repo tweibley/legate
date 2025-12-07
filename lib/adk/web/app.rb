@@ -815,7 +815,13 @@ module ADK
                 logger.info("Agent '#{agent_name}' has persistent_status='running', attempting to start it...")
                 started_agent = _start_agent(agent_name)
                 unless started_agent
-                  logger.error("Failed to auto-start agent '#{agent_name}' during sync. Its persistent_status remains 'running'.")
+                  logger.error("Failed to auto-start agent '#{agent_name}' during sync. Updating persistent_status to 'stopped'.")
+                  begin
+                    @definition_store.update_definition(agent_name, { persistent_status: 'stopped' })
+                    logger.info("Agent '#{agent_name}' persistent_status set to 'stopped' after failed sync.")
+                  rescue ADK::DefinitionStore::StoreError => se
+                    logger.error("Failed to update persistent_status for agent '#{agent_name}' after sync failure: #{se.message}")
+                  end
                 end
               end
             elsif definition[:persistent_status] == 'stopped' && @agents.key?(agent_name)

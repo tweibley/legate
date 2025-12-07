@@ -21,7 +21,7 @@ module ADK
           if definition_store
             definitions = definition_store.list_definitions rescue []
             @agent_count = definitions.size
-            @running_count = definitions.count { |d| d[:running] == true }
+            @running_count = definitions.count { |d| d[:persistent_status] == 'running' }
           end
           
           if tool_manager

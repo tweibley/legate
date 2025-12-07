@@ -24,21 +24,32 @@ module ADK
                 persisted_status_running = (definition[:persistent_status] == 'running')
                 actually_running_in_memory = active_agents_hash.key?(agent_name)
 
-                current_display_status_running = persisted_status_running
-
+                # Sync persistent_status with actual in-memory state
                 if persisted_status_running && !actually_running_in_memory
-                  logger.warn("Agent '#{agent_name}' has persistent_status='running' but is not in active_agents_hash. Startup sync should handle this.")
+                  logger.warn("Agent '#{agent_name}' has persistent_status='running' but is not in memory. Syncing to 'stopped'.")
+                  begin
+                    definition_store.update_definition(agent_name, { persistent_status: 'stopped' })
+                  rescue ADK::DefinitionStore::StoreError => e
+                    logger.error("Failed to sync persistent_status for agent '#{agent_name}': #{e.message}")
+                  end
                 elsif !persisted_status_running && actually_running_in_memory
-                  logger.warn("Agent '#{agent_name}' has persistent_status='#{definition[:persistent_status]}' but IS in active_agents_hash. Forcing store status.")
-                  # This case might indicate a forcefully stopped agent or a race condition.
-                  # Forcing store status for display consistency.
+                  logger.warn("Agent '#{agent_name}' has persistent_status='stopped' but IS in memory. Syncing to 'running'.")
+                  begin
+                    definition_store.update_definition(agent_name, { persistent_status: 'running' })
+                  rescue ADK::DefinitionStore::StoreError => e
+                    logger.error("Failed to sync persistent_status for agent '#{agent_name}': #{e.message}")
+                  end
                 end
+
+                # Use actual in-memory state for display (after sync)
+                current_display_status_running = actually_running_in_memory
 
                 view_model = definition.dup # Create a mutable copy for the view
                 view_model[:configured_tools] = view_model.delete(:tools) || [] # Ensure it's an array
                 # Include agent_type in the view model, default to :llm if not present
                 view_model[:agent_type] = view_model[:agent_type]&.to_sym || :llm
-                view_model.merge(running: current_display_status_running)
+                view_model[:running] = current_display_status_running
+                view_model
               end.compact # Remove any nils from failed definition fetches
             rescue ADK::DefinitionStore::StoreError => e
               logger.error("Store error fetching agent list (from AgentDefinitionRoutes): #{e.message}")
@@ -190,10 +201,31 @@ module ADK
             agent_definition[:mcp_servers_json]
           end
 
+          # Determine running status - use persistent_status for consistency with agents list
+          persisted_status_running = (agent_definition[:persistent_status] == 'running')
+          actually_running_in_memory = active_agents_hash.key?(name)
+
+          # If there's a mismatch, prefer in-memory state and update persistent_status
+          if persisted_status_running && !actually_running_in_memory
+            logger.warn("Agent '#{name}' detail view: persistent_status='running' but not in memory. Updating status.")
+            begin
+              definition_store.update_definition(name, { persistent_status: 'stopped' })
+            rescue ADK::DefinitionStore::StoreError => e
+              logger.error("Failed to sync persistent_status for agent '#{name}': #{e.message}")
+            end
+          elsif !persisted_status_running && actually_running_in_memory
+            logger.warn("Agent '#{name}' detail view: persistent_status='stopped' but IS in memory. Updating status.")
+            begin
+              definition_store.update_definition(name, { persistent_status: 'running' })
+            rescue ADK::DefinitionStore::StoreError => e
+              logger.error("Failed to sync persistent_status for agent '#{name}': #{e.message}")
+            end
+          end
+
           self.instance_variable_set(:@view_agent_data, {
                                        name: name,
                                        description: agent_definition[:description],
-                                       running: active_agents_hash.key?(name),
+                                       running: actually_running_in_memory,
                                        model: agent_definition[:model],
                                        fallback_mode: agent_definition[:fallback_mode],
                                        instruction: agent_definition[:instruction],
