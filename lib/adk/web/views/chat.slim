@@ -67,7 +67,7 @@ div#chat_interface_wrapper
     / --- Main Chat Panel ---
     .column.is-two-thirds#chat_main_panel
       / Agent and Session Status
-      .box.mb-3 style="background-color: #f5f5f5;"
+      .box.mb-3.chat-status-box
         div#agent-chat-panel-status-display
           p
             strong Status:
@@ -78,10 +78,9 @@ div#chat_interface_wrapper
           == slim :_active_session_info, locals: { active_session_details: @active_session_details }
 
       / Chat Interface Container
-      .box.p-0 style="display: flex; flex-direction: column; height: 550px;"
+      .box.p-0.chat-container-box
         / Chat Log Container
         #chat-log-container(
-          style="flex: 1; overflow-y: auto; padding: 1rem; border-bottom: 1px solid #dbdbdb;"
           hx-on::after-swap="this.scrollTop = this.scrollHeight"
           _="init set my scrollTop to my scrollHeight end"
         )
@@ -148,7 +147,7 @@ div#chat_interface_wrapper
             p.has-text-grey-light.has-text-centered.p-4 Start chatting... Messages will appear here.
 
         / Chat Form - Fixed at bottom
-        div.p-3 style="background-color: #f5f5f5;"
+        .chat-form-container
           form#chat-form(
             hx-post="/agents/#{@agent_data[:name]}/chat"
             hx-target="#chat-log-container"

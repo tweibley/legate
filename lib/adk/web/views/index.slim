@@ -5,53 +5,53 @@
 
 .columns.is-centered.is-multiline
   .column.is-one-third
-    .card.has-text-centered
+    .card.dashboard-card.agents-card.has-text-centered
       .card-content
-        span.icon.is-large.has-text-link.mb-3
-          i.fas.fa-users-cog.fa-3x
+        span.icon.is-large.mb-3
+          i.fas.fa-robot.fa-3x style="color: var(--color-accent);"
         h2.title.is-4 Agents
         p Manage your AI agents definitions and runtime instances.
         .buttons.is-centered.mt-4
           a.button.is-link(href="/agents")
             span.icon
-              i.fas.fa-eye
+              i.fas.fa-arrow-right
             span View Agents
 
   .column.is-one-third
-    .card.has-text-centered
+    .card.dashboard-card.tools-card.has-text-centered
       .card-content
-        span.icon.is-large.has-text-info.mb-3
-          i.fas.fa-tools.fa-3x
+        span.icon.is-large.mb-3
+          i.fas.fa-wrench.fa-3x style="color: var(--color-info);"
         h2.title.is-4 Tools
         p Browse available tools that can be used by agents.
         .buttons.is-centered.mt-4
           a.button.is-link(href="/tools")
             span.icon
-              i.fas.fa-eye
+              i.fas.fa-arrow-right
             span View Tools
 
   .column.is-one-third
-    .card.has-text-centered
+    .card.dashboard-card.auth-card.has-text-centered
       .card-content
-        span.icon.is-large.has-text-warning.mb-3
-          i.fas.fa-shield-alt.fa-3x
+        span.icon.is-large.mb-3
+          i.fas.fa-key.fa-3x style="color: var(--color-warning);"
         h2.title.is-4 Authentication
         p Configure authentication schemes and credentials for external services.
         .buttons.is-centered.mt-4
           a.button.is-link(href="/auth")
             span.icon
-              i.fas.fa-eye
+              i.fas.fa-arrow-right
             span View Authentication
 
   .column.is-one-third
-    .card.has-text-centered
+    .card.dashboard-card.docs-card.has-text-centered
       .card-content
-        span.icon.is-large.has-text-primary.mb-3
-          i.fas.fa-book.fa-3x
+        span.icon.is-large.mb-3
+          i.fas.fa-book-open.fa-3x style="color: var(--color-success);"
         h2.title.is-4 Documentation
         p Read guides and concepts about the ADK.
         .buttons.is-centered.mt-4
           a.button.is-link(href="/docs")
             span.icon
-              i.fas.fa-eye
+              i.fas.fa-arrow-right
             span Read Docs

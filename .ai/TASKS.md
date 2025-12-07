@@ -138,29 +138,72 @@
 
 ## Web UI Visual Enhancement Tasks
 
-- [ ] **ID 29: CSS Variable System Foundation** (Priority: critical)
+- [x] **ID 29: CSS Variable System Foundation** (Priority: critical)
 > Establish the CSS variable system in main.scss for comprehensive theming support. Define color palette, shadows, radii, and transitions as CSS custom properties.
 
-- [ ] **ID 30: Typography & Font Integration** (Priority: high)
+- [x] **ID 30: Typography & Font Integration** (Priority: high)
 > Dependencies: 29
 > Add Google Fonts (Inter, JetBrains Mono) to layout.slim and update main.scss to apply fonts throughout the UI with proper fallbacks.
 
-- [ ] **ID 31: Dark Mode Implementation** (Priority: high)
+- [x] **ID 31: Dark Mode Implementation** (Priority: high)
 > Dependencies: 29, 30
 > Implement dark mode with theme toggle in navbar, localStorage persistence, and complete dark mode CSS variable palette.
 
-- [ ] **ID 32: Card & Component Refinement** (Priority: medium)
+- [x] **ID 32: Card & Component Refinement** (Priority: medium)
 > Dependencies: 29
 > Add hover lift animations, improved shadows, and accent borders to cards. Refine buttons, inputs, and table styling.
 
-- [ ] **ID 33: Navigation Enhancement** (Priority: medium)
+- [x] **ID 33: Navigation Enhancement** (Priority: medium)
 > Dependencies: 29, 31
 > Improve navbar active state indicators, add subtle refinements, and ensure navigation works in both themes.
 
-- [ ] **ID 34: CodeMirror Theme Integration** (Priority: medium)
+- [x] **ID 34: CodeMirror Theme Integration** (Priority: medium)
 > Dependencies: 31
 > Apply a dark theme to CodeMirror editors for better code visibility and developer experience.
 
-- [ ] **ID 35: Dashboard Homepage Refresh** (Priority: low)
+- [x] **ID 35: Dashboard Homepage Refresh** (Priority: low)
 > Dependencies: 29, 32
 > Update index.slim dashboard cards with accent borders and enhanced visual hierarchy.
+
+---
+
+## Dark Mode Stabilization Tasks
+
+- [x] **ID 36: Chat Interface Dark Mode Fix** (Priority: high)
+> Dependencies: 31
+> Remove inline hardcoded colors from chat.slim (lines 70, 84, 151) and replace with CSS variables. Fix `#f5f5f5` backgrounds and `#dbdbdb` borders.
+
+- [x] **ID 37: Chat Message Dark Mode Variants** (Priority: high)
+> Dependencies: 31, 36
+> Add dark mode variants for chat messages (user messages, agent messages with success/warning/danger/light states). Update pastel backgrounds to darker colors with appropriate text contrast.
+
+- [x] **ID 38: Tags & Badges Dark Mode Styling** (Priority: medium)
+> Dependencies: 31
+> Add dark mode styling for Bulma tags (like "Running", "gemini-2.0-flash", "cat_facts") so they don't appear jarringly bright against dark backgrounds.
+
+---
+
+## Web UI Phase 2 Refinement Tasks
+
+- [ ] **ID 39: Typography Differentiation** (Priority: high)
+> Replace the generic Inter font with a distinctive typeface (DM Sans, Geist, or Satoshi) to differentiate Ruby ADK from generic admin dashboards.
+
+- [ ] **ID 40: Dark Mode Contrast Fix** (Priority: high)
+> Fix muted text contrast in dark mode (#6b7280 → #9ca3af) for WCAG AA accessibility compliance.
+
+- [ ] **ID 41: Dashboard Live Metrics** (Priority: high)
+> Transform static dashboard cards into live status displays showing counts ("3 Agents Running") for at-a-glance system status.
+
+- [ ] **ID 42: Navbar Brand Logo** (Priority: medium)
+> Add a Ruby gem icon next to "Ruby ADK" in the navbar to strengthen brand identity.
+
+- [ ] **ID 43: Ruby-Inspired Color Palette** (Priority: medium)
+> Dependencies: 39, 40
+> Shift primary color from generic indigo to ruby red to align with "Ruby ADK" brand identity.
+
+- [ ] **ID 44: Empty State Designs** (Priority: low)
+> Add friendly empty state designs with icons and CTA buttons to list pages when no items exist.
+
+- [ ] **ID 45: Table Row Hover Accent** (Priority: low)
+> Dependencies: 43
+> Add a subtle left-border accent on table row hover for clear visual feedback in list tables.

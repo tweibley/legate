@@ -1,63 +1,270 @@
 @use "sass:color";
-/* public/css/main.css */
+
+/* ========================================
+   CSS VARIABLES - THEME SYSTEM
+   ======================================== */
+
+:root {
+  /* --- Brand Colors --- */
+  --color-primary: hsl(230, 70%, 55%);           /* Indigo - main actions */
+  --color-primary-dark: hsl(230, 70%, 45%);      /* Indigo darker - hover */
+  --color-primary-light: hsl(230, 70%, 95%);     /* Indigo tint - backgrounds */
+  --color-accent: hsl(354, 80%, 50%);            /* Ruby red - brand accent */
+  --color-accent-light: hsl(354, 80%, 95%);      /* Ruby red tint */
+  
+  /* --- Semantic Colors --- */
+  --color-success: hsl(152, 68%, 40%);
+  --color-success-light: hsl(152, 68%, 94%);
+  --color-warning: hsl(38, 92%, 50%);
+  --color-warning-light: hsl(38, 92%, 94%);
+  --color-danger: hsl(0, 72%, 51%);
+  --color-danger-light: hsl(0, 72%, 95%);
+  --color-info: hsl(201, 96%, 46%);
+  --color-info-light: hsl(201, 96%, 94%);
+  
+  /* --- Neutral Colors (Light Mode) --- */
+  --color-bg-primary: #f4f6f8;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #eef1f5;
+  --color-bg-elevated: #ffffff;
+  
+  --color-text-primary: #1a202c;
+  --color-text-secondary: #4a5568;
+  --color-text-muted: #718096;
+  --color-text-inverse: #ffffff;
+  
+  --color-border: #e2e8f0;
+  --color-border-light: #edf2f7;
+  --color-border-dark: #cbd5e0;
+  
+  /* --- Shadows --- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-hover: 0 12px 28px rgba(0, 0, 0, 0.15);
+  
+  /* --- Transitions --- */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 350ms ease;
+  
+  /* --- Border Radii --- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+  
+  /* --- Font Families --- */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+/* --- Dark Mode Variables --- */
+[data-theme="dark"] {
+  --color-primary: hsl(230, 80%, 65%);
+  --color-primary-dark: hsl(230, 80%, 55%);
+  --color-primary-light: hsl(230, 50%, 20%);
+  --color-accent: hsl(354, 80%, 60%);
+  --color-accent-light: hsl(354, 50%, 20%);
+  
+  --color-success: hsl(152, 68%, 50%);
+  --color-success-light: hsl(152, 40%, 18%);
+  --color-warning: hsl(38, 92%, 55%);
+  --color-warning-light: hsl(38, 50%, 18%);
+  --color-danger: hsl(0, 72%, 60%);
+  --color-danger-light: hsl(0, 50%, 18%);
+  --color-info: hsl(201, 96%, 55%);
+  --color-info-light: hsl(201, 50%, 18%);
+  
+  --color-bg-primary: #0f1419;
+  --color-bg-secondary: #1a1f26;
+  --color-bg-tertiary: #242b33;
+  --color-bg-elevated: #2d343d;
+  
+  --color-text-primary: #e7e9ea;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
+  --color-text-inverse: #1a202c;
+  
+  --color-border: #2f3943;
+  --color-border-light: #242b33;
+  --color-border-dark: #3d4852;
+  
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-hover: 0 12px 28px rgba(0, 0, 0, 0.6);
+}
+
+/* ========================================
+   BASE STYLES
+   ======================================== */
 
 /* --- General Theme Adjustments --- */
 body {
-  background-color: #f8f9fa; /* Light grey background */
-  color: #4a4a4a; /* Default text color */
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif; /* System font stack */
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 
 h1.title, h2.title, h3.title, h4.title, h5.title, h6.title {
-    font-weight: 600; /* Slightly bolder titles */
+    font-weight: 600;
+    color: var(--color-text-primary);
+    letter-spacing: -0.025em;
 }
 
 .subtitle {
-    color: #6c757d; /* Softer subtitle color */
+    color: var(--color-text-muted);
 }
 
 /* --- Navbar --- */
 .navbar.is-white {
-  border-bottom: 1px solid #dee2e6; /* Slightly darker border */
+  background-color: var(--color-bg-secondary) !important;
+  border-bottom: 1px solid var(--color-border);
+  transition: background-color var(--transition-normal), border-color var(--transition-normal);
 }
+
+/* Dark mode navbar */
+[data-theme="dark"] .navbar.is-white {
+  background-color: var(--color-bg-secondary) !important;
+}
+
 .navbar-item, .navbar-link {
     font-weight: 500;
+    color: var(--color-text-secondary) !important;
+    transition: all var(--transition-fast);
 }
+
+/* Dark mode navbar text - ensure high contrast */
+[data-theme="dark"] .navbar-item,
+[data-theme="dark"] .navbar-link {
+    color: #e7e9ea !important;
+}
+
+[data-theme="dark"] .navbar-item:hover:not(.is-active) {
+    color: #ffffff !important;
+}
+
 strong.has-text-link { /* Navbar Brand */
     font-weight: 700;
     font-size: 1.2em;
+    color: var(--color-primary) !important;
 }
 
 /* Active state for current section */
 .navbar-item.is-active {
-  background-color: #f0f4fa !important; /* Light blue background */
-  color: #3273dc !important; /* Brand blue color */
+  background-color: var(--color-primary-light) !important;
+  color: var(--color-primary) !important;
   font-weight: 600;
+  position: relative;
   
   &::after {
     content: '';
     position: absolute;
     bottom: 0;
-    left: 0;
-    width: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 70%;
     height: 3px;
+    background: var(--color-primary);
+    border-radius: 3px 3px 0 0;
   }
 }
 
 /* Hover state - make it darker than active state */
 .navbar-item:hover:not(.is-active) {
-  background-color: #e9ecef !important; /* Darker gray for hover */
-  color: #2160c4 !important; /* Darker blue for hover */
+  background-color: var(--color-bg-tertiary) !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  &:hover {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+  }
+  
+  i {
+    font-size: 1.1rem;
+  }
+}
+
+/* Navbar burger for mobile */
+.navbar-burger span {
+  background-color: var(--color-text-primary);
+  transition: background-color var(--transition-fast);
+}
+
+.navbar-menu {
+  background: var(--color-bg-secondary);
+  
+  @media screen and (max-width: 1023px) {
+    border-top: 1px solid var(--color-border);
+    box-shadow: var(--shadow-lg);
+  }
 }
 
 /* --- Cards & Boxes --- */
 .card, .box {
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.07); /* Slightly deeper shadow */
-  border: 1px solid #e9ecef; /* Subtle border */
-  border-radius: 8px; /* More rounded corners */
+  background-color: var(--color-bg-secondary) !important;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  transition: transform var(--transition-normal), 
+              box-shadow var(--transition-normal),
+              background-color var(--transition-normal),
+              border-color var(--transition-normal);
 }
+
+/* Ensure dark mode applies to boxes */
+[data-theme="dark"] .card,
+[data-theme="dark"] .box {
+  background-color: var(--color-bg-secondary) !important;
+  border-color: var(--color-border) !important;
+}
+
+.card:hover, .box:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-hover);
+}
+
 .box:not(:last-child), .card:not(:last-child) {
-    margin-bottom: 1.75rem; /* Increase spacing */
+    margin-bottom: 1.75rem;
+}
+
+/* Dashboard cards with accent borders */
+.dashboard-card {
+  position: relative;
+  overflow: hidden;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--color-primary);
+  }
+  
+  &.agents-card::before { background: var(--color-accent); }
+  &.tools-card::before { background: var(--color-info); }
+  &.auth-card::before { background: var(--color-warning); }
+  &.docs-card::before { background: var(--color-success); }
 }
 
 /* Equal height cards on welcome page */
@@ -91,57 +298,58 @@ strong.has-text-link { /* Navbar Brand */
 
 /* --- Agent Page Header --- */
 .agent-header-box {
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg-secondary);
 }
 .agent-header-box .level-left > div {
-    flex-grow: 1; /* Allow left side to take available space */
-    margin-right: 1rem; /* Add some space between left and right */
-    width: 100%; /* Allow it to take width before flex applies */
-    min-width: 0; /* Important for flex-grow with potentially long content */
+    flex-grow: 1;
+    margin-right: 1rem;
+    width: 100%;
+    min-width: 0;
 }
 
 /* --- Agent Page Header Description --- */
 #agent-description-display {
-  margin-bottom: 0.5rem; /* Add some space below */
+  margin-bottom: 0.5rem;
 }
 #agent-description-display p.subtitle {
-    line-height: 1.4; /* Improve readability */
-    margin-right: 0.5rem; /* Space before potential button */
-    /* display: inline; Let it be block */
-    margin-bottom: 0 !important; /* Override default */
+    line-height: 1.4;
+    margin-right: 0.5rem;
+    margin-bottom: 0 !important;
+    color: var(--color-text-muted);
 }
 #agent-description-display button.is-ghost {
-   vertical-align: top; /* Align button nicely with text */
+   vertical-align: top;
    margin-left: 0.25rem;
-   margin-top: 0.25rem; /* Add slight top margin */
+   margin-top: 0.25rem;
 }
 
 /* Ensure the edit form takes space */
 #agent-description-display form {
-    width: 100%; /* Make form take full width of its container */
+    width: 100%;
 }
 #agent-description-display form .textarea {
-    width: 100%; /* Ensure textarea uses the width */
-    min-height: 6em; /* Give it a decent minimum height */
+    width: 100%;
+    min-height: 6em;
 }
 #agent-description-display form .field.is-grouped {
-    margin-top: 0.75rem; /* More space above buttons */
+    margin-top: 0.75rem;
 }
 #agent-description-display form .label.is-small {
     margin-bottom: 0.25rem;
-    color: #6c757d; /* Match subtitle color */
-    font-weight: normal; /* Match subtitle weight */
+    color: var(--color-text-muted);
+    font-weight: normal;
 }
 
 
 /* --- Agent Status Controls --- */
 #agent-status-controls-container .field {
-    margin-bottom: 0.5rem !important; /* Reduce space below status label/tag */
+    margin-bottom: 0.5rem !important;
 }
 #agent-status-controls-container .label.is-small {
-    margin-bottom: 0.25rem; /* Space between Status label and tag */
-    font-weight: 600; /* Make label slightly bolder */
-    color: #6c757d;
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
 }
 #agent-status-controls-container .tag.is-medium.is-rounded {
     padding-left: 1em;
@@ -149,8 +357,8 @@ strong.has-text-link { /* Navbar Brand */
     font-weight: 600;
 }
 #agent-status-controls-container .field.is-grouped {
-    margin-top: 0.75rem; /* Space above buttons */
-    justify-content: flex-end; /* Align buttons right */
+    margin-top: 0.75rem;
+    justify-content: flex-end;
 }
 #agent-status-controls-container .button.is-small {
     font-weight: 500;
@@ -159,58 +367,59 @@ strong.has-text-link { /* Navbar Brand */
 
 /* --- Custom Rounded Tabs --- */
 .custom-rounded-tabs-container {
-  background-color: #e9ecef; /* Background for the tab bar area */
-  padding: 0.5rem 0.5rem 0 0.5rem; /* Padding around tabs */
-  border-radius: 8px; /* Rounded corners for the bar */
-  margin-bottom: 1.75rem; /* Space below tabs */
-  overflow: hidden; /* Hide bottom part of inactive tabs */
+  background-color: var(--color-bg-tertiary);
+  padding: 0.5rem 0.5rem 0 0.5rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 1.75rem;
+  overflow: hidden;
+  transition: background-color var(--transition-normal);
 }
 
 .custom-rounded-tabs-container .tabs {
-    margin-bottom: 0 !important; /* Override Bulma's default margin */
+    margin-bottom: 0 !important;
 }
 
 .custom-rounded-tabs-container .tabs ul {
-    border-bottom: none; /* Remove the default bottom border */
-    align-items: flex-end; /* Align tabs to the bottom */
+    border-bottom: none;
+    align-items: flex-end;
 }
 
 .custom-rounded-tabs-container .tabs li {
-    margin-right: 0.25rem; /* Space between tabs */
+    margin-right: 0.25rem;
 }
 
 .custom-rounded-tabs-container .tabs li a {
-    border: 1px solid #ced4da; /* Border for inactive */
-    border-bottom: none; /* Remove bottom border */
-    border-radius: 6px 6px 0 0; /* Top rounded corners */
-    background-color: #f8f9fa; /* Slightly off-white inactive */
-    color: #6c757d; /* Dimmed text for inactive */
-    padding: 0.8em 1.25em; /* Adjust padding */
+    border: 1px solid var(--color-border-dark);
+    border-bottom: none;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-muted);
+    padding: 0.8em 1.25em;
     font-weight: 500;
-    position: relative; /* Needed for z-index */
-    bottom: -1px; /* Pull down slightly to overlap container bg */
-    transition: all 0.2s ease-in-out;
-    box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); /* Subtle inset shadow */
+    position: relative;
+    bottom: -1px;
+    transition: all var(--transition-fast);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .custom-rounded-tabs-container .tabs li a:hover {
-    background-color: #ffffff; /* White on hover */
-    color: #3273dc; /* Link color on hover */
-    border-color: #adb5bd; /* Slightly darker border on hover */
+    background-color: var(--color-bg-secondary);
+    color: var(--color-primary);
+    border-color: var(--color-border-dark);
     box-shadow: none;
 }
 
 .custom-rounded-tabs-container .tabs li.is-active a {
-    background-color: #ffffff; /* Active tab background (match content bg) */
-    color: #3273dc; /* Active tab text color */
-    border-color: #ced4da; /* Match inactive border */
-    border-bottom-color: #ffffff !important; /* Make bottom border same as bg to "connect" */
+    background-color: var(--color-bg-secondary);
+    color: var(--color-primary);
+    border-color: var(--color-border-dark);
+    border-bottom-color: var(--color-bg-secondary) !important;
     font-weight: 600;
     position: relative;
-    z-index: 2; /* Bring active tab forward */
-    bottom: 0; /* Align exactly with bottom */
-    padding-bottom: calc(0.8em + 1px); /* Extend slightly to cover container bg edge */
-    box-shadow: 0 -2px 4px rgba(0,0,0,0.03); /* Subtle top shadow to lift */
+    z-index: 2;
+    bottom: 0;
+    padding-bottom: calc(0.8em + 1px);
+    box-shadow: 0 -2px 4px rgba(0,0,0,0.03);
 }
 
 /* Adjust icon color */
@@ -226,31 +435,129 @@ strong.has-text-link { /* Navbar Brand */
 
 /* --- Tables --- */
 .table-container {
-    border: 1px solid #e9ecef;
-    border-radius: 6px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
     overflow: visible; /* Ensure both axes allow overflow for dropdown */
+    transition: background-color var(--transition-normal), border-color var(--transition-normal);
 }
 .table {
-  background-color: #ffffff;
+  background-color: transparent;
   font-size: 0.9rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 .table thead th {
-  color: #495057;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   font-weight: 600;
   border-bottom-width: 2px;
-  border-color: #dee2e6;
+  border-color: var(--color-border);
+  padding: 0.875rem 1rem;
 }
 .table td, .table th {
    vertical-align: middle;
-   padding: 0.8em 0.75em;
-   border-color: #dee2e6;
+   padding: 0.875rem 1rem;
+   border-color: var(--color-border);
+   color: var(--color-text-primary);
 }
 .table.is-striped tbody tr:nth-child(even) {
-    background-color: #f8f9fa;
+    background-color: var(--color-bg-tertiary);
 }
 .table.is-hoverable tbody tr:hover {
-    background-color: #e9ecef;
+    background-color: var(--color-primary-light);
+}
+
+/* Dark mode table adjustments */
+[data-theme="dark"] .table {
+    background-color: transparent !important;
+}
+
+[data-theme="dark"] .table thead th {
+    background-color: var(--color-bg-tertiary) !important;
+    color: var(--color-text-secondary) !important;
+}
+
+[data-theme="dark"] .table td,
+[data-theme="dark"] .table th {
+    color: var(--color-text-primary) !important;
+    border-color: var(--color-border) !important;
+    background-color: transparent !important;
+}
+
+[data-theme="dark"] .table tbody {
+    background-color: var(--color-bg-secondary) !important;
+}
+
+[data-theme="dark"] .table tbody tr {
+    background-color: var(--color-bg-secondary) !important;
+}
+
+[data-theme="dark"] .table.is-striped tbody tr:nth-child(even) {
+    background-color: var(--color-bg-tertiary) !important;
+}
+
+[data-theme="dark"] .table.is-striped tbody tr:nth-child(odd) {
+    background-color: var(--color-bg-secondary) !important;
+}
+
+[data-theme="dark"] .table.is-hoverable tbody tr:hover {
+    background-color: rgba(99, 102, 241, 0.15) !important;
+}
+
+/* Dark mode table container */
+[data-theme="dark"] .table-container {
+    background-color: var(--color-bg-secondary) !important;
+    border-color: var(--color-border) !important;
+}
+
+/* Dark mode for outlined buttons */
+[data-theme="dark"] .button.is-outlined,
+[data-theme="dark"] .button.is-link.is-outlined {
+    background-color: transparent !important;
+    border-color: var(--color-primary) !important;
+    color: var(--color-primary) !important;
+}
+
+[data-theme="dark"] .button.is-outlined:hover,
+[data-theme="dark"] .button.is-link.is-outlined:hover {
+    background-color: var(--color-primary) !important;
+    color: #ffffff !important;
+}
+
+/* Dark mode for Bulma background helpers */
+[data-theme="dark"] .has-background-info-light,
+[data-theme="dark"] .has-background-light,
+[data-theme="dark"] .has-background-white {
+    background-color: var(--color-bg-tertiary) !important;
+}
+
+/* Dark mode breadcrumb */
+[data-theme="dark"] .breadcrumb a {
+    color: var(--color-primary) !important;
+}
+
+[data-theme="dark"] .breadcrumb li.is-active a {
+    color: var(--color-text-primary) !important;
+}
+
+[data-theme="dark"] .breadcrumb li + li::before {
+    color: var(--color-text-muted) !important;
+}
+
+/* Dark mode TOC */
+[data-theme="dark"] .toc-item a {
+    color: var(--color-text-secondary) !important;
+}
+
+[data-theme="dark"] .toc-item a:hover {
+    color: var(--color-primary) !important;
+}
+
+[data-theme="dark"] .toc-container .has-text-weight-bold {
+    color: var(--color-text-primary) !important;
 }
 
 /* --- Forms & Panels --- */
@@ -258,11 +565,19 @@ strong.has-text-link { /* Navbar Brand */
     font-size: 1.1em;
     font-weight: 600;
     padding: 0.75em 1em;
-    background-color: #f8f9fa;
-    border-bottom: 1px solid #e9ecef;
-    border-radius: 8px 8px 0 0;
+    background-color: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-border);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
     margin: -1.25rem -1.25rem 0 -1.25rem;
+    color: var(--color-text-primary) !important;
 }
+
+/* Dark mode: ensure create agent details summary is readable */
+[data-theme="dark"] .create-agent-details summary,
+[data-theme="dark"] .create-agent-details summary strong {
+    color: #e7e9ea !important;
+}
+
 .create-agent-details[open] summary {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
@@ -271,55 +586,131 @@ strong.has-text-link { /* Navbar Brand */
     padding-top: 1.5rem;
 }
 .create-agent-details summary::marker {
-    color: #3273dc;
+    color: var(--color-primary);
 }
 .create-agent-details summary .icon {
-    color: #3273dc;
+    color: var(--color-primary);
     vertical-align: middle;
 }
 
 .panel.tool-selection-panel .panel-heading {
-    background-color: #e9ecef;
+    background-color: var(--color-bg-tertiary);
     font-weight: 600;
+    color: var(--color-text-primary);
+}
+.panel.tool-selection-panel .panel-block {
+    background-color: var(--color-bg-secondary);
+    border-color: var(--color-border);
 }
 .panel.tool-selection-panel .panel-block label.is-clickable:hover {
-  background-color: #f8f9fa;
+  background-color: var(--color-bg-tertiary);
 }
 
 /* --- Parameter Lists (Tools Page) --- */
 dl.parameters-list dt, dl.parameters-list-detailed dt {
     font-weight: 600;
     margin-bottom: 0.2em;
-    color: #343a40;
+    color: var(--color-text-primary);
 }
 dl.parameters-list dd, dl.parameters-list-detailed dd {
     margin-left: 1.5em;
     margin-bottom: 0.8em;
-    color: #495057;
+    color: var(--color-text-secondary);
     font-size: 0.95em;
 }
 
 /* --- CodeMirror --- */
+/* Dark theme for code editors - provides visual separation from UI */
 .CodeMirror {
-  border: 1px solid #ced4da;
-  border-radius: 6px;
+  border: 1px solid #313244;
+  border-radius: var(--radius-md);
   font-size: 0.9em;
   height: auto;
+  font-family: var(--font-mono);
+  background-color: #1e1e2e !important;
+  color: #cdd6f4 !important;
+}
+.CodeMirror-gutters {
+  background-color: #181825 !important;
+  border-right: 1px solid #313244;
+}
+.CodeMirror-linenumber {
+  color: #6c7086 !important;
+}
+.CodeMirror-cursor {
+  border-left: 2px solid #f5e0dc !important;
+}
+.CodeMirror-selected {
+  background: #45475a !important;
+}
+.CodeMirror-focused .CodeMirror-selected {
+  background: #45475a !important;
 }
 .CodeMirror-readonly .CodeMirror-cursor { display: none !important; }
-pre[style*="background-color: #fafafa;"] { /* Display instructions */
-    border: 1px solid #e9ecef;
+
+/* CodeMirror syntax highlighting - Catppuccin-inspired */
+.cm-s-default .cm-keyword { color: #cba6f7; }
+.cm-s-default .cm-atom { color: #fab387; }
+.cm-s-default .cm-number { color: #fab387; }
+.cm-s-default .cm-def { color: #89b4fa; }
+.cm-s-default .cm-variable { color: #cdd6f4; }
+.cm-s-default .cm-variable-2 { color: #f38ba8; }
+.cm-s-default .cm-variable-3 { color: #f9e2af; }
+.cm-s-default .cm-property { color: #89dceb; }
+.cm-s-default .cm-operator { color: #94e2d5; }
+.cm-s-default .cm-comment { color: #6c7086; font-style: italic; }
+.cm-s-default .cm-string { color: #a6e3a1; }
+.cm-s-default .cm-string-2 { color: #a6e3a1; }
+.cm-s-default .cm-meta { color: #f9e2af; }
+.cm-s-default .cm-qualifier { color: #f9e2af; }
+.cm-s-default .cm-builtin { color: #f38ba8; }
+.cm-s-default .cm-bracket { color: #cdd6f4; }
+.cm-s-default .cm-tag { color: #f38ba8; }
+.cm-s-default .cm-attribute { color: #fab387; }
+.cm-s-default .cm-error { color: #f38ba8; background: #45475a; }
+
+/* Match border to dark mode when UI is dark */
+[data-theme="dark"] .CodeMirror {
+  border-color: var(--color-border);
+}
+
+pre[style*="background-color: #fafafa;"] {
+    border: 1px solid var(--color-border);
     font-size: 0.95em;
+    background-color: var(--color-bg-tertiary) !important;
 }
 
 /* --- Chat --- */
+/* Chat status box (agent status display) */
+.chat-status-box {
+    background-color: var(--color-bg-tertiary);
+    transition: background-color var(--transition-normal);
+}
+
+/* Chat main container with flex layout */
+.chat-container-box {
+    display: flex;
+    flex-direction: column;
+    height: 550px;
+}
+
+/* Chat log container */
 #chat-log-container {
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
+    flex: 1;
+    overflow-y: auto;
     padding: 1rem;
-    height: 450px;
-    overflow-y: scroll;
-    margin-bottom: 1rem;
+    background-color: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    transition: background-color var(--transition-normal), border-color var(--transition-normal);
+}
+
+/* Chat form container at bottom */
+.chat-form-container {
+    padding: 0.75rem;
+    background-color: var(--color-bg-tertiary);
+    transition: background-color var(--transition-normal);
 }
 
 .message {
@@ -456,19 +847,289 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
 .message-body .raw-json-container { display: none; margin-top: 0.5rem; border-top: 1px dashed #ccc; padding-top: 0.5rem; }
 .message-body .raw-json-pre { white-space: pre-wrap; word-break: break-all; font-size: 0.8em; color: #555; }
 
+/* --- Dark Mode Chat Message Variants --- */
+[data-theme="dark"] .message.user-message.is-link .message-header {
+    background-color: #4f6dba;
+    color: #ffffff;
+}
+
+[data-theme="dark"] .message.user-message.is-link .message-body {
+    border-color: #4f6dba;
+    background-color: #1e2a4a;
+    color: #e7e9ea;
+}
+
+/* Dark mode: Agent message - Light */
+[data-theme="dark"] .message.agent-message.is-light {
+    background-color: #2a3038;
+    border-color: #3d4450;
+}
+
+[data-theme="dark"] .message.agent-message.is-light .message-header {
+    background-color: #3d4450;
+    color: #e7e9ea;
+}
+
+[data-theme="dark"] .message.agent-message.is-light .message-body {
+    border-color: #3d4450;
+    background-color: #2a3038;
+    color: #e7e9ea;
+}
+
+/* Dark mode: Agent message - Success */
+[data-theme="dark"] .message.agent-message.is-success {
+    background-color: #1a332a;
+    border-color: #2d5a45;
+}
+
+[data-theme="dark"] .message.agent-message.is-success .message-header {
+    background-color: #2d5a45;
+    color: #a6e3a1;
+}
+
+[data-theme="dark"] .message.agent-message.is-success .message-body {
+    border-color: #2d5a45;
+    background-color: #1a332a;
+    color: #e7e9ea;
+}
+
+/* Dark mode: Agent message - Danger */
+[data-theme="dark"] .message.agent-message.is-danger {
+    background-color: #3a1a1a;
+    border-color: #5a2d2d;
+}
+
+[data-theme="dark"] .message.agent-message.is-danger .message-header {
+    background-color: #5a2d2d;
+    color: #f38ba8;
+}
+
+[data-theme="dark"] .message.agent-message.is-danger .message-body {
+    border-color: #5a2d2d;
+    background-color: #3a1a1a;
+    color: #e7e9ea;
+}
+
+/* Dark mode: Agent message - Warning */
+[data-theme="dark"] .message.agent-message.is-warning {
+    background-color: #33291a;
+    border-color: #5a4a2d;
+}
+
+[data-theme="dark"] .message.agent-message.is-warning .message-header {
+    background-color: #5a4a2d;
+    color: #f9e2af;
+}
+
+[data-theme="dark"] .message.agent-message.is-warning .message-body {
+    border-color: #5a4a2d;
+    background-color: #33291a;
+    color: #e7e9ea;
+}
+
+/* Dark mode: Execution plan details */
+[data-theme="dark"] .message-body .execution-plan-details {
+    border-top-color: #3d4450;
+}
+
+[data-theme="dark"] .message-body .execution-plan-summary {
+    color: #e7e9ea;
+}
+
+[data-theme="dark"] .message-body .execution-plan-steps {
+    border-left-color: #4f5b66;
+}
+
+[data-theme="dark"] .message-body .step-params-label,
+[data-theme="dark"] .message-body .step-result-label {
+    color: #9ca3af;
+}
+
+[data-theme="dark"] .message-body .step-params-pre,
+[data-theme="dark"] .message-body .step-result-pre {
+    background-color: #1e2128;
+    color: #e7e9ea;
+}
+
+[data-theme="dark"] .message-body .raw-json-container {
+    border-top-color: #4f5b66;
+}
+
+[data-theme="dark"] .message-body .raw-json-pre {
+    color: #9ca3af;
+}
+
+/* --- Dark Mode Tags & Badges --- */
+/* Make tags less jarring in dark mode */
+[data-theme="dark"] .tag:not(.is-success):not(.is-danger):not(.is-warning):not(.is-info):not(.is-primary):not(.is-link) {
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+}
+
+[data-theme="dark"] .tag.is-light {
+    background-color: var(--color-bg-tertiary) !important;
+    color: var(--color-text-primary) !important;
+}
+
+/* Dark mode success tag */
+[data-theme="dark"] .tag.is-success {
+    background-color: #2d5a45;
+    color: #a6e3a1;
+}
+
+[data-theme="dark"] .tag.is-success.is-light {
+    background-color: #1a332a !important;
+    color: #a6e3a1 !important;
+}
+
+/* Dark mode danger tag */
+[data-theme="dark"] .tag.is-danger {
+    background-color: #5a2d2d;
+    color: #f38ba8;
+}
+
+[data-theme="dark"] .tag.is-danger.is-light {
+    background-color: #3a1a1a !important;
+    color: #f38ba8 !important;
+}
+
+/* Dark mode warning tag */
+[data-theme="dark"] .tag.is-warning {
+    background-color: #5a4a2d;
+    color: #f9e2af;
+}
+
+[data-theme="dark"] .tag.is-warning.is-light {
+    background-color: #33291a !important;
+    color: #f9e2af !important;
+}
+
+/* Dark mode info tag */
+[data-theme="dark"] .tag.is-info {
+    background-color: #1e3a5f;
+    color: #89dceb;
+}
+
+/* Dark mode notifications */
+[data-theme="dark"] .notification {
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .notification.is-warning {
+    background-color: #33291a;
+    color: #f9e2af;
+}
+
+[data-theme="dark"] .notification.is-warning.is-light {
+    background-color: #33291a !important;
+    color: #f9e2af !important;
+}
+
+[data-theme="dark"] .notification.is-danger {
+    background-color: #3a1a1a;
+    color: #f38ba8;
+}
+
+[data-theme="dark"] .notification.is-danger.is-light {
+    background-color: #3a1a1a !important;
+    color: #f38ba8 !important;
+}
+
+[data-theme="dark"] .notification.is-success {
+    background-color: #1a332a;
+    color: #a6e3a1;
+}
+
+[data-theme="dark"] .notification.is-info {
+    background-color: #1e3a5f;
+    color: #89dceb;
+}
+
+[data-theme="dark"] .notification.is-info.is-light {
+    background-color: #1e3a5f !important;
+    color: #89dceb !important;
+}
+
 .chat-input-form { margin-top: 1rem; }
 
 /* Button hover/focus states */
-.button:focus, .button.is-focused { box-shadow: 0 0 0 2px rgba(50, 115, 220, 0.25); }
-.button.is-link:hover { background-color: #276cda; }
-.button.is-success:hover { background-color: #2f855a; }
-.button.is-danger:hover { background-color: #cc0f35; }
-.button.is-light:hover { background-color: #e8e8e8; }
+.button {
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+  
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+}
+
+.button:focus, .button.is-focused { 
+  box-shadow: 0 0 0 3px var(--color-primary-light); 
+}
+.button.is-link, .button.is-primary {
+  background-color: var(--color-primary);
+  border-color: transparent;
+  
+  &:hover { 
+    background-color: var(--color-primary-dark); 
+  }
+}
+.button.is-success:hover { background-color: hsl(152, 68%, 35%); }
+.button.is-danger:hover { background-color: hsl(0, 72%, 45%); }
+.button.is-light {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+  
+  &:hover { 
+    background-color: var(--color-border); 
+  }
+}
+
+/* --- Form Inputs --- */
+.input, .textarea, .select select {
+  background-color: var(--color-bg-secondary);
+  border-color: var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  
+  &::placeholder {
+    color: var(--color-text-muted);
+  }
+  
+  &:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-light);
+  }
+}
+
+.label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+}
+
+.help {
+  color: var(--color-text-muted);
+}
 
 /* --- Footer --- */
 .footer {
-    background-color: #f8f9fa; /* Match body background */
-    padding: 2rem 1.5rem 3rem; /* Adjust padding */
+    background-color: var(--color-bg-primary);
+    border-top: 1px solid var(--color-border);
+    padding: 2rem 1.5rem 3rem;
+    transition: background-color var(--transition-normal), border-color var(--transition-normal);
+    
+    .content {
+      color: var(--color-text-muted);
+    }
 }
 
 /* --- HTMX Indicator --- */
@@ -486,7 +1147,7 @@ pre[style*="background-color: #fafafa;"] { /* Display instructions */
 .box .content {
   /* Typography improvements */
   line-height: 1.6;
-  color: #212529;
+  color: var(--color-text-primary);
 
   /* Heading styling */
   h1, h2, h3, h4, h5, h6 {

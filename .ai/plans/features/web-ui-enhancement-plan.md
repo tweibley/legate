@@ -177,14 +177,16 @@ A developer opens the Ruby ADK Web UI after a long day of coding in their dark-t
 
 ### 9.3 Suggested phases
 
-- **Phase 1**: Foundation (1-2 hours)
+- **Phase 1**: Foundation (1-2 hours) ✅ COMPLETED
   - Key deliverables: CSS variables system, Google Fonts integration, base typography
-- **Phase 2**: Dark Mode (1-2 hours)
+- **Phase 2**: Dark Mode (1-2 hours) ✅ COMPLETED
   - Key deliverables: Theme toggle, dark mode variables, localStorage persistence
-- **Phase 3**: Component Refinement (1-2 hours)
+- **Phase 3**: Component Refinement (1-2 hours) ✅ COMPLETED
   - Key deliverables: Card hover effects, navigation enhancement, button polish
-- **Phase 4**: Specialized Components (1-2 hours)
+- **Phase 4**: Specialized Components (1-2 hours) ✅ COMPLETED
   - Key deliverables: CodeMirror theme, toast refinement, dashboard cards
+- **Phase 5**: Dark Mode Stabilization (1-2 hours)
+  - Key deliverables: Fix inline styles in chat.slim, chat message dark mode colors, tag/notification styling
 
 ## 10. User stories
 
@@ -237,6 +239,16 @@ A developer opens the Ruby ADK Web UI after a long day of coding in their dark-t
   - Ruby red accent used for brand touches
   - Dashboard cards have colored accent borders
   - Overall aesthetic is consistent across pages
+
+### 10.6 Dark Mode Consistency
+
+- **ID**: US-006
+- **Description**: As a developer using dark mode, I want all UI elements to have proper dark mode styling so that there are no jarring bright elements.
+- **Acceptance Criteria**:
+  - Chat interface uses dark mode colors (no inline hardcoded colors)
+  - Chat messages (success, warning, danger) have dark mode variants
+  - Tags and badges adapt to dark mode
+  - All containers and backgrounds respect theme variables
 
 ## 11. Implementation details
 
