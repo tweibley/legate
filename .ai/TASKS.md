@@ -133,3 +133,34 @@
 > Complete the missing runtime integration between the Authentication system and Agent/AgentDefinition. Add DSL methods (`use_credential`, `auth_mapping`) to AgentDefinition, propagate auth config from Agent to ToolContext, and enable agent-aware authentication lookups. This closes the gap where Web UI auth assignments are stored but not used at runtime.
 
 *Tasks 26-28 (Web UI Bug Fixes) completed and archived on 2025-12-05.*
+
+---
+
+## Web UI Visual Enhancement Tasks
+
+- [ ] **ID 29: CSS Variable System Foundation** (Priority: critical)
+> Establish the CSS variable system in main.scss for comprehensive theming support. Define color palette, shadows, radii, and transitions as CSS custom properties.
+
+- [ ] **ID 30: Typography & Font Integration** (Priority: high)
+> Dependencies: 29
+> Add Google Fonts (Inter, JetBrains Mono) to layout.slim and update main.scss to apply fonts throughout the UI with proper fallbacks.
+
+- [ ] **ID 31: Dark Mode Implementation** (Priority: high)
+> Dependencies: 29, 30
+> Implement dark mode with theme toggle in navbar, localStorage persistence, and complete dark mode CSS variable palette.
+
+- [ ] **ID 32: Card & Component Refinement** (Priority: medium)
+> Dependencies: 29
+> Add hover lift animations, improved shadows, and accent borders to cards. Refine buttons, inputs, and table styling.
+
+- [ ] **ID 33: Navigation Enhancement** (Priority: medium)
+> Dependencies: 29, 31
+> Improve navbar active state indicators, add subtle refinements, and ensure navigation works in both themes.
+
+- [ ] **ID 34: CodeMirror Theme Integration** (Priority: medium)
+> Dependencies: 31
+> Apply a dark theme to CodeMirror editors for better code visibility and developer experience.
+
+- [ ] **ID 35: Dashboard Homepage Refresh** (Priority: low)
+> Dependencies: 29, 32
+> Update index.slim dashboard cards with accent borders and enhanced visual hierarchy.
