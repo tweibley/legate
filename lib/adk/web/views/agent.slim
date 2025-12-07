@@ -124,10 +124,8 @@ section.section
 
       / Chat tab content will now be loaded dynamically via HTMX
       div.content-tab.is-hidden#chat-tab
-        / Content will be loaded here by HTMX
-        p.has-text-grey.is-italic Loading chat interface...
-        span.icon.is-small.ml-2
-          i.fas.fa-spinner.fa-pulse
+        / Content will be loaded here by HTMX - skeleton shown until loaded
+        == slim :_skeleton, locals: { type: :chat_interface }
 
       div.content-tab.is-hidden#config-tab
         div#agent-configuration-content
@@ -169,10 +167,8 @@ section.section
             .columns.is-mobile.mt-4
               .column.has-text-centered
                 .heading Authentication Status
-                .title.is-4#auth-status-indicator
-                  span.icon.is-large
-                    i.fas.fa-spinner.fa-pulse
-                  | Loading...
+                #auth-status-indicator
+                  == slim :_skeleton, locals: { type: :auth_status }
               .column.has-text-centered
                 .heading Quick Actions
                 .buttons.is-centered

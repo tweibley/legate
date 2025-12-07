@@ -1,0 +1,69 @@
+/ File: lib/adk/web/views/_skeleton.slim
+/ Skeleton Loading Components
+/ Usage: == slim :_skeleton, locals: { type: :text, count: 1 }
+/ Types: :text, :title, :badge, :card, :table_row, :auth_status, :chat_interface
+
+ruby:
+  type ||= :text
+  count ||= 1
+  columns ||= 4
+
+- count.times do
+  - case type
+  
+  - when :text
+    .skeleton.skeleton-text
+    
+  - when :text_short
+    .skeleton.skeleton-text.skeleton-short
+    
+  - when :title
+    .skeleton.skeleton-title
+    
+  - when :badge
+    .skeleton.skeleton-badge
+    
+  - when :avatar
+    .skeleton.skeleton-avatar
+    
+  - when :card
+    .skeleton-card
+      .skeleton.skeleton-title
+      .skeleton.skeleton-text
+      .skeleton.skeleton-text.skeleton-short
+      
+  - when :table_row
+    tr.skeleton-row
+      - columns.times do |i|
+        td
+          - if i == columns - 1
+            .skeleton.skeleton-badge
+          - elsif i == 0
+            .skeleton.skeleton-text.skeleton-medium
+          - else
+            .skeleton.skeleton-text
+            
+  - when :auth_status
+    .has-text-centered
+      .skeleton.skeleton-icon.mx-auto
+      .skeleton.skeleton-text.skeleton-short.mx-auto.mt-2
+      
+  - when :chat_interface
+    .skeleton-chat-container
+      .skeleton-message.skeleton-message-left
+        .skeleton.skeleton-avatar.skeleton-avatar-small
+        .skeleton-message-content
+          .skeleton.skeleton-text
+          .skeleton.skeleton-text.skeleton-short
+      .skeleton-message.skeleton-message-right
+        .skeleton-message-content
+          .skeleton.skeleton-text.skeleton-medium
+      .skeleton-message.skeleton-message-left
+        .skeleton.skeleton-avatar.skeleton-avatar-small
+        .skeleton-message-content
+          .skeleton.skeleton-text
+          .skeleton.skeleton-text
+          .skeleton.skeleton-text.skeleton-short
+      .skeleton-chat-input
+        .skeleton.skeleton-input
+        .skeleton.skeleton-button

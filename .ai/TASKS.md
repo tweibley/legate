@@ -231,7 +231,7 @@
 - [ ] **ID 51: Activity Stream Backend & UI** (Priority: high)
 > Implement a recent activity stream on the dashboard showing last 5-10 system events (agent started, task completed, etc.) with relative timestamps.
 
-- [ ] **ID 52: Skeleton Loading Components** (Priority: medium)
+- [x] **ID 52: Skeleton Loading Components** (Priority: medium)
 > Dependencies: 46
 > Replace "Loading..." text with skeleton UI placeholders featuring animated shimmer effects for tables, cards, and content areas.
 
