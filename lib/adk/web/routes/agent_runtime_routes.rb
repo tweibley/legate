@@ -22,12 +22,12 @@ module ADK
                 name: name,
                 description: definition[:description],
                 running: is_running,
-                model: definition[:model]
-                # Potentially add other fields from definition if needed by partials
+                model: definition[:model],
+                tool_count: definition[:tools]&.size || 0
               }
             else # Should not happen if agent started, but as a fallback
               agent_data_for_view = { name: name, description: 'Started (Def error)', running: is_running,
-                                      model: 'N/A' }
+                                      model: 'N/A', tool_count: 0 }
             end
           else # Agent failed to start, fetch definition for display
             if definition_store
@@ -36,20 +36,21 @@ module ADK
                 if definition
                   agent_data_for_view = {
                     name: name, description: definition[:description],
-                    running: false, model: definition[:model]
+                    running: false, model: definition[:model],
+                    tool_count: definition[:tools]&.size || 0
                   }
                 else
                   agent_data_for_view = { name: name, description: 'Error: Definition not found', running: false,
-                                          model: 'N/A' }
+                                          model: 'N/A', tool_count: 0 }
                 end
               rescue ADK::DefinitionStore::StoreError => e
                 logger.error("Store error fetching definition after failed start for '#{name}' (from AgentRuntimeRoutes): #{e.message}")
                 agent_data_for_view = { name: name, description: 'Error retrieving definition', running: false,
-                                        model: 'N/A' }
+                                        model: 'N/A', tool_count: 0 }
               end
             else
               agent_data_for_view = { name: name, description: 'Error: Store unavailable', running: false,
-                                      model: 'N/A' }
+                                      model: 'N/A', tool_count: 0 }
             end
           end
 
@@ -181,20 +182,21 @@ module ADK
                 agent_data_for_view = {
                   name: name, description: agent_definition[:description],
                   running: is_running, # Use the explicitly set 'is_running'
-                  model: agent_definition[:model]
+                  model: agent_definition[:model],
+                  tool_count: agent_definition[:tools]&.size || 0
                 }
               else
                 agent_data_for_view = { name: name, description: 'Error: Definition not found', running: is_running,
-                                        model: 'N/A' }
+                                        model: 'N/A', tool_count: 0 }
               end
             rescue ADK::DefinitionStore::StoreError => e
               logger.error("Store error fetching definition after stop detail for '#{name}' (from AgentRuntimeRoutes): #{e.message}")
               agent_data_for_view = { name: name, description: 'Error retrieving definition', running: is_running,
-                                      model: 'N/A' }
+                                      model: 'N/A', tool_count: 0 }
             end
           else
             agent_data_for_view = { name: name, description: 'Error: Store unavailable', running: is_running,
-                                    model: 'N/A' }
+                                    model: 'N/A', tool_count: 0 }
           end
 
           status_controls_html = slim(:_agent_status_controls, layout: false,

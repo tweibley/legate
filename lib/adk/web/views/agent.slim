@@ -16,27 +16,41 @@ section.section
         li.is-active
           a(href="#" aria-current="page")= agent_name
 
-    .box.mb-5.agent-header-box
-      .level.is-mobile
-        .level-left
-          div
-            div#agent-name-display.mb-1
-              == slim :_display_agent_name, locals: { agent_data: agent_data }
-        .level-right
-           div#agent-status-controls-container
-              == slim :_agent_status_controls, locals: { agent_data: agent_data }
-
-      / Moved description display outside the level to allow full width
-      div#agent-description-display.mt-2 hx-swap="outerHTML"
-        == slim :_display_agent_description, locals: { agent_data: agent_data }
+    / Hero Header - Agent Profile Style
+    .agent-header-hero.mb-5
+      .agent-header-hero-main
+        / Left side: Agent identity (name, badges)
+        div#agent-name-display
+          == slim :_display_agent_name, locals: { agent_data: agent_data }
         
-      / Add agent type display
-      div#agent-type-display.mt-3 hx-swap="outerHTML"
-        == slim :_display_agent_type, locals: { agent_data: agent_data }
+        / Right side: Status and controls
+        div#agent-status-controls-container
+          == slim :_agent_status_controls, locals: { agent_data: agent_data }
 
-      / Add the agent hierarchy display
-      div#agent-hierarchy-display.mt-3 hx-swap="outerHTML"
-        == slim :_display_agent_hierarchy, locals: { agent_data: agent_data }
+      / Description - full width below
+      div#agent-description-display.agent-header-description hx-swap="outerHTML"
+        == slim :_display_agent_description, locals: { agent_data: agent_data }
+
+      / Collapsible Agent Details (Type & Hierarchy)
+      details.agent-details-collapsible
+        summary.agent-details-summary
+          span.icon
+            i.fas.fa-chevron-right
+          span Agent Details
+          span.tag.is-light.ml-2
+            - agent_type = agent_data[:agent_type]&.to_sym || :llm
+            - sub_count = agent_data[:sub_agent_names]&.size || 0
+            = "#{agent_type.to_s.capitalize}"
+            - if sub_count > 0
+              |  · #{sub_count} sub-agents
+        .agent-details-content
+          .columns.is-desktop
+            .column
+              div#agent-type-display hx-swap="outerHTML"
+                == slim :_display_agent_type, locals: { agent_data: agent_data }
+            .column
+              div#agent-hierarchy-display hx-swap="outerHTML"
+                == slim :_display_agent_hierarchy, locals: { agent_data: agent_data }
 
     .custom-rounded-tabs-container
       .tabs

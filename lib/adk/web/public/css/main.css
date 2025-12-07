@@ -498,83 +498,251 @@ strong.has-text-link { /* Navbar Brand */
   right: 0;
 }
 
-/* --- Agent Page Header --- */
-.agent-header-box {
+/* ========================================
+   AGENT HERO HEADER
+   ======================================== */
+.agent-header-hero {
+  background: linear-gradient(135deg, var(--color-bg-secondary) 0%, var(--color-bg-tertiary) 100%);
   border: 1px solid var(--color-border);
-  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
 }
 
-.agent-header-box .level-left > div {
-  flex-grow: 1;
-  margin-right: 1rem;
-  width: 100%;
-  min-width: 0;
+/* Subtle decorative element */
+.agent-header-hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, var(--color-primary) 0%, transparent 70%);
+  opacity: 0.05;
+  pointer-events: none;
 }
 
-/* --- Agent Page Header Description --- */
-#agent-description-display {
-  margin-bottom: 0.5rem;
+.agent-header-hero-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 2rem;
+  flex-wrap: wrap;
 }
 
-#agent-description-display p.subtitle {
-  line-height: 1.4;
-  margin-right: 0.5rem;
-  margin-bottom: 0 !important;
+/* Agent Identity (Name + Badges) */
+.agent-hero-header {
+  flex: 1;
+  min-width: 250px;
+}
+
+.agent-hero-name {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 0.75rem;
+  line-height: 1.2;
+}
+
+.agent-hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.agent-hero-badges .tag {
+  font-weight: 500;
+  padding: 0.5em 0.75em;
+}
+
+.agent-model-badge {
+  background: var(--color-bg-tertiary) !important;
+  color: var(--color-text-secondary) !important;
+  border: 1px solid var(--color-border);
+}
+
+/* Agent Status Controls */
+.agent-hero-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1rem;
+  min-width: 200px;
+}
+
+.agent-status-display {
+  text-align: right;
+}
+
+.agent-status-badge {
+  font-weight: 600;
+  padding: 0.75em 1.25em !important;
+}
+
+.agent-status-badge .icon {
+  margin-right: 0.25em;
+}
+
+/* Animated pulse for running status */
+.agent-status-badge.is-running .icon i {
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+.agent-action-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.agent-action-btn {
+  font-weight: 600;
+  min-width: 140px;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.agent-action-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Quick Stats Row */
+.agent-quick-stats {
+  display: flex;
+  gap: 1.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.agent-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.agent-stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.agent-stat-label {
+  font-size: 0.75rem;
   color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-#agent-description-display button.is-ghost {
+/* Description Section */
+.agent-header-description {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.agent-header-description p.subtitle {
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  margin-bottom: 0 !important;
+}
+
+.agent-header-description button.is-ghost {
   vertical-align: top;
   margin-left: 0.25rem;
-  margin-top: 0.25rem;
 }
 
-/* Ensure the edit form takes space */
-#agent-description-display form {
+.agent-header-description form {
   width: 100%;
 }
 
-#agent-description-display form .textarea {
+.agent-header-description form .textarea {
   width: 100%;
   min-height: 6em;
 }
 
-#agent-description-display form .field.is-grouped {
+.agent-header-description form .field.is-grouped {
   margin-top: 0.75rem;
 }
 
-#agent-description-display form .label.is-small {
+.agent-header-description form .label.is-small {
   margin-bottom: 0.25rem;
   color: var(--color-text-muted);
   font-weight: normal;
 }
 
-/* --- Agent Status Controls --- */
-#agent-status-controls-container .field {
-  margin-bottom: 0.5rem !important;
+/* Collapsible Agent Details */
+.agent-details-collapsible {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
 }
 
-#agent-status-controls-container .label.is-small {
-  margin-bottom: 0.25rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
-}
-
-#agent-status-controls-container .tag.is-medium.is-rounded {
-  padding-left: 1em;
-  padding-right: 1em;
-  font-weight: 600;
-}
-
-#agent-status-controls-container .field.is-grouped {
-  margin-top: 0.75rem;
-  justify-content: flex-end;
-}
-
-#agent-status-controls-container .button.is-small {
+.agent-details-summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  color: var(--color-text-secondary);
   font-weight: 500;
+  user-select: none;
+  transition: color var(--transition-fast);
 }
 
+.agent-details-summary:hover {
+  color: var(--color-text-primary);
+}
+
+.agent-details-summary .icon {
+  transition: transform var(--transition-fast);
+}
+
+.agent-details-collapsible[open] .agent-details-summary .icon {
+  transform: rotate(90deg);
+}
+
+.agent-details-content {
+  padding-top: 1rem;
+}
+
+/* Legacy support (keep old class for any remaining references) */
+.agent-header-box {
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg-secondary);
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 768px) {
+  .agent-header-hero-main {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .agent-hero-controls {
+    align-items: stretch;
+    width: 100%;
+  }
+  .agent-status-display {
+    text-align: center;
+  }
+  .agent-action-buttons {
+    justify-content: center;
+  }
+  .agent-quick-stats {
+    justify-content: center;
+  }
+  .agent-hero-name {
+    font-size: 1.5rem;
+  }
+}
 /* --- Custom Rounded Tabs --- */
 .custom-rounded-tabs-container {
   background-color: var(--color-bg-tertiary);

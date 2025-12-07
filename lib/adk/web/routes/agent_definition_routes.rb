@@ -182,6 +182,9 @@ module ADK
           # @agents doesn't persist across Sinatra request instances, so we rely on Redis
           is_running = (agent_definition[:persistent_status] == 'running')
 
+          # Calculate tool count for header display
+          tool_count = agent_definition[:tools]&.size || 0
+
           self.instance_variable_set(:@view_agent_data, {
                                        name: name,
                                        description: agent_definition[:description],
@@ -192,6 +195,7 @@ module ADK
                                        mcp_servers_json: agent_definition[:mcp_servers_json],
                                        mcp_display_string: mcp_display_string,
                                        configured_tool_names: agent_definition[:tools],
+                                       tool_count: tool_count,
                                        # Include agent type and sub-agent names for hierarchy display
                                        agent_type: agent_definition[:agent_type]&.to_sym || :llm,
                                        sub_agent_names: agent_definition[:sub_agent_names] || []

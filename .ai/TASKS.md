@@ -246,3 +246,25 @@
 
 - [ ] **ID 56: Mobile Touch Target Audit** (Priority: low)
 > Audit and fix touch targets across the UI to ensure all interactive elements are at least 44px for mobile usability.
+
+---
+
+## Agent Details UI Polish Tasks
+
+- [x] **ID 57: Agent Details Header Redesign** (Priority: high)
+> Redesign the agent details header to create a "hero profile" style with prominent status controls, key metrics, and improved visual hierarchy.
+
+- [ ] **ID 58: Execute Tab Terminal-Style Enhancement** (Priority: high)
+> Enhance the Execute tab with a terminal-style result display, monospace code editor textarea, and improved task input experience.
+
+- [ ] **ID 59: Tab Navigation Polish** (Priority: medium)
+> Dependencies: 57
+> Polish the tab navigation with improved active states, better touch targets, and subtle transition animations.
+
+- [ ] **ID 60: Chat Tab Full-Height Experience** (Priority: medium)
+> Dependencies: 59
+> Enhance the Chat tab to feel like a full messaging application with proper height, prominent input area, and polished styling.
+
+- [ ] **ID 61: Tools Tab Card Grid Layout** (Priority: low)
+> Dependencies: 59
+> Convert the Tools tab from a table layout to a card grid for better visual scanning and a more modern appearance.
