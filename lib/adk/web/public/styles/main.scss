@@ -545,24 +545,13 @@ strong.has-text-link { /* Navbar Brand */
 
 /* Table row hover accent - left border indicator */
 /* Only apply to specific tables (agents, tools) to avoid breaking documentation tables */
+/* Using box-shadow instead of ::before to avoid table layout issues with position:relative on tr */
 #agent-list-table tbody tr,
 .tools-table tbody tr {
-  position: relative;
+  transition: box-shadow var(--transition-fast);
   
-  &::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: var(--color-primary);
-    opacity: 0;
-    transition: opacity var(--transition-fast);
-  }
-  
-  &:hover::before {
-    opacity: 1;
+  &:hover {
+    box-shadow: inset 3px 0 0 0 var(--color-primary);
   }
 }
 
