@@ -284,6 +284,6 @@
 > Dependencies: 62
 > Add an overflow menu ("...") with Edit, Duplicate, Export, and Delete actions.
 
-- [ ] **ID 65: Header Polish & Cleanup** (Priority: low)
+- [x] **ID 65: Header Polish & Cleanup** (Priority: low)
 > Dependencies: 62, 63, 64
 > Remove redundant information, simplify collapsible section, final styling polish.

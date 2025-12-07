@@ -1,7 +1,7 @@
 ---
 id: 65
 title: 'Header Polish & Cleanup'
-status: pending
+status: completed
 priority: low
 feature: Agent Header Improvements
 dependencies:
