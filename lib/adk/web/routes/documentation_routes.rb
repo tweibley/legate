@@ -32,7 +32,7 @@ module ADK
               return nil
             end
 
-            markdown_content = File.read(target_file_pathname.to_s)
+            markdown_content = File.read(target_file_pathname.to_s, encoding: 'UTF-8')
 
             # Configure Kramdown with enhanced rendering options - now using GFM
             html = Kramdown::Document.new(
@@ -110,7 +110,7 @@ module ADK
               filename_md = pathname.basename.to_s
               filename_no_ext = pathname.basename('.md').to_s
               title = filename_no_ext.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ')
-              file_content = File.read(md_file_path)
+              file_content = File.read(md_file_path, encoding: 'UTF-8')
               first_h1_match = file_content.match(/^#\s+(.+)$/)
               title = first_h1_match[1].strip if first_h1_match
               summary = generate_summary(file_content)
@@ -136,7 +136,7 @@ module ADK
                 full_relative_path = "#{category_pathname.basename}/#{filename_no_ext}"
 
                 title = filename_no_ext.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ')
-                file_content = File.read(md_file_path)
+                file_content = File.read(md_file_path, encoding: 'UTF-8')
                 first_h1_match = file_content.match(/^#\s+(.+)$/)
                 title = first_h1_match[1].strip if first_h1_match
                 summary = generate_summary(file_content)
@@ -207,7 +207,7 @@ module ADK
             # For now, let's re-read for title extraction consistency.
             doc_title_for_view = sane_path.split('/').last.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ') # Default title
             if File.exist?(full_file_path)
-              markdown_content_for_title = File.read(full_file_path)
+              markdown_content_for_title = File.read(full_file_path, encoding: 'UTF-8')
               first_h1_match = markdown_content_for_title.match(/^#\s+(.+)$/)
               doc_title_for_view = first_h1_match[1].strip if first_h1_match
             end

@@ -95,4 +95,21 @@ Connect authentication configuration with agent management:
 - Test agent-specific authentication overrides
 - Validate authentication status monitoring for agents
 - Confirm testing works in agent context
-- Test integration with existing agent management features 
+- Test integration with existing agent management features
+
+## Post-Completion Note (2025-12-05)
+
+**Gap Identified:** This task was marked complete but only implemented the Web UI portion:
+
+✅ **Completed:**
+- Web UI routes for assigning auth to agents
+- RedisStore fields for `auth_scheme_assignments`, `auth_credential_assignments`, `auth_url_mappings`
+- UI for viewing/editing agent auth config
+
+❌ **NOT Completed (moved to Task 25):**
+- AgentDefinition DSL for programmatic auth configuration
+- Agent → ToolContext auth config propagation
+- ToolContext agent-aware auth lookup (currently only uses global Auth::Manager)
+- Runtime integration where assigned auth is actually USED by running agents
+
+**See Task 25** for the completion of runtime integration. 

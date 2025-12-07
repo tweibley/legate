@@ -38,12 +38,19 @@ module ADK
     # --- End Class-level ---
 
     # --- Self-Registration Hook ---
+    # NOTE: We intentionally do NOT auto-register tools in the inherited hook.
+    # The reason is that `inherited` is called BEFORE the class body executes,
+    # so explicit_tool_name and other DSL methods haven't run yet. This would
+    # cause tools to be registered under their inferred name (e.g., :random_number_tool)
+    # instead of their explicit name (e.g., :random_number).
+    #
+    # Instead, built-in tools are explicitly registered in lib/adk.rb after their
+    # class definitions are complete. Custom tools should either:
+    # 1. Call `ADK::GlobalToolManager.register_tool(MyTool)` explicitly after definition
+    # 2. Be discovered via tool_paths when creating agents
     def self.inherited(subclass)
       super # Call parent's inherited if necessary
-
-      # Registration now happens automatically via the inherited hook
-      ADK.logger.debug("Tool subclass #{subclass} inherited. Attempting registration.")
-      ADK::GlobalToolManager.register_tool(subclass)
+      ADK.logger.debug("Tool subclass #{subclass} inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.")
     end
     # --- End Hook ---
 

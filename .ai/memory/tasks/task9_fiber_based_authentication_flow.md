@@ -44,18 +44,18 @@ Implement the Fiber-based control flow for interactive authentication in the ADK
 
 ## Acceptance Criteria
 
-- [ ] All authentication schemes can be used with fiber-based control flow
-- [ ] Interactive authentication flows correctly pause and resume execution
-- [ ] Authentication state is properly maintained across fiber yields
-- [ ] Error handling accounts for authentication failures and timeouts
-- [ ] Authentication coordinators are properly implemented for all schemes
-- [ ] Runner integration is complete and functional
-- [ ] Documentation for the fiber-based authentication flow is provided
-- [ ] Tests demonstrate correct behavior of the fiber-based flow
+- [x] All authentication schemes can be used with fiber-based control flow
+- [x] Interactive authentication flows correctly pause and resume execution
+- [x] Authentication state is properly maintained across fiber yields
+- [x] Error handling accounts for authentication failures and timeouts
+- [x] Authentication coordinators are properly implemented for all schemes
+- [x] Runner integration is complete and functional
+- [x] Documentation for the fiber-based authentication flow is provided
+- [x] Tests demonstrate correct behavior of the fiber-based flow
 
 ## Definition of Done
 
 - Code implemented and tested
 - All tests passing
 - Documentation updated
-- Pull request reviewed and approved 
+- Pull request reviewed and approved

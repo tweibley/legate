@@ -1,5 +1,6 @@
 *.gem
 *.rbc
+/.adk_browser_data
 /.config
 /coverage/
 /InstalledFiles

@@ -172,7 +172,12 @@ RSpec.describe ADK::Agent do
                     before_model_callback: nil,
                     after_model_callback: nil,
                     before_tool_callback: nil,
-                    after_tool_callback: nil)
+                    after_tool_callback: nil,
+                    # Add authentication config methods
+                    auth_credential_names: Set.new,
+                    auth_url_mappings: [],
+                    auth_scheme_assignments: {},
+                    auth_credential_assignments: {})
   end
   let(:mock_store) { instance_double(ADK::DefinitionStore::RedisStore, save_definition: true, get_definition: nil) }
   let(:mock_config) {

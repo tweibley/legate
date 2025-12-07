@@ -247,12 +247,13 @@ module ADK
         # Helper for Agent Start/Stop button fragments (used in table view)
         def agent_status_fragments(agent_data_or_obj)
           agent_name = agent_data_or_obj.is_a?(Hash) ? agent_data_or_obj[:name] : agent_data_or_obj.name
+          safe_agent_id = agent_name.to_s.gsub(/[^a-zA-Z0-9_-]/, '-') # Sanitize for use in HTML IDs/CSS selectors
           is_running = agent_data_or_obj.is_a?(Hash) ? agent_data_or_obj[:running] : agent_data_or_obj.running?
 
-          status_content_id = "agent-status-content-#{agent_name}"
-          start_action_id = "agent-start-action-#{agent_name}"
-          stop_action_id = "agent-stop-action-#{agent_name}"
-          dropdown_id = "agent-actions-dropdown-#{agent_name}"
+          status_content_id = "agent-status-content-#{safe_agent_id}"
+          start_action_id = "agent-start-action-#{safe_agent_id}"
+          stop_action_id = "agent-stop-action-#{safe_agent_id}"
+          dropdown_id = "agent-actions-dropdown-#{safe_agent_id}"
 
           status_html = <<~HTML
             <span id="#{status_content_id}" hx-swap-oob="outerHTML">

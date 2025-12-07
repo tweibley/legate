@@ -75,6 +75,16 @@ module ADK
     # @return [Set<Symbol>] A set of names of agents that this agent can delegate tasks to via LLM planning.
     attr_reader :delegation_targets
 
+    # --- Authentication Attributes ---
+    # @return [Set<Symbol>] A set of credential names this agent can use.
+    attr_reader :auth_credential_names
+    # @return [Array<Hash>] URL pattern to scheme/credential mappings for this agent.
+    attr_reader :auth_url_mappings
+    # @return [Hash<Symbol, Symbol>] Service to scheme name assignments.
+    attr_reader :auth_scheme_assignments
+    # @return [Hash<Symbol, Symbol>] Service to credential name assignments.
+    attr_reader :auth_credential_assignments
+
     # --- Callback Attributes ---
     # @return [Proc, nil] Callback run before agent execution begins
     attr_reader :before_agent_callback
@@ -121,6 +131,13 @@ module ADK
       @loop_condition_state_key = nil # State key to check in loop condition
       @loop_condition_expected_value = nil # Expected value for loop condition
       @delegation_targets = Set.new # Agent names that this agent can delegate to
+      # -----------------------
+
+      # --- Authentication Attributes ---
+      @auth_credential_names = Set.new # Credential names this agent can use
+      @auth_url_mappings = [] # URL pattern to scheme/credential mappings
+      @auth_scheme_assignments = {} # Service to scheme assignments
+      @auth_credential_assignments = {} # Service to credential assignments
       # -----------------------
 
       @proxy = DefinitionProxy.new(self)
@@ -183,7 +200,19 @@ module ADK
         loop_max_iterations: @loop_max_iterations,
         loop_condition_state_key: @loop_condition_state_key,
         loop_condition_expected_value: @loop_condition_expected_value,
-        delegation_targets: @delegation_targets&.to_a || []
+        delegation_targets: @delegation_targets&.to_a || [],
+        # --- Authentication fields ---
+        auth_credential_names: @auth_credential_names&.to_a || [],
+        auth_url_mappings: (@auth_url_mappings || []).map do |m|
+          {
+            pattern: m[:pattern].is_a?(Regexp) ? m[:pattern].source : m[:pattern],
+            pattern_type: m[:pattern].is_a?(Regexp) ? 'regexp' : 'string',
+            scheme_name: m[:scheme_name]&.to_s,
+            credential_name: m[:credential_name]&.to_s
+          }
+        end,
+        auth_scheme_assignments: (@auth_scheme_assignments || {}).transform_keys(&:to_s).transform_values(&:to_s),
+        auth_credential_assignments: (@auth_credential_assignments || {}).transform_keys(&:to_s).transform_values(&:to_s)
       }
     end
 
@@ -401,6 +430,68 @@ module ADK
         @definition.instance_variable_set(:@delegation_targets, Set.new(flat_names))
       end
       # --- End MAS Attributes DSL ---
+
+      # --- Authentication DSL Methods ---
+
+      # Associate a registered credential with this agent
+      # @param credential_name [Symbol] Name of a registered credential
+      # @example
+      #   use_credential :google_maps_api
+      #   use_credential :openai_key
+      def use_credential(credential_name)
+        raise ArgumentError, 'Credential name must be a Symbol.' unless credential_name.is_a?(Symbol)
+
+        @definition.instance_variable_get(:@auth_credential_names) << credential_name
+      end
+
+      # Map a URL pattern to an authentication scheme and credential
+      # @param url_pattern [String, Regexp] URL pattern to match
+      # @param scheme [Symbol] Scheme type or name to use
+      # @param credential [Symbol] Credential name to use
+      # @example
+      #   auth_mapping 'https://maps.googleapis.com/*', scheme: :api_key, credential: :google_maps_api
+      #   auth_mapping /api\.openai\.com/, scheme: :http_bearer, credential: :openai_key
+      def auth_mapping(url_pattern, scheme:, credential:)
+        unless url_pattern.is_a?(String) || url_pattern.is_a?(Regexp)
+          raise ArgumentError, 'URL pattern must be a String or Regexp.'
+        end
+        raise ArgumentError, 'Scheme must be a Symbol.' unless scheme.is_a?(Symbol)
+        raise ArgumentError, 'Credential must be a Symbol.' unless credential.is_a?(Symbol)
+
+        @definition.instance_variable_get(:@auth_url_mappings) << {
+          pattern: url_pattern,
+          scheme_name: scheme,
+          credential_name: credential
+        }
+      end
+
+      # Assign a scheme for a named service
+      # @param service [Symbol] Service identifier (e.g., :google_maps, :openai)
+      # @param scheme [Symbol] Scheme name to use for this service
+      # @example
+      #   auth_scheme :google_maps, :api_key
+      #   auth_scheme :openai, :http_bearer
+      def auth_scheme(service, scheme)
+        raise ArgumentError, 'Service must be a Symbol.' unless service.is_a?(Symbol)
+        raise ArgumentError, 'Scheme must be a Symbol.' unless scheme.is_a?(Symbol)
+
+        @definition.instance_variable_get(:@auth_scheme_assignments)[service] = scheme
+      end
+
+      # Assign a credential for a named service
+      # @param service [Symbol] Service identifier (e.g., :google_maps, :openai)
+      # @param credential [Symbol] Credential name to use for this service
+      # @example
+      #   auth_credential :google_maps, :google_maps_api
+      #   auth_credential :openai, :openai_key
+      def auth_credential(service, credential)
+        raise ArgumentError, 'Service must be a Symbol.' unless service.is_a?(Symbol)
+        raise ArgumentError, 'Credential must be a Symbol.' unless credential.is_a?(Symbol)
+
+        @definition.instance_variable_get(:@auth_credential_assignments)[service] = credential
+      end
+
+      # --- End Authentication DSL Methods ---
 
       # --- Callback DSL Methods ---
 
@@ -622,6 +713,62 @@ module ADK
       # Delegation targets
       definition.instance_variable_set(:@delegation_targets, convert_to_set.call(:delegation_targets))
 
+      # --- Authentication fields ---
+      # Auth credential names (convert to Set of symbols)
+      definition.instance_variable_set(:@auth_credential_names, convert_to_set.call(:auth_credential_names))
+
+      # Auth URL mappings (array of hashes)
+      auth_mappings_raw = hash_data[:auth_url_mappings] || hash_data['auth_url_mappings'] || []
+      if auth_mappings_raw.is_a?(String)
+        begin
+          auth_mappings_raw = JSON.parse(auth_mappings_raw)
+        rescue JSON::ParserError
+          auth_mappings_raw = []
+        end
+      end
+      auth_url_mappings = (auth_mappings_raw || []).map do |m|
+        pattern = m['pattern'] || m[:pattern]
+        pattern_type = m['pattern_type'] || m[:pattern_type]
+        # Convert back to Regexp if it was serialized as such
+        if pattern_type == 'regexp' && pattern.is_a?(String)
+          begin
+            pattern = Regexp.new(pattern)
+          rescue RegexpError
+            # Keep as string if invalid regexp
+          end
+        end
+        {
+          pattern: pattern,
+          scheme_name: (m['scheme_name'] || m[:scheme_name])&.to_sym,
+          credential_name: (m['credential_name'] || m[:credential_name])&.to_sym
+        }
+      end
+      definition.instance_variable_set(:@auth_url_mappings, auth_url_mappings)
+
+      # Auth scheme assignments (hash of symbol -> symbol)
+      auth_scheme_raw = hash_data[:auth_scheme_assignments] || hash_data['auth_scheme_assignments'] || {}
+      if auth_scheme_raw.is_a?(String)
+        begin
+          auth_scheme_raw = JSON.parse(auth_scheme_raw)
+        rescue JSON::ParserError
+          auth_scheme_raw = {}
+        end
+      end
+      auth_scheme_assignments = (auth_scheme_raw || {}).transform_keys(&:to_sym).transform_values(&:to_sym)
+      definition.instance_variable_set(:@auth_scheme_assignments, auth_scheme_assignments)
+
+      # Auth credential assignments (hash of symbol -> symbol)
+      auth_cred_raw = hash_data[:auth_credential_assignments] || hash_data['auth_credential_assignments'] || {}
+      if auth_cred_raw.is_a?(String)
+        begin
+          auth_cred_raw = JSON.parse(auth_cred_raw)
+        rescue JSON::ParserError
+          auth_cred_raw = {}
+        end
+      end
+      auth_credential_assignments = (auth_cred_raw || {}).transform_keys(&:to_sym).transform_values(&:to_sym)
+      definition.instance_variable_set(:@auth_credential_assignments, auth_credential_assignments)
+
       definition
     end
   end
@@ -643,6 +790,12 @@ module ADK
                 :before_tool_callback, :after_tool_callback
 
     # --- End Callback Instance Variables ---
+
+    # --- Authentication Instance Variables ---
+    attr_reader :auth_credential_names, :auth_url_mappings,
+                :auth_scheme_assignments, :auth_credential_assignments
+
+    # --- End Authentication Instance Variables ---
 
     # --- Builder Class for `define` method ---
     # class AgentBuilder
@@ -782,6 +935,13 @@ module ADK
       @before_tool_callback = definition.before_tool_callback
       @after_tool_callback = definition.after_tool_callback
       # --- End Initialize Callbacks ---
+
+      # --- Initialize Authentication Config from Definition ---
+      @auth_credential_names = definition.auth_credential_names || Set.new
+      @auth_url_mappings = definition.auth_url_mappings || []
+      @auth_scheme_assignments = definition.auth_scheme_assignments || {}
+      @auth_credential_assignments = definition.auth_credential_assignments || {}
+      # --- End Initialize Authentication Config ---
 
       # Check for direct self-references in the definition's sub_agent_names
       if definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
@@ -1396,6 +1556,22 @@ module ADK
 
     private
 
+    # Build the agent-specific authentication configuration hash for ToolContext
+    # @return [Hash, nil] The auth config hash or nil if no auth configured
+    def build_agent_auth_config
+      return nil if @auth_credential_names.empty? &&
+                    @auth_url_mappings.empty? &&
+                    @auth_scheme_assignments.empty? &&
+                    @auth_credential_assignments.empty?
+
+      {
+        credential_names: @auth_credential_names,
+        url_mappings: @auth_url_mappings,
+        scheme_assignments: @auth_scheme_assignments,
+        credential_assignments: @auth_credential_assignments
+      }
+    end
+
     # Helper method to consistently determine the tool name from a tool class.
     # Uses metadata, then deprecated @tool_name, then inferred_name.
     def get_tool_name_from_class(tool_class)
@@ -1654,14 +1830,15 @@ module ADK
         return { status: :error, error_message: error_msg }
       end
 
-      # --- Prepare tool context with invocation_id ---
+      # --- Prepare tool context with invocation_id and auth config ---
       tool_context = ADK::ToolContext.new(
         session_id: session.id,
         user_id: session.user_id,
         app_name: session.app_name,
         session_service: session_service,
         tool_registry: @tool_registry,
-        invocation_id: invocation_id
+        invocation_id: invocation_id,
+        agent_auth_config: build_agent_auth_config
       )
 
       # --- Log the tool request event ---

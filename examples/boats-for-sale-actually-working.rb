@@ -879,7 +879,18 @@ ADK::GlobalToolManager.register_tool(BoatThreadParser)
 ADK::GlobalToolManager.register_tool(BoatDetailParser)
 ADK::GlobalToolManager.register_tool(LLMBoatAnalyzer)
 
-playwright_mcp_config = [{ "type" => "stdio", "command" => "npx", "args" => ["-y", "@playwright/mcp@latest"] }]
+# Configure Playwright MCP with specific options:
+# 1. Use a real User-Agent to reduce bot detection
+# 2. Headed mode is default for @playwright/mcp, which allows manual CAPTCHA solving
+playwright_mcp_config = [{
+  "type" => "stdio",
+  "command" => "npx",
+  "args" => [
+    "-y",
+    "@playwright/mcp@latest",
+    "--user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  ]
+}]
 
 MAIN_FORUM_URL = "https://www.thehulltruth.com/boats-sale-17/"
 
@@ -950,11 +961,31 @@ begin
   puts "DEBUG: Main page snapshot type: #{main_page_snapshot.class}"
   puts "DEBUG: Main page snapshot keys: #{main_page_snapshot.keys if main_page_snapshot.respond_to?(:keys)}"
   
+  # Helper to extract text from snapshot structure
+  get_snapshot_text = ->(snapshot) {
+    return "" unless snapshot.is_a?(Hash)
+    
+    # Handle ADK 0.6.x tool result structure
+    if snapshot['result'] && snapshot['result'].is_a?(Hash) && snapshot['result']['content']
+      return snapshot['result']['content'][0]['text'] if snapshot['result']['content'][0]
+    end
+    
+    # Handle direct result structure
+    if snapshot['content'] && snapshot['content'].is_a?(Array)
+      return snapshot['content'][0]['text'] if snapshot['content'][0]
+    end
+    
+    # Fallback for simple string results
+    return snapshot['result'] if snapshot['result'].is_a?(String)
+    return ""
+  }
+
+  snapshot_text = get_snapshot_text.call(main_page_snapshot)
+
   # Check if we actually got browser data vs just text
-  if main_page_snapshot.is_a?(Hash) && main_page_snapshot['result'].is_a?(String) && 
-     main_page_snapshot['result'].include?("I have navigated")
+  if snapshot_text.include?("I have navigated")
     puts "❌ AGENT IS NOT USING TOOLS - just describing actions!"
-    puts "Agent response: #{main_page_snapshot['result']}"
+    puts "Agent response: #{snapshot_text}"
     puts "\nTrying a more forceful approach..."
     
     # Try again with even more explicit instructions
@@ -965,10 +996,30 @@ begin
     )
     
     main_page_snapshot = session_service.get_state(session_id: session_id, key: :scraping_result)
-    puts "DEBUG: Second attempt snapshot: #{main_page_snapshot.inspect[0..200]}"
+    snapshot_text = get_snapshot_text.call(main_page_snapshot)
+    puts "DEBUG: Second attempt snapshot text length: #{snapshot_text.length}"
   end
 
-  if main_page_snapshot && !main_page_snapshot.empty?
+  # Check for Cloudflare/Challenge page
+  if snapshot_text.include?("Just a moment...") || 
+     snapshot_text.include?("needs to review the security of your connection") ||
+     snapshot_text.include?("Verifying you are human")
+    
+    puts "\n⚠️  Cloudflare Challenge Detected on Main Page!"
+    puts "👉  A browser window should be open. Please interact with it to verify you are human."
+    puts "⌨️   Press ENTER once the page has fully loaded..."
+    gets
+    
+    puts "🔄 Retaking snapshot..."
+    agent.run_task(
+      session_id: session_id,
+      user_input: "The user has solved the captcha. Execute browser_snapshot() again and return the result.",
+      session_service: session_service
+    )
+    main_page_snapshot = session_service.get_state(session_id: session_id, key: :scraping_result)
+  end
+
+  if main_page_snapshot && main_page_snapshot['status'] == 'success'
     puts "✅ Main page snapshot captured successfully"
     puts "\n=== STEP 2: Extract boat thread information ==="
     parser = BoatThreadParser.new
@@ -998,6 +1049,26 @@ begin
         sleep(2)
         
         thread_page_snapshot = session_service.get_state(session_id: session_id, key: :scraping_result)
+        
+        # Check for Cloudflare/Challenge on thread page
+        thread_snapshot_text = get_snapshot_text.call(thread_page_snapshot)
+        if thread_snapshot_text.include?("Just a moment...") || 
+           thread_snapshot_text.include?("needs to review the security of your connection") ||
+           thread_snapshot_text.include?("Verifying you are human")
+          
+          puts "\n⚠️  Cloudflare Challenge Detected on Thread Page!"
+          puts "👉  Please interact with the browser window to verify you are human."
+          puts "⌨️   Press ENTER once the page has fully loaded..."
+          gets
+          
+          puts "🔄 Retaking thread snapshot..."
+          agent.run_task(
+            session_id: session_id,
+            user_input: "The user has solved the captcha. Execute browser_snapshot() again and return the result.",
+            session_service: session_service
+          )
+          thread_page_snapshot = session_service.get_state(session_id: session_id, key: :scraping_result)
+        end
         
         if thread_page_snapshot && !thread_page_snapshot.empty? && !(thread_page_snapshot.is_a?(Hash) && thread_page_snapshot['status'] == 'error')
           puts "  ✅ Thread page snapshot captured."

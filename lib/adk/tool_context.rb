@@ -11,6 +11,10 @@ module ADK
     # Expose pending state delta for inspection but not direct modification
     attr_reader :pending_state_delta
 
+    # Agent-specific authentication configuration
+    # @return [Hash, nil] The agent's auth config or nil if not configured
+    attr_reader :agent_auth_config
+
     # @param session_id [String] The ID of the current session.
     # @param user_id [String] The user ID associated with the session.
     # @param app_name [String] The application/agent name associated with the session.
@@ -18,7 +22,8 @@ module ADK
     # @param session_service [ADK::SessionService::Base, nil] The session service instance.
     # @param logger [Logger, nil] The logger instance.
     # @param invocation_id [String, nil] The ID of the current agent invocation.
-    def initialize(session_id:, user_id:, app_name:, tool_registry: nil, session_service: nil, logger: ADK.logger, invocation_id: nil)
+    # @param agent_auth_config [Hash, nil] Agent-specific authentication configuration.
+    def initialize(session_id:, user_id:, app_name:, tool_registry: nil, session_service: nil, logger: ADK.logger, invocation_id: nil, agent_auth_config: nil)
       @session_id = session_id
       @user_id = user_id
       @app_name = app_name
@@ -27,6 +32,7 @@ module ADK
       @invocation_id = invocation_id
       @pending_state_delta = {}
       @token_manager = nil
+      @agent_auth_config = agent_auth_config
     end
 
     # Retrieves a value from the session state via the session_service.
@@ -227,6 +233,7 @@ module ADK
     end
     
     # Handle authentication for a request, automatically selecting the appropriate scheme and credential
+    # Checks agent-specific auth config first, then falls back to global Auth::Manager
     # @param request [Hash] The request to authenticate
     # @param options [Hash] Options for authentication (e.g., credential_name, scheme_type)
     # @return [Hash] The authenticated request or the original request if authentication not possible
@@ -237,10 +244,20 @@ module ADK
       require_relative 'auth/manager'
       
       begin
-        # Get the authentication manager
         auth_manager = ADK::Auth::Manager.instance
+        scheme = nil
+        credential = nil
         
-        # Try to find an appropriate scheme and credential
+        # First, check agent-specific URL mappings
+        if @agent_auth_config && @agent_auth_config[:url_mappings]&.any?
+          scheme, credential = find_agent_auth_for_url(request[:url], auth_manager)
+          if scheme && credential
+            ADK.logger.debug { "[ToolContext] Using agent-specific auth for URL: #{request[:url]}" }
+            return authenticate_request(request, scheme, credential)
+          end
+        end
+        
+        # Fall back to global Auth::Manager lookup
         scheme, credential = auth_manager.find_scheme_and_credential(
           url: request[:url],
           scheme_type: options[:scheme_type],
@@ -257,6 +274,50 @@ module ADK
       
       # Return the original request if no authentication applied
       request
+    end
+    
+    # Find authentication for a URL using agent-specific mappings
+    # @param url [String] The URL to find authentication for
+    # @param auth_manager [ADK::Auth::Manager] The auth manager to resolve schemes/credentials
+    # @return [Array<ADK::Auth::Scheme, ADK::Auth::Credential>, nil] The scheme and credential, or nil if not found
+    def find_agent_auth_for_url(url, auth_manager)
+      return nil unless @agent_auth_config && @agent_auth_config[:url_mappings]
+      
+      @agent_auth_config[:url_mappings].each do |mapping|
+        pattern = mapping[:pattern]
+        next unless pattern
+        
+        matched = if pattern.is_a?(Regexp)
+          !!(url =~ pattern)
+        elsif pattern.is_a?(String)
+          if pattern.include?('*')
+            # Convert glob pattern to regex
+            regex = Regexp.new('^' + Regexp.escape(pattern).gsub('\\*', '.*') + '$')
+            !!(url =~ regex)
+          else
+            url == pattern || url.start_with?(pattern)
+          end
+        else
+          false
+        end
+        
+        if matched
+          scheme_name = mapping[:scheme_name]
+          credential_name = mapping[:credential_name]
+          
+          # Resolve from Auth::Manager
+          scheme = auth_manager.get_scheme(scheme_name)
+          credential = auth_manager.get_credential(credential_name)
+          
+          if scheme && credential
+            return [scheme, credential]
+          else
+            ADK.logger.warn { "[ToolContext] Agent auth mapping matched but scheme '#{scheme_name}' or credential '#{credential_name}' not found in Auth::Manager" }
+          end
+        end
+      end
+      
+      nil
     end
     
     # Create or get the token manager for this context

@@ -66,9 +66,9 @@
 > - [x] Example showing integration with Excon middleware (existing example reviewed)
 > - [x] Example showing custom authentication flows
 
-- [ ] **ID 15: Authentication Web UI Integration** (Priority: high)
+- [x] **ID 15: Authentication Web UI Integration** (Priority: high)
 > Dependencies: 5, 6, 7, 9, 10
-> Integrate the ADK Authentication system into the Web UI to provide developers with tools for configuring, testing, and debugging authentication schemes that agents use when making requests to external services. (Expanded into sub-tasks 15.1-15.6)
+> Integrate the ADK Authentication system into the Web UI to provide developers with tools for configuring, testing, and debugging authentication schemes that agents use when making requests to external services. (Expanded into sub-tasks 15.1-15.6 - ALL COMPLETE)
 
 - [x] **ID 15.1: Authentication Routes Infrastructure** (Priority: high)
 > Dependencies: 5, 6, 7, 9, 10
@@ -126,5 +126,10 @@
 > Dependencies: 16, 17, 18, 20
 > Ensure the authentication manager properly registers and provides access to all supported schemes without referencing orphaned implementations.
 
-- [ ] **ID 24: Boats-for-Sale Example Agent with Puppeteer MCP** (Priority: medium)
+- [x] **ID 24: Boats-for-Sale Example Agent with Puppeteer MCP** (Priority: medium)
 > Create a comprehensive example agent that demonstrates web scraping capabilities using the Puppeteer MCP server to extract boat listing information from The Hull Truth forum.
+
+- [x] **ID 25: Agent Authentication Runtime Integration** (Priority: critical)
+> Complete the missing runtime integration between the Authentication system and Agent/AgentDefinition. Add DSL methods (`use_credential`, `auth_mapping`) to AgentDefinition, propagate auth config from Agent to ToolContext, and enable agent-aware authentication lookups. This closes the gap where Web UI auth assignments are stored but not used at runtime.
+
+*Tasks 26-28 (Web UI Bug Fixes) completed and archived on 2025-12-05.*

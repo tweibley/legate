@@ -2,11 +2,12 @@
 / Expects 'agent_info' hash and 'available_tools' list
 
 - agent_name = agent_info[:name]
+- safe_agent_id = agent_name.to_s.gsub(/[^a-zA-Z0-9_-]/, '-') # Sanitize for use in HTML IDs/CSS selectors
 - is_running = agent_info[:running]
 - model_display = agent_info[:model] && !agent_info[:model].empty? ? agent_info[:model] : "#{ADK::Agent::DEFAULT_MODEL} (Default)"
-- status_cell_id = "agent-status-cell-#{agent_name}"
-- status_content_id = "agent-status-content-#{agent_name}"
-- row_id = "agent-row-#{agent_name}"
+- status_cell_id = "agent-status-cell-#{safe_agent_id}"
+- status_content_id = "agent-status-content-#{safe_agent_id}"
+- row_id = "agent-row-#{safe_agent_id}"
 - is_new_row = locals.fetch(:agent_info, {}).fetch(:is_new, false) # Check for the is_new flag
 - agent_type = agent_info[:agent_type]&.to_sym || :llm
 
@@ -75,19 +76,19 @@ tr(data-agent-name=agent_name id=row_id class=(is_new_row ? 'is-newly-added' : '
 
   / Actions Column (Using dropdown for cleaner look)
   td(style="text-align: right; position: relative;")
-    - dropdown_id = "agent-actions-dropdown-#{agent_name}" # Define unique ID
+    - dropdown_id = "agent-actions-dropdown-#{safe_agent_id}" # Define unique ID (sanitized)
     .dropdown.is-hoverable.is-right( id=dropdown_id
                                       )
       .dropdown-trigger( onmouseenter="adjustDropdownDirection('#{dropdown_id}')" )
-        button.button.is-small.is-ghost( aria-haspopup="true" aria-controls="dropdown-menu-#{agent_name}"
+        button.button.is-small.is-ghost( aria-haspopup="true" aria-controls="dropdown-menu-#{safe_agent_id}"
                                           )
           span.icon.is-small
             i.fas.fa-ellipsis-h
-      .dropdown-menu id="dropdown-menu-#{agent_name}" role="menu"
+      .dropdown-menu id="dropdown-menu-#{safe_agent_id}" role="menu"
         .dropdown-content
           / Start Button
           a.dropdown-item( href="#"
-                           id="agent-start-action-#{agent_name}"
+                           id="agent-start-action-#{safe_agent_id}"
                            hx-post="/agents/#{agent_name}/start"
                            hx-indicator="##{dropdown_id} .dropdown-trigger button"
                            class=(is_running ? 'is-disabled' : '')
@@ -97,7 +98,7 @@ tr(data-agent-name=agent_name id=row_id class=(is_new_row ? 'is-newly-added' : '
             span Start
           / Stop Button
           a.dropdown-item( href="#"
-                           id="agent-stop-action-#{agent_name}"
+                           id="agent-stop-action-#{safe_agent_id}"
                            hx-post="/agents/#{agent_name}/stop"
                            hx-indicator="##{dropdown_id} .dropdown-trigger button"
                            class=(!is_running ? 'is-disabled' : '')

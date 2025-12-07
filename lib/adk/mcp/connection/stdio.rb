@@ -79,6 +79,9 @@ module ADK
               Mcp.logger.debug("[Stdio Connection #{@pid}] stdout_reader_thread starting...")
               begin
                 @stdout.each_line do |line|
+                  # Handle potential encoding issues from subprocess output
+                  line.force_encoding('UTF-8')
+                  line.scrub!('') # Remove invalid bytes
                   line.strip! # Remove leading/trailing whitespace
                   next if line.empty? # Skip empty lines
 

@@ -164,6 +164,8 @@ RSpec.describe ADK::GlobalToolManager do
       class GtmMinimalTool < ADK::Tool
         self.explicit_tool_name = :gtm_minimal
       end
+      # Explicitly register the tool (auto-registration from inherited hook was removed)
+      described_class.register_tool(GtmMinimalTool)
 
       metadata = described_class.list_all_tools
       expect(metadata.size).to eq(1)
