@@ -1,15 +1,15 @@
 ---
 id: 60
 title: 'Chat Tab Full-Height Experience'
-status: pending
+status: completed
 priority: medium
 feature: Agent Details UI Polish
 dependencies:
   - 59
 assigned_agent: null
 created_at: "2025-12-07T15:24:52Z"
-started_at: null
-completed_at: null
+started_at: "2025-12-07T18:00:50Z"
+completed_at: "2025-12-07T18:05:24Z"
 error_log: null
 ---
 

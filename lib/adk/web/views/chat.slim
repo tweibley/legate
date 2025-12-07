@@ -168,12 +168,14 @@ div#chat_interface_wrapper
                 span.icon.is-small.is-right.htmx-indicator style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;"
                   i.fas.fa-spinner.fa-spin
               .control
-                button.button.is-link#send-button(
+                button.button.is-primary#send-button(
                   type="submit" 
                   disabled=(!@agent_data[:running] || !@active_session_details)
                 )
                   span Send
-                  span.icon.is-small#send-button-indicator.htmx-indicator.ml-2
+                  span.icon.is-small.ml-1
+                    i.fas.fa-paper-plane
+                  span.icon.is-small#send-button-indicator.htmx-indicator.ml-1
                     i.fas.fa-spinner.fa-pulse
 
             / Chat Status Help Text
