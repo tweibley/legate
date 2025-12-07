@@ -185,25 +185,25 @@
 
 ## Web UI Phase 2 Refinement Tasks
 
-- [ ] **ID 39: Typography Differentiation** (Priority: high)
+- [x] **ID 39: Typography Differentiation** (Priority: high)
 > Replace the generic Inter font with a distinctive typeface (DM Sans, Geist, or Satoshi) to differentiate Ruby ADK from generic admin dashboards.
 
-- [ ] **ID 40: Dark Mode Contrast Fix** (Priority: high)
+- [x] **ID 40: Dark Mode Contrast Fix** (Priority: high)
 > Fix muted text contrast in dark mode (#6b7280 → #9ca3af) for WCAG AA accessibility compliance.
 
-- [ ] **ID 41: Dashboard Live Metrics** (Priority: high)
+- [x] **ID 41: Dashboard Live Metrics** (Priority: high)
 > Transform static dashboard cards into live status displays showing counts ("3 Agents Running") for at-a-glance system status.
 
-- [ ] **ID 42: Navbar Brand Logo** (Priority: medium)
+- [x] **ID 42: Navbar Brand Logo** (Priority: medium)
 > Add a Ruby gem icon next to "Ruby ADK" in the navbar to strengthen brand identity.
 
-- [ ] **ID 43: Ruby-Inspired Color Palette** (Priority: medium)
+- [x] **ID 43: Ruby-Inspired Color Palette** (Priority: medium)
 > Dependencies: 39, 40
 > Shift primary color from generic indigo to ruby red to align with "Ruby ADK" brand identity.
 
-- [ ] **ID 44: Empty State Designs** (Priority: low)
+- [x] **ID 44: Empty State Designs** (Priority: low)
 > Add friendly empty state designs with icons and CTA buttons to list pages when no items exist.
 
-- [ ] **ID 45: Table Row Hover Accent** (Priority: low)
+- [x] **ID 45: Table Row Hover Accent** (Priority: low)
 > Dependencies: 43
 > Add a subtle left-border accent on table row hover for clear visual feedback in list tables.

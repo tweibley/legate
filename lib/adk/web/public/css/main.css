@@ -2,12 +2,12 @@
    CSS VARIABLES - THEME SYSTEM
    ======================================== */
 :root {
-  /* --- Brand Colors --- */
-  --color-primary: hsl(230, 70%, 55%); /* Indigo - main actions */
-  --color-primary-dark: hsl(230, 70%, 45%); /* Indigo darker - hover */
-  --color-primary-light: hsl(230, 70%, 95%); /* Indigo tint - backgrounds */
-  --color-accent: hsl(354, 80%, 50%); /* Ruby red - brand accent */
-  --color-accent-light: hsl(354, 80%, 95%); /* Ruby red tint */
+  /* --- Brand Colors (Ruby Theme) --- */
+  --color-primary: hsl(348, 83%, 47%); /* Ruby red - main actions */
+  --color-primary-dark: hsl(348, 83%, 40%); /* Ruby darker - hover */
+  --color-primary-light: hsl(348, 83%, 95%); /* Ruby tint - backgrounds */
+  --color-accent: hsl(38, 92%, 50%); /* Warm gold - brand accent */
+  --color-accent-light: hsl(38, 92%, 94%); /* Gold tint */
   /* --- Semantic Colors --- */
   --color-success: hsl(152, 68%, 40%);
   --color-success-light: hsl(152, 68%, 94%);
@@ -44,17 +44,17 @@
   --radius-lg: 14px;
   --radius-full: 9999px;
   /* --- Font Families --- */
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 /* --- Dark Mode Variables --- */
 [data-theme=dark] {
-  --color-primary: hsl(230, 80%, 65%);
-  --color-primary-dark: hsl(230, 80%, 55%);
-  --color-primary-light: hsl(230, 50%, 20%);
-  --color-accent: hsl(354, 80%, 60%);
-  --color-accent-light: hsl(354, 50%, 20%);
+  --color-primary: hsl(348, 80%, 60%); /* Ruby red for dark mode */
+  --color-primary-dark: hsl(348, 80%, 50%);
+  --color-primary-light: hsl(348, 50%, 20%);
+  --color-accent: hsl(38, 92%, 55%); /* Warm gold for dark mode */
+  --color-accent-light: hsl(38, 50%, 20%);
   --color-success: hsl(152, 68%, 50%);
   --color-success-light: hsl(152, 40%, 18%);
   --color-warning: hsl(38, 92%, 55%);
@@ -69,7 +69,7 @@
   --color-bg-elevated: #2d343d;
   --color-text-primary: #e7e9ea;
   --color-text-secondary: #9ca3af;
-  --color-text-muted: #6b7280;
+  --color-text-muted: #9ca3af; /* Fixed: improved contrast for accessibility */
   --color-text-inverse: #1a202c;
   --color-border: #2f3943;
   --color-border-light: #242b33;
@@ -216,8 +216,20 @@ strong.has-text-link { /* Navbar Brand */
 }
 
 .card:hover, .box:hover {
-  transform: translateY(-4px);
+  transform: translateY(-6px);
   box-shadow: var(--shadow-hover);
+}
+
+/* Dashboard hero section gradient */
+.content.has-text-centered.mb-6 {
+  padding: 2rem 1rem 3rem;
+  margin: -1.5rem -1.5rem 2rem -1.5rem;
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.03) 0%, transparent 50%, rgba(245, 158, 11, 0.03) 100%);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+[data-theme=dark] .content.has-text-centered.mb-6 {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.08) 0%, transparent 50%, rgba(245, 158, 11, 0.05) 100%);
 }
 
 .box:not(:last-child), .card:not(:last-child) {
@@ -228,6 +240,7 @@ strong.has-text-link { /* Navbar Brand */
 .dashboard-card {
   position: relative;
   overflow: hidden;
+  /* Icon hover animation */
 }
 .dashboard-card::before {
   content: "";
@@ -235,8 +248,12 @@ strong.has-text-link { /* Navbar Brand */
   top: 0;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 4px;
   background: var(--color-primary);
+  transition: height var(--transition-fast);
+}
+.dashboard-card:hover::before {
+  height: 5px;
 }
 .dashboard-card.agents-card::before {
   background: var(--color-accent);
@@ -249,6 +266,12 @@ strong.has-text-link { /* Navbar Brand */
 }
 .dashboard-card.docs-card::before {
   background: var(--color-success);
+}
+.dashboard-card .icon.is-large {
+  transition: transform var(--transition-normal);
+}
+.dashboard-card:hover .icon.is-large {
+  transform: scale(1.1);
 }
 
 /* Equal height cards on welcome page */
@@ -505,7 +528,30 @@ strong.has-text-link { /* Navbar Brand */
 }
 
 [data-theme=dark] .table.is-hoverable tbody tr:hover {
-  background-color: rgba(99, 102, 241, 0.15) !important;
+  background-color: rgba(220, 38, 38, 0.15) !important; /* Ruby red tint */
+}
+
+/* Table row hover accent - left border indicator */
+/* Only apply to specific tables (agents, tools) to avoid breaking documentation tables */
+#agent-list-table tbody tr,
+.tools-table tbody tr {
+  position: relative;
+}
+#agent-list-table tbody tr::before,
+.tools-table tbody tr::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--color-primary);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+#agent-list-table tbody tr:hover::before,
+.tools-table tbody tr:hover::before {
+  opacity: 1;
 }
 
 /* Dark mode table container */
@@ -1252,11 +1298,26 @@ pre[style*="background-color: #fafafa;"] {
 .footer {
   background-color: var(--color-bg-primary);
   border-top: 1px solid var(--color-border);
-  padding: 2rem 1.5rem 3rem;
+  padding: 2rem 1.5rem 2.5rem;
   transition: background-color var(--transition-normal), border-color var(--transition-normal);
 }
 .footer .content {
   color: var(--color-text-muted);
+}
+.footer strong {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.footer .footer-links {
+  margin-top: 0.5rem;
+}
+.footer .footer-links a {
+  color: var(--color-text-muted);
+  margin: 0 0.75rem;
+  transition: color var(--transition-fast);
+}
+.footer .footer-links a:hover {
+  color: var(--color-primary);
 }
 
 /* --- HTMX Indicator --- */
@@ -1516,4 +1577,30 @@ tr.is-newly-added {
     background-color: transparent; /* Or initial row color if striped */
     color: inherit;
   }
+}
+/* --- Empty State Styling --- */
+.empty-state {
+  padding: 2rem 1rem;
+  text-align: center;
+}
+.empty-state .icon.is-large {
+  font-size: 3rem;
+  color: var(--color-text-muted);
+  opacity: 0.4;
+}
+.empty-state .title {
+  color: var(--color-text-secondary);
+}
+.empty-state .subtitle {
+  color: var(--color-text-muted);
+}
+
+[data-theme=dark] .empty-state .icon.is-large {
+  color: var(--color-text-muted);
+}
+[data-theme=dark] .empty-state .title {
+  color: var(--color-text-secondary) !important;
+}
+[data-theme=dark] .empty-state .subtitle {
+  color: var(--color-text-muted) !important;
 }

@@ -1,14 +1,14 @@
 ---
 id: 45
 title: 'Table Row Hover Accent'
-status: pending
+status: completed
 priority: low
 feature: Web UI Phase 2 Refinement
 dependencies: [43]
 assigned_agent: null
 created_at: "2025-12-07T05:31:20Z"
-started_at: null
-completed_at: null
+started_at: "2025-12-07T05:35:00Z"
+completed_at: "2025-12-07T05:38:10Z"
 error_log: null
 ---
 

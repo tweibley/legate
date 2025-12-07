@@ -8,9 +8,22 @@
     .card.dashboard-card.agents-card.has-text-centered
       .card-content
         span.icon.is-large.mb-3
-          i.fas.fa-robot.fa-3x style="color: var(--color-accent);"
+          i.fas.fa-robot.fa-3x style="color: var(--color-primary);"
         h2.title.is-4 Agents
-        p Manage your AI agents definitions and runtime instances.
+        - if @running_count && @running_count > 0
+          p.is-size-2.has-text-weight-bold style="color: var(--color-primary);"
+            = @running_count
+          p.subtitle.is-6.mb-2 Running
+          p.is-size-7.has-text-grey
+            = "#{@agent_count} total defined"
+        - elsif @agent_count && @agent_count > 0
+          p.is-size-2.has-text-weight-bold style="color: var(--color-text-muted);"
+            = @agent_count
+          p.subtitle.is-6.mb-2 Defined
+          p.is-size-7.has-text-grey None running
+        - else
+          p.has-text-grey-light.is-italic.mb-2 No agents defined yet
+          p.is-size-7.has-text-grey Create your first agent
         .buttons.is-centered.mt-4
           a.button.is-link(href="/agents")
             span.icon
@@ -23,7 +36,12 @@
         span.icon.is-large.mb-3
           i.fas.fa-wrench.fa-3x style="color: var(--color-info);"
         h2.title.is-4 Tools
-        p Browse available tools that can be used by agents.
+        - if @tool_count && @tool_count > 0
+          p.is-size-2.has-text-weight-bold style="color: var(--color-info);"
+            = @tool_count
+          p.subtitle.is-6.mb-2 Available
+        - else
+          p.has-text-grey-light.is-italic.mb-2 No tools loaded
         .buttons.is-centered.mt-4
           a.button.is-link(href="/tools")
             span.icon
@@ -36,7 +54,12 @@
         span.icon.is-large.mb-3
           i.fas.fa-key.fa-3x style="color: var(--color-warning);"
         h2.title.is-4 Authentication
-        p Configure authentication schemes and credentials for external services.
+        - if @auth_scheme_count && @auth_scheme_count > 0
+          p.is-size-2.has-text-weight-bold style="color: var(--color-warning);"
+            = @auth_scheme_count
+          p.subtitle.is-6.mb-2 Schemes
+        - else
+          p.has-text-grey-light.is-italic.mb-2 Configure auth
         .buttons.is-centered.mt-4
           a.button.is-link(href="/auth")
             span.icon
@@ -49,7 +72,7 @@
         span.icon.is-large.mb-3
           i.fas.fa-book-open.fa-3x style="color: var(--color-success);"
         h2.title.is-4 Documentation
-        p Read guides and concepts about the ADK.
+        p.has-text-grey Read guides and concepts about the ADK.
         .buttons.is-centered.mt-4
           a.button.is-link(href="/docs")
             span.icon

@@ -172,8 +172,17 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
             == slim :_agent_row, locals: { agent_info: agent_info, available_tools: @available_tools }
         - else
           tr#no-agents-row
-            td(colspan="6" class="has-text-centered has-text-grey-light is-italic")
-              | No agent definitions found. Use the 'Create New Agent Definition' section above.
+            td(colspan="6" class="has-text-centered py-6")
+              .empty-state
+                span.icon.is-large.has-text-grey-lighter
+                  i.fas.fa-robot.fa-3x
+                p.title.is-5.mt-4.has-text-grey No agents defined yet
+                p.subtitle.is-6.has-text-grey-light Get started by creating your first agent
+                .buttons.is-centered.mt-4
+                  a.button.is-primary.is-outlined(href="#" onclick="document.querySelector('.create-agent-details').open = true; return false;")
+                    span.icon
+                      i.fas.fa-plus
+                    span Create Agent
 
 javascript:
   document.addEventListener('DOMContentLoaded', function() {

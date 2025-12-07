@@ -18,9 +18,6 @@ The Ruby Agent Development Kit (ADK) is a comprehensive Ruby framework for build
 - **[Authentication System](features/add-authentication-plan-revised.md)** - Comprehensive authentication infrastructure including OAuth2, OIDC, API keys, and service accounts
 - **[Authentication Scheme Cleanup](features/authentication-scheme-cleanup-plan.md)** - Standardization and cleanup of authentication implementations
 - **[Web UI Enhancement Phase 1](features/web-ui-enhancement-plan.md)** - Dark mode, typography, theming foundation (Tasks 29-38)
-
-### Active
-
 - **[Web UI Phase 2 Refinement](features/web-ui-phase2-refinement-plan.md)** - Typography differentiation, live dashboard metrics, brand alignment, accessibility fixes (Tasks 39-45)
 
 ### Planned
