@@ -2804,3 +2804,233 @@ tr.is-newly-added {
 [data-theme="dark"] .create-agent-details .form-section-header {
   background: var(--color-bg-tertiary);
 }
+
+/* ===== Tools Card Grid ===== */
+
+.tools-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.25rem;
+}
+
+.tool-card {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tool-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary);
+}
+
+.tool-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.tool-card-icon {
+  width: 42px;
+  height: 42px;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tool-card-icon .icon {
+  color: white;
+}
+
+.tool-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tool-card-body {
+  flex: 1;
+  margin-bottom: 1rem;
+}
+
+.tool-card-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 0.5rem;
+  line-height: 1.3;
+}
+
+.tool-card-title a {
+  color: inherit;
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.tool-card-title a:hover {
+  color: var(--color-primary);
+}
+
+.tool-card-description {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tool-card-footer {
+  border-top: 1px solid var(--color-border-light);
+  padding-top: 0.75rem;
+  margin-top: auto;
+}
+
+.tool-card-params {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  position: relative;
+}
+
+.tool-param-count {
+  font-weight: 500;
+}
+
+.tool-param-details {
+  display: none;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  box-shadow: var(--shadow-lg);
+  z-index: 10;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tool-card-params:hover .tool-param-details {
+  display: block;
+}
+
+.tool-param {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  font-size: 0.8rem;
+}
+
+.tool-param:not(:last-child) {
+  border-bottom: 1px solid var(--color-border-light);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.tool-param code {
+  background: var(--color-bg-code);
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-primary);
+}
+
+.tool-param-type {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+/* Tools Empty State */
+.tools-empty-state {
+  text-align: center;
+  padding: 3rem 2rem;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  border: 2px dashed var(--color-border);
+}
+
+.tools-empty-icon {
+  margin-bottom: 1rem;
+}
+
+.tools-empty-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.tools-empty-text {
+  color: var(--color-text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.tools-empty-hint {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+/* MCP Errors Section */
+.tools-mcp-errors {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+}
+
+.tools-mcp-errors-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+}
+
+/* Dark mode adjustments */
+[data-theme="dark"] .tool-card {
+  background: var(--color-bg-secondary);
+}
+
+[data-theme="dark"] .tool-card:hover {
+  background: var(--color-bg-tertiary);
+}
+
+[data-theme="dark"] .tool-param-details {
+  background: var(--color-bg-tertiary);
+}
+
+[data-theme="dark"] .tools-empty-state {
+  background: var(--color-bg-tertiary);
+}
+
+[data-theme="dark"] .tools-mcp-errors {
+  background: var(--color-bg-tertiary);
+}
+
+/* Responsive: Single column on mobile */
+@media screen and (max-width: 768px) {
+  .tools-card-grid {
+    grid-template-columns: 1fr;
+  }
+}

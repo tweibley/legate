@@ -324,6 +324,70 @@ module ADK
           slim :"_edit_agent_#{field}", layout: false, locals: view_locals
         end
 
+        # GET /agents/:name/display/tool_table - Render the tool table display partial.
+        # NOTE: This specific route must be defined BEFORE the generic /display/:field route
+        app.get '/agents/:name/display/tool_table' do |name|
+          definition_store = self.instance_variable_get(:@definition_store)
+          halt 503, 'Definition Store unavailable.' unless definition_store
+          agent_definition = definition_store.get_definition(name)
+          halt 404, 'Agent not found' unless agent_definition
+
+          agent_data = {
+            name: name, description: agent_definition[:description], model: agent_definition[:model],
+            fallback_mode: agent_definition[:fallback_mode], mcp_servers_json: agent_definition[:mcp_servers_json],
+            running: (agent_definition[:persistent_status] == 'running')
+          }
+          configured_tool_names = agent_definition[:tools]
+          configured_tool_syms = configured_tool_names.map(&:to_sym)
+
+          all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map { |tm|
+            tm.merge(source: :native, source_detail: 'Native')
+          }
+
+          mcp_configs_list = []
+          begin
+            mcp_json = agent_data[:mcp_servers_json]
+            mcp_configs_list = JSON.parse(mcp_json) if mcp_json && !mcp_json.empty? && mcp_json != '[]'
+          rescue JSON::ParserError => e
+            logger.error("Invalid MCP JSON for agent '#{name}' (display_tool_table - AgentDefinitionRoutes): #{e.message}")
+          end
+          mcp_tool_fetch_results = fetch_mcp_tools(mcp_configs_list)
+
+          fetched_mcp_tools_metadata = []
+          mcp_tool_fetch_results.each do |result|
+            if result[:status] == :success && result[:tools]
+              result[:tools].each do |mcp_tool_schema|
+                parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(
+                  mcp_tool_schema.dig(:inputSchema,
+                                      'properties') || {}, mcp_tool_schema.dig(:inputSchema, 'required') || []
+                )
+                fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
+                                                description: mcp_tool_schema[:description] || '', parameters: parameters, source: :mcp, source_detail: "MCP (#{result[:server]})" }
+              end
+            end
+          end
+
+          all_available_tools_map = (all_native_tools_metadata + fetched_mcp_tools_metadata).each_with_object({}) { |tool, map|
+            map[tool[:name]] ||= tool
+          }
+          view_configured_tools_list = configured_tool_syms.map { |ts| all_available_tools_map[ts] }.compact
+
+          if view_configured_tools_list.any? { |tm|
+            ADK::GlobalToolManager.find_class(tm[:name])&.ancestors&.include?(ADK::Tools::BaseAsyncJobTool)
+          }
+            status_tool_meta = all_available_tools_map[:check_job_status]
+            if status_tool_meta && !view_configured_tools_list.any? { |t| t[:name] == :check_job_status }
+              view_configured_tools_list << status_tool_meta
+            end
+          end
+
+          slim :_agent_tool_table, layout: false, locals: {
+            agent_data: agent_data,
+            view_configured_tools: view_configured_tools_list.sort_by { |t| t[:name].to_s },
+            mcp_tool_results: mcp_tool_fetch_results
+          }
+        end
+
         # GET /agents/:name/display/:field - Display an agent field (after edit cancel).
         app.get '/agents/:name/display/:field' do |name, field|
           supported_fields = %w[description model tools fallback mcp instruction hierarchy type]
@@ -379,69 +443,6 @@ module ADK
           end
 
           slim :"_display_agent_#{field}", layout: false, locals: response_locals
-        end
-
-        # GET /agents/:name/display/tool_table - Render the tool table display partial.
-        app.get '/agents/:name/display/tool_table' do |name|
-          definition_store = self.instance_variable_get(:@definition_store)
-          halt 503, 'Definition Store unavailable.' unless definition_store
-          agent_definition = definition_store.get_definition(name)
-          halt 404, 'Agent not found' unless agent_definition
-
-          agent_data = {
-            name: name, description: agent_definition[:description], model: agent_definition[:model],
-            fallback_mode: agent_definition[:fallback_mode], mcp_servers_json: agent_definition[:mcp_servers_json],
-            running: (agent_definition[:persistent_status] == 'running')
-          }
-          configured_tool_names = agent_definition[:tools]
-          configured_tool_syms = configured_tool_names.map(&:to_sym)
-
-          all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map { |tm|
-            tm.merge(source: :native, source_detail: 'Native')
-          }
-
-          mcp_configs_list = []
-          begin
-            mcp_json = agent_data[:mcp_servers_json]
-            mcp_configs_list = JSON.parse(mcp_json) if mcp_json && !mcp_json.empty? && mcp_json != '[]'
-          rescue JSON::ParserError => e
-            logger.error("Invalid MCP JSON for agent '#{name}' (display_tool_table - AgentDefinitionRoutes): #{e.message}")
-          end
-          mcp_tool_fetch_results = fetch_mcp_tools(mcp_configs_list)
-
-          fetched_mcp_tools_metadata = []
-          mcp_tool_fetch_results.each do |result|
-            if result[:status] == :success && result[:tools]
-              result[:tools].each do |mcp_tool_schema|
-                parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(
-                  mcp_tool_schema.dig(:inputSchema,
-                                      'properties') || {}, mcp_tool_schema.dig(:inputSchema, 'required') || []
-                )
-                fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
-                                                description: mcp_tool_schema[:description] || '', parameters: parameters, source: :mcp, source_detail: "MCP (#{result[:server]})" }
-              end
-            end
-          end
-
-          all_available_tools_map = (all_native_tools_metadata + fetched_mcp_tools_metadata).each_with_object({}) { |tool, map|
-            map[tool[:name]] ||= tool
-          }
-          view_configured_tools_list = configured_tool_syms.map { |ts| all_available_tools_map[ts] }.compact
-
-          if view_configured_tools_list.any? { |tm|
-            ADK::GlobalToolManager.find_class(tm[:name])&.ancestors&.include?(ADK::Tools::BaseAsyncJobTool)
-          }
-            status_tool_meta = all_available_tools_map[:check_job_status]
-            if status_tool_meta && !view_configured_tools_list.any? { |t| t[:name] == :check_job_status }
-              view_configured_tools_list << status_tool_meta # Consider .dup and adding implicit note
-            end
-          end
-
-          slim :_agent_tool_table, layout: false, locals: {
-            agent_data: agent_data,
-            view_configured_tools: view_configured_tools_list.sort_by { |t| t[:name].to_s },
-            mcp_tool_results: mcp_tool_fetch_results
-          }
         end
 
         # PUT /agents/:name/update/:field - Update a specific field of an agent definition.

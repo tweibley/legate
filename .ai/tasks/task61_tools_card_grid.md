@@ -1,7 +1,7 @@
 ---
 id: 61
 title: 'Tools Tab Card Grid Layout'
-status: pending
+status: completed
 priority: low
 feature: Agent Details UI Polish
 dependencies:
