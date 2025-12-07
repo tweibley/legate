@@ -11,94 +11,127 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
 
   .mt-4
     form(hx-post="/agents" hx-target="#agent-list-tbody" hx-swap="beforeend" _="on htmx:afterRequest call this.reset() then call destroyCodeMirrorInstance('mcp_servers_json') then call destroyCodeMirrorInstance('instruction')")
-      .columns.is-multiline
-        .column.is-half
-          .field
-            label.label Name
-            .control.has-icons-left
-              input.input(type="text" name="name" placeholder="unique-agent-name" required=true)
-              span.icon.is-small.is-left
-                i.fas.fa-robot
-        .column.is-half
-          .field
-            label.label for="agent_type" Agent Type
-            .control.has-icons-left
-              .select.is-fullwidth
-                select#agent_type(name="agent_type" onchange="toggleWorkflowFields()")
-                  option(value="llm" selected=true) LLM Agent
-                  option(value="sequential") Sequential Workflow
-                  option(value="parallel") Parallel Workflow
-                  option(value="loop") Loop Workflow
-              span.icon.is-small.is-left
-                i.fas.fa-cog
-            p.help 
-              | LLM uses AI for task execution. 
-              | Workflow agents orchestrate other agents.
+      
+      / ===== Basic Information Section =====
+      .form-section
+        .form-section-header
+          span.icon
+            i.fas.fa-info-circle
+          span Basic Information
+        .form-section-content
+          .columns.is-multiline
+            .column.is-half
+              .field
+                label.label Name
+                .control.has-icons-left
+                  input.input(type="text" name="name" placeholder="unique-agent-name" required=true)
+                  span.icon.is-small.is-left
+                    i.fas.fa-robot
+            .column.is-half
+              .field
+                label.label for="agent_type" Agent Type
+                .control.has-icons-left
+                  .select.is-fullwidth
+                    select#agent_type(name="agent_type" onchange="toggleWorkflowFields()")
+                      option(value="llm" selected=true) LLM Agent
+                      option(value="sequential") Sequential Workflow
+                      option(value="parallel") Parallel Workflow
+                      option(value="loop") Loop Workflow
+                  span.icon.is-small.is-left
+                    i.fas.fa-cog
+                p.help 
+                  | LLM uses AI for task execution. 
+                  | Workflow agents orchestrate other agents.
+            .column.is-full
+              .field
+                label.label for="description" Description
+                .control
+                  textarea.textarea#description name="description" placeholder="What does this agent do?" required="required" rows="2"
 
-        .column.is-half
-          .field
-            label.label for="model" Language Model
-            .control.has-icons-left
-              .select.is-fullwidth
-                select(name="model")
-                  - default_model = ADK::Agent::DEFAULT_MODEL
-                  - @available_models.each do |model_name|
-                    option(value=model_name selected=(model_name == default_model)) = model_name
-              span.icon.is-small.is-left
-                i.fas.fa-brain
+      / ===== Model Configuration Section =====
+      .form-section#model-config-section
+        .form-section-header
+          span.icon
+            i.fas.fa-brain
+          span Model Configuration
+        .form-section-content
+          .columns
+            .column.is-half
+              .field
+                label.label for="model" Language Model
+                .control.has-icons-left
+                  .select.is-fullwidth
+                    select(name="model")
+                      - default_model = ADK::Agent::DEFAULT_MODEL
+                      - @available_models.each do |model_name|
+                        option(value=model_name selected=(model_name == default_model)) = model_name
+                  span.icon.is-small.is-left
+                    i.fas.fa-microchip
+            .column.is-half
+              .field
+                label.label Planning Fallback
+                .control.has-icons-left
+                  .select.is-fullwidth
+                    select(name="fallback_mode")
+                      option(value="error" selected=true) Return Error Message
+                      option(value="echo") Attempt Echo Tool (if available)
+                  span.icon.is-small.is-left
+                    i.fas.fa-random
+                p.help Select behavior when the agent cannot determine which tool to use.
 
-        .column.is-half
+      / ===== Instructions Section =====
+      .form-section
+        .form-section-header
+          span.icon
+            i.fas.fa-file-alt
+          span Instructions
+        .form-section-content
           .field
-            label.label for="description" Description
+            label.label for="instruction" System Prompt
             .control
-              textarea.textarea#description name="description" placeholder="What does this agent do?" required="required" rows="2"
-
-        .column.is-full
-          .field
-            label.label for="instruction" Instructions (System Prompt)
-            .control
-              textarea.textarea#instruction name="instruction" rows="4" placeholder="Guide the agent's behavior, persona, and tool usage..."
+              textarea.textarea#instruction name="instruction" rows="5" placeholder="Guide the agent's behavior, persona, and tool usage..."
             p.help Guide the agent's behavior, persona, and tool usage. Markdown is supported by some models.
 
-        .column.is-half
-          .field
-            label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
-            .control
-              textarea.textarea#mcp_servers_json name="mcp_servers_json" rows="5" placeholder='[{"type": "stdio", "command": "..."}]'
-            p.help
-              | Enter a valid JSON array or leave empty. Example:
-              code | [{"type": "stdio", "command": "npx", "args": [...]}]
+      / ===== Tools & Integrations Section =====
+      .form-section
+        .form-section-header
+          span.icon
+            i.fas.fa-toolbox
+          span Tools & Integrations
+        .form-section-content
+          .columns
+            .column.is-half
+              .field
+                label.label Tools
+                .control
+                  - if @available_tools && !@available_tools.empty?
+                    .panel.tool-selection-panel
+                      p.panel-heading Available Tools
+                      - @available_tools.each do |tool_info|
+                        label.panel-block.is-clickable
+                          input.mr-3(type="checkbox" name="tools[]" value=tool_info[:name])
+                          span
+                            strong #{tool_info[:name].to_s.capitalize}
+                            br
+                            small.has-text-grey #{tool_info[:description]}
+                  - else
+                    .notification.is-warning.is-light No tools available for selection.
+            .column.is-half
+              .field
+                label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
+                .control
+                  textarea.textarea#mcp_servers_json name="mcp_servers_json" rows="5" placeholder='[{"type": "stdio", "command": "..."}]'
+                p.help
+                  | Enter a valid JSON array or leave empty. Example:
+                  code | [{"type": "stdio", "command": "npx", "args": [...]}]
 
-        .column.is-half
-          .field
-            label.label Planning Fallback
-            p.help Select behavior when the agent cannot determine which tool to use.
-            .control.has-icons-left
-              .select.is-fullwidth
-                select(name="fallback_mode")
-                  option(value="error" selected=true) Return Error Message
-                  option(value="echo") Attempt Echo Tool (if available)
-              span.icon.is-small.is-left
-                i.fas.fa-random
-
-        .column.is-full
-          .field
-            label.label Tools
-            .control
-              - if @available_tools && !@available_tools.empty?
-                .panel.tool-selection-panel
-                  p.panel-heading Available Tools
-                  - @available_tools.each do |tool_info|
-                    label.panel-block.is-clickable
-                      input.mr-3(type="checkbox" name="tools[]" value=tool_info[:name])
-                      span
-                        strong #{tool_info[:name].to_s.capitalize}
-                        br
-                        small.has-text-grey #{tool_info[:description]}
-              - else
-                .notification.is-warning.is-light No tools available for selection.
-
-        .column.is-full#workflow-configuration-section style="display: none;"
+      / ===== Workflow Configuration Section (conditional) =====
+      .form-section#workflow-configuration-section style="display: none;"
+        .form-section-header
+          span.icon
+            i.fas.fa-project-diagram
+          span Workflow Configuration
+        .form-section-content
           .field
             label.label Workflow Sub-Agents
             p.help.mb-3
@@ -106,8 +139,6 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
               | These agents must already be created before they can be added to a workflow.
             .control
               - all_agent_names = @view_agents ? @view_agents.map { |agent| agent[:name] } : []
-              - # Note: For creation, we don't have a current agent name yet, but we'll need to check for conflicts
-              - # when the agent is actually created via the API endpoint
               - if all_agent_names.any?
                 .panel.sub-agent-selection-panel
                   p.panel-heading Available Agents
@@ -251,12 +282,12 @@ javascript:
     const agentType = document.getElementById('agent_type').value;
     console.log("Agent type changed to:", agentType);
     
-    // Toggle display of model field based on agent type
-    const modelFieldColumn = document.querySelector('.column .field label[for="model"]').closest('.column');
+    // Toggle display of model configuration section based on agent type
+    const modelConfigSection = document.getElementById('model-config-section');
     if (agentType === 'llm') {
-      modelFieldColumn.style.display = '';
+      modelConfigSection.style.display = '';
     } else {
-      modelFieldColumn.style.display = 'none';
+      modelConfigSection.style.display = 'none';
     }
     
     // Toggle display of workflow configuration section

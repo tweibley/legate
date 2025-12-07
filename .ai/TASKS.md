@@ -238,7 +238,7 @@
 - [x] **ID 53: Status Badge Pulse Animation** (Priority: medium)
 > Add a subtle breathing/pulse animation to "Running" status badges to indicate active state. Keep "Stopped" badges static.
 
-- [ ] **ID 54: Form Field Visual Grouping** (Priority: medium)
+- [x] **ID 54: Form Field Visual Grouping** (Priority: medium)
 > Group related fields in the "Create New Agent" form with visual containers and section headers for better organization.
 
 - [ ] **ID 55: Actions Dropdown Visibility** (Priority: medium)

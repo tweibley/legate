@@ -2136,3 +2136,105 @@ tr.is-newly-added {
     background: var(--color-bg-tertiary);
   }
 }
+/* ========================================
+   FORM SECTION GROUPING
+   ======================================== */
+.form-section {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+.form-section:last-child {
+  margin-bottom: 0;
+}
+
+.form-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.25rem;
+  background: var(--color-bg-tertiary);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
+}
+.form-section-header .icon {
+  color: var(--color-primary);
+  font-size: 0.9rem;
+}
+
+.form-section-content {
+  padding: 1.25rem;
+}
+.form-section-content > .field:last-child,
+.form-section-content > .columns:last-child {
+  margin-bottom: 0;
+}
+.form-section-content .columns {
+  margin-bottom: 0;
+}
+.form-section-content .columns:not(:last-child) {
+  margin-bottom: 0.75rem;
+}
+.form-section-content .column > .field {
+  margin-bottom: 0;
+}
+
+/* Collapsible sections */
+.form-section.is-collapsible .form-section-header {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--transition-fast);
+}
+.form-section.is-collapsible .form-section-header:hover {
+  background: var(--color-border-light);
+}
+.form-section.is-collapsible .form-section-header .collapse-icon {
+  margin-left: auto;
+  transition: transform var(--transition-fast);
+}
+.form-section.is-collapsible .form-section-header .collapse-icon i {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+.form-section.is-collapsible.is-collapsed .form-section-header .collapse-icon {
+  transform: rotate(-90deg);
+}
+.form-section.is-collapsible.is-collapsed .form-section-content {
+  display: none;
+}
+
+/* Dark mode form sections */
+[data-theme=dark] .form-section {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border);
+}
+
+[data-theme=dark] .form-section-header {
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+[data-theme=dark] .form-section.is-collapsible .form-section-header:hover {
+  background: var(--color-bg-elevated);
+}
+
+/* Form section within details (create agent) */
+.create-agent-details .form-section {
+  border: 1px solid var(--color-border-light);
+}
+.create-agent-details .form-section:first-child {
+  margin-top: 0.5rem;
+}
+
+.create-agent-details .form-section-header {
+  background: var(--color-bg-primary);
+}
+
+[data-theme=dark] .create-agent-details .form-section-header {
+  background: var(--color-bg-tertiary);
+}
