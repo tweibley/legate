@@ -143,11 +143,13 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
     .level-left
       h2.title.is-4 Defined Agents
     .level-right
-      .field.has-addons.mr-2
-        .control.has-icons-left
+      .field.mr-2
+        .control.has-icons-left.search-with-shortcut
           input.input#agent-search-input type="text" placeholder="Search agents..." onkeyup="filterAgents()"
           span.icon.is-left
             i.fas.fa-search
+          span.keyboard-hint
+            kbd ⌘K
       button.button.is-light#refresh-agent-list-btn(hx-get="/agents/list" hx-target="#agent-list-tbody" hx-swap="innerHTML" hx-indicator="#refresh-agent-list-btn .htmx-indicator" hx-on:after-swap="filterAgents()")
         span.icon.is-small.htmx-indicator
           i.fas.fa-spinner.fa-spin

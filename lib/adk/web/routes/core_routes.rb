@@ -34,9 +34,27 @@ module ADK
             @auth_scheme_count = auth_manager&.available_schemes&.size || 0
           end
           
+          # Fetch recent activity
+          @recent_activity = if defined?(ADK::ActivityLog)
+            ADK::ActivityLog.recent(8) rescue []
+          else
+            []
+          end
+          
           slim :index
         end
 
+        # GET /activity/recent - Returns recent activity HTML partial
+        app.get '/activity/recent' do
+          @recent_activity = if defined?(ADK::ActivityLog)
+            ADK::ActivityLog.recent(8) rescue []
+          else
+            []
+          end
+          
+          slim :_activity_list, layout: false
+        end
+        
         # GET /healthz - Standard health check endpoint.
         app.get '/healthz' do
           begin

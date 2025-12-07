@@ -1,0 +1,50 @@
+/ File: lib/adk/web/views/_activity_list.slim
+/ Partial for rendering the activity stream list
+
+- if @recent_activity && @recent_activity.any?
+  .activity-list
+    - @recent_activity.each do |event|
+      .activity-item
+        - icon_class = case event[:type]
+        - when :agent_started then 'fa-play-circle has-text-success'
+        - when :agent_stopped then 'fa-stop-circle has-text-danger'
+        - when :agent_created then 'fa-plus-circle has-text-info'
+        - when :agent_deleted then 'fa-trash has-text-danger'
+        - when :task_executed then 'fa-bolt has-text-warning'
+        - when :app_started then 'fa-rocket has-text-primary'
+        - else 'fa-info-circle has-text-grey'
+        span.activity-icon
+          i.fas(class=icon_class)
+        span.activity-text
+          - case event[:type]
+          - when :agent_started
+            | Agent 
+            strong= event[:details][:name]
+            |  started
+          - when :agent_stopped
+            | Agent 
+            strong= event[:details][:name]
+            |  stopped
+          - when :agent_created
+            | Agent 
+            strong= event[:details][:name]
+            |  created
+          - when :agent_deleted
+            | Agent 
+            strong= event[:details][:name]
+            |  deleted
+          - when :task_executed
+            | Task executed on 
+            strong= event[:details][:agent]
+          - when :app_started
+            | Application started
+          - else
+            = event[:type].to_s.tr('_', ' ').capitalize
+        span.activity-time= time_ago_in_words(event[:timestamp])
+- else
+  .has-text-centered.has-text-grey.py-5
+    span.icon.is-large
+      i.fas.fa-clock.fa-2x style="opacity: 0.3;"
+    p.mt-3 No recent activity
+    p.is-size-7 Activity will appear here as you interact with agents
+

@@ -1,7 +1,21 @@
 / File: lib/adk/web/views/index.slim
-.content.has-text-centered.mb-6
-  h1.title.is-2 Welcome to Ruby ADK
-  p.subtitle.is-4 Ruby Agent Development Kit - A Ruby framework for building and managing AI agents
+
+/ Hero Welcome Section
+section.hero-welcome.mb-6
+  .hero-content
+    .hero-icon
+      i.fas.fa-gem
+    h1.hero-title Welcome to Ruby ADK
+    p.hero-subtitle Build and orchestrate powerful AI agents with elegant Ruby code
+    .hero-actions
+      a.button.is-hero-primary.is-medium(href="/agents")
+        span.icon
+          i.fas.fa-plus
+        span Create Agent
+      a.button.is-hero-secondary.is-medium(href="/docs")
+        span.icon
+          i.fas.fa-book
+        span Documentation
 
 .columns.is-centered.is-multiline
   .column.is-one-third
@@ -24,11 +38,14 @@
         - else
           p.has-text-grey-light.is-italic.mb-2 No agents defined yet
           p.is-size-7.has-text-grey Create your first agent
-        .buttons.is-centered.mt-4
-          a.button.is-link(href="/agents")
-            span.icon
-              i.fas.fa-arrow-right
-            span View Agents
+      .card-footer
+        a.card-footer-item(href="/agents")
+          span View Agents
+          span.icon.is-small.ml-1
+            i.fas.fa-arrow-right
+        a.card-footer-item.quick-action(href="/agents" title="Create new agent")
+          span.icon
+            i.fas.fa-plus
 
   .column.is-one-third
     .card.dashboard-card.tools-card.has-text-centered
@@ -42,11 +59,11 @@
           p.subtitle.is-6.mb-2 Available
         - else
           p.has-text-grey-light.is-italic.mb-2 No tools loaded
-        .buttons.is-centered.mt-4
-          a.button.is-link(href="/tools")
-            span.icon
-              i.fas.fa-arrow-right
-            span View Tools
+      .card-footer
+        a.card-footer-item(href="/tools")
+          span View Tools
+          span.icon.is-small.ml-1
+            i.fas.fa-arrow-right
 
   .column.is-one-third
     .card.dashboard-card.auth-card.has-text-centered
@@ -60,11 +77,11 @@
           p.subtitle.is-6.mb-2 Schemes
         - else
           p.has-text-grey-light.is-italic.mb-2 Configure auth
-        .buttons.is-centered.mt-4
-          a.button.is-link(href="/auth")
-            span.icon
-              i.fas.fa-arrow-right
-            span View Authentication
+      .card-footer
+        a.card-footer-item(href="/auth")
+          span View Authentication
+          span.icon.is-small.ml-1
+            i.fas.fa-arrow-right
 
   .column.is-one-third
     .card.dashboard-card.docs-card.has-text-centered
@@ -73,8 +90,24 @@
           i.fas.fa-book-open.fa-3x style="color: var(--color-success);"
         h2.title.is-4 Documentation
         p.has-text-grey Read guides and concepts about the ADK.
-        .buttons.is-centered.mt-4
-          a.button.is-link(href="/docs")
-            span.icon
-              i.fas.fa-arrow-right
-            span Read Docs
+      .card-footer
+        a.card-footer-item(href="/docs")
+          span Read Docs
+          span.icon.is-small.ml-1
+            i.fas.fa-arrow-right
+
+/ Activity Stream Section
+.box.activity-stream-box.mt-5
+  .level.mb-4
+    .level-left
+      h3.title.is-5.mb-0
+        span.icon.mr-2
+          i.fas.fa-stream
+        | Recent Activity
+    .level-right
+      button.button.is-small.is-light(hx-get="/activity/recent" hx-target="#activity-list" hx-swap="innerHTML" title="Refresh activity")
+        span.icon.is-small
+          i.fas.fa-sync-alt
+  
+  #activity-list
+    == slim :_activity_list

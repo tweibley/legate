@@ -7,7 +7,7 @@ div(id=container_id)
   .field
     label.label.is-small Status
     .control
-      span.tag.is-medium.is-rounded class=(is_running ? 'is-success' : 'is-danger')
+      span.tag.is-medium.is-rounded class=(is_running ? 'is-success is-running' : 'is-danger')
         = is_running ? 'Running' : 'Stopped'
 
   .field.is-grouped.is-grouped-right

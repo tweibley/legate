@@ -268,10 +268,207 @@ strong.has-text-link { /* Navbar Brand */
     margin-bottom: 1.75rem;
 }
 
+/* ========================================
+   HERO WELCOME SECTION
+   ======================================== */
+
+.hero-welcome {
+  position: relative;
+  padding: 3.5rem 2rem;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, 
+    hsl(348, 83%, 47%) 0%, 
+    hsl(348, 75%, 38%) 50%,
+    hsl(348, 70%, 30%) 100%
+  );
+  color: white;
+  text-align: center;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  
+  // Decorative pattern overlay
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: 
+      radial-gradient(circle at 20% 80%, rgba(255,255,255,0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(255,255,255,0.06) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  
+  // Gem sparkle effect
+  &::after {
+    content: '';
+    position: absolute;
+    top: 10%;
+    right: 15%;
+    width: 120px;
+    height: 120px;
+    background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  
+  .hero-content {
+    position: relative;
+    z-index: 1;
+  }
+  
+  .hero-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.95;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    animation: gem-float 3s ease-in-out infinite;
+  }
+  
+  .hero-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    letter-spacing: -0.02em;
+  }
+  
+  .hero-subtitle {
+    font-size: 1.15rem;
+    opacity: 0.92;
+    margin-bottom: 2rem;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+    line-height: 1.5;
+  }
+  
+  .hero-actions {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  
+  .button.is-hero-primary {
+    background: white;
+    color: hsl(348, 83%, 42%);
+    border: none;
+    font-weight: 600;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+    
+    &:hover {
+      background: #f8f8f8;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+    }
+  }
+  
+  .button.is-hero-secondary {
+    background: rgba(255,255,255,0.15);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.3);
+    backdrop-filter: blur(4px);
+    
+    &:hover {
+      background: rgba(255,255,255,0.25);
+      border-color: rgba(255,255,255,0.5);
+    }
+  }
+}
+
+@keyframes gem-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+// Dark mode hero adjustments
+[data-theme="dark"] .hero-welcome {
+  background: linear-gradient(135deg,
+    hsl(348, 65%, 35%) 0%,
+    hsl(348, 55%, 25%) 50%,
+    hsl(348, 50%, 18%) 100%
+  );
+  
+  .button.is-hero-primary {
+    background: rgba(255,255,255,0.95);
+    color: hsl(348, 70%, 45%);
+  }
+}
+
+/* ========================================
+   ACTIVITY STREAM
+   ======================================== */
+
+.activity-stream-box {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+}
+
+.activity-list {
+  .activity-item {
+    display: flex;
+    align-items: center;
+    padding: 0.875rem 0;
+    border-bottom: 1px solid var(--color-border-light);
+    
+    &:last-child {
+      border-bottom: none;
+    }
+    
+    &:first-child {
+      padding-top: 0;
+    }
+  }
+  
+  .activity-icon {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-tertiary);
+    border-radius: 50%;
+    margin-right: 0.875rem;
+    flex-shrink: 0;
+    
+    i {
+      font-size: 0.9rem;
+    }
+  }
+  
+  .activity-text {
+    flex: 1;
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+    
+    strong {
+      color: var(--color-text-primary);
+      font-weight: 600;
+    }
+  }
+  
+  .activity-time {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    margin-left: 1rem;
+  }
+}
+
+[data-theme="dark"] .activity-stream-box {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border);
+}
+
 /* Dashboard cards with accent borders */
 .dashboard-card {
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  
+  .card-content {
+    flex: 1;
+  }
   
   &::before {
     content: '';
@@ -290,6 +487,39 @@ strong.has-text-link { /* Navbar Brand */
   
   &.agents-card::before { background: var(--color-accent); }
   &.tools-card::before { background: var(--color-info); }
+  
+  /* Card footer styling */
+  .card-footer {
+    border-top: 1px solid var(--color-border-light);
+    background: var(--color-bg-tertiary);
+    
+    .card-footer-item {
+      padding: 0.75rem;
+      color: var(--color-text-secondary);
+      font-size: 0.9rem;
+      transition: all var(--transition-fast);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      
+      &:hover {
+        background: var(--color-bg-secondary);
+        color: var(--color-primary);
+      }
+      
+      &.quick-action {
+        flex: 0 0 auto;
+        width: 48px;
+        border-left: 1px solid var(--color-border-light);
+        color: var(--color-text-muted);
+        
+        &:hover {
+          background: var(--color-primary-light);
+          color: var(--color-primary);
+        }
+      }
+    }
+  }
   &.auth-card::before { background: var(--color-warning); }
   &.docs-card::before { background: var(--color-success); }
   
@@ -555,6 +785,87 @@ strong.has-text-link { /* Navbar Brand */
   }
 }
 
+/* ========================================
+   INLINE ACTION BUTTONS (Gmail/Notion style)
+   ======================================== */
+
+.actions-cell {
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.inline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-decoration: none;
+  
+  i {
+    font-size: 0.85rem;
+  }
+  
+  &:hover {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+  }
+  
+  &:active {
+    transform: scale(0.95);
+  }
+  
+  // Start button
+  &.action-start {
+    color: var(--color-success);
+    
+    &:hover {
+      background: var(--color-success-light);
+      color: var(--color-success);
+    }
+  }
+  
+  // Stop button
+  &.action-stop {
+    color: var(--color-danger);
+    
+    &:hover {
+      background: var(--color-danger-light);
+      color: var(--color-danger);
+    }
+  }
+  
+  // Details button
+  &.action-details {
+    &:hover {
+      background: var(--color-info-light);
+      color: var(--color-info);
+    }
+  }
+  
+  // Delete button
+  &.action-delete {
+    &:hover {
+      background: var(--color-danger-light);
+      color: var(--color-danger);
+    }
+  }
+}
+
 /* Dark mode table container */
 [data-theme="dark"] .table-container {
     background-color: var(--color-bg-secondary) !important;
@@ -580,6 +891,111 @@ strong.has-text-link { /* Navbar Brand */
 [data-theme="dark"] .has-background-light,
 [data-theme="dark"] .has-background-white {
     background-color: var(--color-bg-tertiary) !important;
+}
+
+/* ========================================
+   KEYBOARD SHORTCUT HINTS
+   ======================================== */
+
+.search-with-shortcut {
+  position: relative;
+  
+  input {
+    padding-right: 3.5rem !important; // Make room for the kbd hint
+  }
+  
+  .keyboard-hint {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    transition: opacity var(--transition-fast);
+    z-index: 4;
+    
+    kbd {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      padding: 3px 6px;
+      background: var(--color-bg-tertiary);
+      border-radius: 4px;
+      color: var(--color-text-muted);
+      border: 1px solid var(--color-border);
+      box-shadow: 0 1px 0 var(--color-border-light);
+    }
+  }
+  
+  // Hide hint when input is focused or has content
+  input:focus ~ .keyboard-hint,
+  input:not(:placeholder-shown) ~ .keyboard-hint {
+    opacity: 0;
+  }
+}
+
+// Hide keyboard hint on mobile/touch devices
+@media (max-width: 768px), (hover: none) {
+  .search-with-shortcut .keyboard-hint {
+    display: none !important;
+  }
+  
+  .search-with-shortcut input {
+    padding-right: 2.5rem !important;
+  }
+}
+
+[data-theme="dark"] .search-with-shortcut .keyboard-hint kbd {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border-dark);
+  color: var(--color-text-secondary);
+}
+
+/* ========================================
+   BREADCRUMB NAVIGATION
+   ======================================== */
+
+.breadcrumb {
+  background: transparent;
+  padding: 0;
+  
+  ul {
+    align-items: center;
+  }
+  
+  li {
+    display: flex;
+    align-items: center;
+  }
+  
+  a {
+    color: var(--color-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: color var(--transition-fast);
+    
+    &:hover {
+      color: var(--color-primary-dark);
+    }
+    
+    .icon {
+      font-size: 0.85em;
+    }
+  }
+  
+  li.is-active a {
+    color: var(--color-text-secondary);
+    font-weight: 500;
+    cursor: default;
+    
+    &:hover {
+      color: var(--color-text-secondary);
+    }
+  }
+  
+  li + li::before {
+    color: var(--color-text-muted);
+    content: "/";
+  }
 }
 
 /* Dark mode breadcrumb */
@@ -1029,6 +1445,48 @@ pre[style*="background-color: #fafafa;"] {
 [data-theme="dark"] .tag.is-success.is-light {
     background-color: #1a332a !important;
     color: #a6e3a1 !important;
+}
+
+/* ========================================
+   STATUS BADGE ANIMATIONS
+   ======================================== */
+
+/* Pulse animation for running status badges */
+@keyframes status-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+  }
+}
+
+.tag.is-success.is-running,
+.tag.is-success.status-running {
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+/* Dark mode pulse */
+[data-theme="dark"] .tag.is-success.is-running,
+[data-theme="dark"] .tag.is-success.status-running {
+  animation: status-pulse-dark 2s ease-in-out infinite;
+}
+
+@keyframes status-pulse-dark {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(166, 227, 161, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(166, 227, 161, 0);
+  }
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .tag.is-success.is-running,
+  .tag.is-success.status-running {
+    animation: none;
+  }
 }
 
 /* Dark mode danger tag */

@@ -113,6 +113,18 @@ html(class="has-navbar-fixed-top is-clipped-touch")
 
     /! Moved all JavaScript to the end of the body for better performance and DOM availability
     javascript:
+      // Global keyboard shortcut: Cmd/Ctrl+K to focus search
+      document.addEventListener('keydown', function(e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+          e.preventDefault();
+          const searchInput = document.querySelector('#agent-search-input, .search-input, input[type="search"]');
+          if (searchInput) {
+            searchInput.focus();
+            searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }
+      });
+
       // Theme toggle function (global)
       function toggleTheme() {
         const current = document.documentElement.getAttribute('data-theme');

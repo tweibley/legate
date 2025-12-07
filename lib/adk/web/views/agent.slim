@@ -5,6 +5,17 @@
 
 section.section
   .container
+    / Breadcrumb Navigation
+    nav.breadcrumb.mb-4(aria-label="breadcrumbs")
+      ul
+        li
+          a(href="/agents")
+            span.icon.is-small
+              i.fas.fa-robot
+            span Agents
+        li.is-active
+          a(href="#" aria-current="page")= agent_name
+
     .box.mb-5.agent-header-box
       .level.is-mobile
         .level-left

@@ -9,46 +9,22 @@ module ADK
         app.get '/agents' do
           # `self` is the Sinatra app instance in a route block
           definition_store = self.instance_variable_get(:@definition_store)
-          active_agents_hash = self.instance_variable_get(:@agents) # Still useful for actual in-memory check
 
           view_agents_list = []
           if definition_store
             begin
-              agent_definitions = definition_store.list_definitions # This should now include persistent_status
+              agent_definitions = definition_store.list_definitions # This includes persistent_status
 
               view_agents_list = agent_definitions.map do |definition|
                 next unless definition && definition[:name] # Ensure definition and name are present
-
-                agent_name = definition[:name]
-
-                persisted_status_running = (definition[:persistent_status] == 'running')
-                actually_running_in_memory = active_agents_hash.key?(agent_name)
-
-                # Sync persistent_status with actual in-memory state
-                if persisted_status_running && !actually_running_in_memory
-                  logger.warn("Agent '#{agent_name}' has persistent_status='running' but is not in memory. Syncing to 'stopped'.")
-                  begin
-                    definition_store.update_definition(agent_name, { persistent_status: 'stopped' })
-                  rescue ADK::DefinitionStore::StoreError => e
-                    logger.error("Failed to sync persistent_status for agent '#{agent_name}': #{e.message}")
-                  end
-                elsif !persisted_status_running && actually_running_in_memory
-                  logger.warn("Agent '#{agent_name}' has persistent_status='stopped' but IS in memory. Syncing to 'running'.")
-                  begin
-                    definition_store.update_definition(agent_name, { persistent_status: 'running' })
-                  rescue ADK::DefinitionStore::StoreError => e
-                    logger.error("Failed to sync persistent_status for agent '#{agent_name}': #{e.message}")
-                  end
-                end
-
-                # Use actual in-memory state for display (after sync)
-                current_display_status_running = actually_running_in_memory
 
                 view_model = definition.dup # Create a mutable copy for the view
                 view_model[:configured_tools] = view_model.delete(:tools) || [] # Ensure it's an array
                 # Include agent_type in the view model, default to :llm if not present
                 view_model[:agent_type] = view_model[:agent_type]&.to_sym || :llm
-                view_model[:running] = current_display_status_running
+                # Display is based on persistent_status stored in Redis
+                # This survives across requests since @agents doesn't persist between Sinatra instances
+                view_model[:running] = (definition[:persistent_status] == 'running')
                 view_model
               end.compact # Remove any nils from failed definition fetches
             rescue ADK::DefinitionStore::StoreError => e
@@ -116,6 +92,7 @@ module ADK
 
             definition_store.save_definition(**definition_params)
             logger.info("Agent '#{agent_name}' definition saved (from AgentDefinitionRoutes)")
+            ADK::ActivityLog.log(:agent_created, { name: agent_name }) rescue nil
           rescue ADK::DefinitionStore::StoreError => e
             logger.error("Store error saving agent definition (from AgentDefinitionRoutes): #{e.message}")
             halt 500, 'Error saving agent definition.'
@@ -165,6 +142,7 @@ module ADK
           begin
             definition_store.delete_definition(name)
             logger.info("Agent '#{name}' definition deleted from Redis (from AgentDefinitionRoutes).")
+            ADK::ActivityLog.log(:agent_deleted, { name: name }) rescue nil
             status 200
             body ''
           rescue ADK::DefinitionStore::StoreError => e
@@ -177,7 +155,6 @@ module ADK
         app.get '/agents/:name' do |name|
           logger.info("GET /agents/#{name} route handler entered (from AgentDefinitionRoutes)")
           definition_store = self.instance_variable_get(:@definition_store)
-          active_agents_hash = self.instance_variable_get(:@agents)
           halt 503, 'Definition Store unavailable.' unless definition_store
 
           agent_definition = nil
@@ -201,31 +178,14 @@ module ADK
             agent_definition[:mcp_servers_json]
           end
 
-          # Determine running status - use persistent_status for consistency with agents list
-          persisted_status_running = (agent_definition[:persistent_status] == 'running')
-          actually_running_in_memory = active_agents_hash.key?(name)
-
-          # If there's a mismatch, prefer in-memory state and update persistent_status
-          if persisted_status_running && !actually_running_in_memory
-            logger.warn("Agent '#{name}' detail view: persistent_status='running' but not in memory. Updating status.")
-            begin
-              definition_store.update_definition(name, { persistent_status: 'stopped' })
-            rescue ADK::DefinitionStore::StoreError => e
-              logger.error("Failed to sync persistent_status for agent '#{name}': #{e.message}")
-            end
-          elsif !persisted_status_running && actually_running_in_memory
-            logger.warn("Agent '#{name}' detail view: persistent_status='stopped' but IS in memory. Updating status.")
-            begin
-              definition_store.update_definition(name, { persistent_status: 'running' })
-            rescue ADK::DefinitionStore::StoreError => e
-              logger.error("Failed to sync persistent_status for agent '#{name}': #{e.message}")
-            end
-          end
+          # Use persistent_status from Redis for display
+          # @agents doesn't persist across Sinatra request instances, so we rely on Redis
+          is_running = (agent_definition[:persistent_status] == 'running')
 
           self.instance_variable_set(:@view_agent_data, {
                                        name: name,
                                        description: agent_definition[:description],
-                                       running: actually_running_in_memory,
+                                       running: is_running,
                                        model: agent_definition[:model],
                                        fallback_mode: agent_definition[:fallback_mode],
                                        instruction: agent_definition[:instruction],
@@ -420,7 +380,6 @@ module ADK
         # GET /agents/:name/display/tool_table - Render the tool table display partial.
         app.get '/agents/:name/display/tool_table' do |name|
           definition_store = self.instance_variable_get(:@definition_store)
-          active_agents_hash = self.instance_variable_get(:@agents)
           halt 503, 'Definition Store unavailable.' unless definition_store
           agent_definition = definition_store.get_definition(name)
           halt 404, 'Agent not found' unless agent_definition
@@ -428,7 +387,7 @@ module ADK
           agent_data = {
             name: name, description: agent_definition[:description], model: agent_definition[:model],
             fallback_mode: agent_definition[:fallback_mode], mcp_servers_json: agent_definition[:mcp_servers_json],
-            running: active_agents_hash.key?(name)
+            running: (agent_definition[:persistent_status] == 'running')
           }
           configured_tool_names = agent_definition[:tools]
           configured_tool_syms = configured_tool_names.map(&:to_sym)

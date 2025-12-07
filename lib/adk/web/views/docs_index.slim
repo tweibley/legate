@@ -11,10 +11,12 @@
     p  or an error occurred while listing them.
 - else
   .field.mb-4
-    .control.has-icons-left
+    .control.has-icons-left.search-with-shortcut
       input.input#doc-search-input type="text" placeholder="Search documentation..." onkeyup="filterDocs()"
       span.icon.is-left
         i.fas.fa-search
+      span.keyboard-hint
+        kbd ⌘K
 
   - @categorized_documents.each do |category, documents|
     - unless documents.empty?

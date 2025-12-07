@@ -42,6 +42,7 @@ require_relative '../tools/calculator'
 require_relative '../tools/cat_facts'
 require_relative '../tools/random_number_tool'
 require_relative '../tools/agent_tool' # Tool that allows an agent to call another agent
+require_relative '../activity_log' # Activity logging for dashboard
 require_relative '../tools/base_async_job_tool' # Base class for tools that run asynchronously
 require_relative '../tools/check_job_status_tool' # Tool to check the status of async jobs
 require_relative '../tools/sleepy_tool' # Example async tool
@@ -178,6 +179,32 @@ module ADK
       # --- Sinatra Helpers ---
       # Utility methods accessible within route handlers and Slim templates.
       helpers do
+        # Format time as relative time ago string
+        # @param time [Time] The time to format
+        # @return [String] Relative time string (e.g., "2 minutes ago")
+        def time_ago_in_words(time)
+          return 'just now' unless time
+          
+          seconds = (Time.now.utc - time.utc).to_i
+          
+          case seconds
+          when 0..59
+            'just now'
+          when 60..119
+            '1 minute ago'
+          when 120..3599
+            "#{seconds / 60} minutes ago"
+          when 3600..7199
+            '1 hour ago'
+          when 7200..86399
+            "#{seconds / 3600} hours ago"
+          when 86400..172799
+            'yesterday'
+          else
+            "#{seconds / 86400} days ago"
+          end
+        end
+        
         # Fetches tool lists from one or more MCP (Multi-Capability Protocol) servers.
         # Connects to each server defined in the mcp_configs array, lists its tools,
         # and handles connection errors or timeouts.
@@ -852,6 +879,7 @@ module ADK
               logger.warn("Definition store not available, cannot update persistent_status for agent '#{name}'.")
             end
             logger.info("Agent '#{name}' stopped.")
+            ADK::ActivityLog.log(:agent_stopped, { name: name }) rescue nil
             true
           rescue => e
             logger.error("Error stopping agent '#{name}': #{e.message}")
@@ -941,6 +969,7 @@ module ADK
           logger.warn("Definition store not available, cannot update persistent_status for agent '#{name}'.")
         end
         logger.info("Agent '#{name}' started successfully.")
+        ADK::ActivityLog.log(:agent_started, { name: name }) rescue nil
         agent
       rescue StandardError => e
         logger.error("Failed to start agent '#{name}': #{e.class} - #{e.message}")

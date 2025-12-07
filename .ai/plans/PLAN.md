@@ -20,6 +20,10 @@ The Ruby Agent Development Kit (ADK) is a comprehensive Ruby framework for build
 - **[Web UI Enhancement Phase 1](features/web-ui-enhancement-plan.md)** - Dark mode, typography, theming foundation (Tasks 29-38)
 - **[Web UI Phase 2 Refinement](features/web-ui-phase2-refinement-plan.md)** - Typography differentiation, live dashboard metrics, brand alignment, accessibility fixes (Tasks 39-45)
 
+### In Progress
+
+- **[Web UI Phase 3 - UX Polish](features/web-ui-phase3-ux-polish-plan.md)** - Navigation improvements, dashboard evolution, micro-interactions, responsive polish (Tasks 46-56)
+
 ### Planned
 
 - **[Agent Hierarchy Improvements](features/agent-hierarchy-improvements-plan.md)** - Enhanced agent-to-agent communication and delegation patterns

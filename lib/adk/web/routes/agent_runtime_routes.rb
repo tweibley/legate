@@ -258,75 +258,64 @@ module ADK
 
         # Start agent from main list view (hx-post from _agent_row.slim)
         app.post '/agents/:name/start' do |name|
-          # `self` is the Sinatra app instance here
-          agent = self.send(:_start_agent, name) # Call private helper
-          definition_store = self.instance_variable_get(:@definition_store) # Access ivar
+          agent = self.send(:_start_agent, name)
+          definition_store = self.instance_variable_get(:@definition_store)
+          tool_manager = self.instance_variable_get(:@tool_manager)
+          available_tools = tool_manager&.tools&.map { |t| { name: t.name, description: t.description } } || []
 
-          # Fetch the full definition to ensure all necessary fields for fragments are present
-          agent_definition_for_view = definition_store&.get_definition(name) if definition_store
+          # Re-fetch definition AFTER _start_agent to get updated persistent_status
+          agent_definition = definition_store&.get_definition(name) if definition_store
 
-          agent_data_for_view = if agent_definition_for_view
-                                  agent_definition_for_view.dup # Make a mutable copy
-                                else
-                                  { name: name, description: 'N/A', model: 'N/A', tools: [] } # Minimal fallback with all expected keys by _agent_row or its fragments
-                                end
+          agent_data = if agent_definition
+                         agent_definition.dup
+                       else
+                         { name: name, description: 'N/A', model: 'N/A', tools: [], configured_tools: [] }
+                       end
 
-          agent_data_for_view[:running] = !agent.nil? # Update running status based on actual start
+          agent_data[:configured_tools] ||= agent_data[:tools] || []
+          # Use persistent_status from Redis for consistency
+          agent_data[:running] = (agent_definition && agent_definition[:persistent_status] == 'running')
 
           if agent
             logger.info "Agent '#{name}' started from main list (from AgentRuntimeRoutes)."
-            status 200
-            # Use the helper that generates OOB fragments for the agent row
-            # The agent_status_fragments helper is defined in app.rb
-            # Ensure all data needed by the fragments (and the elements they target in _agent_row) is in agent_data_for_view
-            headers 'Content-Type' => 'text/html' # Ensure correct content type for HTML fragments
-            agent_status_fragments(agent_data_for_view)
           else
             logger.error "Failed to start agent '#{name}' from main list (from AgentRuntimeRoutes)."
-            status 500 # Keep error status
-            agent_data_for_view[:running] = false # Ensure it shows as stopped
-            headers 'Content-Type' => 'text/html'
-            # Even on failure, we might want to return fragments that update the UI to show 'Stopped'
-            # and ensure buttons are correctly disabled/enabled.
-            agent_status_fragments(agent_data_for_view)
           end
+
+          status 200
+          content_type :html
+          slim :_agent_row, layout: false, locals: { agent_info: agent_data, available_tools: available_tools }
         end
 
         # Stop agent from main list view (hx-post from _agent_row.slim)
         app.post '/agents/:name/stop' do |name|
-          # `self` is the Sinatra app instance here
-          success = self.send(:_stop_agent, name) # Call private helper
-          definition_store = self.instance_variable_get(:@definition_store) # Access ivar
+          success = self.send(:_stop_agent, name)
+          definition_store = self.instance_variable_get(:@definition_store)
+          tool_manager = self.instance_variable_get(:@tool_manager)
+          available_tools = tool_manager&.tools&.map { |t| { name: t.name, description: t.description } } || []
 
-          agent_definition_for_view = definition_store&.get_definition(name) if definition_store
+          # Re-fetch definition AFTER _stop_agent to get updated persistent_status
+          agent_definition = definition_store&.get_definition(name) if definition_store
 
-          agent_data_for_view = if agent_definition_for_view
-                                  agent_definition_for_view.dup
-                                else
-                                  { name: name, description: 'N/A', model: 'N/A', tools: [] }
-                                end
+          agent_data = if agent_definition
+                         agent_definition.dup
+                       else
+                         { name: name, description: 'N/A', model: 'N/A', tools: [], configured_tools: [] }
+                       end
 
-          agent_data_for_view[:running] = false # After a stop action, it should be marked as not running
+          agent_data[:configured_tools] ||= agent_data[:tools] || []
+          # Use persistent_status from Redis for consistency
+          agent_data[:running] = (agent_definition && agent_definition[:persistent_status] == 'running')
 
           if success
             logger.info "Agent '#{name}' stopped from main list (from AgentRuntimeRoutes)."
-            status 200
-            headers 'Content-Type' => 'text/html'
-            agent_status_fragments(agent_data_for_view)
           else
-            logger.error "Failed to stop agent '#{name}' from main list (from AgentRuntimeRoutes) - _stop_agent returned false."
-            status 500 # Internal error if _stop_agent fails unexpectedly
-            # Still return fragments reflecting the intended (stopped) state or current persisted state
-            # Re-fetch definition to be sure of the persisted state if _stop_agent failed.
-            current_def_after_fail = definition_store&.get_definition(name)
-            if current_def_after_fail
-              agent_data_for_view[:running] = (current_def_after_fail[:persistent_status] == 'running')
-            else # fallback if def somehow disappeared
-              agent_data_for_view[:running] = false # Best guess
-            end
-            headers 'Content-Type' => 'text/html'
-            agent_status_fragments(agent_data_for_view)
+            logger.error "Failed to stop agent '#{name}' from main list (from AgentRuntimeRoutes)."
           end
+
+          status 200
+          content_type :html
+          slim :_agent_row, layout: false, locals: { agent_info: agent_data, available_tools: available_tools }
         end
       end
     end

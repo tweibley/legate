@@ -207,3 +207,42 @@
 - [x] **ID 45: Table Row Hover Accent** (Priority: low)
 > Dependencies: 43
 > Add a subtle left-border accent on table row hover for clear visual feedback in list tables.
+
+---
+
+## Web UI Phase 3 - UX Polish & Interaction Design
+
+- [x] **ID 46: Breadcrumb Navigation Component** (Priority: high)
+> Add breadcrumb navigation to detail pages (e.g., "Agents > cat facts only") to help users understand their location and navigate back easily.
+
+- [x] **ID 47: Navbar Active State Indicator** (Priority: high)
+> Add a visible indicator (underline or background highlight) for the currently active page in the navigation bar.
+
+- [x] **ID 48: Keyboard Search Shortcut** (Priority: high)
+> Implement Cmd/Ctrl+K keyboard shortcut to focus the search box globally from any page. Add visual hint near search input.
+
+- [x] **ID 49: Dashboard Hero Welcome Section** (Priority: high)
+> Create a styled gradient hero banner at the top of the dashboard with "Welcome to Ruby ADK" and a prominent "Create New Agent" CTA button.
+
+- [x] **ID 50: Dashboard Quick Action Buttons** (Priority: high)
+> Dependencies: 49
+> Add small "+" action buttons in the footer of dashboard cards for quick agent/tool creation without navigating away.
+
+- [ ] **ID 51: Activity Stream Backend & UI** (Priority: high)
+> Implement a recent activity stream on the dashboard showing last 5-10 system events (agent started, task completed, etc.) with relative timestamps.
+
+- [ ] **ID 52: Skeleton Loading Components** (Priority: medium)
+> Dependencies: 46
+> Replace "Loading..." text with skeleton UI placeholders featuring animated shimmer effects for tables, cards, and content areas.
+
+- [x] **ID 53: Status Badge Pulse Animation** (Priority: medium)
+> Add a subtle breathing/pulse animation to "Running" status badges to indicate active state. Keep "Stopped" badges static.
+
+- [ ] **ID 54: Form Field Visual Grouping** (Priority: medium)
+> Group related fields in the "Create New Agent" form with visual containers and section headers for better organization.
+
+- [ ] **ID 55: Actions Dropdown Visibility** (Priority: medium)
+> Make the table row actions dropdown (ellipsis menu) more visible, potentially adding "Actions" text or a more prominent button style.
+
+- [ ] **ID 56: Mobile Touch Target Audit** (Priority: low)
+> Audit and fix touch targets across the UI to ensure all interactive elements are at least 44px for mobile usability.
