@@ -84,19 +84,23 @@ section.section
     div#tab-content
 
       div.content-tab#execute-tab
-        .columns
-          .column.is-two-thirds
-            .box
-              h3.title.is-5 Execute Task
+        .execute-tab-layout
+          / Task Input Section
+          .execute-input-section
+            .box.execute-input-box
+              h3.title.is-5
+                span.icon.mr-2
+                  i.fas.fa-terminal
+                | Execute Task
               form#execute-task-form( hx-post="/agents/#{agent_name}/execute"
-                                      hx-target="#task-result"
+                                      hx-target="#task-result-content"
                                       hx-swap="innerHTML"
                                       hx-indicator="#execute-task-button span.icon.htmx-indicator" )
                   .field
                     label.label Task (JSON Input)
                     p.help.is-size-7 Format: `{"task": "..."}` or `{"tool_name": "...", ...}`
                     .control
-                      textarea.textarea#direct-task-json-input name="task_json" placeholder='e.g., {"task": "Summarize article..."}' required=true rows="10"
+                      textarea.textarea.is-code-editor#direct-task-json-input name="task_json" placeholder='{"task": "Ask me anything..."}' required=true rows="8"
                   .field.is-grouped.is-grouped-right.mt-4
                     .control
                       button.button.is-link.is-light.is-small( type="button" id="generate-example-task-btn"
@@ -109,24 +113,34 @@ section.section
                           i.fas.fa-wand-magic-sparkles
                         span Example
                     .control
-                      button.button.is-light.is-small(type="button" _=%q{on click put "<p class='has-text-grey is-italic'>Task results will appear here.</p>" into #task-result})
+                      button.button.is-light.is-small(type="button" _=%q{on click put "<span class='terminal-placeholder'>Ready for output...</span>" into #task-result-content})
                         span.icon.is-small
                           i.fas.fa-eraser
-                        span Clear Result
+                        span Clear
                     .control
-                      button.button.is-link#execute-task-button(type="submit" disabled=!is_running)
+                      button.button.is-success.is-medium#execute-task-button(type="submit" disabled=!is_running)
                         span.icon.is-small.htmx-indicator.mr-1
                             i.fas.fa-spinner.fa-pulse
                         span.icon.is-small
-                          i.fas.fa-play-circle
-                        span = is_running ? 'Execute' : 'Execute (Requires Start)'
+                          i.fas.fa-play
+                        span = is_running ? 'Execute' : 'Start Agent First'
 
-              label.label.mt-4 Result
-              #task-result.content.box.is-small( style="min-height: 100px; background-color: #fafafa; white-space: pre-wrap; word-break: break-word;" )
-                  p.has-text-grey.is-italic Task results will appear here.
+          / Result Section - Terminal Style
+          .execute-result-section
+            .terminal-window
+              .terminal-header
+                .terminal-buttons
+                  span.terminal-btn.terminal-btn-close
+                  span.terminal-btn.terminal-btn-minimize
+                  span.terminal-btn.terminal-btn-maximize
+                span.terminal-title Output
+              #task-result.terminal-body
+                #task-result-content
+                  span.terminal-placeholder Ready for output...
 
-          .column.is-one-third
-             .message.is-link
+          / Info Panel
+          .execute-info-section
+            .message.is-info
                 .message-header
                     p Info
                 .message-body

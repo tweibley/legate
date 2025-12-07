@@ -254,7 +254,7 @@
 - [x] **ID 57: Agent Details Header Redesign** (Priority: high)
 > Redesign the agent details header to create a "hero profile" style with prominent status controls, key metrics, and improved visual hierarchy.
 
-- [ ] **ID 58: Execute Tab Terminal-Style Enhancement** (Priority: high)
+- [x] **ID 58: Execute Tab Terminal-Style Enhancement** (Priority: high)
 > Enhance the Execute tab with a terminal-style result display, monospace code editor textarea, and improved task input experience.
 
 - [ ] **ID 59: Tab Navigation Polish** (Priority: medium)
