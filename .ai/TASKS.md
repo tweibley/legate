@@ -228,7 +228,7 @@
 > Dependencies: 49
 > Add small "+" action buttons in the footer of dashboard cards for quick agent/tool creation without navigating away.
 
-- [ ] **ID 51: Activity Stream Backend & UI** (Priority: high)
+- [x] **ID 51: Activity Stream Backend & UI** (Priority: high)
 > Implement a recent activity stream on the dashboard showing last 5-10 system events (agent started, task completed, etc.) with relative timestamps.
 
 - [x] **ID 52: Skeleton Loading Components** (Priority: medium)

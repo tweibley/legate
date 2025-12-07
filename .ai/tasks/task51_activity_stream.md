@@ -1,6 +1,6 @@
 # Task 51: Activity Stream Backend & UI
 
-## Status: Pending
+## Status: Complete
 
 ## Priority: High
 
@@ -10,14 +10,14 @@ Implement a recent activity stream on the dashboard showing the last 5-10 system
 
 ## Acceptance Criteria
 
-- [ ] Activity stream displays on dashboard below cards
-- [ ] Shows last 5-10 events in chronological order (newest first)
-- [ ] Events include: agent_started, agent_stopped, task_completed, agent_created, agent_deleted
-- [ ] Each event shows icon, description, and relative timestamp ("5 minutes ago")
-- [ ] Empty state when no recent activity
-- [ ] Events stored in Redis (or in-memory fallback)
-- [ ] Events auto-expire after 24 hours
-- [ ] Works in both light and dark modes
+- [x] Activity stream displays on dashboard below cards
+- [x] Shows last 5-10 events in chronological order (newest first)
+- [x] Events include: agent_started, agent_stopped, task_completed, agent_created, agent_deleted
+- [x] Each event shows icon, description, and relative timestamp ("5 minutes ago")
+- [x] Empty state when no recent activity
+- [x] Events stored in Redis (or in-memory fallback)
+- [x] Events auto-expire after 24 hours
+- [x] Works in both light and dark modes
 
 ## Implementation Details
 
