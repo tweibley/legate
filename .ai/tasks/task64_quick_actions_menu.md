@@ -1,7 +1,7 @@
 ---
 id: 64
 title: 'Quick Actions Menu'
-status: pending
+status: completed
 priority: medium
 feature: Agent Header Improvements
 dependencies:

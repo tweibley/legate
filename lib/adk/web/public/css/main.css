@@ -529,20 +529,23 @@ strong.has-text-link { /* Navbar Brand */
 
 /* Top row: Name/badges on left, status/action on right */
 .agent-header-top-row {
-  display: flex;
+  display: flex !important;
+  flex-direction: row !important;
   justify-content: space-between;
   align-items: flex-start;
   gap: 1.5rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .agent-header-identity {
-  flex: 1;
-  min-width: 250px;
+  flex: 1 1 auto;
+  min-width: 200px;
 }
 
 .agent-header-actions {
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
 }
 
 /* Agent Identity (Name + Badges) */
@@ -622,6 +625,76 @@ strong.has-text-link { /* Navbar Brand */
   box-shadow: var(--shadow-sm);
 }
 
+/* Quick Actions Dropdown */
+.agent-quick-actions-dropdown {
+  margin-left: 0.5rem;
+}
+
+.agent-quick-actions-btn {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.agent-quick-actions-btn:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-dark);
+}
+
+.agent-quick-actions-dropdown .dropdown-menu {
+  min-width: 200px;
+}
+
+.agent-quick-actions-dropdown .dropdown-content {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 0.5rem 0;
+}
+
+.agent-quick-actions-dropdown .dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  color: var(--color-text-primary);
+  font-size: 0.9rem;
+  transition: background-color var(--transition-fast);
+}
+
+.agent-quick-actions-dropdown .dropdown-item:hover {
+  background: var(--color-bg-secondary);
+}
+
+.agent-quick-actions-dropdown .dropdown-item .icon {
+  color: var(--color-text-muted);
+}
+
+.agent-quick-actions-dropdown .dropdown-item:hover .icon {
+  color: var(--color-text-secondary);
+}
+
+.agent-quick-actions-dropdown .dropdown-item.has-text-danger {
+  color: var(--color-danger);
+}
+
+.agent-quick-actions-dropdown .dropdown-item.has-text-danger:hover {
+  background: rgba(var(--color-danger-rgb, 220, 53, 69), 0.1);
+}
+
+.agent-quick-actions-dropdown .dropdown-item.has-text-danger .icon {
+  color: var(--color-danger);
+}
+
+.agent-quick-actions-dropdown .dropdown-divider {
+  background-color: var(--color-border-light);
+  margin: 0.5rem 0;
+}
+
 /* Description - inside header */
 .agent-header-description {
   margin-top: 1rem;
@@ -631,29 +704,34 @@ strong.has-text-link { /* Navbar Brand */
 
 /* Stats Bar */
 .agent-stats-bar {
-  display: flex;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 0;
   margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--color-border-light);
   background: var(--color-bg-tertiary);
   margin-left: -1.5rem;
   margin-right: -1.5rem;
   margin-bottom: -1.25rem;
   padding: 0.75rem 1.5rem;
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  border-top: 1px solid var(--color-border-light);
 }
 
 .agent-stat {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0 1.5rem;
-  border-right: 1px solid var(--color-border-light);
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.5rem 2rem;
+  border-right: 1px solid var(--color-border);
   font-size: 0.9rem;
   color: var(--color-text-secondary);
   text-decoration: none;
   transition: color var(--transition-fast);
+  text-align: center;
 }
 
 .agent-stat:last-child {
@@ -674,16 +752,21 @@ a.agent-stat:hover .icon {
 
 .agent-stat .icon {
   color: var(--color-text-muted);
+  flex-shrink: 0;
 }
 
 .agent-stat-value {
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 1.1rem;
   color: var(--color-text-primary);
+  line-height: 1.2;
 }
 
 .agent-stat-label {
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 /* Collapsible Agent Details - Simplified */

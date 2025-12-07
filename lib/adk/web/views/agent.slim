@@ -308,6 +308,74 @@ section.section
             }
          }
 
+        // Quick Actions Dropdown Toggle
+        document.querySelectorAll('.agent-quick-actions-dropdown .dropdown-trigger button').forEach(function(button) {
+          button.addEventListener('click', function(event) {
+            event.stopPropagation();
+            const dropdown = button.closest('.dropdown');
+            dropdown.classList.toggle('is-active');
+          });
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+          if (!event.target.closest('.agent-quick-actions-dropdown')) {
+            document.querySelectorAll('.agent-quick-actions-dropdown.is-active').forEach(function(dropdown) {
+              dropdown.classList.remove('is-active');
+            });
+          }
+        });
+
+        // Close dropdown on Escape key
+        document.addEventListener('keydown', function(event) {
+          if (event.key === 'Escape') {
+            document.querySelectorAll('.agent-quick-actions-dropdown.is-active').forEach(function(dropdown) {
+              dropdown.classList.remove('is-active');
+            });
+          }
+        });
+
+        // Handle tab navigation from stats bar and dropdown
+        document.querySelectorAll('[data-tab-link]').forEach(function(link) {
+          link.addEventListener('click', function(event) {
+            event.preventDefault();
+            const tabName = this.getAttribute('data-tab-link');
+            const targetTab = document.querySelector(`.custom-rounded-tabs-container .tabs li[data-tab="${tabName}"]`);
+            if (targetTab) {
+              activateTab(targetTab);
+              // Close dropdown if open
+              document.querySelectorAll('.agent-quick-actions-dropdown.is-active').forEach(function(dropdown) {
+                dropdown.classList.remove('is-active');
+              });
+            }
+          });
+        });
+
+        // Delete agent confirmation
+        document.querySelectorAll('[data-action="delete-agent"]').forEach(function(link) {
+          link.addEventListener('click', function(event) {
+            event.preventDefault();
+            const agentName = this.getAttribute('data-agent-name');
+            if (confirm(`Are you sure you want to delete the agent "${agentName}"? This action cannot be undone.`)) {
+              fetch(`/agents/${encodeURIComponent(agentName)}`, {
+                method: 'DELETE',
+                headers: { 'Accept': 'application/json' }
+              })
+              .then(response => {
+                if (response.ok) {
+                  window.location.href = '/agents';
+                } else {
+                  alert('Failed to delete agent. Please try again.');
+                }
+              })
+              .catch(error => {
+                console.error('Error deleting agent:', error);
+                alert('An error occurred while deleting the agent.');
+              });
+            }
+          });
+        });
+
       });
 
       // Authentication status loading

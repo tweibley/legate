@@ -151,6 +151,75 @@ module ADK
           end
         end
 
+        # POST /agents/:name/duplicate - Create a copy of an agent.
+        app.post '/agents/:name/duplicate' do |name|
+          logger.info("Received request to duplicate agent '#{name}'")
+          definition_store = self.instance_variable_get(:@definition_store)
+          halt 503, 'Definition Store unavailable.' unless definition_store
+
+          original_definition = definition_store.get_definition(name)
+          halt 404, 'Agent not found' unless original_definition
+
+          # Generate unique name for the copy
+          base_name = "Copy of #{name}"
+          new_name = base_name
+          counter = 1
+          while definition_store.get_definition(new_name)
+            counter += 1
+            new_name = "#{base_name} (#{counter})"
+          end
+
+          # Create the duplicate definition
+          new_definition = original_definition.dup
+          new_definition[:name] = new_name
+          new_definition[:description] = "Copy of: #{original_definition[:description]}"
+
+          begin
+            definition_store.save_definition(new_name, new_definition)
+            ADK::ActivityLog.log(:agent_created, { name: new_name, source: 'duplicate' }) rescue nil
+            logger.info("Agent '#{name}' duplicated as '#{new_name}'")
+
+            # Redirect to the new agent
+            if request.xhr?
+              headers 'HX-Redirect' => "/agents/#{URI.encode_www_form_component(new_name)}"
+              status 200
+              body ''
+            else
+              redirect "/agents/#{URI.encode_www_form_component(new_name)}"
+            end
+          rescue ADK::DefinitionStore::StoreError => e
+            logger.error("Error duplicating agent: #{e.message}")
+            halt 500, 'Error duplicating agent.'
+          end
+        end
+
+        # GET /agents/:name/export - Export agent configuration as JSON.
+        app.get '/agents/:name/export' do |name|
+          logger.info("Received request to export agent '#{name}'")
+          definition_store = self.instance_variable_get(:@definition_store)
+          halt 503, 'Definition Store unavailable.' unless definition_store
+
+          agent_definition = definition_store.get_definition(name)
+          halt 404, 'Agent not found' unless agent_definition
+
+          # Prepare export data (clean up internal fields)
+          export_data = {
+            name: agent_definition[:name],
+            description: agent_definition[:description],
+            model: agent_definition[:model],
+            instruction: agent_definition[:instruction],
+            tools: agent_definition[:tools],
+            fallback_mode: agent_definition[:fallback_mode],
+            agent_type: agent_definition[:agent_type],
+            sub_agent_names: agent_definition[:sub_agent_names],
+            mcp_servers_json: agent_definition[:mcp_servers_json]
+          }.compact
+
+          content_type 'application/json'
+          attachment "#{name}.json"
+          JSON.pretty_generate(export_data)
+        end
+
         # GET /agents/:name - Display the detail page for a specific agent.
         app.get '/agents/:name' do |name|
           logger.info("GET /agents/#{name} route handler entered (from AgentDefinitionRoutes)")

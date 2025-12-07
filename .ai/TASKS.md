@@ -280,7 +280,7 @@
 > Dependencies: 62
 > Add a horizontal stats bar showing tool count (clickable), last run time, and current status with visual icons.
 
-- [ ] **ID 64: Quick Actions Menu** (Priority: medium)
+- [x] **ID 64: Quick Actions Menu** (Priority: medium)
 > Dependencies: 62
 > Add an overflow menu ("...") with Edit, Duplicate, Export, and Delete actions.
 
