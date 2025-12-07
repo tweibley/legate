@@ -20,7 +20,8 @@ module ADK
       AGENT_DEFINITION_FIELDS = %w[name description tools model fallback_mode mcp_servers_json instruction
                                    webhook_enabled webhook_secret persistent_status agent_type
                                    sub_agent_names sequential_sub_agent_names parallel_sub_agent_names loop_sub_agent_names
-                                   auth_scheme_assignments auth_credential_assignments auth_url_mappings].freeze
+                                   auth_scheme_assignments auth_credential_assignments auth_url_mappings
+                                   last_run_at].freeze
 
       # Expects a keyword argument for the Redis client instance.
       # @param redis_client [Redis] An instance of the Redis client.
@@ -489,7 +490,7 @@ module ADK
               @logger.error("JSON error serializing auth_url_mappings for agent '#{agent_name}': #{e.message}")
               raise StoreError, "Failed to serialize authentication URL mappings for agent '#{agent_name}'."
             end
-          when 'description', 'persistent_status', 'webhook_validator', 'temperature'
+          when 'description', 'persistent_status', 'webhook_validator', 'temperature', 'last_run_at'
             # These are valid fields that can be updated directly
             redis_updates[field_str] = value&.to_s || ''
           else

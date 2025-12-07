@@ -726,12 +726,21 @@ strong.has-text-link { /* Navbar Brand */
   justify-content: center;
   gap: 0.25rem;
   padding: 0.5rem 2rem;
-  border-right: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border-dark);
   font-size: 0.9rem;
   color: var(--color-text-secondary);
   text-decoration: none;
-  transition: color var(--transition-fast);
+  transition: color var(--transition-fast), background-color var(--transition-fast);
   text-align: center;
+}
+
+a.agent-stat {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+a.agent-stat:hover {
+  background: var(--color-bg-secondary);
 }
 
 .agent-stat:last-child {
@@ -753,6 +762,11 @@ a.agent-stat:hover .icon {
 .agent-stat .icon {
   color: var(--color-text-muted);
   flex-shrink: 0;
+  transition: color var(--transition-fast);
+}
+
+a.agent-stat:hover .icon {
+  color: var(--color-primary);
 }
 
 .agent-stat-value {

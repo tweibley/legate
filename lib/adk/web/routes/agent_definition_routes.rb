@@ -267,7 +267,9 @@ module ADK
                                        tool_count: tool_count,
                                        # Include agent type and sub-agent names for hierarchy display
                                        agent_type: agent_definition[:agent_type]&.to_sym || :llm,
-                                       sub_agent_names: agent_definition[:sub_agent_names] || []
+                                       sub_agent_names: agent_definition[:sub_agent_names] || [],
+                                       # Last run timestamp for display
+                                       last_run_at: agent_definition[:last_run_at]
                                      })
 
           # Tool metadata fetching logic (similar to what's in app.rb for this route)

@@ -42,7 +42,22 @@ section.section
         .agent-stat
           span.icon.is-small
             i.fas.fa-clock
-          span.agent-stat-value= agent_data[:last_run] || 'Never'
+          - last_run_display = 'Never'
+          - if agent_data[:last_run_at]
+            - begin
+              - last_run_time = Time.parse(agent_data[:last_run_at].to_s)
+              - diff_seconds = (Time.now - last_run_time).to_i
+              - if diff_seconds < 60
+                - last_run_display = "#{diff_seconds}s ago"
+              - elsif diff_seconds < 3600
+                - last_run_display = "#{diff_seconds / 60}m ago"
+              - elsif diff_seconds < 86400
+                - last_run_display = "#{diff_seconds / 3600}h ago"
+              - else
+                - last_run_display = "#{diff_seconds / 86400}d ago"
+            - rescue => e
+              - last_run_display = 'Unknown'
+          span.agent-stat-value= last_run_display
           span.agent-stat-label Last Run
         .agent-stat
           - if is_running

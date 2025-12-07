@@ -4,6 +4,18 @@
 module ADK
   module Web
     module AgentInteractionRoutes
+      # Helper to update the last_run_at timestamp for an agent
+      def self.update_agent_last_run(definition_store, agent_name, logger)
+        return unless definition_store
+
+        begin
+          definition_store.update_definition(agent_name, { 'last_run_at' => Time.now.iso8601 })
+          logger.debug("Updated last_run_at for agent '#{agent_name}'")
+        rescue => e
+          logger.warn("Failed to update last_run_at for agent '#{agent_name}': #{e.message}")
+        end
+      end
+
       def self.registered(app)
         # GET /agents/:name/chat - Display the chat interface for an agent.
         app.get '/agents/:name/chat' do |name|
@@ -221,6 +233,9 @@ module ADK
             logger.info("Agent '#{name}' task processing complete for session '#{active_adk_session_id}'. Final result: #{final_event_or_error.inspect}")
             view_locals[:agent_result] = final_event_or_error
 
+            # Track last run time
+            AgentInteractionRoutes.update_agent_last_run(definition_store, name, logger)
+
             updated_session_object = nil
             if current_adk_session_object
               begin
@@ -339,6 +354,9 @@ module ADK
               minimal_plan_details = [{ tool_name: tool_to_exec.to_sym, params: exec_params.transform_keys(&:to_sym),
                                         result: result }]
               final_result_content_for_diagram = result.merge(plan_details: minimal_plan_details)
+              # Track last run time
+              definition_store = self.instance_variable_get(:@definition_store)
+              AgentInteractionRoutes.update_agent_last_run(definition_store, name, logger)
               success_handler.call(final_result_content_for_diagram, original_input_for_diagram)
             else
               logger.info("Agent '#{name}' executing task via PLANNER (AgentInteractionRoutes): #{task_desc}")
@@ -347,7 +365,9 @@ module ADK
               final_result = agent_instance.run_task(session_id: temp_adk_session.id, user_input: task_desc,
                                                      session_service: session_service)
               content_to_show = final_result.is_a?(ADK::Event) ? final_result.content : final_result
-              # final_result_content_for_diagram = content_to_show # Already captured by success_handler logic
+              # Track last run time
+              definition_store = self.instance_variable_get(:@definition_store)
+              AgentInteractionRoutes.update_agent_last_run(definition_store, name, logger)
               success_handler.call(content_to_show, original_input_for_diagram)
             end
           rescue => e
