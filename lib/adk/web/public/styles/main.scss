@@ -1630,7 +1630,7 @@ pre[style*="background-color: #fafafa;"] {
 
 /* Chat input field styling */
 .chat-form-container .input {
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-full) !important; /* Override Bulma's has-addons */
     padding-left: 1.25rem;
     padding-right: 1.25rem;
     height: 48px;
@@ -1647,6 +1647,11 @@ pre[style*="background-color: #fafafa;"] {
 
 .chat-form-container .input::placeholder {
     color: var(--color-text-muted);
+}
+
+/* Add gap between input and send button */
+.chat-form-container .field.has-addons {
+    gap: 0.75rem;
 }
 
 /* Send button styling */
