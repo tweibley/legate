@@ -107,14 +107,14 @@ div#chat_interface_wrapper
                 - else
                   - msg_class = 'is-success'
 
-                .message class="#{msg_class} agent-message is-small mb-4" id="event-#{event.event_id}" style="border-radius: 6px; overflow: hidden;"
-                  .message-header style="border-top-left-radius: 6px; border-top-right-radius: 6px;"
+                .message class="#{msg_class} agent-message is-small mb-4" id="event-#{event.event_id}"
+                  .message-header
                     p Agent (#{@agent_data[:name]})
                     - raw_json_content = agent_response_content.to_json rescue "{}"
                     - unless raw_json_content.empty? || raw_json_content == "{}"
                       button.button.is-light.is-small.ml-auto( onclick="var el = document.getElementById('raw-#{event.event_id}'); el.style.display = (el.style.display == 'none' ? 'block' : 'none');" )
-                        | Raw
-                  .message-body style="border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;"
+                        | Raw JSON
+                  .message-body
                     div style="white-space: pre-wrap; word-break: break-all; margin-bottom: 0.5rem;" = format_historical_agent_content(agent_response_content)
                     
                     - if agent_response_content.is_a?(Hash) && agent_response_content[:plan_details].is_a?(Array) && !agent_response_content[:plan_details].empty?

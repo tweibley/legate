@@ -1686,14 +1686,14 @@ pre[style*="background-color: #fafafa;"] {
 }
 
 .message.user-message .message-body {
-  border-radius: 0 0 15px 0;
+  border-radius: 0 0 15px 15px;
   border-width: 0 1px 1px 1px;
   padding: 0.75em 1em;
   word-break: break-word;
 }
 
 .message.agent-message .message-body {
-  border-radius: 0 0 0 15px;
+  border-radius: 0 0 15px 15px;
   border-width: 0 1px 1px 1px;
   padding: 0.75em 1em;
   word-break: break-word;
