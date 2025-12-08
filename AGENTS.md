@@ -13,7 +13,7 @@
 - Authentication system for external API access
 - Background job processing via Sidekiq
 
-**Version:** 0.6.4  
+**Version:** 0.6.3  
 **Ruby Requirement:** >= 3.0.0  
 **Author:** Taylor Weibley
 
@@ -59,49 +59,75 @@
 ```
 lib/adk/
 ├── agent.rb              # Core Agent class + AgentDefinition DSL
+├── agents.rb             # Entry point for agents module
 ├── agents/               # Workflow agents
 │   ├── sequential_agent.rb
 │   ├── parallel_agent.rb
 │   └── loop_agent.rb
+├── auth.rb               # Entry point for auth module
 ├── auth/                 # Authentication system
 │   ├── scheme.rb         # Base auth scheme
 │   ├── schemes/          # API Key, Bearer, OAuth2, OIDC, etc.
 │   ├── credential.rb
 │   ├── coordinator.rb    # Auth flow coordination
-│   └── token_*.rb        # Token management
+│   ├── token_manager.rb
+│   ├── token_store.rb
+│   └── excon_middleware.rb  # HTTP middleware for auth
 ├── callbacks/            # Agent/tool/model callbacks
+│   └── callback_context.rb
+├── cli.rb                # Entry point for CLI module
 ├── cli/                  # Thor CLI commands
 │   ├── agent_commands.rb
-│   ├── web_commands.rb
-│   └── sidekiq_commands.rb
+│   ├── deployment_commands.rb
+│   ├── session_commands.rb
+│   ├── sidekiq_commands.rb
+│   ├── tool_commands.rb
+│   └── web_commands.rb
 ├── configuration.rb      # ADK.config singleton
+├── configuration/        # Configuration submodules
+│   └── webhooks.rb
+├── definition_store.rb   # Entry point for definition store
 ├── definition_store/     # Agent definition persistence
 │   └── redis_store.rb
+├── global_definition_registry.rb  # Global registry for agent definitions (critical for workflows)
+├── global_tool_manager.rb # Global tool registration
+├── mcp.rb                # Entry point for MCP module
 ├── mcp/                  # Model Context Protocol
 │   ├── client.rb         # MCP client (stdio/sse connections)
-│   ├── connection/       # Connection types
+│   ├── connection/       # Connection types (stdio, sse)
 │   ├── server/           # ADK as MCP server adapters
+│   │   ├── adk_agent_adapter.rb
+│   │   ├── adk_direct_agent_adapter.rb
+│   │   └── adk_tool_adapter.rb
 │   └── tool_wrapper.rb   # Wrap MCP tools as ADK tools
 ├── planner.rb            # LLM-powered planning (Gemini)
 ├── session.rb            # Session object (events, state)
 ├── session_service/      # Session persistence
+│   ├── base.rb
 │   ├── in_memory.rb
 │   └── redis.rb
 ├── tool.rb               # Base Tool class
 ├── tool/
+│   ├── error.rb
 │   └── metadata_dsl.rb   # Tool definition DSL
 ├── tool_context.rb       # Context passed to tools
 ├── tool_registry.rb      # Per-agent tool registry
-├── global_tool_manager.rb # Global tool registration
 ├── tools/                # Built-in tools
 │   ├── echo.rb
 │   ├── calculator.rb
+│   ├── random_number_tool.rb
+│   ├── cat_facts.rb
 │   ├── agent_tool.rb     # Delegate to other agents
-│   └── base_async_job_tool.rb
+│   ├── base_async_job_tool.rb  # Base for async Sidekiq tools
+│   ├── check_job_status_tool.rb
+│   └── base/
+│       └── http_client.rb
 ├── web/                  # Web UI
 │   ├── app.rb            # Sinatra application
 │   ├── routes/           # Route modules
-│   └── views/            # Slim templates
+│   ├── views/            # Slim templates
+│   └── webhook_listener.rb  # Inbound webhook handler
+├── webhook_job_worker.rb # Sidekiq worker for webhook processing
 └── errors.rb             # Error class hierarchy
 ```
 
@@ -302,10 +328,34 @@ end
 ```
 
 **As Server (expose agents as MCP tools):**
+
+ADK agents and tools can be exposed via MCP using two transport methods:
+
+1. **Stdio** (local MCP, default) - For running alongside local MCP hosts:
 ```ruby
-# Use ADK::Mcp::Server::AdkAgentAdapter
-# or ADK::Mcp::Server::AdkToolAdapter
+# Use ADK::Mcp::Server::AdkAgentAdapter or AdkToolAdapter
+# See: mcp_server_adk_agent.rb, mcp_server_adk_tool.rb
 ```
+
+2. **HTTP/Rack** (remote deployment) - For serving over HTTP with SSE:
+```ruby
+# Wrap an ADK tool for MCP
+AdaptedCalculator = ADK::Mcp::Server::AdkToolAdapter.wrap(ADK::Tools::Calculator)
+
+# Create Rack middleware with fast-mcp
+mcp_middleware = FastMcp.rack_middleware(
+  base_app,
+  name: 'adk-rack-server',
+  version: '1.0.0'
+) do |server|
+  server.register_tool(AdaptedCalculator)
+end
+
+# Run with Puma (exposes /mcp/sse and /mcp/messages endpoints)
+Rack::Handler::Puma.run mcp_middleware, Port: 9292
+```
+
+See `examples/mcp_server_rack.rb` for a complete HTTP/Rack example.
 
 ---
 
@@ -473,6 +523,90 @@ definition = ADK::AgentDefinition.new.define do |a|
 end
 ```
 
+### Configuring Webhooks
+
+Agents can be triggered by inbound HTTP webhooks:
+
+```ruby
+webhook_definition = ADK::AgentDefinition.new.define do |a|
+  a.name :webhook_receiver
+  a.description 'Receives webhook POSTs and processes messages'
+  a.instruction 'Process the incoming webhook message.'
+  a.use_tool :echo
+  
+  # Enable webhook triggering
+  a.webhook_enabled true
+  
+  # Validate incoming requests (e.g., HMAC-SHA256)
+  a.webhook_validator :hmac_sha256
+  a.webhook_secret ENV['WEBHOOK_SECRET'] || 'your-secret-key'
+  
+  # Transform the request body into agent input
+  a.webhook_transformer ->(request_body) do
+    parsed = JSON.parse(request_body)
+    "Received message: #{parsed['message']}"
+  end
+  
+  # Extract session ID from payload (or use static)
+  a.webhook_session_extractor ->(_request_body) do
+    'webhook_session_123'
+  end
+end
+
+# Register globally so webhook listener can find it
+ADK::GlobalDefinitionRegistry.register(webhook_definition)
+```
+
+The webhook listener (`ADK::Web::WebhookListener`) handles incoming HTTP requests and routes them to the appropriate agent. See `examples/webhook_receiver_agent.rb`.
+
+### Creating Async Tools with Sidekiq
+
+For long-running tasks, create tools that offload work to Sidekiq background jobs:
+
+```ruby
+# 1. Define the Sidekiq Worker
+class MyLongRunningWorker
+  include Sidekiq::Worker
+  
+  def perform(task_id, params)
+    jid = self.jid  # Get the job ID
+    
+    # Mark job as started
+    ADK::Tools::BaseAsyncJobTool.store_job_pending(jid)
+    
+    # Do the long-running work...
+    result = heavy_computation(params)
+    
+    # Store the result for later retrieval
+    ADK::Tools::BaseAsyncJobTool.store_job_result(jid, result)
+  rescue => e
+    ADK::Tools::BaseAsyncJobTool.store_job_error(jid, e.message, e.class.name)
+    raise
+  end
+end
+
+# 2. Define the ADK Tool
+class MyAsyncTool < ADK::Tools::BaseAsyncJobTool
+  tool_description 'Starts a long-running background task'
+  
+  parameter :task_data, type: :string, required: true,
+    description: 'Data to process'
+  
+  def sidekiq_worker_class
+    MyLongRunningWorker
+  end
+  
+  def prepare_job_arguments(params, context)
+    [context.session_id, params[:task_data]]
+  end
+end
+
+# Register the tool
+ADK::GlobalToolManager.register_tool(MyAsyncTool)
+```
+
+The tool returns `{ status: :pending, job_id: "..." }`. Use the built-in `:check_job_status` tool to poll for results. See `examples/async_job_example.rb` and `examples/workers/sleepy_worker.rb`.
+
 ---
 
 ## Configuration
@@ -518,9 +652,10 @@ bundle exec adk agent execute <name> <task>  # Run agent task
 bundle exec adk tool list                    # List available tools
 
 # Sidekiq (async jobs)
-bundle exec adk sidekiq start               # Start worker
-bundle exec adk sidekiq status              # Check status
-bundle exec adk sidekiq list_jobs           # List pending jobs
+bundle exec adk sidekiq start               # Start worker process
+bundle exec adk sidekiq stop                # Stop workers gracefully
+bundle exec adk sidekiq status              # Check worker/queue status
+bundle exec adk sidekiq list_jobs           # List pending jobs in queue
 
 # Sessions
 bundle exec adk session list                # List sessions
@@ -593,6 +728,7 @@ spec/
 | Tool base | `lib/adk/tool.rb` |
 | Tool DSL | `lib/adk/tool/metadata_dsl.rb` |
 | Global tools | `lib/adk/global_tool_manager.rb` |
+| Global definitions | `lib/adk/global_definition_registry.rb` |
 | Planner | `lib/adk/planner.rb` |
 | Sessions | `lib/adk/session.rb` |
 | Events | `lib/adk/event.rb` |
@@ -604,6 +740,8 @@ spec/
 | CLI | `lib/adk/cli.rb` |
 | Auth System | `lib/adk/auth.rb` |
 | Callbacks | `lib/adk/callbacks/callback_context.rb` |
+| Async Job Base | `lib/adk/tools/base_async_job_tool.rb` |
+| Webhook Worker | `lib/adk/webhook_job_worker.rb` |
 
 ---
 
@@ -633,19 +771,52 @@ spec/
 
 ## Examples Directory
 
-The `examples/` directory contains runnable examples:
+The `examples/` directory contains runnable examples organized by category:
 
-- `simple_agent.rb` - Basic agent with echo tool
-- `random_calculator.rb` - Multi-tool agent
-- `loop_agent_example.rb` - Loop workflow
-- `mas/` - Multi-agent system examples
-  - `sequential_workflow.rb`
-  - `parallel_workflow.rb`
-  - `delegation_example.rb`
-- `auth/` - Authentication examples
-- `mcp_*.rb` - MCP integration examples
+### Basics
+- `simple_agent.rb` - Minimal agent with echo tool
+- `instructed_agent.rb` - Agent with custom instructions
+- `multi_tool_agent.rb` - Agent with multiple tools
+- `random_calculator.rb` - Calculator and random number tools
 
-Run with: `bundle exec ruby examples/<file>.rb`
+### Workflows (Multi-Agent Systems)
+- `mas/sequential_workflow.rb` - Run agents in sequence
+- `mas/parallel_workflow.rb` - Run agents concurrently
+- `mas/loop_workflow.rb` - Iterative refinement loop
+- `mas/delegation_example.rb` - Agent-to-agent delegation
+- `loop_agent_example.rb` - Loop agent configuration
+- `task_refinement_loop_agent.rb` - Self-improving loop
+
+### MCP Integration
+**Client (consume external MCP servers):**
+- `mcp_client_agent.rb` - Connect to external MCP tools
+- `mcp_client_agent_example.rb` - Detailed client example
+
+**Server (expose ADK as MCP server):**
+- `mcp_server_adk_agent.rb` - Expose agent via stdio
+- `mcp_server_adk_tool.rb` - Expose tool via stdio
+- `mcp_server_rack.rb` - **HTTP/Rack** server (SSE transport)
+- `mcp_server_async.rb` - Async tool handling
+- `mcp_resource_server_example.rb` - MCP resources
+
+### Webhooks & Async Jobs
+- `webhook_receiver_agent.rb` - Agent triggered by webhooks
+- `webhook-example.rb` - Webhook configuration
+- `async_job_example.rb` - Sidekiq background jobs
+- `workers/sleepy_worker.rb` - Example Sidekiq worker
+
+### Authentication
+- `auth/oauth2_auth.rb` - OAuth2 flow
+- `auth/oidc_auth.rb` - OpenID Connect
+- `auth/http_bearer_auth.rb` - Bearer token auth
+- `auth/service_account.rb` - Service account credentials
+- `auth/fiber_auth_example.rb` - Fiber-based auth flows
+
+### Callbacks
+- `callback_basics.rb` - Before/after callbacks
+- `callback_monitoring.rb` - Monitoring with callbacks
+
+Run examples with: `bundle exec ruby examples/<file>.rb`
 
 ---
 
@@ -662,12 +833,15 @@ lib/adk/web/
 │   ├── agent_runtime_routes.rb     # Start/stop agents
 │   ├── agent_interaction_routes.rb # Chat interface
 │   ├── tools_ui_routes.rb    # Tool management
-│   └── authentication_routes.rb
+│   ├── authentication_routes.rb
+│   ├── api_routes.rb         # JSON API endpoints
+│   └── documentation_routes.rb
 ├── views/                    # Slim templates
 │   ├── layout.slim
 │   ├── agents/
 │   ├── tools/
 │   └── ...
+├── webhook_listener.rb       # Inbound webhook handling
 └── public/
     └── styles/              # SCSS compiled to CSS
 ```
@@ -686,4 +860,3 @@ This project uses a file-based task management system in `.ai/`:
 - `.ai/memory/` - Archived completed tasks
 
 See `.cursor/rules/.task-magic/` for detailed rules.
-
