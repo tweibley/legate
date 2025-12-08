@@ -234,6 +234,7 @@ module ADK
             view_locals[:agent_result] = final_event_or_error
 
             # Track last run time
+            definition_store = self.instance_variable_get(:@definition_store)
             AgentInteractionRoutes.update_agent_last_run(definition_store, name, logger)
 
             updated_session_object = nil

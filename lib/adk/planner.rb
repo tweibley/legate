@@ -92,6 +92,10 @@ module ADK
 
       # Use the LLM client from the Gemini wrapper
       begin
+        # Note: Structured output (responseSchema) would be ideal here but requires
+        # investigation into gemini-ai gem support. For now, rely on prompt engineering
+        # and robust JSON extraction with fallback to echo tool.
+        # See: https://ai.google.dev/gemini-api/docs/structured-output
         response = @client.generate_content(
           {
             contents: [{ role: 'user', parts: { text: modified_prompt } }]
@@ -139,10 +143,15 @@ module ADK
         # Extract and validate the plan
         validated_result = validate_and_format_multi_step_plan(modified_response)
 
-        # Check for errors in validation
+        # Check for errors in validation - use fallback plan instead of returning error
         if validated_result[:error]
-          logger.error("Plan validation failed: #{validated_result[:error]}")
-          return { error: validated_result[:error] }
+          logger.warn("Plan validation failed: #{validated_result[:error]}. Using fallback plan.")
+          # Try to extract any useful text from the LLM response for the fallback message
+          fallback_message = extract_fallback_message(modified_response, user_input)
+          return {
+            thought_process: "Fallback: Could not parse structured plan from model response",
+            steps: fallback_plan_steps(fallback_message)
+          }
         end
 
         # Return the formatted plan steps
@@ -152,11 +161,61 @@ module ADK
         }
       rescue StandardError => e
         logger.error("Error during planning with Gemini: #{e.class}: #{e.message}")
-        fallback_plan(user_input, "Error during planning: #{e.message}")
+        {
+          thought_process: "Error occurred during planning",
+          steps: fallback_plan_steps("I encountered an error while processing your request: #{e.message}")
+        }
       end
     end
 
     private
+
+    # JSON Schema for structured plan output
+    # This schema ensures Gemini returns properly formatted JSON plans
+    # See: https://ai.google.dev/gemini-api/docs/structured-output
+    def plan_json_schema
+      {
+        type: 'object',
+        properties: {
+          thought_process: {
+            type: 'string',
+            description: 'Your reasoning about how to approach the user request'
+          },
+          plan: {
+            type: 'array',
+            description: 'Array of steps to execute',
+            items: {
+              type: 'object',
+              properties: {
+                step: {
+                  type: 'integer',
+                  description: 'Sequential step number starting from 1'
+                },
+                type: {
+                  type: 'string',
+                  enum: ['tool_use'],
+                  description: 'Type of action - must be tool_use'
+                },
+                tool_name: {
+                  type: 'string',
+                  description: 'Name of the tool to use from the available tools list'
+                },
+                tool_input: {
+                  type: 'object',
+                  description: 'Parameters to pass to the tool'
+                },
+                reason: {
+                  type: 'string',
+                  description: 'Brief explanation of why this step is needed'
+                }
+              },
+              required: %w[step type tool_name tool_input reason]
+            }
+          }
+        },
+        required: %w[thought_process plan]
+      }
+    end
 
     # Format tools metadata for the prompt
     # Fetches metadata from the agent instance directly.
@@ -258,7 +317,7 @@ module ADK
       sub_agents_description
     end
 
-    # --- NEW: Build the multi-step prompt ---
+    # --- Build the multi-step prompt ---
     def build_multi_step_gemini_prompt(user_input, tools_description)
       # Check if agent has delegation targets
       has_delegation_targets = @agent.definition.respond_to?(:delegation_targets) &&
@@ -268,42 +327,38 @@ module ADK
       agent_instruction = @agent.respond_to?(:instruction) ? @agent.instruction : nil
       instruction_text = agent_instruction&.strip.to_s
 
-      # Build the prompt with clearer delegation instructions if relevant
+      # Build the prompt with clear JSON format requirements
       prompt = <<~PROMPT
         # Instructions
 
-        You are an AI assistant that helps people by breaking down tasks into simpler steps.
+        You are an AI assistant that helps people by breaking down tasks into actionable steps using available tools.
         #{!instruction_text.empty? ? "\n" + instruction_text + "\n" : ""}
 
-        ## Response Format Requirements
+        ## Response Format - CRITICAL
 
-        1. ALWAYS respond with valid JSON format following this structure:
+        You MUST respond with ONLY a valid JSON object (no markdown, no explanation outside JSON):
+
         ```json
         {
-          "thought_process": "Your reasoning about the user's request",
+          "thought_process": "Your reasoning about how to approach the request",
           "plan": [
             {
               "step": 1,
-              "type": "tool_use",#{' '}
-              "tool_name": "echo",
-              "tool_input": {"message": "Your message content here"},
-              "reason": "Why this step is necessary"
+              "type": "tool_use",
+              "tool_name": "exact_tool_name_from_list",
+              "tool_input": {"param1": "value1"},
+              "reason": "Why this step is needed"
             }
           ]
         }
         ```
 
-        2. Each step MUST have:
-           - A sequential number ("step")
-           - A "type" field which must be exactly "tool_use" (this is the only valid type)
-           - A "tool_name" field with the exact name of a tool from the Available Tools list
-           - A "tool_input" object with the correct parameters for that tool
-           - A "reason" explaining the purpose of this step
+        ## Planning Guidelines
 
-        3. IMPORTANT: Your output MUST be parseable as a JSON object with the fields described above.
-           - DO NOT add markdown code fences (```) outside the JSON
-           - DO NOT add explanations outside the JSON structure
-           - All JSON keys and string values MUST use double quotes
+        1. Analyze the user's request and determine which tools are needed
+        2. Create a plan with one or more steps, each using exactly ONE tool
+        3. Each step MUST have: step (number), type ("tool_use"), tool_name, tool_input (object), reason
+        4. If you cannot fulfill the request with available tools, use the "echo" tool to provide a helpful response
 
       PROMPT
 
@@ -430,21 +485,53 @@ module ADK
 
     # --- NEW: Validate the parsed multi-step response ---
     def validate_and_format_multi_step_plan(llm_response)
-      # Extract JSON from response
-      json_pattern = /\{.*\}/m
-      json_match = llm_response.match(json_pattern)
+      # Try multiple methods to extract JSON from the response
+      parsed_json = nil
 
-      if json_match.nil?
-        logger.warn("Failed to extract JSON from LLM response: #{llm_response}")
-        return { error: "Failed to extract valid JSON from LLM response" }
+      # Method 1: Try to extract from markdown code block (```json ... ```)
+      json_code_block_match = llm_response.match(/```(?:json)?\s*(\{.*?\})\s*```/m)
+      if json_code_block_match
+        begin
+          parsed_json = JSON.parse(json_code_block_match[1])
+          logger.debug("Successfully extracted JSON from markdown code block")
+        rescue JSON::ParserError => e
+          logger.debug("Failed to parse JSON from code block: #{e.message}")
+        end
       end
 
-      # Parse the JSON
-      begin
-        parsed_json = JSON.parse(json_match[0])
-      rescue JSON::ParserError => e
-        logger.warn("Failed to parse JSON from LLM response: #{e.message}\nResponse: #{llm_response}")
-        return { error: "Failed to parse JSON: #{e.message}" }
+      # Method 2: Try direct JSON object extraction (greedy match from first { to last })
+      unless parsed_json
+        # Use a non-greedy inner match but capture the full object structure
+        json_pattern = /(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})/m
+        json_match = llm_response.match(json_pattern)
+        if json_match
+          begin
+            parsed_json = JSON.parse(json_match[1])
+            logger.debug("Successfully extracted JSON via regex pattern")
+          rescue JSON::ParserError => e
+            logger.debug("Failed to parse extracted JSON: #{e.message}")
+          end
+        end
+      end
+
+      # Method 3: Try the simple greedy pattern as fallback
+      unless parsed_json
+        simple_pattern = /\{.*\}/m
+        simple_match = llm_response.match(simple_pattern)
+        if simple_match
+          begin
+            parsed_json = JSON.parse(simple_match[0])
+            logger.debug("Successfully extracted JSON via simple pattern")
+          rescue JSON::ParserError => e
+            logger.debug("Failed to parse JSON from simple pattern: #{e.message}")
+          end
+        end
+      end
+
+      # If we still don't have valid JSON, log and return error
+      if parsed_json.nil?
+        logger.warn("Failed to extract valid JSON from LLM response. Full response:\n#{llm_response}")
+        return { error: "Failed to extract valid JSON from LLM response" }
       end
 
       # Extract plan array from the JSON
@@ -503,6 +590,41 @@ module ADK
           thought_process: thought_process,
           formatted_steps: formatted_steps
         }
+      end
+    end
+
+    # Extract a useful message from the LLM response for fallback
+    # @param llm_response [String] The raw LLM response
+    # @param user_input [String] The original user input
+    # @return [String] A message to use in the fallback response
+    def extract_fallback_message(llm_response, user_input)
+      # Try to find any meaningful content from the response
+      # Remove markdown code blocks and JSON-like structures
+      clean_response = llm_response
+                       .gsub(/```[\s\S]*?```/, '') # Remove code blocks
+                       .gsub(/\{[\s\S]*\}/, '')    # Remove JSON objects
+                       .strip
+
+      # If we have some clean text, use it (truncated if too long)
+      if clean_response.length > 20
+        truncated = clean_response.length > 500 ? "#{clean_response[0..500]}..." : clean_response
+        "Based on your request '#{user_input}': #{truncated}"
+      else
+        # Generic fallback message
+        "I received your request '#{user_input}' but encountered an issue processing it. Please try rephrasing your request."
+      end
+    end
+
+    # Create fallback plan steps using echo tool
+    # @param message [String] The message to echo
+    # @return [Array<Hash>] Plan steps array
+    def fallback_plan_steps(message)
+      echo_tool_exists = agent.available_tools_metadata.any? { |m| m[:name] == :echo }
+      if echo_tool_exists
+        [{ tool: :echo, params: { message: message }, reason: "Fallback response" }]
+      else
+        logger.error('Fallback failed: Echo tool not available to the agent.')
+        []
       end
     end
 
