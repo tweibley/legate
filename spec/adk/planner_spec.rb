@@ -74,11 +74,10 @@ RSpec.describe ADK::Planner do
     end
 
     it 'initializes with a default model name' do
-      # Mocked default model constant from Agent
-      default_model = 'gemini-2.0-flash'
-      allow(ADK::Agent).to receive(:const_get).with(:DEFAULT_MODEL).and_return(default_model)
+      # Use the actual default model constant from Agent
+      default_model = ADK::Agent::DEFAULT_MODEL
 
-      # Create a new planner with the mock in place
+      # Create a new planner with the default model
       planner_with_default = described_class.new(agent: agent, logger: mock_logger)
       expect(planner_with_default.model_name).to eq(default_model)
     end
