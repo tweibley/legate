@@ -960,6 +960,40 @@ RSpec.describe ADK::Agent do
       end
     end
 
+    context 'delegation interception' do
+      let(:plan) { [{ tool: :agent_transfer_to_calculator, params: { task: 'calc something' } }] }
+      before { allow(planner_double).to receive(:plan).and_return(plan) }
+
+      it 'maps agent_transfer_to_ tool to delegate_task' do
+        # We need to mock the delegate_task tool (AgentTool) behavior
+        # Since Agent#execute_step calls @tool_registry.create_instance(:delegate_task)
+        # we need to ensure that returns our mock or spy.
+        
+        # But wait, create_agent doesn't register AgentTool by default in this test setup unless we add it.
+        # Let's add :delegate_task to the tool list for this agent instance or mock the registry lookup.
+        
+        mock_agent_tool = instance_double(ADK::Tools::AgentTool)
+        # Allow execute with any context
+        allow(mock_agent_tool).to receive(:execute).and_return({ status: :success, result: 'delegated result' })
+        
+        # Stub the registry on the agent
+        allow(agent.tool_registry).to receive(:create_instance).with(:delegate_task).and_return(mock_agent_tool)
+        # Allow other tools to work normally if called (though they shouldn't be with this plan)
+        allow(agent.tool_registry).to receive(:create_instance).with(any_args) do |name|
+           next mock_agent_tool if name == :delegate_task
+           nil # or real behavior if needed, but we only expect delegate_task here
+        end
+
+        expect(mock_agent_tool).to receive(:execute).with(
+          hash_including(target_agent_name: 'calculator', task: 'calc something'),
+          anything
+        )
+        
+        result = agent.run_task(session_id: session_id, user_input: user_input, session_service: real_session_service)
+        expect(result.content[:result]).to eq('delegated result')
+      end
+    end
+
     context 'with output_key state management' do
       let(:output_key_name) { :my_agent_output }
       let(:agent_with_output_key) do

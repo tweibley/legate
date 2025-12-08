@@ -140,9 +140,10 @@ RSpec.describe ADK::Tools::AgentTool do
       expect(metadata[:description]).to include('Delegates a specified task')
     end
     it 'defines parameters correctly' do
-      expect(metadata[:parameters].keys).to contain_exactly(:target_agent_name, :task)
+      expect(metadata[:parameters].keys).to contain_exactly(:target_agent_name, :task, :use_calling_session)
       expect(metadata[:parameters][:target_agent_name][:required]).to be true
       expect(metadata[:parameters][:task][:required]).to be true
+      expect(metadata[:parameters][:use_calling_session][:required]).to be false
     end
   end
 
@@ -315,6 +316,38 @@ RSpec.describe ADK::Tools::AgentTool do
         result = tool.execute(params, mock_context)
         # Test passes as long as it succeeds, don't check exact warning
         expect(result[:status]).to eq(:success) # Execution proceeds
+      end
+    end
+
+    context 'when use_calling_session is true' do
+      let(:params_reuse) { params.merge(use_calling_session: true) }
+      let(:context_with_service) {
+        instance_double(ADK::ToolContext,
+          session_id: 'calling-session-id',
+          user_id: 'user',
+          app_name: 'app',
+          tool_registry: mock_executing_registry,
+          session_service: mock_session_service, # Reused service
+          to_h: {}
+        )
+      }
+
+      before do
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_sym).and_return(target_definition_hash)
+        allow(ADK::GlobalToolManager).to receive(:find_class).with(:calculator).and_return(ADK::Tools::Calculator)
+      end
+
+      it 'reuses the calling session service and session id' do
+        # Expect run_task to be called with calling session ID
+        expect(mock_target_agent).to receive(:run_task)
+          .with(session_id: 'calling-session-id', user_input: task_to_delegate, session_service: mock_session_service)
+          .and_return(mock_agent_event)
+
+        # Ensure new session is NOT created
+        expect(ADK::SessionService::InMemory).not_to receive(:new)
+        expect(mock_session_service).not_to receive(:create_session)
+
+        tool.execute(params_reuse, context_with_service)
       end
     end
 

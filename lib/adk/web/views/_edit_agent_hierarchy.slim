@@ -5,10 +5,9 @@
 - agent_name = agent_data[:name]
 - agent_type = agent_data[:agent_type]&.to_sym || :llm
 - sub_agent_names = agent_data[:sub_agent_names] || []
-
-/ Debug: Display agent_name for filtering
-/ This makes it explicit what we're filtering out 
-/ current_agent_name = #{agent_name}
+- loop_max = agent_data[:loop_max_iterations]
+- loop_key = agent_data[:loop_condition_state_key]
+- loop_val = agent_data[:loop_condition_expected_value]
 
 / Get available agent names and exclude current agent
 - all_agent_names = defined?(all_agent_definitions) ? all_agent_definitions.map { |d| d[:name] }.reject { |n| n.to_s == agent_name.to_s } : []
@@ -27,19 +26,13 @@
         - else "fa-sitemap"
         i(class="fas #{type_icon}")
       | Edit 
-      = agent_type == :llm ? "Sub-Agents" : "Workflow Components"
-    
-    - type_label = case agent_type
-    - when :sequential then "Sequential Workflow"
-    - when :parallel then "Parallel Workflow"
-    - when :loop then "Loop Workflow"
-    - else "LLM Agent"
+      = agent_type == :llm ? "Delegation Targets" : "Workflow Components"
     
     .notification.is-light.is-info.mb-4
       span.icon.mr-2
         i.fas.fa-info-circle
       - if agent_type == :llm
-        | Configure sub-agents that this agent can delegate tasks to.
+        | Configure other agents that this LLM agent can delegate tasks to.
       - elsif agent_type == :sequential
         | Configure sub-agents that will execute in sequence. The order in the list below matters.
       - elsif agent_type == :parallel
@@ -54,25 +47,39 @@
         = error_message
     
     .field
-      label.label = agent_type == :llm ? "Sub-Agents" : "Workflow Components"
+      label.label = agent_type == :llm ? "Delegation Targets" : "Workflow Components"
       - if all_agent_names.any?
+        .select.is-multiple.is-fullwidth
+          select(name="sub_agent_names[]" multiple size="5")
+            - all_agent_names.each do |name|
+              - next if name.to_s == agent_name.to_s
+              option(value=name selected=sub_agent_names.include?(name)) = name
+        p.help Select agents. Use Ctrl/Cmd+click for multiple selection.
         - if agent_type == :sequential || agent_type == :loop
-          p.help.mb-2 The order of agents is important for this workflow type. Drag to reorder.
-          .select.is-multiple
-            select(name="sub_agent_names[]" multiple size="5")
-              - all_agent_names.each do |name|
-                - next if name.to_s == agent_name.to_s
-                option(value=name selected=sub_agent_names.include?(name)) = name
-          p.help Select agents for this workflow. Use Ctrl/Cmd+click for multiple selection.
-        - else
-          .select.is-multiple
-            select(name="sub_agent_names[]" multiple size="5")
-              - all_agent_names.each do |name|
-                - next if name.to_s == agent_name.to_s
-                option(value=name selected=sub_agent_names.include?(name)) = name
-          p.help Select agents for this workflow. Use Ctrl/Cmd+click for multiple selection.
+          p.help.has-text-info.mt-1 Order matters for this workflow type.
       - else
-        .notification.is-warning.is-light No other agents available to select as sub-agents. Create some first.
+        .notification.is-warning.is-light No other agents available to select. Create some first.
+
+    / Loop Specific Configuration
+    - if agent_type == :loop
+      hr
+      h5.title.is-6 Loop Conditions
+      .columns.is-multiline
+        .column.is-one-third
+          .field
+            label.label.is-small Max Iterations
+            .control
+              input.input(type="number" name="loop_max_iterations" value=loop_max placeholder="10" min="1")
+        .column.is-one-third
+          .field
+            label.label.is-small Condition State Key
+            .control
+              input.input(type="text" name="loop_condition_state_key" value=loop_key placeholder="e.g. task_complete")
+        .column.is-one-third
+          .field
+            label.label.is-small Expected Value
+            .control
+              input.input(type="text" name="loop_condition_expected_value" value=loop_val placeholder="e.g. true")
     
     / Action Buttons
     .field.is-grouped.mt-4

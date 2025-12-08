@@ -20,6 +20,8 @@ module ADK
       AGENT_DEFINITION_FIELDS = %w[name description tools model fallback_mode mcp_servers_json instruction
                                    webhook_enabled webhook_secret persistent_status agent_type
                                    sub_agent_names sequential_sub_agent_names parallel_sub_agent_names loop_sub_agent_names
+                                   output_key delegation_targets
+                                   loop_max_iterations loop_condition_state_key loop_condition_expected_value
                                    auth_scheme_assignments auth_credential_assignments auth_url_mappings
                                    last_run_at].freeze
 
@@ -62,6 +64,8 @@ module ADK
       def save_definition(name:, description:, tools:, model:, fallback_mode:, mcp_servers_json:, instruction: nil,
                           webhook_enabled: false, webhook_secret: nil, agent_type: :llm, sub_agent_names: [],
                           sequential_sub_agent_names: [], parallel_sub_agent_names: [], loop_sub_agent_names: [],
+                          output_key: nil, delegation_targets: [],
+                          loop_max_iterations: nil, loop_condition_state_key: nil, loop_condition_expected_value: nil,
                           auth_scheme_assignments: {}, auth_credential_assignments: {}, auth_url_mappings: [])
         raise ConfigurationError, 'Redis client not available.' unless @redis
         raise ArgumentError, 'Agent name cannot be empty.' if name.nil? || name.strip.empty?
@@ -104,6 +108,12 @@ module ADK
             multi.hset(agent_key, 'sequential_sub_agent_names', sequential_sub_agent_names.to_json)
             multi.hset(agent_key, 'parallel_sub_agent_names', parallel_sub_agent_names.to_json)
             multi.hset(agent_key, 'loop_sub_agent_names', loop_sub_agent_names.to_json)
+            # MAS fields
+            multi.hset(agent_key, 'output_key', output_key&.to_s || '')
+            multi.hset(agent_key, 'delegation_targets', (delegation_targets || []).to_json)
+            multi.hset(agent_key, 'loop_max_iterations', loop_max_iterations&.to_s || '')
+            multi.hset(agent_key, 'loop_condition_state_key', loop_condition_state_key&.to_s || '')
+            multi.hset(agent_key, 'loop_condition_expected_value', loop_condition_expected_value.to_json)
             multi.hset(agent_key, 'auth_scheme_assignments', auth_scheme_assignments.to_json)
             multi.hset(agent_key, 'auth_credential_assignments', auth_credential_assignments.to_json)
             multi.hset(agent_key, 'auth_url_mappings', auth_url_mappings.to_json)
@@ -254,6 +264,43 @@ module ADK
             end
           else
             definition_hash['loop_sub_agent_names'] = [] # Default to empty array if not present
+          end
+
+          # --- Process MAS Fields ---
+          # Process output_key (convert to symbol if present)
+          output_key_str = definition_hash['output_key']
+          definition_hash['output_key'] = (output_key_str && !output_key_str.empty?) ? output_key_str.to_sym : nil
+
+          # Process delegation_targets (JSON array)
+          delegation_targets_json = definition_hash['delegation_targets']
+          if delegation_targets_json && !delegation_targets_json.empty?
+            begin
+              definition_hash['delegation_targets'] = JSON.parse(delegation_targets_json).map(&:to_sym)
+            rescue JSON::ParserError
+              definition_hash['delegation_targets'] = []
+            end
+          else
+            definition_hash['delegation_targets'] = []
+          end
+
+          # Process loop_max_iterations (convert to integer if present)
+          loop_max_str = definition_hash['loop_max_iterations']
+          definition_hash['loop_max_iterations'] = (loop_max_str && !loop_max_str.empty?) ? loop_max_str.to_i : nil
+
+          # Process loop_condition_state_key (convert to symbol if present)
+          loop_key_str = definition_hash['loop_condition_state_key']
+          definition_hash['loop_condition_state_key'] = (loop_key_str && !loop_key_str.empty?) ? loop_key_str.to_sym : nil
+
+          # Process loop_condition_expected_value (parse JSON)
+          loop_val_json = definition_hash['loop_condition_expected_value']
+          if loop_val_json && !loop_val_json.empty? && loop_val_json != 'null'
+            begin
+              definition_hash['loop_condition_expected_value'] = JSON.parse(loop_val_json)
+            rescue JSON::ParserError
+              definition_hash['loop_condition_expected_value'] = nil
+            end
+          else
+            definition_hash['loop_condition_expected_value'] = nil
           end
 
           # --- Process Authentication Fields ---
@@ -465,6 +512,31 @@ module ADK
             rescue JSON::GeneratorError => e
               @logger.error("JSON error serializing loop_sub_agent_names for agent '#{agent_name}': #{e.message}")
               raise StoreError, "Failed to serialize loop sub-agent names for agent '#{agent_name}'."
+            end
+          when 'output_key'
+            # Handle output_key (symbol to string)
+            redis_updates[field_str] = value&.to_s || ''
+          when 'delegation_targets'
+            # Handle delegation_targets array
+            begin
+              redis_updates[field_str] = value.is_a?(Array) ? value.to_json : '[]'
+            rescue JSON::GeneratorError => e
+              @logger.error("JSON error serializing delegation_targets for agent '#{agent_name}': #{e.message}")
+              raise StoreError, "Failed to serialize delegation targets for agent '#{agent_name}'."
+            end
+          when 'loop_max_iterations'
+            # Handle loop_max_iterations (integer to string)
+            redis_updates[field_str] = value&.to_s || ''
+          when 'loop_condition_state_key'
+            # Handle loop_condition_state_key (symbol to string)
+            redis_updates[field_str] = value&.to_s || ''
+          when 'loop_condition_expected_value'
+            # Handle loop_condition_expected_value (any value to JSON)
+            begin
+              redis_updates[field_str] = value.to_json
+            rescue JSON::GeneratorError => e
+              @logger.error("JSON error serializing loop_condition_expected_value for agent '#{agent_name}': #{e.message}")
+              raise StoreError, "Failed to serialize loop condition value for agent '#{agent_name}'."
             end
           when 'auth_scheme_assignments'
             # Handle auth_scheme_assignments hash

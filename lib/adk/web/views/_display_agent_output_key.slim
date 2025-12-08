@@ -1,0 +1,31 @@
+/ File: lib/adk/web/views/_display_agent_output_key.slim
+/ Expects agent_data hash with output_key
+/ locals: show_edit_button (boolean)
+
+- output_key = agent_data[:output_key]
+- show_edit_button = locals.fetch(:show_edit_button, false)
+
+.field#agent-output-key-display
+  label.label.is-small.has-text-grey-light Output Key
+  .level.is-mobile
+    .level-left
+      .level-item
+        - if output_key && !output_key.to_s.empty?
+          span.tag.is-info.is-light.is-medium
+            span.icon.is-small.mr-1
+              i.fas.fa-key
+            span = output_key
+        - else
+          span.is-italic.has-text-grey-light No output key configured
+    
+    - if show_edit_button
+      .level-right
+        .level-item
+          button.button.is-small.is-ghost(
+            hx-get="/agents/#{agent_data[:name]}/edit/output_key"
+            hx-target="#agent-output-key-display"
+            hx-swap="outerHTML"
+            title="Edit Output Key"
+          )
+            span.icon.is-small
+              i.fas.fa-pencil-alt

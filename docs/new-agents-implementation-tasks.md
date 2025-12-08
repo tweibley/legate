@@ -5,67 +5,67 @@ This document breaks down the implementation plan into concrete tasks. Each task
 ## Phase 1: Core Agent Hierarchy
 
 ### Task Group 1.1: Basic Agent Hierarchy
-- [] Add `parent_agent` attribute to `ADK::Agent`
+- [x] Add `parent_agent` attribute to `ADK::Agent`
   - File: `lib/adk/agent.rb`
   - Dependencies: None
-- [] Add `sub_agents` attribute to `ADK::Agent`
+- [x] Add `sub_agents` attribute to `ADK::Agent`
   - File: `lib/adk/agent.rb`
   - Dependencies: None
-- [] Implement `ADK::Agent#initialize` sub-agents logic
+- [x] Implement `ADK::Agent#initialize` sub-agents logic
   - File: `lib/adk/agent.rb`
   - Dependencies: `parent_agent` and `sub_agents` attributes
-- [] Add hierarchy navigation methods to `ADK::Agent`
+- [x] Add hierarchy navigation methods to `ADK::Agent`
   - File: `lib/adk/agent.rb`
   - Dependencies: `parent_agent` and `sub_agents` attributes
   - Sub-tasks:
-    - [] Implement `find_sub_agent(name_sym)`
-    - [] Implement `root_agent`
-    - [] Implement `find_agent(name_sym)` and `_find_agent_recursive`
-- [] Add tests for agent hierarchy
+    - [x] Implement `find_sub_agent(name_sym)`
+    - [x] Implement `root_agent`
+    - [x] Implement `find_agent(name_sym)` and `_find_agent_recursive`
+- [x] Add tests for agent hierarchy
   - File: `spec/adk/agent_spec.rb`
   - Dependencies: All above agent hierarchy changes
 
 ### Task Group 1.2: Definition Store Integration
-- [] Add `sub_agent_names` to `ADK::AgentDefinition`
+- [x] Add `sub_agent_names` to `ADK::AgentDefinition`
   - File: `lib/adk/agent.rb`
   - Dependencies: None
-- [] Add `sub_agents_define` DSL method to `DefinitionProxy`
+- [x] Add `sub_agents_define` DSL method to `DefinitionProxy`
   - File: `lib/adk/agent.rb`
   - Dependencies: `sub_agent_names` attribute
-- [] Implement `ADK::AgentDefinition.from_hash`
+- [x] Implement `ADK::AgentDefinition.from_hash`
   - File: `lib/adk/agent.rb`
   - Dependencies: All new attributes
-- [] Update `ADK::DefinitionStore::RedisStore`
+- [x] Update `ADK::DefinitionStore::RedisStore`
   - File: `lib/adk/definition_store/redis_store.rb`
   - Dependencies: `sub_agent_names` attribute
   - Sub-tasks:
-    - [] Add `sub_agent_names` to `AGENT_DEFINITION_FIELDS`
-    - [] Update `save_definition`
-    - [] Update `get_definition`
-    - [] Update `update_definition`
-- [] Add tests for definition store changes
+    - [x] Add `sub_agent_names` to `AGENT_DEFINITION_FIELDS`
+    - [x] Update `save_definition`
+    - [x] Update `get_definition`
+    - [x] Update `update_definition`
+- [x] Add tests for definition store changes
   - Files:
     - `spec/adk/agent_definition_spec.rb`
     - `spec/adk/definition_store/redis_store_spec.rb`
   - Dependencies: All definition store changes
 
 ### Task Group 1.3: State Management
-- [] Add `output_key` to `ADK::AgentDefinition`
+- [x] Add `output_key` to `ADK::AgentDefinition`
   - File: `lib/adk/agent.rb`
   - Dependencies: None
-- [] Add `output_key` DSL method to `DefinitionProxy`
+- [x] Add `output_key` DSL method to `DefinitionProxy`
   - File: `lib/adk/agent.rb`
   - Dependencies: `output_key` attribute
-- [] Add `output_key` to `ADK::Agent`
+- [x] Add `output_key` to `ADK::Agent`
   - File: `lib/adk/agent.rb`
   - Dependencies: Definition changes
-- [] Modify `ADK::Agent#run_task` for state saving
+- [x] Modify `ADK::Agent#run_task` for state saving
   - File: `lib/adk/agent.rb`
   - Dependencies: `output_key` attribute
-- [] Update Redis store for `output_key`
+- [x] Update Redis store for `output_key`
   - File: `lib/adk/definition_store/redis_store.rb`
   - Dependencies: `output_key` attribute
-- [] Add tests for state management
+- [x] Add tests for state management
   - Files:
     - `spec/adk/agent_spec.rb`
     - `spec/adk/agent_definition_spec.rb`
@@ -74,77 +74,77 @@ This document breaks down the implementation plan into concrete tasks. Each task
 ## Phase 2: Workflow Agents
 
 ### Task Group 2.0: Agent Type Support
-- [ ] Add `agent_type` to `ADK::AgentDefinition`
+- [x] Add `agent_type` to `ADK::AgentDefinition`
   - File: `lib/adk/agent.rb`
   - Dependencies: None
-- [ ] Add `agent_type` DSL method to `DefinitionProxy`
+- [x] Add `agent_type` DSL method to `DefinitionProxy`
   - File: `lib/adk/agent.rb`
   - Dependencies: `agent_type` attribute
-- [ ] Update definition store for `agent_type`
+- [x] Update definition store for `agent_type`
   - File: `lib/adk/definition_store/redis_store.rb`
   - Dependencies: `agent_type` attribute
-- [ ] Add tests for agent type support
+- [x] Add tests for agent type support
   - Files:
     - `spec/adk/agent_definition_spec.rb`
     - `spec/adk/definition_store/redis_store_spec.rb`
   - Dependencies: All agent type changes
 
 ### Task Group 2.1: Directory Structure
-- [ ] Create `lib/adk/agents/` directory
-- [ ] Create `lib/adk/agents.rb` manifest
+- [x] Create `lib/adk/agents/` directory
+- [x] Create `lib/adk/agents.rb` manifest
   - Dependencies: None
-- [ ] Update `lib/adk.rb` to require agents
+- [x] Update `lib/adk.rb` to require agents
   - Dependencies: Manifest file
 
 ### Task Group 2.2: Sequential Agent
-- [ ] Create `SequentialAgent` class
+- [x] Create `SequentialAgent` class
   - File: `lib/adk/agents/sequential_agent.rb`
   - Dependencies: Core agent hierarchy
-- [ ] Add sequential workflow DSL
+- [x] Add sequential workflow DSL
   - File: `lib/adk/agent.rb`
   - Dependencies: `agent_type` support
-- [ ] Implement `SequentialAgent#initialize`
+- [x] Implement `SequentialAgent#initialize`
   - Dependencies: Sequential workflow DSL
-- [ ] Implement `SequentialAgent#run_task`
+- [x] Implement `SequentialAgent#run_task`
   - Dependencies: `initialize` implementation
-- [ ] Add tests for sequential agent
+- [x] Add tests for sequential agent
   - File: `spec/adk/agents/sequential_agent_spec.rb`
   - Dependencies: All sequential agent changes
 
 ### Task Group 2.3: Parallel Agent
-- [ ] Create `ParallelAgent` class
+- [x] Create `ParallelAgent` class
   - File: `lib/adk/agents/parallel_agent.rb`
   - Dependencies: Core agent hierarchy
-- [ ] Add parallel workflow DSL
+- [x] Add parallel workflow DSL
   - File: `lib/adk/agent.rb`
   - Dependencies: `agent_type` support
-- [ ] Implement `ParallelAgent#initialize`
+- [x] Implement `ParallelAgent#initialize`
   - Dependencies: Parallel workflow DSL
-- [ ] Implement `ParallelAgent#run_task`
+- [x] Implement `ParallelAgent#run_task`
   - Dependencies: `initialize` implementation
-- [ ] Add tests for parallel agent
+- [x] Add tests for parallel agent
   - File: `spec/adk/agents/parallel_agent_spec.rb`
   - Dependencies: All parallel agent changes
-- [ ] Document output_key requirements
+- [x] Document output_key requirements
   - Dependencies: Parallel agent implementation
 
 ### Task Group 2.4: Loop Agent
-- [ ] Create `LoopAgent` class
+- [x] Create `LoopAgent` class
   - File: `lib/adk/agents/loop_agent.rb`
   - Dependencies: Core agent hierarchy
-- [ ] Add loop workflow DSL methods
+- [x] Add loop workflow DSL methods
   - File: `lib/adk/agent.rb`
   - Dependencies: `agent_type` support
   - Sub-tasks:
-    - [ ] `loop_sub_agents`
-    - [ ] `loop_max_iterations`
-    - [ ] `loop_condition_state_key`
-    - [ ] `loop_condition_expected_value`
-- [ ] Implement `LoopAgent#initialize`
+    - [x] `loop_sub_agents`
+    - [x] `loop_max_iterations`
+    - [x] `loop_condition_state_key`
+    - [x] `loop_condition_expected_value`
+- [x] Implement `LoopAgent#initialize`
   - Dependencies: Loop workflow DSL
-- [ ] Implement `LoopAgent#run_task`
+- [x] Implement `LoopAgent#run_task`
   - Dependencies: `initialize` implementation
-- [ ] Add tests for loop agent
+- [x] Add tests for loop agent
   - File: `spec/adk/agents/loop_agent_spec.rb`
   - Dependencies: All loop agent changes
 
@@ -162,35 +162,35 @@ This document breaks down the implementation plan into concrete tasks. Each task
 ## Phase 3: Advanced Interaction
 
 ### Task Group 3.1: Agent Delegation
-- [ ] Add `delegation_targets` to `ADK::AgentDefinition`
+- [x] Add `delegation_targets` to `ADK::AgentDefinition`
   - File: `lib/adk/agent.rb`
   - Dependencies: None
-- [ ] Add `can_delegate_to` DSL method
+- [x] Add `can_delegate_to` DSL method
   - File: `lib/adk/agent.rb`
   - Dependencies: `delegation_targets` attribute
-- [ ] Update planner prompt for delegation
+- [x] Update planner prompt for delegation
   - File: `lib/adk/planner.rb`
   - Dependencies: Delegation DSL
-- [ ] Modify `ADK::Agent#execute_plan` for transfers
+- [x] Modify `ADK::Agent#execute_plan` for transfers
   - File: `lib/adk/agent.rb`
   - Dependencies: All delegation changes
-- [ ] Add tests for delegation
+- [x] Add tests for delegation
   - Files:
     - `spec/adk/agent_spec.rb`
     - `spec/adk/planner_spec.rb`
   - Dependencies: All delegation changes
 
 ### Task Group 3.2: Agent Tool Enhancement
-- [ ] Add `use_calling_session` parameter
+- [x] Add `use_calling_session` parameter
   - File: `lib/adk/tools/agent_tool.rb`
   - Dependencies: None
-- [ ] Update `perform_execution` for session handling
+- [x] Update `perform_execution` for session handling
   - File: `lib/adk/tools/agent_tool.rb`
   - Dependencies: `use_calling_session` parameter
-- [ ] Modify `ADK::Agent#initialize` for session service
+- [x] Modify `ADK::Agent#initialize` for session service
   - File: `lib/adk/agent.rb`
   - Dependencies: None
-- [ ] Add tests for agent tool changes
+- [x] Add tests for agent tool changes
   - Files:
     - `spec/adk/tools/agent_tool_spec.rb`
     - `spec/adk/agent_spec.rb`
@@ -199,53 +199,53 @@ This document breaks down the implementation plan into concrete tasks. Each task
 ## Phase 4: Documentation & Examples
 
 ### Task Group 4.1: Core Documentation
-- [ ] Document agent hierarchy
+- [x] Document agent hierarchy
   - Files in `docs/core_concepts/`
   - Dependencies: Phase 1 implementation
-- [ ] Document state management
+- [x] Document state management
   - Files in `docs/core_concepts/`
   - Dependencies: Phase 1 implementation
-- [ ] Document workflow agents
+- [x] Document workflow agents
   - Files in `docs/core_concepts/`
   - Dependencies: Phase 2 implementation
-- [ ] Document advanced features
+- [x] Document advanced features
   - Files in `docs/core_concepts/`
   - Dependencies: Phase 3 implementation
 
 ### Task Group 4.2: Examples
-- [ ] Create basic hierarchy examples
+- [x] Create basic hierarchy examples
   - Files in `examples/`
   - Dependencies: Phase 1 implementation
-- [ ] Create workflow examples
+- [x] Create workflow examples
   - Files in `examples/`
   - Dependencies: Phase 2 implementation
-- [ ] Create advanced interaction examples
+- [x] Create advanced interaction examples
   - Files in `examples/`
   - Dependencies: Phase 3 implementation
 
 ## Phase 5: Web UI
 
 ### Task Group 5.1: Agent List View
-- [ ] Update agent list to show types
+- [x] Update agent list to show types
   - File: `lib/adk/web/views/agents.slim`
   - Dependencies: `agent_type` support
 
 ### Task Group 5.2: Agent Detail View
-- [ ] Show parent/child relationships
+- [x] Show parent/child relationships
   - File: `lib/adk/web/views/agent.slim`
   - Dependencies: Core hierarchy implementation
-- [ ] Display workflow configurations
+- [x] Display workflow configurations
   - File: `lib/adk/web/views/agent.slim`
   - Dependencies: Workflow agent implementations
 
 ### Task Group 5.3: Agent Creation/Edit
-- [ ] Add agent type selection
+- [x] Add agent type selection
   - Files in `lib/adk/web/views/`
   - Dependencies: `agent_type` support
-- [ ] Add workflow configuration UI
+- [x] Add workflow configuration UI
   - Files in `lib/adk/web/views/`
   - Dependencies: Workflow agent implementations
-- [ ] Add sub-agent selection/ordering
+- [x] Add sub-agent selection/ordering
   - Files in `lib/adk/web/views/`
   - Dependencies: Core hierarchy implementation
 

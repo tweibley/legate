@@ -1822,6 +1822,31 @@ module ADK
       tool_name = step[:tool].to_sym
       params = step[:params].to_h
 
+      # --- Intercept Delegation Tools (MAS) ---
+      # If the model outputs "agent_transfer_to_xyz", map it to "delegate_task"
+      if tool_name.to_s.start_with?('agent_transfer_to_')
+        target_agent_name = tool_name.to_s.sub('agent_transfer_to_', '')
+        ADK.logger.info("Intercepted delegation tool '#{tool_name}'. Mapping to 'delegate_task' for target '#{target_agent_name}'.")
+        
+        # Remap tool name
+        tool_name = :delegate_task
+        
+        # Remap params: ensure target_agent_name is set
+        params[:target_agent_name] = target_agent_name
+        
+        # Ensure 'task' param exists (model should provide it, but handle aliasing/defaults if needed)
+        # The prompt says: - task (string, required)
+        unless params.key?(:task)
+          # Fallback: if model used a different key like 'message' or 'input', map it to 'task'
+          if params.key?(:message)
+            params[:task] = params.delete(:message)
+          elsif params.key?(:input)
+            params[:task] = params.delete(:input)
+          end
+        end
+      end
+      # --- End Delegation Interception ---
+
       # --- Get the tool from our registry ---
       tool = @tool_registry.create_instance(tool_name)
       unless tool

@@ -29,6 +29,11 @@ module ADK
                 description: 'The specific task description to be executed by the target agent.',
                 required: true
 
+      parameter :use_calling_session,
+                type: :boolean,
+                description: 'If true, the target agent executes within the same session context as the caller. If false, a new isolated session is created. Defaults to false.',
+                required: false
+
       private
 
       def perform_execution(params, context) # context is the ToolContext of the calling agent
@@ -44,8 +49,9 @@ module ADK
         end.to_s # Ensure it's a string for store lookup
 
         task_to_delegate = params.fetch(:task) { raise ADK::ToolArgumentError, 'Missing required parameter: task' }
+        use_calling_session = params.fetch(:use_calling_session, false)
 
-        ADK.logger.info("AgentTool: Attempting to delegate task '#{task_to_delegate}' to agent '#{target_agent_name_str}'")
+        ADK.logger.info("AgentTool: Attempting to delegate task '#{task_to_delegate}' to agent '#{target_agent_name_str}' (Session reuse: #{use_calling_session})")
 
         # Load definition hash from the store
         definition_hash = ADK::AgentDefinitionStore.find(target_agent_name_str.to_sym) # Try memory first
@@ -106,16 +112,36 @@ module ADK
 
         ADK.logger.debug("AgentTool: Instantiating target agent '#{target_definition_object.name}' using its definition object.")
 
-        # Create the ephemeral agent using its definition object.
-        # The new ADK::Agent#initialize will handle setting up tools from the definition.
-        # A unique session service is created for this delegation.
-        delegate_session_service = ADK::SessionService::InMemory.new
+        # Determine session service and session ID to use
+        delegate_session_service = nil
+        delegate_session_id = nil
 
+        if use_calling_session
+          if context.session_service
+            delegate_session_service = context.session_service
+            delegate_session_id = context.session_id
+            ADK.logger.debug("AgentTool: Reusing session service and session ID '#{delegate_session_id}' from caller.")
+          else
+            ADK.logger.warn("AgentTool: use_calling_session is true but context has no session_service. Falling back to new isolated session.")
+          end
+        end
+
+        # Fallback if reuse failed or not requested
+        unless delegate_session_service
+          delegate_session_service = ADK::SessionService::InMemory.new
+          # Create a new session
+          new_session = delegate_session_service.create_session(
+            app_name: target_definition_object.name.to_s,
+            user_id: "delegation_#{SecureRandom.hex(4)}"
+          )
+          delegate_session_id = new_session.id
+          ADK.logger.debug("AgentTool: Created new isolated session '#{delegate_session_id}' for target agent.")
+        end
+
+        # Create the ephemeral agent using its definition object
         target_agent = ADK::Agent.new(
           definition: target_definition_object,
           session_service: delegate_session_service
-          # The ephemeral name like "_delegated_" is no longer part of agent instantation.
-          # The agent will use the name from its definition.
         )
 
         # Check if tools are configured for this agent
@@ -135,19 +161,11 @@ module ADK
           end
         end
 
-        # Use the already created delegate_session_service
-        delegate_session = delegate_session_service.create_session(
-          app_name: target_definition_object.name.to_s, # Use definition name for app_name
-          user_id: "delegation_#{SecureRandom.hex(4)}"
-        )
-        session_id = delegate_session.id
-        ADK.logger.debug("AgentTool: Created delegation session #{session_id} for target agent '#{target_agent.name}'")
-
         target_agent.start
-        ADK.logger.info("AgentTool: Running task '#{task_to_delegate}' on target agent '#{target_agent.name}'")
+        ADK.logger.info("AgentTool: Running task '#{task_to_delegate}' on target agent '#{target_agent.name}' (Session: #{delegate_session_id})")
 
         agent_event = target_agent.run_task(
-          session_id: session_id,
+          session_id: delegate_session_id,
           user_input: task_to_delegate,
           session_service: delegate_session_service # Pass the correct service
         )

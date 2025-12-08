@@ -18,6 +18,10 @@
   div#agent-mcp-display-container.mb-4
     == slim :_display_agent_mcp, locals: { agent_data: agent_data, show_edit_button: true }
 
+  / --- Output Key ---
+  div#agent-output-key-display-container.mb-4
+    == slim :_display_agent_output_key, locals: { agent_data: agent_data, show_edit_button: true }
+
   / --- Instructions ---
   div#agent-instruction-display-container
     /! Pass show_edit_button: true to the instruction partial

@@ -47,6 +47,14 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
                 label.label for="description" Description
                 .control
                   textarea.textarea#description name="description" placeholder="What does this agent do?" required="required" rows="2"
+            .column.is-full
+              .field
+                label.label for="output_key" Output Key
+                .control.has-icons-left
+                  input.input(type="text" name="output_key" placeholder="result_key")
+                  span.icon.is-small.is-left
+                    i.fas.fa-key
+                p.help Optional key to store the agent's final result in the session state.
 
       / ===== Model Configuration Section =====
       .form-section#model-config-section
@@ -125,16 +133,16 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
                   | Enter a valid JSON array or leave empty. Example:
                   code | [{"type": "stdio", "command": "npx", "args": [...]}]
 
-      / ===== Workflow Configuration Section (conditional) =====
+      / ===== Workflow Configuration / Delegation Section =====
       .form-section#workflow-configuration-section style="display: none;"
         .form-section-header
           span.icon
             i.fas.fa-project-diagram
-          span Workflow Configuration
+          span#workflow-section-title Workflow Configuration
         .form-section-content
           .field
-            label.label Workflow Sub-Agents
-            p.help.mb-3
+            label.label#sub-agent-label Workflow Sub-Agents
+            p.help.mb-3#sub-agent-help
               | Select agents to include in this workflow. For sequential workflows, the order is important.
               | These agents must already be created before they can be added to a workflow.
             .control
@@ -161,6 +169,26 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
                 .notification.is-warning.is-light 
                   | No other agents available to select as sub-agents. 
                   | Create some regular agents first before creating a workflow.
+
+          / Loop Specific Parameters
+          .field#loop-parameters-container style="display: none;"
+            label.label Loop Configuration
+            .columns
+              .column.is-one-third
+                .field
+                  label.label.is-small Max Iterations
+                  .control
+                    input.input.is-small(type="number" name="loop_max_iterations" placeholder="10" min="1")
+              .column.is-one-third
+                .field
+                  label.label.is-small Condition State Key
+                  .control
+                    input.input.is-small(type="text" name="loop_condition_state_key" placeholder="e.g. task_complete")
+              .column.is-one-third
+                .field
+                  label.label.is-small Expected Value
+                  .control
+                    input.input.is-small(type="text" name="loop_condition_expected_value" placeholder="e.g. true")
 
       .field.mt-5
         .control
@@ -290,36 +318,40 @@ javascript:
       modelConfigSection.style.display = 'none';
     }
     
-    // Toggle display of workflow configuration section
+    // Toggle display of workflow/delegation configuration section
     const workflowSection = document.getElementById('workflow-configuration-section');
+    const sectionTitle = document.getElementById('workflow-section-title');
+    const subAgentLabel = document.getElementById('sub-agent-label');
+    const subAgentHelp = document.getElementById('sub-agent-help');
+    const loopParams = document.getElementById('loop-parameters-container');
+    const orderingSection = document.getElementById('sequential-workflow-ordering');
+    
+    // We always show the section now, but customize text
+    workflowSection.style.display = '';
+    
+    // Reset displays
+    loopParams.style.display = 'none';
+    if(orderingSection) orderingSection.style.display = 'none';
+
     if (agentType === 'llm') {
-      workflowSection.style.display = 'none';
+       sectionTitle.textContent = "Delegation Configuration";
+       subAgentLabel.textContent = "Delegation Targets";
+       subAgentHelp.innerHTML = "Select other agents that this LLM agent can delegate tasks to.";
     } else {
-      workflowSection.style.display = '';
-      
-      // Check if there are any agents available for selection
-      const agentsAvailable = workflowSection.querySelector('.sub-agent-selection-panel') !== null;
-      
-      // Update help text and ordering section based on workflow type
-      const helpText = workflowSection.querySelector('p.help');
-      if (helpText) {
-        if (agentType === 'sequential') {
-          helpText.innerHTML = 'Select agents to execute in sequence. The order of selection matters.';
-          const orderingSection = document.getElementById('sequential-workflow-ordering');
-          if (orderingSection) {
-            orderingSection.style.display = agentsAvailable ? '' : 'none';
-          }
+       sectionTitle.textContent = "Workflow Configuration";
+       subAgentLabel.textContent = "Workflow Sub-Agents";
+       
+       // Check if there are any agents available for selection
+       const agentsAvailable = workflowSection.querySelector('.sub-agent-selection-panel') !== null;
+       
+       if (agentType === 'sequential') {
+          subAgentHelp.innerHTML = 'Select agents to execute in sequence. The order of selection matters.';
+          if (orderingSection) orderingSection.style.display = agentsAvailable ? '' : 'none';
         } else if (agentType === 'parallel') {
-          helpText.innerHTML = 'Select agents to execute concurrently. All selected agents will run at the same time.';
-          if (document.getElementById('sequential-workflow-ordering')) {
-            document.getElementById('sequential-workflow-ordering').style.display = 'none';
-          }
+          subAgentHelp.innerHTML = 'Select agents to execute concurrently. All selected agents will run at the same time.';
         } else if (agentType === 'loop') {
-          helpText.innerHTML = 'Select agents to execute in a loop until a condition is met.';
-          if (document.getElementById('sequential-workflow-ordering')) {
-            document.getElementById('sequential-workflow-ordering').style.display = 'none';
-          }
+          subAgentHelp.innerHTML = 'Select agents to execute in a loop until a condition is met.';
+          loopParams.style.display = '';
         }
-      }
     }
   }

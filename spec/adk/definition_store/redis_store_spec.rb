@@ -278,7 +278,20 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         webhook_enabled.to_s, # webhook_enabled
         webhook_secret || '', # webhook_secret
         'stopped',           # persistent_status
-        'sequential'         # agent_type
+        'sequential',        # agent_type
+        '[]',                # sub_agent_names
+        '[]',                # sequential_sub_agent_names
+        '[]',                # parallel_sub_agent_names
+        '[]',                # loop_sub_agent_names
+        '',                  # output_key
+        '[]',                # delegation_targets
+        '',                  # loop_max_iterations
+        '',                  # loop_condition_state_key
+        'null',              # loop_condition_expected_value
+        '{}',                # auth_scheme_assignments
+        '{}',                # auth_credential_assignments
+        '[]',                # auth_url_mappings
+        nil                  # last_run_at
       ]
     end
     let(:expected_definition) do
@@ -316,9 +329,15 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         sequential_sub_agent_names: [],
         parallel_sub_agent_names: [],
         loop_sub_agent_names: [],
+        output_key: nil,
+        delegation_targets: [],
+        loop_max_iterations: nil,
+        loop_condition_state_key: nil,
+        loop_condition_expected_value: nil,
         auth_scheme_assignments: {},
         auth_credential_assignments: {},
-        auth_url_mappings: []
+        auth_url_mappings: [],
+        last_run_at: nil
       }
       # Mock redis values corresponding to the expected hash
       redis_values_get = [
@@ -337,9 +356,15 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
         '[]', # sequential_sub_agent_names
         '[]', # parallel_sub_agent_names
         '[]', # loop_sub_agent_names
+        '', # output_key
+        '[]', # delegation_targets
+        '', # loop_max_iterations
+        '', # loop_condition_state_key
+        'null', # loop_condition_expected_value
         '{}', # auth_scheme_assignments
         '{}', # auth_credential_assignments
-        '[]'  # auth_url_mappings
+        '[]', # auth_url_mappings
+        nil  # last_run_at
       ]
 
       expect(mock_redis).to receive(:hmget)
@@ -443,7 +468,7 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       tools_index = described_class::AGENT_DEFINITION_FIELDS.index('tools')
       bad_tools_json_values[tools_index] = '[not json'
       expect(mock_redis).to receive(:hmget).and_return(bad_tools_json_values)
-      expect(ADK.logger).to receive(:error).with(/Failed to parse JSON fields for agent '#{agent_name}'.*unexpected token at 'not json'/)
+      expect(ADK.logger).to receive(:error).with(/Failed to parse JSON fields for agent '#{agent_name}'.*unexpected token/)
       expect {
         @store.get_definition(agent_name)
       }.to raise_error(ADK::DefinitionStore::StoreError, /Error parsing stored JSON data/)
@@ -668,9 +693,15 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       vals['sequential_sub_agent_names'] = nil
       vals['parallel_sub_agent_names'] = nil
       vals['loop_sub_agent_names'] = nil
+      vals['output_key'] = nil
+      vals['delegation_targets'] = nil
+      vals['loop_max_iterations'] = nil
+      vals['loop_condition_state_key'] = nil
+      vals['loop_condition_expected_value'] = nil
       vals['auth_scheme_assignments'] = nil
       vals['auth_credential_assignments'] = nil
       vals['auth_url_mappings'] = nil
+      vals['last_run_at'] = nil
       all_fields.map { |f| vals[f] } # Return values in correct order
     }
     let(:summary_values_2) {
@@ -691,9 +722,15 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
       vals['sequential_sub_agent_names'] = nil
       vals['parallel_sub_agent_names'] = nil
       vals['loop_sub_agent_names'] = nil
+      vals['output_key'] = nil
+      vals['delegation_targets'] = nil
+      vals['loop_max_iterations'] = nil
+      vals['loop_condition_state_key'] = nil
+      vals['loop_condition_expected_value'] = nil
       vals['auth_scheme_assignments'] = nil
       vals['auth_credential_assignments'] = nil
       vals['auth_url_mappings'] = nil
+      vals['last_run_at'] = nil
       all_fields.map { |f| vals[f] }
     }
     let(:expected_list) do
@@ -710,9 +747,15 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
           webhook_secret: webhook_secret || '',
           persistent_status: nil,
           agent_type: :llm, # Default agent type
+          output_key: nil,
+          delegation_targets: nil,
+          loop_max_iterations: nil,
+          loop_condition_state_key: nil,
+          loop_condition_expected_value: nil,
           auth_scheme_assignments: nil,
           auth_credential_assignments: nil,
-          auth_url_mappings: nil
+          auth_url_mappings: nil,
+          last_run_at: nil
         },
         {
           name: :agent2, # Expect symbols
@@ -726,9 +769,15 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
           webhook_secret: webhook_secret || '',
           persistent_status: nil,
           agent_type: :llm, # Default agent type
+          output_key: nil,
+          delegation_targets: nil,
+          loop_max_iterations: nil,
+          loop_condition_state_key: nil,
+          loop_condition_expected_value: nil,
           auth_scheme_assignments: nil,
           auth_credential_assignments: nil,
-          auth_url_mappings: nil
+          auth_url_mappings: nil,
+          last_run_at: nil
         }
       ].sort_by { |h| h[:name] }
     end

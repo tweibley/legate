@@ -5,6 +5,9 @@
 - agent_type = agent_data[:agent_type]&.to_sym || :llm
 - sub_agent_names = agent_data[:sub_agent_names] || []
 - show_edit_button = locals.fetch(:show_edit_button, true)
+- loop_max = agent_data[:loop_max_iterations]
+- loop_key = agent_data[:loop_condition_state_key]
+- loop_val = agent_data[:loop_condition_expected_value]
 
 .content#agent-hierarchy-display
   h4.is-size-5
@@ -15,27 +18,42 @@
       - when :loop then "fa-sync-alt"
       - else "fa-sitemap"
       i(class="fas #{type_icon}")
-    | Agent Hierarchy
+    
+    - if agent_type == :llm
+      | Delegation Targets
+    - elsif agent_type == :sequential
+      | Sequential Workflow
+    - elsif agent_type == :parallel
+      | Parallel Workflow
+    - elsif agent_type == :loop
+      | Loop Workflow
+    - else
+      | Agent Hierarchy
 
   - if agent_type == :llm
-    p.help LLM agents can have sub-agents for delegation.
+    p.help This agent can delegate tasks to the following agents:
   - elsif agent_type == :sequential 
-    p.help
-      strong Sequential workflow
-      | : Sub-agents execute in sequence, passing state between them.
+    p.help Sub-agents execute in sequence, passing state between them.
   - elsif agent_type == :parallel
-    p.help
-      strong Parallel workflow
-      | : Sub-agents execute concurrently and results are combined.
+    p.help Sub-agents execute concurrently and results are combined.
   - elsif agent_type == :loop
-    p.help
-      strong Loop workflow
-      | : Sub-agents execute repeatedly until a condition is met.
+    p.help Sub-agents execute repeatedly until a condition is met.
+    .tags.are-medium.mt-2.mb-3
+      - if loop_max
+        span.tag.is-light
+          span.has-text-weight-bold.mr-1 Max:
+          = loop_max
+      - if loop_key
+        span.tag.is-light 
+          span.has-text-weight-bold.mr-1 Until:
+          code = loop_key
+          span.mx-1 ==
+          code = loop_val.inspect
 
   - if sub_agent_names.any?
     .panel.mt-3
       p.panel-heading.is-size-6 
-        = agent_type == :llm ? "Sub-Agents" : "Workflow Components"
+        = agent_type == :llm ? "Delegation Targets" : "Workflow Components"
         span.tag.is-info.is-light.ml-2= "#{sub_agent_names.size} #{sub_agent_names.size == 1 ? 'agent' : 'agents'}"
 
       - if agent_type == :sequential
@@ -57,7 +75,7 @@
   - else
     .notification.is-light.is-warning 
       - if agent_type == :llm
-        | This agent has no sub-agents defined.
+        | No delegation targets configured. This agent cannot delegate tasks.
       - else
         | This workflow has no components defined. Add sub-agents to make this workflow functional.
 
@@ -72,4 +90,4 @@
           i.fas.fa-spinner.fa-spin
         span.icon.is-small
           i.fas.fa-edit
-        span Edit Hierarchy 
+        span Edit Configuration 

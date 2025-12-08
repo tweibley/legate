@@ -53,6 +53,13 @@ module ADK
           mcp_servers_json = params['mcp_servers_json']&.strip
           instruction = params['instruction']&.strip
           agent_type = params['agent_type']&.strip || 'llm'
+          output_key = params['output_key']&.strip
+          output_key = output_key.empty? ? nil : output_key.to_sym if output_key
+
+          # Loop specific params
+          loop_max_iterations = params['loop_max_iterations']&.strip
+          loop_condition_state_key = params['loop_condition_state_key']&.strip
+          loop_condition_expected_value = params['loop_condition_expected_value']&.strip
 
           # Get sub-agents for workflow agents
           sub_agent_names = params['sub_agent_names'] || []
@@ -82,12 +89,24 @@ module ADK
               fallback_mode: selected_fallback, # Store will convert to symbol
               mcp_servers_json: mcp_servers_json_to_save,
               instruction: instruction,
-              agent_type: agent_type
+              agent_type: agent_type,
+              output_key: output_key
             }
 
-            # Add sub_agent_names for workflow agents if they were selected
-            if agent_type != 'llm' && !sub_agent_names.empty?
-              definition_params[:sub_agent_names] = sub_agent_names
+            # Add sub_agent_names or delegation_targets depending on type
+            if !sub_agent_names.empty?
+              if agent_type == 'llm'
+                definition_params[:delegation_targets] = sub_agent_names
+              else
+                definition_params[:sub_agent_names] = sub_agent_names
+              end
+            end
+
+            # Add loop params if type is loop
+            if agent_type == 'loop'
+              definition_params[:loop_max_iterations] = loop_max_iterations.to_i if loop_max_iterations && !loop_max_iterations.empty?
+              definition_params[:loop_condition_state_key] = loop_condition_state_key.to_sym if loop_condition_state_key && !loop_condition_state_key.empty?
+              definition_params[:loop_condition_expected_value] = loop_condition_expected_value if loop_condition_expected_value && !loop_condition_expected_value.empty?
             end
 
             definition_store.save_definition(**definition_params)
@@ -267,9 +286,15 @@ module ADK
                                        tool_count: tool_count,
                                        # Include agent type and sub-agent names for hierarchy display
                                        agent_type: agent_definition[:agent_type]&.to_sym || :llm,
-                                       sub_agent_names: agent_definition[:sub_agent_names] || [],
+                                       # For LLM agents, use delegation_targets as 'sub-agents' for display purposes
+                                       sub_agent_names: (agent_definition[:agent_type]&.to_sym == :llm ? agent_definition[:delegation_targets] : agent_definition[:sub_agent_names]) || [],
                                        # Last run timestamp for display
-                                       last_run_at: agent_definition[:last_run_at]
+                                       last_run_at: agent_definition[:last_run_at],
+                                       # Additional config
+                                       output_key: agent_definition[:output_key],
+                                       loop_max_iterations: agent_definition[:loop_max_iterations],
+                                       loop_condition_state_key: agent_definition[:loop_condition_state_key],
+                                       loop_condition_expected_value: agent_definition[:loop_condition_expected_value]
                                      })
 
           # Tool metadata fetching logic (similar to what's in app.rb for this route)
@@ -331,7 +356,7 @@ module ADK
 
         # GET /agents/:name/edit/:field - Show edit form for a specific agent field.
         app.get '/agents/:name/edit/:field' do |name, field|
-          supported_fields = %w[description model tools fallback mcp instruction hierarchy type]
+          supported_fields = %w[description model tools fallback mcp instruction hierarchy type output_key]
           halt 404, "Editing field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
@@ -344,7 +369,12 @@ module ADK
             fallback_mode: agent_definition[:fallback_mode],
             mcp_servers_json: agent_definition[:mcp_servers_json],
             instruction: agent_definition[:instruction],
-            agent_type: agent_definition[:agent_type]&.to_sym || :llm
+            agent_type: agent_definition[:agent_type]&.to_sym || :llm,
+            output_key: agent_definition[:output_key],
+            sub_agent_names: (agent_definition[:agent_type]&.to_sym == :llm ? agent_definition[:delegation_targets] : agent_definition[:sub_agent_names]) || [],
+            loop_max_iterations: agent_definition[:loop_max_iterations],
+            loop_condition_state_key: agent_definition[:loop_condition_state_key],
+            loop_condition_expected_value: agent_definition[:loop_condition_expected_value]
           }
 
           view_locals = { agent_data: agent_data }
@@ -461,7 +491,7 @@ module ADK
 
         # GET /agents/:name/display/:field - Display an agent field (after edit cancel).
         app.get '/agents/:name/display/:field' do |name, field|
-          supported_fields = %w[description model tools fallback mcp instruction hierarchy type]
+          supported_fields = %w[description model tools fallback mcp instruction hierarchy type output_key]
           halt 404, "Displaying field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
@@ -495,6 +525,9 @@ module ADK
           elsif field == 'type'
             # Add agent_type for type display
             agent_data_for_display[:agent_type] = agent_definition[:agent_type]&.to_sym || :llm
+          elsif field == 'output_key'
+            # Add output_key for display
+            agent_data_for_display[:output_key] = agent_definition[:output_key]
           end
           response_locals[:agent_data] = agent_data_for_display
 
@@ -518,7 +551,7 @@ module ADK
 
         # PUT /agents/:name/update/:field - Update a specific field of an agent definition.
         app.put '/agents/:name/update/:field' do |name, field|
-          supported_fields = %w[description model tools fallback mcp instruction type hierarchy]
+          supported_fields = %w[description model tools fallback mcp instruction type hierarchy output_key]
           halt 404, "Updating field '#{field}' not supported." unless supported_fields.include?(field)
           definition_store = self.instance_variable_get(:@definition_store)
           active_agents_hash = self.instance_variable_get(:@agents)
@@ -528,12 +561,17 @@ module ADK
                                      when 'fallback' then 'fallback_mode'
                                      when 'mcp' then 'mcp_servers_json'
                                      when 'type' then 'agent_type'
+                                     when 'output_key' then 'output_key'
                                      else field
                                      end
           new_value_for_store = nil
           agent_data_for_display_partial = { name: name }
 
           case field
+          when 'output_key'
+             new_value_for_store = params['value']&.strip
+             new_value_for_store = new_value_for_store.empty? ? nil : new_value_for_store.to_sym
+             agent_data_for_display_partial[:output_key] = new_value_for_store
           when 'tools'
             current_definition = definition_store.get_definition(name)
             halt 404, 'Agent not found for tool update.' unless current_definition
@@ -758,11 +796,32 @@ module ADK
             agent_definition = definition_store.get_definition(name)
             halt 404, 'Agent definition not found.' unless agent_definition
 
+            agent_type = agent_definition[:agent_type]&.to_sym || :llm
+
             # Get selected sub-agent names from the form
             sub_agent_names = params['sub_agent_names'] || []
 
-            # Update the definition with the new sub_agent_names
-            definition_store.update_definition(name, sub_agent_names: sub_agent_names)
+            update_params = {}
+
+            if agent_type == :llm
+              update_params[:delegation_targets] = sub_agent_names
+            else
+              update_params[:sub_agent_names] = sub_agent_names
+            end
+
+            # Handle loop params if it's a loop agent
+            if agent_type == :loop
+              loop_max = params['loop_max_iterations']&.strip
+              loop_key = params['loop_condition_state_key']&.strip
+              loop_val = params['loop_condition_expected_value']&.strip
+              
+              update_params[:loop_max_iterations] = loop_max.to_i if loop_max && !loop_max.empty?
+              update_params[:loop_condition_state_key] = loop_key.to_sym if loop_key && !loop_key.empty?
+              update_params[:loop_condition_expected_value] = loop_val if loop_val && !loop_val.empty?
+            end
+
+            # Update the definition
+            definition_store.update_definition(name, update_params)
 
             # Refresh agent data for display
             updated_definition = definition_store.get_definition(name)
@@ -770,7 +829,10 @@ module ADK
               name: name,
               description: updated_definition[:description],
               agent_type: updated_definition[:agent_type]&.to_sym || :llm,
-              sub_agent_names: updated_definition[:sub_agent_names] || []
+              sub_agent_names: (agent_type == :llm ? updated_definition[:delegation_targets] : updated_definition[:sub_agent_names]) || [],
+              loop_max_iterations: updated_definition[:loop_max_iterations],
+              loop_condition_state_key: updated_definition[:loop_condition_state_key],
+              loop_condition_expected_value: updated_definition[:loop_condition_expected_value]
             }
 
             # Return the updated display partial
