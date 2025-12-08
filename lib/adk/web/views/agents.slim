@@ -19,29 +19,29 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
             i.fas.fa-info-circle
           span Basic Information
         .form-section-content
-      .columns.is-multiline
-        .column.is-half
-          .field
-            label.label Name
-            .control.has-icons-left
-              input.input(type="text" name="name" placeholder="unique-agent-name" required=true)
-              span.icon.is-small.is-left
-                i.fas.fa-robot
-        .column.is-half
-          .field
-            label.label for="agent_type" Agent Type
-            .control.has-icons-left
-              .select.is-fullwidth
-                select#agent_type(name="agent_type" onchange="toggleWorkflowFields()")
-                  option(value="llm" selected=true) LLM Agent
-                  option(value="sequential") Sequential Workflow
-                  option(value="parallel") Parallel Workflow
-                  option(value="loop") Loop Workflow
-              span.icon.is-small.is-left
-                i.fas.fa-cog
-            p.help 
-              | LLM uses AI for task execution. 
-              | Workflow agents orchestrate other agents.
+          .columns.is-multiline
+            .column.is-half
+              .field
+                label.label Name
+                .control.has-icons-left
+                  input.input(type="text" name="name" placeholder="unique-agent-name" required=true)
+                  span.icon.is-small.is-left
+                    i.fas.fa-robot
+            .column.is-half
+              .field
+                label.label for="agent_type" Agent Type
+                .control.has-icons-left
+                  .select.is-fullwidth
+                    select#agent_type(name="agent_type" onchange="toggleWorkflowFields()")
+                      option(value="llm" selected=true) LLM Agent
+                      option(value="sequential") Sequential Workflow
+                      option(value="parallel") Parallel Workflow
+                      option(value="loop") Loop Workflow
+                  span.icon.is-small.is-left
+                    i.fas.fa-cog
+                p.help 
+                  | LLM uses AI for task execution. 
+                  | Workflow agents orchestrate other agents.
             .column.is-full
               .field
                 label.label for="description" Description
@@ -64,27 +64,27 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
           span Model Configuration
         .form-section-content
           .columns
-        .column.is-half
-          .field
-            label.label for="model" Language Model
-            .control.has-icons-left
-              .select.is-fullwidth
-                select(name="model")
-                  - default_model = ADK::Agent::DEFAULT_MODEL
-                  - @available_models.each do |model_name|
-                    option(value=model_name selected=(model_name == default_model)) = model_name
-              span.icon.is-small.is-left
+            .column.is-half
+              .field
+                label.label for="model" Language Model
+                .control.has-icons-left
+                  .select.is-fullwidth
+                    select(name="model")
+                      - default_model = ADK::Agent::DEFAULT_MODEL
+                      - @available_models.each do |model_name|
+                        option(value=model_name selected=(model_name == default_model)) = model_name
+                  span.icon.is-small.is-left
                     i.fas.fa-microchip
-        .column.is-half
-          .field
-            label.label Planning Fallback
-            .control.has-icons-left
-              .select.is-fullwidth
-                select(name="fallback_mode")
-                  option(value="error" selected=true) Return Error Message
-                  option(value="echo") Attempt Echo Tool (if available)
-              span.icon.is-small.is-left
-                i.fas.fa-random
+            .column.is-half
+              .field
+                label.label Planning Fallback
+                .control.has-icons-left
+                  .select.is-fullwidth
+                    select(name="fallback_mode")
+                      option(value="error" selected=true) Return Error Message
+                      option(value="echo") Attempt Echo Tool (if available)
+                  span.icon.is-small.is-left
+                    i.fas.fa-random
                 p.help Select behavior when the agent cannot determine which tool to use.
 
       / ===== Instructions Section =====
@@ -110,20 +110,20 @@ details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remo
           .columns
             .column.is-half
               .field
-            label.label Tools
-            .control
-              - if @available_tools && !@available_tools.empty?
-                .panel.tool-selection-panel
-                  p.panel-heading Available Tools
-                  - @available_tools.each do |tool_info|
-                    label.panel-block.is-clickable
-                      input.mr-3(type="checkbox" name="tools[]" value=tool_info[:name])
-                      span
-                        strong #{tool_info[:name].to_s.capitalize}
-                        br
-                        small.has-text-grey #{tool_info[:description]}
-              - else
-                .notification.is-warning.is-light No tools available for selection.
+                label.label Tools
+                .control
+                  - if @available_tools && !@available_tools.empty?
+                    .panel.tool-selection-panel
+                      p.panel-heading Available Tools
+                      - @available_tools.each do |tool_info|
+                        label.panel-block.is-clickable
+                          input.mr-3(type="checkbox" name="tools[]" value=tool_info[:name])
+                          span
+                            strong #{tool_info[:name].to_s.capitalize}
+                            br
+                            small.has-text-grey #{tool_info[:description]}
+                  - else
+                    .notification.is-warning.is-light No tools available for selection.
             .column.is-half
               .field
                 label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
