@@ -1,21 +1,307 @@
 # ADK-Ruby Agent Orientation Guide
 
-> This document provides an orientation for AI agents working with the ADK-Ruby codebase. It covers architecture, key concepts, common patterns, and navigation tips.
+> This document provides an operational manual for AI agents working with the ADK-Ruby codebase. It covers persona, commands, standards, boundaries, architecture, and common patterns.
 
-## Project Overview
+## Persona
 
-**ADK (Agent Development Kit) for Ruby** is a framework for building AI agents with:
-- Dynamic tool selection and execution
-- LLM-powered multi-step planning (Gemini)
-- Session management and state persistence
-- Model Context Protocol (MCP) integration
-- Web UI for agent management and interaction
-- Authentication system for external API access
-- Background job processing via Sidekiq
+You are an expert Ruby developer specializing in the ADK (Agent Development Kit) framework. You understand:
 
-**Version:** 0.6.4  
-**Ruby Requirement:** >= 3.0.0  
-**Author:** Taylor Weibley
+- **Ruby idioms and patterns** - Clean, idiomatic Ruby code following community conventions
+- **AI agent architecture** - LLM-powered planning, tool execution, session management
+- **DSL design** - The AgentDefinition and Tool metadata DSLs
+- **Async patterns** - Background jobs via Sidekiq, MCP protocol integration
+- **Web development** - Sinatra applications, HTMX for dynamic UIs, Slim templates
+
+Your output should be production-ready code that integrates seamlessly with the existing ADK framework patterns.
+
+---
+
+## Project Knowledge
+
+### Tech Stack
+
+| Component | Technology | Version |
+|-----------|------------|---------|
+| Language | Ruby | >= 3.0.0 |
+| LLM | Google Gemini | 2.0-flash (default) |
+| Web Framework | Sinatra | ~> 4.1 |
+| Templating | Slim | ~> 5.2 |
+| Frontend Interactivity | HTMX | Latest |
+| Background Jobs | Sidekiq | ~> 7.0 |
+| Persistence | Redis | 6.x+ |
+| HTTP Client | Excon | ~> 0.109 |
+| CLI Framework | Thor | ~> 1.3 |
+| Testing | RSpec | ~> 3.0 |
+
+### File Structure
+
+```
+lib/adk/
+├── agent.rb              # Core Agent class + AgentDefinition DSL
+├── agents/               # Workflow agents (sequential, parallel, loop)
+├── auth/                 # Authentication schemes (OAuth2, OIDC, API Key, etc.)
+├── callbacks/            # Agent/tool/model lifecycle callbacks
+├── cli/                  # Thor CLI commands
+├── configuration.rb      # ADK.config singleton
+├── definition_store/     # Agent definition persistence (Redis)
+├── mcp/                  # Model Context Protocol client/server
+├── planner.rb            # LLM-powered planning via Gemini
+├── session.rb            # Session object (events, state)
+├── session_service/      # Session persistence (InMemory, Redis)
+├── tool.rb               # Base Tool class
+├── tool_context.rb       # Context passed to tools during execution
+├── global_tool_manager.rb # Global tool registration
+├── tools/                # Built-in tools (echo, calculator, etc.)
+├── web/                  # Web UI (Sinatra app, routes, views)
+└── errors.rb             # Error class hierarchy
+
+spec/                     # RSpec test files
+examples/                 # Runnable example scripts
+```
+
+---
+
+## Tools You Can Use
+
+### Build & Run
+
+```bash
+# Install dependencies
+bundle install
+
+# Start the web UI (port 4567)
+bundle exec adk web start
+
+# Run a specific agent
+bundle exec adk agent execute <agent_name> "<task>"
+
+# List agents and tools
+bundle exec adk agent list
+bundle exec adk tool list
+```
+
+### Testing
+
+```bash
+# Run full test suite
+bundle exec rake spec
+
+# Run specific test file
+bundle exec rspec spec/adk/agent_spec.rb
+
+# Run tests with coverage
+COVERAGE=true bundle exec rake spec
+```
+
+### Linting & Code Quality
+
+```bash
+# Run RuboCop linter
+bundle exec rake rubocop
+
+# Auto-fix RuboCop issues
+bundle exec rubocop -a
+
+# Generate YARD documentation
+bundle exec rake yard
+```
+
+### Background Jobs
+
+```bash
+# Start Sidekiq worker
+bundle exec adk sidekiq start
+
+# Check Sidekiq status
+bundle exec adk sidekiq status
+
+# List pending jobs
+bundle exec adk sidekiq list_jobs
+```
+
+### Styles (Web UI)
+
+```bash
+# Compile SCSS to CSS
+bin/compile-sass
+```
+
+---
+
+## Standards
+
+### Naming Conventions
+
+| Element | Convention | Example |
+|---------|------------|---------|
+| Classes | PascalCase | `AgentDefinition`, `ToolContext` |
+| Modules | PascalCase | `ADK::SessionService` |
+| Methods | snake_case | `run_task`, `perform_execution` |
+| Variables | snake_case | `session_id`, `user_input` |
+| Constants | UPPER_SNAKE_CASE | `DEFAULT_MODEL_NAME`, `MAX_RETRIES` |
+| Tool names | Symbol, snake_case | `:echo`, `:random_number`, `:delegate_task` |
+| Agent names | Symbol, snake_case | `:my_agent`, `:data_pipeline` |
+
+### Code Style Examples
+
+**Tool Implementation:**
+
+```ruby
+# ✅ Good - follows DSL patterns, proper error handling, clear structure
+class WeatherTool < ADK::Tool
+  tool_description 'Get current weather for a location'
+
+  parameter :location,
+    type: :string,
+    description: 'City name or coordinates',
+    required: true
+
+  private
+
+  def perform_execution(params, context)
+    location = params[:location]
+    
+    response = fetch_weather(location)
+    { status: :success, result: response }
+  rescue StandardError => e
+    { status: :error, error_message: "Weather API error: #{e.message}" }
+  end
+end
+
+# ❌ Bad - missing DSL, poor naming, no error handling
+class Weather < ADK::Tool
+  def execute(p, c)
+    get("https://api.weather.com?q=#{p[:loc]}")
+  end
+end
+```
+
+**AgentDefinition:**
+
+```ruby
+# ✅ Good - complete, well-documented, follows conventions
+definition = ADK::AgentDefinition.new.define do |a|
+  a.name :customer_support_agent
+  a.description 'Handles customer inquiries and support tickets'
+  a.instruction <<~PROMPT
+    You are a helpful customer support agent. Be polite, thorough,
+    and always verify information before responding.
+  PROMPT
+  a.use_tool :search_knowledge_base
+  a.use_tool :create_ticket
+  a.model_name 'gemini-2.0-flash'
+  a.temperature 0.3
+end
+
+# ❌ Bad - missing instruction, unclear purpose
+definition = ADK::AgentDefinition.new.define do |a|
+  a.name :agent1
+  a.use_tool :echo
+end
+```
+
+**Tool Return Values:**
+
+```ruby
+# ✅ Good - explicit status, structured response
+{ status: :success, result: { data: processed_data, count: 42 } }
+{ status: :error, error_message: "Invalid input: #{details}" }
+{ status: :pending, job_id: job.id }
+
+# ❌ Bad - implicit structure, missing status
+{ result: "done" }
+processed_data
+"success"
+```
+
+### Error Handling Pattern
+
+```ruby
+# ✅ Good - use ADK error classes appropriately
+def perform_execution(params, context)
+  raise ADK::ToolArgumentError, "location is required" if params[:location].nil?
+  
+  result = external_api_call(params[:location])
+  { status: :success, result: result }
+rescue ExternalAPIError => e
+  raise ADK::ToolError, "API unavailable: #{e.message}"
+end
+
+# ❌ Bad - generic errors, swallowed exceptions
+def perform_execution(params, context)
+  begin
+    external_api_call(params[:location])
+  rescue
+    nil  # Silent failure
+  end
+end
+```
+
+---
+
+## Git Workflow
+
+### Branch Naming
+
+- `feature/description` - New features
+- `fix/description` - Bug fixes
+- `refactor/description` - Code refactoring
+- `docs/description` - Documentation updates
+
+### Commit Messages
+
+Follow conventional commits:
+
+```
+type(scope): description
+
+feat(agent): add webhook support for agent definitions
+fix(planner): handle empty tool list gracefully
+refactor(session): extract state management to separate module
+docs(readme): update installation instructions
+test(tool): add specs for parameter validation
+```
+
+### Before Committing
+
+1. Run tests: `bundle exec rake spec`
+2. Run linter: `bundle exec rake rubocop`
+3. Ensure no debug statements (`puts`, `binding.pry`) remain
+
+---
+
+## Boundaries
+
+### ✅ Always
+
+- Write to `lib/adk/` for core framework changes
+- Write to `spec/adk/` for tests (mirror the lib structure)
+- Write to `examples/` for example scripts
+- Follow the existing DSL patterns for Tools and AgentDefinitions
+- Include specs for new functionality
+- Use ADK error classes (`ADK::ToolError`, `ADK::ToolArgumentError`, etc.)
+- Register new tools with `ADK::GlobalToolManager.register_tool(ToolClass)`
+- Use symbols for tool and agent names (`:my_tool`, not `'my_tool'`)
+
+### ⚠️ Ask First
+
+- Modifying `lib/adk/agent.rb` core execution flow
+- Changing `lib/adk/planner.rb` LLM integration
+- Adding new dependencies to `Gemfile`
+- Modifying database/Redis schemas
+- Changes to the web UI routes or layouts
+- Modifying CI/CD configuration
+- Any changes to `lib/adk/configuration.rb`
+
+### 🚫 Never
+
+- Commit API keys, secrets, or credentials (use environment variables)
+- Modify `Gemfile.lock` directly (run `bundle install` instead)
+- Remove or skip failing tests to make CI pass
+- Use `puts` or `p` for logging (use `ADK.logger` instead)
+- Add synchronous HTTP calls in the main request path without timeout
+- Modify files in `vendor/` or `node_modules/`
+- Create circular dependencies between ADK modules
 
 ---
 
@@ -54,62 +340,9 @@
 
 ---
 
-## Directory Structure
-
-```
-lib/adk/
-├── agent.rb              # Core Agent class + AgentDefinition DSL
-├── agents/               # Workflow agents
-│   ├── sequential_agent.rb
-│   ├── parallel_agent.rb
-│   └── loop_agent.rb
-├── auth/                 # Authentication system
-│   ├── scheme.rb         # Base auth scheme
-│   ├── schemes/          # API Key, Bearer, OAuth2, OIDC, etc.
-│   ├── credential.rb
-│   ├── coordinator.rb    # Auth flow coordination
-│   └── token_*.rb        # Token management
-├── callbacks/            # Agent/tool/model callbacks
-├── cli/                  # Thor CLI commands
-│   ├── agent_commands.rb
-│   ├── web_commands.rb
-│   └── sidekiq_commands.rb
-├── configuration.rb      # ADK.config singleton
-├── definition_store/     # Agent definition persistence
-│   └── redis_store.rb
-├── mcp/                  # Model Context Protocol
-│   ├── client.rb         # MCP client (stdio/sse connections)
-│   ├── connection/       # Connection types
-│   ├── server/           # ADK as MCP server adapters
-│   └── tool_wrapper.rb   # Wrap MCP tools as ADK tools
-├── planner.rb            # LLM-powered planning (Gemini)
-├── session.rb            # Session object (events, state)
-├── session_service/      # Session persistence
-│   ├── in_memory.rb
-│   └── redis.rb
-├── tool.rb               # Base Tool class
-├── tool/
-│   └── metadata_dsl.rb   # Tool definition DSL
-├── tool_context.rb       # Context passed to tools
-├── tool_registry.rb      # Per-agent tool registry
-├── global_tool_manager.rb # Global tool registration
-├── tools/                # Built-in tools
-│   ├── echo.rb
-│   ├── calculator.rb
-│   ├── agent_tool.rb     # Delegate to other agents
-│   └── base_async_job_tool.rb
-├── web/                  # Web UI
-│   ├── app.rb            # Sinatra application
-│   ├── routes/           # Route modules
-│   └── views/            # Slim templates
-└── errors.rb             # Error class hierarchy
-```
-
----
-
 ## Core Concepts
 
-### 1. AgentDefinition
+### AgentDefinition
 
 The blueprint for an agent, defined using a DSL:
 
@@ -140,14 +373,7 @@ definition = ADK::AgentDefinition.new.define do |a|
 end
 ```
 
-**Key attributes:**
-- `name` (Symbol) - unique identifier
-- `instruction` (String) - system prompt for LLM
-- `tool_names` (Set<Symbol>) - tools this agent can use
-- `model_name` (String) - Gemini model to use
-- `agent_type` (Symbol) - `:llm`, `:sequential`, `:parallel`, `:loop`
-
-### 2. Agent
+### Agent
 
 The runtime instance created from an AgentDefinition:
 
@@ -165,19 +391,12 @@ result_event = agent.run_task(
 agent.stop    # Cleanup connections
 ```
 
-**Important methods:**
-- `run_task(session_id:, user_input:, session_service:)` - Main entry point
-- `available_tools_metadata` - Get tool info for planning
-- `add_tool(tool_instance)` - Add tool at runtime
-- `find_sub_agent(name)` - Find child agent for workflows
-
-### 3. Tool
+### Tool
 
 Base class for tools that agents can use:
 
 ```ruby
 class MyTool < ADK::Tool
-  # DSL for metadata (preferred)
   tool_description 'What this tool does'
   
   parameter :input,
@@ -185,126 +404,46 @@ class MyTool < ADK::Tool
     description: 'Input parameter',
     required: true
   
-  parameter :optional_flag,
-    type: :boolean,
-    required: false
-  
   private
   
   def perform_execution(params, context)
-    # params - validated input parameters (Hash with symbol keys)
-    # context - ADK::ToolContext with session info, state access
-    
     input = params[:input]
-    
-    # Success response
     { status: :success, result: "Processed: #{input}" }
-    
-    # Or raise errors
-    # raise ADK::ToolArgumentError, "Invalid input"
-    # raise ADK::ToolError, "Execution failed"
   end
 end
 
-# Register globally
 ADK::GlobalToolManager.register_tool(MyTool)
 ```
 
-**Built-in tools:**
-- `:echo` - Echo messages back
-- `:calculator` - Basic math
-- `:cat_facts` - Random cat facts (example HTTP tool)
-- `:random_number` - Generate random numbers
-- `:delegate_task` - Delegate to another agent
-- `:check_job_status` - Check async job status
-
-### 4. ToolContext
+### ToolContext
 
 Context passed to tools during execution:
 
 ```ruby
 def perform_execution(params, context)
-  # Read session state
-  value = context.state_get(:my_key)
-  
-  # Write to pending state (applied after execution)
-  context.state_set(:result_key, "some value")
-  
-  # Access session info
-  context.session_id
+  value = context.state_get(:my_key)        # Read session state
+  context.state_set(:result_key, "value")   # Write pending state
+  context.session_id                         # Access session info
   context.user_id
-  context.app_name
-  context.invocation_id
-  
-  # Authentication helpers
-  context.get_token(scheme, credential)
-  context.handle_request_auth(request)
 end
 ```
 
-### 5. Session & Events
-
-Sessions track conversation history and state:
+### Session & Events
 
 ```ruby
-session_service = ADK::SessionService::InMemory.new  # or Redis.new
+session_service = ADK::SessionService::InMemory.new
 session = session_service.create_session(
   app_name: agent.name,
   user_id: 'user123'
 )
 
-# Events are immutable records
 event = ADK::Event.new(
   role: :user,        # :user, :agent, :tool_request, :tool_result
   content: "Hello",
-  tool_name: nil,     # For tool events
-  state_delta: {}     # State changes
+  state_delta: {}
 )
 
 session.add_event(event)
-session.get_state(:key)
-session.set_state(:key, value)
-```
-
-### 6. Planner
-
-The Planner uses Gemini LLM to create multi-step plans:
-
-```ruby
-# Internal to Agent - creates JSON plan like:
-{
-  "thought_process": "User wants to calculate...",
-  "plan": [
-    {
-      "step": 1,
-      "type": "tool_use",
-      "tool_name": "calculator",
-      "tool_input": { "expression": "2 + 2" },
-      "reason": "Perform the calculation"
-    }
-  ]
-}
-```
-
-### 7. MCP Integration
-
-ADK can act as MCP client or server:
-
-**As Client (consume external tools):**
-```ruby
-definition = ADK::AgentDefinition.new.define do |a|
-  a.name :mcp_agent
-  a.instruction 'Use external tools'
-  a.mcp_servers [
-    { type: :stdio, command: 'npx', args: ['-y', '@some/mcp-server'] }
-  ]
-end
-```
-
-**As Server (expose agents as MCP tools):**
-```ruby
-# Use ADK::Mcp::Server::AdkAgentAdapter
-# or ADK::Mcp::Server::AdkToolAdapter
 ```
 
 ---
@@ -338,248 +477,19 @@ end
    │
 7. │→ Execute after_agent_callback (if defined)
    │
-8. │→ Store output to session state (if output_key defined)
-   │
-9. └→ Return final ADK::Event
-```
-
-### Tool Registration Flow
-
-```
-1. Tool class defined (inherits ADK::Tool)
-   │
-2. │→ DSL methods set metadata (tool_description, parameter)
-   │
-3. │→ ADK::GlobalToolManager.register_tool(ToolClass)
-   │   └── Stores by symbolic name (e.g., :echo)
-   │
-4. │→ AgentDefinition uses `a.use_tool :echo`
-   │   └── Stores name in tool_names Set
-   │
-5. │→ Agent instantiation
-   │   └── Resolves tool names to instances via GlobalToolManager
-   │
-6. └→ Tool available for planning and execution
+8. └→ Return final ADK::Event
 ```
 
 ---
 
-## Common Patterns
-
-### Creating a New Tool
-
-```ruby
-# lib/my_app/tools/weather_tool.rb
-require 'adk/tool'
-require 'adk/tools/base/http_client'
-
-class WeatherTool < ADK::Tool
-  include ADK::Tools::Base::HttpClient
-  
-  tool_description 'Get current weather for a location'
-  
-  parameter :location, type: :string, required: true,
-    description: 'City name or coordinates'
-  
-  def initialize(**options)
-    super
-    setup_http_client(
-      base_url: 'https://api.weather.com/v1/',
-      headers: { 'Accept' => 'application/json' }
-    )
-  end
-  
-  private
-  
-  def perform_execution(params, context)
-    location = params[:location]
-    
-    # Use auth from context if configured
-    api_key = context.state_get('weather:api_key')
-    
-    response = http_get("current", 
-      query: { q: location },
-      headers: { 'X-API-Key' => api_key }
-    )
-    
-    data = JSON.parse(response.body)
-    { status: :success, result: data['description'] }
-  rescue ADK::ToolHttpError => e
-    { status: :error, error_message: "API error: #{e.message}" }
-  end
-end
-
-# Register
-ADK::GlobalToolManager.register_tool(WeatherTool)
-```
-
-### Creating a Workflow Agent
-
-```ruby
-# Sequential workflow
-workflow_def = ADK::AgentDefinition.new.define do |a|
-  a.name :data_pipeline
-  a.instruction 'Process data through multiple stages'
-  a.agent_type :sequential
-  a.sequential_sub_agent_names [:fetch_agent, :transform_agent, :store_agent]
-  a.output_key :pipeline_result
-end
-
-# Parallel workflow
-parallel_def = ADK::AgentDefinition.new.define do |a|
-  a.name :parallel_search
-  a.instruction 'Search multiple sources simultaneously'
-  a.agent_type :parallel
-  a.parallel_sub_agent_names [:google_search, :bing_search, :duckduckgo_search]
-end
-
-# Loop workflow
-loop_def = ADK::AgentDefinition.new.define do |a|
-  a.name :refinement_loop
-  a.instruction 'Iteratively refine result'
-  a.agent_type :loop
-  a.loop_sub_agent_names [:refine_agent, :evaluate_agent]
-  a.loop_max_iterations 5
-  a.loop_condition_state_key :quality_score
-  a.loop_condition_expected_value 'excellent'
-end
-```
-
-### Using Callbacks
-
-```ruby
-definition = ADK::AgentDefinition.new.define do |a|
-  a.name :monitored_agent
-  a.instruction 'Agent with monitoring'
-  a.use_tool :echo
-  
-  # Track execution time
-  a.before_agent_callback do |context|
-    context.state_set(:start_time, Time.now.to_f)
-    nil # Continue normal execution
-  end
-  
-  a.after_agent_callback do |context, response|
-    duration = Time.now.to_f - context.state_get(:start_time)
-    puts "Execution took #{duration}s"
-    nil # Use response as-is
-  end
-  
-  # Log all tool calls
-  a.before_tool_callback do |tool, args, context|
-    puts "Calling #{tool.name} with #{args.inspect}"
-    nil # Continue
-  end
-end
-```
-
----
-
-## Configuration
-
-### Environment Variables
+## Environment Variables
 
 ```bash
 RACK_ENV=development|production       # Environment mode
 ADK_LOG_LEVEL=DEBUG|INFO|WARN|ERROR  # Logging level
 REDIS_URL=redis://localhost:6379/0   # Redis connection
-GOOGLE_API_KEY=xxx                   # Gemini API key (alias for GEMINI_API_KEY)
+GOOGLE_API_KEY=xxx                   # Gemini API key
 SESSION_SECRET=xxx                   # Web UI session secret
-```
-
-### ADK Configuration
-
-```ruby
-ADK.configure do |config|
-  config.definition_store = ADK::DefinitionStore::RedisStore.new(redis_client: redis)
-  config.session_service = ADK::SessionService::Redis.new(redis_options: {})
-  config.default_model_name = 'gemini-2.0-flash'
-  config.default_temperature = 0.7
-end
-
-# Access config
-ADK.config.default_model_name
-ADK.logger  # Central logger
-```
-
----
-
-## CLI Commands
-
-```bash
-# Web UI
-bundle exec adk web start                    # Start web server (port 4567)
-
-# Agents
-bundle exec adk agent list                   # List defined agents
-bundle exec adk agent execute <name> <task>  # Run agent task
-
-# Tools
-bundle exec adk tool list                    # List available tools
-
-# Sidekiq (async jobs)
-bundle exec adk sidekiq start               # Start worker
-bundle exec adk sidekiq status              # Check status
-bundle exec adk sidekiq list_jobs           # List pending jobs
-
-# Sessions
-bundle exec adk session list                # List sessions
-```
-
----
-
-## Error Handling
-
-### Error Class Hierarchy
-
-```
-ADK::Error (base)
-├── ADK::ToolError           # Tool execution errors
-│   └── ADK::ToolArgumentError  # Invalid tool arguments
-├── ADK::PlanningError       # Planner failures
-├── ADK::SessionError        # Session management errors
-├── ADK::StoreError          # Storage errors
-├── ADK::McpError            # MCP protocol errors
-│   ├── ADK::McpConnectionError
-│   └── ADK::McpProtocolError
-├── ADK::StateValidationError
-├── ADK::SerializationError
-└── ADK::WebhookConfigurationError
-```
-
-### Tool Error Handling
-
-```ruby
-def perform_execution(params, context)
-  # For invalid parameters
-  raise ADK::ToolArgumentError, "Missing required field"
-  
-  # For execution failures
-  raise ADK::ToolError, "External service unavailable"
-  
-  # The framework catches these and creates appropriate error events
-end
-```
-
----
-
-## Testing
-
-```bash
-bundle exec rake spec          # Run RSpec tests
-bundle exec rake rubocop       # Lint code
-bundle exec rake yard          # Generate docs
-```
-
-**Test structure:**
-```
-spec/
-├── adk/
-│   ├── agent_spec.rb
-│   ├── tool_spec.rb
-│   ├── planner_spec.rb
-│   └── ...
-└── spec_helper.rb
 ```
 
 ---
@@ -602,8 +512,6 @@ spec/
 | Web App | `lib/adk/web/app.rb` |
 | Configuration | `lib/adk/configuration.rb` |
 | CLI | `lib/adk/cli.rb` |
-| Auth System | `lib/adk/auth.rb` |
-| Callbacks | `lib/adk/callbacks/callback_context.rb` |
 
 ---
 
@@ -613,7 +521,7 @@ spec/
 
 2. **AgentDefinition requires instruction** - Always set `a.instruction`
 
-3. **Tools must be registered before use** - Either via `GlobalToolManager.register_tool()` or loaded files that self-register
+3. **Tools must be registered before use** - Via `GlobalToolManager.register_tool()`
 
 4. **Agent must be started** - Call `agent.start` before `run_task`
 
@@ -623,67 +531,40 @@ spec/
 
 7. **Workflow agents need sub-agent definitions** - Sub-agents must be registered in GlobalDefinitionRegistry
 
-8. **Event content should be serializable** - Avoid complex objects in event content
+8. **Tool perform_execution returns Hash** - Always return `{ status: :success/:error/:pending, ... }`
 
-9. **Tool perform_execution returns Hash** - Always return `{ status: :success/:error/:pending, ... }`
+9. **Planner depends on GOOGLE_API_KEY** - Set this env var for Gemini integration
 
-10. **Planner depends on GOOGLE_API_KEY** - Set this env var for Gemini integration
+10. **Event content should be serializable** - Avoid complex objects in event content
 
 ---
 
-## Examples Directory
+## Examples
 
 The `examples/` directory contains runnable examples:
 
-- `simple_agent.rb` - Basic agent with echo tool
-- `random_calculator.rb` - Multi-tool agent
-- `loop_agent_example.rb` - Loop workflow
-- `mas/` - Multi-agent system examples
-  - `sequential_workflow.rb`
-  - `parallel_workflow.rb`
-  - `delegation_example.rb`
-- `auth/` - Authentication examples
-- `mcp_*.rb` - MCP integration examples
-
-Run with: `bundle exec ruby examples/<file>.rb`
+```bash
+bundle exec ruby examples/simple_agent.rb        # Basic agent
+bundle exec ruby examples/random_calculator.rb   # Multi-tool agent
+bundle exec ruby examples/loop_agent_example.rb  # Loop workflow
+bundle exec ruby examples/mas/sequential_workflow.rb  # Multi-agent
+```
 
 ---
 
-## Web UI Structure
-
-The Web UI is a Sinatra app using HTMX for dynamic updates:
+## Error Class Hierarchy
 
 ```
-lib/adk/web/
-├── app.rb                    # Main application
-├── routes/
-│   ├── core_routes.rb        # Dashboard, metrics
-│   ├── agent_definition_routes.rb  # CRUD agents
-│   ├── agent_runtime_routes.rb     # Start/stop agents
-│   ├── agent_interaction_routes.rb # Chat interface
-│   ├── tools_ui_routes.rb    # Tool management
-│   └── authentication_routes.rb
-├── views/                    # Slim templates
-│   ├── layout.slim
-│   ├── agents/
-│   ├── tools/
-│   └── ...
-└── public/
-    └── styles/              # SCSS compiled to CSS
+ADK::Error (base)
+├── ADK::ToolError           # Tool execution errors
+│   └── ADK::ToolArgumentError  # Invalid tool arguments
+├── ADK::PlanningError       # Planner failures
+├── ADK::SessionError        # Session management errors
+├── ADK::StoreError          # Storage errors
+├── ADK::McpError            # MCP protocol errors
+│   ├── ADK::McpConnectionError
+│   └── ADK::McpProtocolError
+├── ADK::StateValidationError
+├── ADK::SerializationError
+└── ADK::WebhookConfigurationError
 ```
-
-Access at `http://localhost:4567` after `bundle exec adk web start`
-
----
-
-## Task Magic Integration
-
-This project uses a file-based task management system in `.ai/`:
-
-- `.ai/plans/` - PRDs and feature plans
-- `.ai/tasks/` - Active task files
-- `.ai/TASKS.md` - Master task checklist
-- `.ai/memory/` - Archived completed tasks
-
-See `.cursor/rules/.task-magic/` for detailed rules.
-
