@@ -111,14 +111,15 @@ module ADK
       # List of available Gemini models selectable in the UI.
       # Now includes beta models since we're using v1beta API endpoint
       AVAILABLE_MODELS = [
+        'gemini-2.5-flash',
+        'gemini-2.5-pro',
         'gemini-2.0-flash',
-        'gemini-1.5-flash',
+        'gemini-2.0-flash-thinking-exp',
         'gemini-1.5-pro',
-        'gemini-1.0-pro',
-        # Beta models
-        'gemini-2.5-flash-preview-05-20',
-        'gemini-2.0-flash-exp',
-        'gemini-flash-exp-0827'
+        'gemini-1.5-flash',
+        # Preview / Experimental
+        'gemini-3-pro-preview',
+        'gemini-2.0-flash-exp'
       ].freeze
 
       # --- Register Route Modules ---

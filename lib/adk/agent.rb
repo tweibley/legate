@@ -776,7 +776,7 @@ module ADK
   # Agent class represents an AI agent that can perform tasks using tools and a planner.
   # It operates within the context of a session managed by a SessionService.
   class Agent
-    DEFAULT_MODEL = 'gemini-2.0-flash' # Updated default model
+    DEFAULT_MODEL = 'gemini-2.5-flash' # Updated default model
 
     attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode,
                 :instruction, :definition, :session_service # Added session_service to attr_reader
