@@ -294,30 +294,41 @@
 
 ### Agent Generator
 
-- [ ] **ID 66: Agent Generator Backend Routes** (Priority: high)
+- [x] **ID 66: Agent Generator Backend Routes** (Priority: high)
 > Create the backend route module for the AI-powered agent generator feature, including POST endpoint for generating Ruby agent code from natural language descriptions using Gemini AI.
 
-- [ ] **ID 67: Agent Generator System Prompt Engineering** (Priority: critical)
+- [x] **ID 67: Agent Generator System Prompt Engineering** (Priority: critical)
 > Dependencies: 66
 > Design and implement the comprehensive system prompt that teaches Gemini the full ADK AgentDefinition DSL for any type of agent (LLM, workflow, webhook, etc.).
 
-- [ ] **ID 68: Agent Generator Modal UI** (Priority: high)
+- [x] **ID 68: Agent Generator Modal UI** (Priority: high)
 > Dependencies: 66
 > Create the modal UI component with input form, code preview with syntax highlighting, and export actions (copy/download).
 
-- [ ] **ID 69: Agent Generator Page Integration** (Priority: high)
+- [x] **ID 69: Agent Generator Page Integration** (Priority: high)
 > Dependencies: 66, 68
 > Integrate the agent generator modal into the agents list page, add "Generate with AI" button, and wire up all components.
 
 ### Tool Generator
 
-- [ ] **ID 70: Tool Generator Backend Routes** (Priority: high)
+- [x] **ID 70: Tool Generator Backend Routes** (Priority: high)
 > Create the backend route for the AI-powered tool generator feature, including POST endpoint for generating Ruby tool class code using Gemini AI.
 
-- [ ] **ID 71: Tool Generator System Prompt Engineering** (Priority: critical)
+- [x] **ID 71: Tool Generator System Prompt Engineering** (Priority: critical)
 > Dependencies: 70
 > Design and implement the system prompt that teaches Gemini the ADK Tool DSL, including simple tools, HTTP API tools, and async job tools.
 
-- [ ] **ID 72: Tool Generator Modal UI & Integration** (Priority: high)
+- [x] **ID 72: Tool Generator Modal UI & Integration** (Priority: high)
 > Dependencies: 70, 71
 > Create the modal UI for the tool generator on the Tools page with input form, code preview, and export actions.
+
+---
+
+## Agent Status Persistence Fix Tasks
+
+- [x] **ID 73: Replace halt with Proper Error Handling in _start_agent** (Priority: high)
+> Replace the Sinatra `halt` call in `_start_agent` with proper error handling that works in both request contexts and initialization contexts.
+
+- [x] **ID 74: Reset Agent Persistent Status on Server Startup** (Priority: high)
+> Dependencies: 73
+> Modify `synchronize_persistent_agents` to reset all stale `persistent_status` values to 'stopped' on startup, ensuring the UI accurately reflects that no agents are running immediately after server start.
