@@ -13,8 +13,8 @@
 - original_user_input_for_diagram = user_message
 
 / Display the agent's response message
-.message class="#{response_data[:msg_class]} agent-message is-small mb-4" id="event-#{response_data[:event_id]}" style="border-radius: 6px; overflow: hidden;"
-  .message-header style="border-top-left-radius: 6px; border-top-right-radius: 6px;"
+.message class="#{response_data[:msg_class]} agent-message is-small mb-4" id="event-#{response_data[:event_id]}"
+  .message-header
     / Determine and display the source of the agent's message (Agent, Tool Request, Tool Result)
     - if agent_result.is_a?(ADK::Event) && agent_result.role == :tool_request
       p Tool Request
@@ -41,7 +41,7 @@
           span Flow
     /! --- END MODIFICATION ---
 
-  .message-body style="border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;"
+  .message-body
     / Display the primary textual content of the agent's response
     - if agent_result.is_a?(ADK::Event) && agent_result.role == :tool_request
       - if agent_result.content.is_a?(Hash)

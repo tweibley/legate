@@ -1917,7 +1917,8 @@ pre[style*="background-color: #fafafa;"] {
 .message.agent-message {
   float: right;
   max-width: 85%;
-  border-radius: 15px 15px 0 15px !important;
+  border-radius: 15px !important;
+  overflow: hidden;
 }
 
 .message.user-message .message-header,
