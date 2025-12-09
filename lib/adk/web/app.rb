@@ -851,28 +851,26 @@ module ADK
         @logger.info('Synchronizing persistent agent statuses on startup...')
         begin
           definitions = @definition_store.list_definitions
+          reset_count = 0
+
+          # Reset all 'running' statuses to 'stopped' since we just started the server
+          # (nothing is actually running in memory yet - @agents is empty at boot)
+          # This ensures the UI accurately reflects the actual state of agents
           definitions.each do |definition|
+            next unless definition[:persistent_status] == 'running'
+
             agent_name = definition[:name]
-            if definition[:persistent_status] == 'running'
-              if @agents.key?(agent_name)
-                logger.info("Agent '#{agent_name}' is already running (in @agents), no action needed for sync.")
-              else
-                logger.info("Agent '#{agent_name}' has persistent_status='running', attempting to start it...")
-                started_agent = _start_agent(agent_name)
-                unless started_agent
-                  logger.error("Failed to auto-start agent '#{agent_name}' during sync. Updating persistent_status to 'stopped'.")
-                  begin
-                    @definition_store.update_definition(agent_name, { persistent_status: 'stopped' })
-                    logger.info("Agent '#{agent_name}' persistent_status set to 'stopped' after failed sync.")
-                  rescue ADK::DefinitionStore::StoreError => se
-                    logger.error("Failed to update persistent_status for agent '#{agent_name}' after sync failure: #{se.message}")
-                  end
-                end
-              end
-            elsif definition[:persistent_status] == 'stopped' && @agents.key?(agent_name)
-              logger.warn("Agent '#{agent_name}' has persistent_status='stopped' but was found in @agents. Stopping it now.")
-              _stop_agent(agent_name)
+            @logger.info("Resetting stale 'running' status for agent '#{agent_name}' to 'stopped'")
+            begin
+              @definition_store.update_definition(agent_name, { persistent_status: 'stopped' })
+              reset_count += 1
+            rescue ADK::DefinitionStore::StoreError => se
+              @logger.error("Failed to reset persistent_status for agent '#{agent_name}': #{se.message}")
             end
+          end
+
+          if reset_count.positive?
+            @logger.info("Reset #{reset_count} agent(s) from 'running' to 'stopped' status.")
           end
           @logger.info('Finished synchronizing persistent agent statuses.')
         rescue ADK::DefinitionStore::StoreError => e
@@ -927,7 +925,13 @@ module ADK
       def _start_agent(name)
         return @agents[name] if @agents.key?(name)
 
-        halt 503, 'Definition Store unavailable.' unless @definition_store
+        # Use proper error handling instead of halt (which only works in request contexts)
+        # This allows _start_agent to be called from initialize during synchronization
+        unless @definition_store
+          logger.error("Definition Store unavailable, cannot start agent '#{name}'.")
+          return nil
+        end
+
         agent_definition = nil
         begin
           agent_definition = @definition_store.get_definition(name)

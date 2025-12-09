@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |spec|
   spec.name          = 'adk-ruby'
-  spec.version       = '0.6.3'
+  spec.version       = '0.6.5'
   spec.authors       = ['Taylor Weibley']
   spec.email         = ['taylor@taylorw.com']
 
@@ -39,6 +39,8 @@ Gem::Specification.new do |spec|
 
   # Web UI dependencies
   spec.add_dependency 'coffee-script', '~> 2.4'
+  spec.add_dependency 'kramdown', '~> 2.4'
+  spec.add_dependency 'kramdown-parser-gfm', '~> 1.1'
   spec.add_dependency 'faraday'
   spec.add_dependency 'faraday-net_http'
   spec.add_dependency 'gemini-ai', '~> 4.2.0'
@@ -52,6 +54,8 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'slim', '~> 5.1'
 
   # CLI
+  spec.add_dependency 'cli-ui', '~> 2.2'
+  spec.add_dependency 'dotenv', '~> 3.1'
   spec.add_dependency 'ostruct'
 
   spec.add_development_dependency 'dry-schema', '~> 1.13'
