@@ -56,6 +56,10 @@ div.agent-header-controls(id=container_id)
             span.icon.is-small
               i.fas.fa-download
             span Export JSON
+          a.dropdown-item(href="/agents/#{encoded_agent_name}/download" download="#{agent_name}.rb")
+            span.icon.is-small
+              i.fas.fa-file-code
+            span Download Ruby
           hr.dropdown-divider
           a.dropdown-item.has-text-danger(href="#" data-action="delete-agent" data-agent-name=agent_name)
             span.icon.is-small

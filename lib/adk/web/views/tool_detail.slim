@@ -70,6 +70,11 @@
             = JSON.pretty_generate(@tool[:outputSchema])
 
   .buttons.mt-5
+    - if @tool[:source] == :native
+      a.button.is-link(href="/tools/#{@tool[:name]}/download" download="#{@tool[:name]}.rb")
+        span.icon
+          i.fas.fa-file-code
+        span Download Ruby
     a.button.is-light href="/tools"
       span.icon
         i.fas.fa-arrow-left
