@@ -1,3 +1,37 @@
+## 0.6.6 / 2025-12-09
+
+* Features
+  * **Authentication System:**
+    * Implemented comprehensive Authentication Manager supporting multiple schemes (API Key, Bearer, OAuth2, OIDC, Service Account).
+    * Added Token Lifecycle Management (acquisition, storage, expiration, refresh).
+    * Added Web UI for managing authentication schemes, credentials, and URL mappings.
+    * Added Authentication Testing Dashboard for credential verification and flow simulation.
+  * **Web UI Enhancements:**
+    * Redesigned Dashboard with improved layout and live metrics.
+    * Integrated "AI Builder" for automated Agent and Tool generation.
+    * Improved "Execute" tab with vertical layout and terminal-style output.
+    * Enhanced Chat UI with better formatting, timestamps, and history visualization.
+    * Added "Last Run" timestamp tracking for agents.
+    * Implemented auto-loading for custom tools and agents on startup.
+  * **Documentation:**
+    * Major overhaul of `AGENTS.md` to serve as a comprehensive Agent Orientation Guide.
+    * Added Distributed Deployment Guide for multi-VM scenarios.
+    * Expanded Authentication documentation including migration guides and API references.
+  * **Core:**
+    * Updated default Gemini models to latest versions.
+    * Implemented persistence for Authentication Manager state.
+
+* Bugfixes
+  * Fixed agent status persistence across server restarts.
+  * Fixed chat message styling and border consistency.
+  * Fixed terminal output overflow in Web UI.
+  * Resolved inconsistencies in `AGENTS.md`.
+
+* Refactor
+  * Refactored CLI chat interface for improved user experience.
+  * Standardized authentication scheme naming (HTTPBearer) across codebase.
+  * Improved project documentation structure.
+
 ## 0.6.3 / 2024-05-19
 
 * Features
