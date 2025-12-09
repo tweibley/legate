@@ -9,6 +9,7 @@ require_relative 'cli/web_commands'
 require_relative 'cli/session_commands'
 require_relative 'cli/sidekiq_commands'
 require_relative 'cli/deployment_commands'
+require_relative 'cli/skaffold_commands'
 
 module ADK
   module CLI
@@ -29,6 +30,8 @@ module ADK
       register(SidekiqCommands, 'sidekiq', 'sidekiq <command>', 'Manage Sidekiq workers and jobs')
       register(DeploymentCommands, 'deployment', 'deployment <command>',
                'Generate deployment assets for cloud platforms')
+      register(SkaffoldCommands, 'skaffold', 'skaffold [PROJECT_NAME]',
+               'Generate a new ADK project structure (alias: new, init)')
     end
     # --- End Main class definition ---
   end # End CLI module
