@@ -986,40 +986,29 @@ a.agent-stat:hover .icon {
 .execute-tab-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: auto auto;
   gap: 1.5rem;
 }
 
 .execute-input-section {
   grid-column: 1;
-  grid-row: 1;
 }
 
 .execute-result-section {
   grid-column: 2;
-  grid-row: 1 / 3;
-}
-
-.execute-info-section {
-  grid-column: 1;
-  grid-row: 2;
 }
 
 @media screen and (max-width: 1024px) {
   .execute-tab-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto;
   }
   
   .execute-input-section,
-  .execute-result-section,
-  .execute-info-section {
+  .execute-result-section {
     grid-column: 1;
   }
   
   .execute-input-section { grid-row: 1; }
   .execute-result-section { grid-row: 2; }
-  .execute-info-section { grid-row: 3; }
 }
 
 /* Code Editor Textarea */

@@ -169,18 +169,6 @@ section.section
                 #task-result-content
                   span.terminal-placeholder Ready for output...
 
-          / Info Panel
-          .execute-info-section
-            .message.is-info
-                .message-header
-                    p Info
-                .message-body
-                    p Enter a task for the agent in JSON format.
-                    ul.mt-2 style="font-size: 0.9em;"
-                        li Use `{"task": "your natural language task"}` for general requests.
-                        li Use `{"tool_name": "specific_tool", "param1": "value1", ...}` to directly invoke a tool (if known and allowed).
-                    p The agent must be running to execute tasks. Task results will appear below the input area.
-
       / Chat tab content will now be loaded dynamically via HTMX
       div.content-tab.is-hidden#chat-tab
         / Content will be loaded here by HTMX - skeleton shown until loaded
