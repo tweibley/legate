@@ -8,7 +8,7 @@ module ADK
         # GET /agents - Display the main agent management page.
         app.get '/agents' do
           # `self` is the Sinatra app instance in a route block
-          definition_store = self.instance_variable_get(:@definition_store)
+          definition_store = instance_variable_get(:@definition_store)
 
           view_agents_list = []
           if definition_store
@@ -34,15 +34,15 @@ module ADK
             logger.error('Definition Store unavailable during GET /agents (from AgentDefinitionRoutes)')
           end
 
-          self.instance_variable_set(:@view_agents, view_agents_list)
-          self.instance_variable_set(:@available_tools, ADK::GlobalToolManager.list_all_tools)
-          self.instance_variable_set(:@available_models, ADK::Web::App::AVAILABLE_MODELS) # Access constant via App class
+          instance_variable_set(:@view_agents, view_agents_list)
+          instance_variable_set(:@available_tools, ADK::GlobalToolManager.list_all_tools)
+          instance_variable_set(:@available_models, ADK::Web::App::AVAILABLE_MODELS) # Access constant via App class
           slim :agents
         end
 
         # POST /agents - Create a new agent definition.
         app.post '/agents' do
-          definition_store = self.instance_variable_get(:@definition_store)
+          definition_store = instance_variable_get(:@definition_store)
           halt 503, 'Redis unavailable.' unless definition_store
 
           agent_name = params['name']&.strip
@@ -68,11 +68,9 @@ module ADK
           sub_agent_names = sub_agent_names.reject { |name| name == agent_name }
 
           # Validate agent_type
-          unless %w[llm sequential parallel loop].include?(agent_type)
-            agent_type = 'llm'
-          end
+          agent_type = 'llm' unless %w[llm sequential parallel loop].include?(agent_type)
 
-          mcp_servers_json_to_save = (mcp_servers_json.nil? || mcp_servers_json.empty?) ? '[]' : mcp_servers_json
+          mcp_servers_json_to_save = mcp_servers_json.nil? || mcp_servers_json.empty? ? '[]' : mcp_servers_json
           model_to_save = selected_model && !selected_model.empty? ? selected_model : ADK::Agent::DEFAULT_MODEL
 
           if agent_name.nil? || agent_name.empty? || agent_description.nil? || agent_description.empty?
@@ -94,7 +92,7 @@ module ADK
             }
 
             # Add sub_agent_names or delegation_targets depending on type
-            if !sub_agent_names.empty?
+            unless sub_agent_names.empty?
               if agent_type == 'llm'
                 definition_params[:delegation_targets] = sub_agent_names
               else
@@ -111,7 +109,11 @@ module ADK
 
             definition_store.save_definition(**definition_params)
             logger.info("Agent '#{agent_name}' definition saved (from AgentDefinitionRoutes)")
-            ADK::ActivityLog.log(:agent_created, { name: agent_name }) rescue nil
+            begin
+              ADK::ActivityLog.log(:agent_created, { name: agent_name })
+            rescue StandardError
+              nil
+            end
           rescue ADK::DefinitionStore::StoreError => e
             logger.error("Store error saving agent definition (from AgentDefinitionRoutes): #{e.message}")
             halt 500, 'Error saving agent definition.'
@@ -128,9 +130,7 @@ module ADK
           }
 
           # Include sub_agent_names if this is a workflow agent
-          if agent_type != 'llm' && !sub_agent_names.empty?
-            agent_data[:sub_agent_names] = sub_agent_names
-          end
+          agent_data[:sub_agent_names] = sub_agent_names if agent_type != 'llm' && !sub_agent_names.empty?
 
           # available_tools needed by _agent_row partial
           current_available_tools = ADK::GlobalToolManager.list_all_tools
@@ -144,8 +144,8 @@ module ADK
         # DELETE /agents/:name - Delete an agent definition.
         app.delete '/agents/:name' do |name|
           logger.info("Received request to delete agent '#{name}' (from AgentDefinitionRoutes)")
-          definition_store = self.instance_variable_get(:@definition_store)
-          active_agents_hash = self.instance_variable_get(:@agents)
+          definition_store = instance_variable_get(:@definition_store)
+          active_agents_hash = instance_variable_get(:@agents)
           halt 503, 'Definition Store unavailable.' unless definition_store
 
           if active_agents_hash.key?(name)
@@ -154,14 +154,18 @@ module ADK
               active_agents_hash[name].stop
               active_agents_hash.delete(name)
               logger.info("Agent '#{name}' stopped (from AgentDefinitionRoutes).")
-            rescue => e
+            rescue StandardError => e
               logger.error("Error stopping agent (from AgentDefinitionRoutes): #{e.message}")
             end
           end
           begin
             definition_store.delete_definition(name)
             logger.info("Agent '#{name}' definition deleted from Redis (from AgentDefinitionRoutes).")
-            ADK::ActivityLog.log(:agent_deleted, { name: name }) rescue nil
+            begin
+              ADK::ActivityLog.log(:agent_deleted, { name: name })
+            rescue StandardError
+              nil
+            end
             status 200
             body ''
           rescue ADK::DefinitionStore::StoreError => e
@@ -173,7 +177,7 @@ module ADK
         # POST /agents/:name/duplicate - Create a copy of an agent.
         app.post '/agents/:name/duplicate' do |name|
           logger.info("Received request to duplicate agent '#{name}'")
-          definition_store = self.instance_variable_get(:@definition_store)
+          definition_store = instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
 
           original_definition = definition_store.get_definition(name)
@@ -195,7 +199,11 @@ module ADK
 
           begin
             definition_store.save_definition(new_name, new_definition)
-            ADK::ActivityLog.log(:agent_created, { name: new_name, source: 'duplicate' }) rescue nil
+            begin
+              ADK::ActivityLog.log(:agent_created, { name: new_name, source: 'duplicate' })
+            rescue StandardError
+              nil
+            end
             logger.info("Agent '#{name}' duplicated as '#{new_name}'")
 
             # Redirect to the new agent
@@ -215,7 +223,7 @@ module ADK
         # GET /agents/:name/export - Export agent configuration as JSON.
         app.get '/agents/:name/export' do |name|
           logger.info("Received request to export agent '#{name}'")
-          definition_store = self.instance_variable_get(:@definition_store)
+          definition_store = instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
 
           agent_definition = definition_store.get_definition(name)
@@ -239,10 +247,31 @@ module ADK
           JSON.pretty_generate(export_data)
         end
 
+        # GET /agents/:name/download - Download agent as Ruby file.
+        app.get '/agents/:name/download' do |name|
+          logger.info("Received request to download agent '#{name}' as Ruby file")
+          definition_store = instance_variable_get(:@definition_store)
+          halt 503, 'Definition Store unavailable.' unless definition_store
+
+          agent_definition = definition_store.get_definition(name)
+          halt 404, 'Agent not found' unless agent_definition
+
+          # Ensure name is included in the definition hash
+          agent_definition[:name] ||= name
+
+          # Generate Ruby code
+          require 'adk/agent_code_generator'
+          ruby_code = ADK::AgentCodeGenerator.generate(agent_definition)
+
+          content_type 'application/x-ruby'
+          attachment "#{name.to_s.gsub(/[^a-zA-Z0-9_-]/, '_')}.rb"
+          ruby_code
+        end
+
         # GET /agents/:name - Display the detail page for a specific agent.
         app.get '/agents/:name' do |name|
           logger.info("GET /agents/#{name} route handler entered (from AgentDefinitionRoutes)")
-          definition_store = self.instance_variable_get(:@definition_store)
+          definition_store = instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
 
           agent_definition = nil
@@ -261,7 +290,7 @@ module ADK
 
           mcp_display_string = begin
             parsed = JSON.parse(agent_definition[:mcp_servers_json])
-            (parsed.is_a?(Array) && parsed.empty?) ? 'No MCP Server(s) Configured.' : pretty_json(parsed)
+            parsed.is_a?(Array) && parsed.empty? ? 'No MCP Server(s) Configured.' : pretty_json(parsed)
           rescue JSON::ParserError
             agent_definition[:mcp_servers_json]
           end
@@ -273,29 +302,29 @@ module ADK
           # Calculate tool count for header display
           tool_count = agent_definition[:tools]&.size || 0
 
-          self.instance_variable_set(:@view_agent_data, {
-                                       name: name,
-                                       description: agent_definition[:description],
-                                       running: is_running,
-                                       model: agent_definition[:model],
-                                       fallback_mode: agent_definition[:fallback_mode],
-                                       instruction: agent_definition[:instruction],
-                                       mcp_servers_json: agent_definition[:mcp_servers_json],
-                                       mcp_display_string: mcp_display_string,
-                                       configured_tool_names: agent_definition[:tools],
-                                       tool_count: tool_count,
-                                       # Include agent type and sub-agent names for hierarchy display
-                                       agent_type: agent_definition[:agent_type]&.to_sym || :llm,
-                                       # For LLM agents, use delegation_targets as 'sub-agents' for display purposes
-                                       sub_agent_names: (agent_definition[:agent_type]&.to_sym == :llm ? agent_definition[:delegation_targets] : agent_definition[:sub_agent_names]) || [],
-                                       # Last run timestamp for display
-                                       last_run_at: agent_definition[:last_run_at],
-                                       # Additional config
-                                       output_key: agent_definition[:output_key],
-                                       loop_max_iterations: agent_definition[:loop_max_iterations],
-                                       loop_condition_state_key: agent_definition[:loop_condition_state_key],
-                                       loop_condition_expected_value: agent_definition[:loop_condition_expected_value]
-                                     })
+          instance_variable_set(:@view_agent_data, {
+                                  name: name,
+                                  description: agent_definition[:description],
+                                  running: is_running,
+                                  model: agent_definition[:model],
+                                  fallback_mode: agent_definition[:fallback_mode],
+                                  instruction: agent_definition[:instruction],
+                                  mcp_servers_json: agent_definition[:mcp_servers_json],
+                                  mcp_display_string: mcp_display_string,
+                                  configured_tool_names: agent_definition[:tools],
+                                  tool_count: tool_count,
+                                  # Include agent type and sub-agent names for hierarchy display
+                                  agent_type: agent_definition[:agent_type]&.to_sym || :llm,
+                                  # For LLM agents, use delegation_targets as 'sub-agents' for display purposes
+                                  sub_agent_names: (agent_definition[:agent_type]&.to_sym == :llm ? agent_definition[:delegation_targets] : agent_definition[:sub_agent_names]) || [],
+                                  # Last run timestamp for display
+                                  last_run_at: agent_definition[:last_run_at],
+                                  # Additional config
+                                  output_key: agent_definition[:output_key],
+                                  loop_max_iterations: agent_definition[:loop_max_iterations],
+                                  loop_condition_state_key: agent_definition[:loop_condition_state_key],
+                                  loop_condition_expected_value: agent_definition[:loop_condition_expected_value]
+                                })
 
           # Tool metadata fetching logic (similar to what's in app.rb for this route)
           all_native_tools_metadata = ADK::GlobalToolManager.list_all_tools.map do |tm|
@@ -319,15 +348,15 @@ module ADK
 
           fetched_mcp_tools_metadata = []
           mcp_tool_fetch_results.each do |result|
-            if result[:status] == :success && result[:tools]
-              result[:tools].each do |mcp_tool_schema|
-                parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(
-                  mcp_tool_schema.dig(:inputSchema,
-                                      'properties') || {}, mcp_tool_schema.dig(:inputSchema, 'required') || []
-                )
-                fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
-                                                description: mcp_tool_schema[:description] || '', parameters: parameters, source: :mcp, source_detail: "MCP (#{result[:server]})" }
-              end
+            next unless result[:status] == :success && result[:tools]
+
+            result[:tools].each do |mcp_tool_schema|
+              parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(
+                mcp_tool_schema.dig(:inputSchema,
+                                    'properties') || {}, mcp_tool_schema.dig(:inputSchema, 'required') || []
+              )
+              fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
+                                              description: mcp_tool_schema[:description] || '', parameters: parameters, source: :mcp, source_detail: "MCP (#{result[:server]})" }
             end
           end
 
@@ -358,7 +387,7 @@ module ADK
         app.get '/agents/:name/edit/:field' do |name, field|
           supported_fields = %w[description model tools fallback mcp instruction hierarchy type output_key]
           halt 404, "Editing field '#{field}' not supported." unless supported_fields.include?(field)
-          definition_store = self.instance_variable_get(:@definition_store)
+          definition_store = instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
 
           agent_definition = definition_store.get_definition(name)
@@ -397,13 +426,13 @@ module ADK
 
             fetched_mcp_meta = []
             mcp_results.each do |res|
-              if res[:status] == :success && res[:tools]
-                res[:tools].each do |schema|
-                  params = ADK::Mcp::Util::SchemaConverter.json_to_adk(schema.dig(:inputSchema, 'properties') || {},
-                                                                       schema.dig(:inputSchema, 'required') || [])
-                  fetched_mcp_meta << { name: schema[:name].to_sym, description: schema[:description] || '',
-                                        parameters: params }
-                end
+              next unless res[:status] == :success && res[:tools]
+
+              res[:tools].each do |schema|
+                params = ADK::Mcp::Util::SchemaConverter.json_to_adk(schema.dig(:inputSchema, 'properties') || {},
+                                                                     schema.dig(:inputSchema, 'required') || [])
+                fetched_mcp_meta << { name: schema[:name].to_sym, description: schema[:description] || '',
+                                      parameters: params }
               end
             end
             view_locals[:all_available_tools] = (native_tools + fetched_mcp_meta).uniq { |t|
@@ -428,7 +457,7 @@ module ADK
         # GET /agents/:name/display/tool_table - Render the tool table display partial.
         # NOTE: This specific route must be defined BEFORE the generic /display/:field route
         app.get '/agents/:name/display/tool_table' do |name|
-          definition_store = self.instance_variable_get(:@definition_store)
+          definition_store = instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
           agent_definition = definition_store.get_definition(name)
           halt 404, 'Agent not found' unless agent_definition
@@ -456,15 +485,15 @@ module ADK
 
           fetched_mcp_tools_metadata = []
           mcp_tool_fetch_results.each do |result|
-            if result[:status] == :success && result[:tools]
-              result[:tools].each do |mcp_tool_schema|
-                parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(
-                  mcp_tool_schema.dig(:inputSchema,
-                                      'properties') || {}, mcp_tool_schema.dig(:inputSchema, 'required') || []
-                )
-                fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
-                                                description: mcp_tool_schema[:description] || '', parameters: parameters, source: :mcp, source_detail: "MCP (#{result[:server]})" }
-              end
+            next unless result[:status] == :success && result[:tools]
+
+            result[:tools].each do |mcp_tool_schema|
+              parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(
+                mcp_tool_schema.dig(:inputSchema,
+                                    'properties') || {}, mcp_tool_schema.dig(:inputSchema, 'required') || []
+              )
+              fetched_mcp_tools_metadata << { name: mcp_tool_schema[:name].to_sym,
+                                              description: mcp_tool_schema[:description] || '', parameters: parameters, source: :mcp, source_detail: "MCP (#{result[:server]})" }
             end
           end
 
@@ -477,9 +506,7 @@ module ADK
             ADK::GlobalToolManager.find_class(tm[:name])&.ancestors&.include?(ADK::Tools::BaseAsyncJobTool)
           }
             status_tool_meta = all_available_tools_map[:check_job_status]
-            if status_tool_meta && !view_configured_tools_list.any? { |t| t[:name] == :check_job_status }
-              view_configured_tools_list << status_tool_meta
-            end
+            view_configured_tools_list << status_tool_meta if status_tool_meta && !view_configured_tools_list.any? { |t| t[:name] == :check_job_status }
           end
 
           slim :_agent_tool_table, layout: false, locals: {
@@ -493,7 +520,7 @@ module ADK
         app.get '/agents/:name/display/:field' do |name, field|
           supported_fields = %w[description model tools fallback mcp instruction hierarchy type output_key]
           halt 404, "Displaying field '#{field}' not supported." unless supported_fields.include?(field)
-          definition_store = self.instance_variable_get(:@definition_store)
+          definition_store = instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
 
           agent_definition = definition_store.get_definition(name)
@@ -512,7 +539,7 @@ module ADK
             mcp_json_val = agent_definition[:mcp_servers_json]
             agent_data_for_display[:mcp_display_string] = begin
               parsed = JSON.parse(mcp_json_val)
-              (parsed.is_a?(Array) && parsed.empty?) ? 'No MCP Server(s) Configured.' : pretty_json(parsed)
+              parsed.is_a?(Array) && parsed.empty? ? 'No MCP Server(s) Configured.' : pretty_json(parsed)
             rescue JSON::ParserError
               mcp_json_val
             end
@@ -553,8 +580,8 @@ module ADK
         app.put '/agents/:name/update/:field' do |name, field|
           supported_fields = %w[description model tools fallback mcp instruction type hierarchy output_key]
           halt 404, "Updating field '#{field}' not supported." unless supported_fields.include?(field)
-          definition_store = self.instance_variable_get(:@definition_store)
-          active_agents_hash = self.instance_variable_get(:@agents)
+          definition_store = instance_variable_get(:@definition_store)
+          active_agents_hash = instance_variable_get(:@agents)
           halt 503, 'Definition Store unavailable.' unless definition_store
 
           field_to_update_in_store = case field
@@ -569,20 +596,28 @@ module ADK
 
           case field
           when 'output_key'
-             new_value_for_store = params['value']&.strip
-             new_value_for_store = new_value_for_store.empty? ? nil : new_value_for_store.to_sym
-             agent_data_for_display_partial[:output_key] = new_value_for_store
+            new_value_for_store = params['value']&.strip
+            new_value_for_store = new_value_for_store.empty? ? nil : new_value_for_store.to_sym
+            agent_data_for_display_partial[:output_key] = new_value_for_store
           when 'tools'
             current_definition = definition_store.get_definition(name)
             halt 404, 'Agent not found for tool update.' unless current_definition
             mcp_json = current_definition[:mcp_servers_json]
             native_tool_names = ADK::GlobalToolManager.list_all_tools.map { |t| t[:name].to_s }
-            mcp_configs = JSON.parse(mcp_json) rescue []
+            mcp_configs = begin
+              JSON.parse(mcp_json)
+            rescue StandardError
+              []
+            end
             mcp_results = fetch_mcp_tools(mcp_configs)
             mcp_tool_names = mcp_results.flat_map { |res|
-              res[:status] == :success ? res[:tools].map { |t|
-                t[:name].to_s
-              } : []
+              if res[:status] == :success
+                res[:tools].map { |t|
+                  t[:name].to_s
+                }
+              else
+                []
+              end
             }.uniq
             all_valid_tool_names = (native_tool_names + mcp_tool_names).uniq
 
@@ -601,14 +636,14 @@ module ADK
             end
             fetched_mcp_meta = []
             mcp_results.each do |res|
-              if res[:status] == :success && res[:tools]
-                res[:tools].each do |schema|
-                  params = ADK::Mcp::Util::SchemaConverter.json_to_adk(
-                    schema.dig(:inputSchema, 'properties') || {}, schema.dig(:inputSchema, 'required') || []
-                  )
-                  fetched_mcp_meta << { name: schema[:name].to_sym, description: schema[:description] || '',
-                                        parameters: params, source: :mcp, source_detail: "MCP (#{res[:server]})" }
-                end
+              next unless res[:status] == :success && res[:tools]
+
+              res[:tools].each do |schema|
+                params = ADK::Mcp::Util::SchemaConverter.json_to_adk(
+                  schema.dig(:inputSchema, 'properties') || {}, schema.dig(:inputSchema, 'required') || []
+                )
+                fetched_mcp_meta << { name: schema[:name].to_sym, description: schema[:description] || '',
+                                      parameters: params, source: :mcp, source_detail: "MCP (#{res[:server]})" }
               end
             end
             all_available_meta_map = (all_native_meta + fetched_mcp_meta).each_with_object({}) { |tool, map|
@@ -620,7 +655,7 @@ module ADK
             agent_data_for_display_partial[:mcp_tool_results] = mcp_results # For errors
           when 'mcp'
             submitted_json = params['value']&.strip
-            new_value_for_store = (submitted_json.nil? || submitted_json.empty?) ? '[]' : submitted_json
+            new_value_for_store = submitted_json.nil? || submitted_json.empty? ? '[]' : submitted_json
             begin
               parsed = JSON.parse(new_value_for_store)
               raise JSON::ParserError, 'Input must be a valid JSON array.' unless parsed.is_a?(Array)
@@ -634,7 +669,7 @@ module ADK
             end
             agent_data_for_display_partial[:mcp_servers_json] = new_value_for_store
             agent_data_for_display_partial[:mcp_display_string] =
-              (JSON.parse(new_value_for_store).empty?) ? 'No MCP Server(s) Configured.' : pretty_json(JSON.parse(new_value_for_store))
+              JSON.parse(new_value_for_store).empty? ? 'No MCP Server(s) Configured.' : pretty_json(JSON.parse(new_value_for_store))
 
           when 'fallback'
             submitted_value = params['value']&.strip
@@ -676,7 +711,7 @@ module ADK
                                                        loop_sub_agent_names: []
                                                      })
                   logger.info("Agent '#{name}' switched from '#{current_type}' to 'llm', cleared all sub-agent lists.")
-                rescue => e
+                rescue StandardError => e
                   logger.error("Failed to clear sub-agent lists for agent '#{name}': #{e.message}")
                 end
               end
@@ -732,8 +767,8 @@ module ADK
             was_running = active_agents_hash.key?(name)
             if was_running
               logger.info("Agent '#{name}' config updated while running. Triggering auto-restart (from AgentDefinitionRoutes).")
-              self.send(:_stop_agent, name)
-              newly_started_agent = self.send(:_start_agent, name)
+              send(:_stop_agent, name)
+              newly_started_agent = send(:_start_agent, name)
               agent_data_for_display_partial[:running] = !newly_started_agent.nil?
               headers 'HX-Trigger-After-Swap' => (agent_data_for_display_partial[:running] ? 'showRestartToast' : 'showRestartErrorToast')
             else
@@ -749,7 +784,7 @@ module ADK
             )
             # Ensure mcp_display_string is set if field was 'mcp'
             if field == 'mcp'
-              agent_data_for_display_partial[:mcp_display_string] ||= (JSON.parse(new_value_for_store).empty?) ? 'No MCP Server(s) Configured.' : pretty_json(JSON.parse(new_value_for_store))
+              agent_data_for_display_partial[:mcp_display_string] ||= JSON.parse(new_value_for_store).empty? ? 'No MCP Server(s) Configured.' : pretty_json(JSON.parse(new_value_for_store))
             end
 
             response_locals_for_display = { agent_data: agent_data_for_display_partial, show_edit_button: true }
@@ -772,9 +807,9 @@ module ADK
                   sub_agent_names: [],
                   show_edit_button: true
                 }
-                response_html += "<div id=\"agent-hierarchy-display\" hx-swap-oob=\"true\">" +
+                response_html += '<div id="agent-hierarchy-display" hx-swap-oob="true">' +
                                  slim(:_display_agent_hierarchy, layout: false, locals: { agent_data: empty_hierarchy_data }) +
-                                 "</div>"
+                                 '</div>'
               end
 
               response_html
@@ -789,7 +824,7 @@ module ADK
 
         # PUT /agents/:name/update/hierarchy - Update agent hierarchy
         app.put '/agents/:name/update/hierarchy' do |name|
-          definition_store = self.instance_variable_get(:@definition_store)
+          definition_store = instance_variable_get(:@definition_store)
           halt 503, 'Definition Store unavailable.' unless definition_store
 
           begin
@@ -814,7 +849,7 @@ module ADK
               loop_max = params['loop_max_iterations']&.strip
               loop_key = params['loop_condition_state_key']&.strip
               loop_val = params['loop_condition_expected_value']&.strip
-              
+
               update_params[:loop_max_iterations] = loop_max.to_i if loop_max && !loop_max.empty?
               update_params[:loop_condition_state_key] = loop_key.to_sym if loop_key && !loop_key.empty?
               update_params[:loop_condition_expected_value] = loop_val if loop_val && !loop_val.empty?
@@ -845,8 +880,8 @@ module ADK
 
         # PUT /agents/:name/update/type - Update agent type
         app.put '/agents/:name/update/type' do |name|
-          definition_store = self.instance_variable_get(:@definition_store)
-          active_agents_hash = self.instance_variable_get(:@agents)
+          definition_store = instance_variable_get(:@definition_store)
+          active_agents_hash = instance_variable_get(:@agents)
           halt 503, 'Definition Store unavailable.' unless definition_store
 
           begin
@@ -888,8 +923,8 @@ module ADK
             was_running = active_agents_hash.key?(name)
             if was_running
               logger.info("Agent '#{name}' type updated while running. Triggering auto-restart (from AgentDefinitionRoutes).")
-              self.send(:_stop_agent, name)
-              newly_started_agent = self.send(:_start_agent, name)
+              send(:_stop_agent, name)
+              newly_started_agent = send(:_start_agent, name)
 
               # Set headers to trigger toast notification
               headers 'HX-Trigger-After-Swap' => (newly_started_agent ? 'showRestartToast' : 'showRestartErrorToast')
@@ -916,9 +951,9 @@ module ADK
                 sub_agent_names: [],
                 show_edit_button: true
               }
-              response_html += "<div id=\"agent-hierarchy-display\" hx-swap-oob=\"true\">" +
+              response_html += '<div id="agent-hierarchy-display" hx-swap-oob="true">' +
                                slim(:_display_agent_hierarchy, layout: false, locals: { agent_data: empty_hierarchy_data }) +
-                               "</div>"
+                               '</div>'
             end
 
             response_html

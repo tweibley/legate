@@ -54,39 +54,39 @@ module ADK
 
           processed_mcp_tools_metadata = []
           mcp_tool_fetch_results.each do |result|
-            if result[:status] == :success && result[:tools]
-              result[:tools].each do |mcp_tool_schema|
-                parameters = []
-                begin
-                  input_schema = mcp_tool_schema[:inputSchema]
-                  if input_schema&.is_a?(Hash)
-                    properties = input_schema['properties'] || {}
-                    required_props = input_schema['required'] || []
-                    parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required_props)
-                  end
-                rescue => e
-                  logger.error("Error converting MCP schema for tool '#{mcp_tool_schema[:name]}' in /tools (from ToolsUIRoutes): #{e.message}")
+            next unless result[:status] == :success && result[:tools]
+
+            result[:tools].each do |mcp_tool_schema|
+              parameters = []
+              begin
+                input_schema = mcp_tool_schema[:inputSchema]
+                if input_schema&.is_a?(Hash)
+                  properties = input_schema['properties'] || {}
+                  required_props = input_schema['required'] || []
+                  parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required_props)
                 end
-                processed_mcp_tools_metadata << {
-                  name: mcp_tool_schema[:name].to_sym,
-                  description: mcp_tool_schema[:description] || '',
-                  parameters: parameters,
-                  source: :mcp,
-                  source_detail: "MCP (#{result[:server]})"
-                }
+              rescue StandardError => e
+                logger.error("Error converting MCP schema for tool '#{mcp_tool_schema[:name]}' in /tools (from ToolsUIRoutes): #{e.message}")
               end
+              processed_mcp_tools_metadata << {
+                name: mcp_tool_schema[:name].to_sym,
+                description: mcp_tool_schema[:description] || '',
+                parameters: parameters,
+                source: :mcp,
+                source_detail: "MCP (#{result[:server]})"
+              }
             end
           end
 
           # 3. Set @native_tools for the current view requirements
-          self.instance_variable_set(:@native_tools, native_tools_metadata.sort_by { |t| t[:name].to_s })
+          instance_variable_set(:@native_tools, native_tools_metadata.sort_by { |t| t[:name].to_s })
 
           # For future enhancement of tools.slim to show all tools:
           combined_tools_map = {}
           native_tools_metadata.each { |tool| combined_tools_map[tool[:name]] = tool }
           processed_mcp_tools_metadata.each { |tool| combined_tools_map[tool[:name]] ||= tool }
-          self.instance_variable_set(:@all_tools_list, combined_tools_map.values.sort_by { |t| t[:name].to_s })
-          self.instance_variable_set(:@mcp_tool_results_for_view, mcp_tool_fetch_results) # For displaying fetch errors
+          instance_variable_set(:@all_tools_list, combined_tools_map.values.sort_by { |t| t[:name].to_s })
+          instance_variable_set(:@mcp_tool_results_for_view, mcp_tool_fetch_results) # For displaying fetch errors
 
           slim :tools
         end
@@ -143,35 +143,35 @@ module ADK
             mcp_tool_fetch_results = fetch_mcp_tools(all_mcp_configs || [])
 
             mcp_tool_fetch_results.each do |result|
-              if result[:status] == :success && result[:tools]
-                tool_data = result[:tools].find { |t| t[:name].to_s == name || t[:name].to_sym == tool_name_sym }
-                if tool_data
-                  parameters = []
-                  begin
-                    input_schema = tool_data[:inputSchema]
-                    if input_schema&.is_a?(Hash)
-                      properties = input_schema['properties'] || {}
-                      required_props = input_schema['required'] || []
-                      parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required_props)
-                    end
-                  rescue => e
-                    logger.error("Error converting MCP schema for tool '#{tool_data[:name]}' in /tools/#{name} (from ToolsUIRoutes): #{e.message}")
-                  end
-                  tool_to_display = {
-                    name: tool_data[:name].to_sym,
-                    description: tool_data[:description] || '',
-                    parameters: parameters,
-                    source: :mcp,
-                    source_detail: "MCP (#{result[:server]})"
-                  }
-                  break
+              next unless result[:status] == :success && result[:tools]
+
+              tool_data = result[:tools].find { |t| t[:name].to_s == name || t[:name].to_sym == tool_name_sym }
+              next unless tool_data
+
+              parameters = []
+              begin
+                input_schema = tool_data[:inputSchema]
+                if input_schema&.is_a?(Hash)
+                  properties = input_schema['properties'] || {}
+                  required_props = input_schema['required'] || []
+                  parameters = ADK::Mcp::Util::SchemaConverter.json_to_adk(properties, required_props)
                 end
+              rescue StandardError => e
+                logger.error("Error converting MCP schema for tool '#{tool_data[:name]}' in /tools/#{name} (from ToolsUIRoutes): #{e.message}")
               end
+              tool_to_display = {
+                name: tool_data[:name].to_sym,
+                description: tool_data[:description] || '',
+                parameters: parameters,
+                source: :mcp,
+                source_detail: "MCP (#{result[:server]})"
+              }
+              break
             end
           end
 
           if tool_to_display
-            self.instance_variable_set(:@tool, tool_to_display)
+            instance_variable_set(:@tool, tool_to_display)
             logger.debug("Found tool metadata for '#{name}': #{tool_to_display.inspect}")
             slim :tool_detail
           else
@@ -180,6 +180,26 @@ module ADK
             slim(:error_404,
                  locals: { title: 'Tool Not Found', message: "Tool definition for '#{name}' not found." })
           end
+        end
+
+        # GET /tools/:name/download - Download native tool as Ruby file
+        app.get '/tools/:name/download' do |name|
+          logger.info("Received request to download tool '#{name}' as Ruby file")
+          tool_name_sym = name.to_sym
+
+          # Check if it's a native tool
+          tool_class = ADK::GlobalToolManager.find_class(tool_name_sym)
+          halt 400, 'Only native tools can be downloaded as Ruby files. MCP tools cannot be exported.' unless tool_class
+
+          # Generate Ruby code
+          require 'adk/tool_code_generator'
+          ruby_code = ADK::ToolCodeGenerator.generate(tool_name_sym)
+
+          halt 404, 'Tool not found or could not generate code.' unless ruby_code
+
+          content_type 'application/x-ruby'
+          attachment "#{name.to_s.gsub(/[^a-zA-Z0-9_-]/, '_')}.rb"
+          ruby_code
         end
       end
     end
