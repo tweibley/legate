@@ -3,6 +3,14 @@
   h1.title.is-2 Tools
   p.subtitle Browse available tools that can be used by agents.
 
+/ AI Generator button - prominent placement
+.buttons.mb-4
+  button.button.is-medium.ai-generate-btn(onclick="openToolGeneratorModal()")
+    span.icon
+      i.fas.fa-wand-magic-sparkles
+    span
+      strong Build with AI Builder
+
 .box
   h2.title.is-4 Available Native Tools
   p.subtitle.is-6 Shows tools built directly into this ADK application.
@@ -37,3 +45,6 @@
                         - if param[:required]
                           span.tag.is-danger.is-light.is-small.ml-1 Required
                       dd = param[:description]
+
+/ Include the AI Tool Generator Modal
+== slim :_tool_generator_modal, layout: false

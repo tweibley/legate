@@ -2365,6 +2365,47 @@ pre[style*="background-color: #fafafa;"] {
   background-color: hsl(0, 72%, 45%);
 }
 
+/* AI Generate Button - Prominent styling */
+.button.ai-generate-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+  background-size: 200% 200%;
+  color: white;
+  border: none;
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  transition: all 0.3s ease;
+  animation: gradient-shift 3s ease infinite;
+}
+.button.ai-generate-btn .icon {
+  color: white;
+}
+.button.ai-generate-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+  color: white;
+}
+.button.ai-generate-btn:active {
+  transform: translateY(0);
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+[data-theme=dark] .button.ai-generate-btn {
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+[data-theme=dark] .button.ai-generate-btn:hover {
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
 .button.is-light {
   background-color: var(--color-bg-tertiary);
   color: var(--color-text-primary);

@@ -3,6 +3,14 @@
   h1.title.is-2 Agents
   p.subtitle Manage agent definitions and runtime instances.
 
+/ AI Generator button - prominent placement
+.buttons.mb-4
+  button.button.is-medium.ai-generate-btn(onclick="openAgentGeneratorModal()")
+    span.icon
+      i.fas.fa-wand-magic-sparkles
+    span
+      strong Build with AI Builder
+
 details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remove @open" )
   summary.is-clickable
     span.icon.mr-2
@@ -355,3 +363,6 @@ javascript:
         }
     }
   }
+
+/ Include the AI Agent Generator Modal
+== slim :_agent_generator_modal, layout: false
