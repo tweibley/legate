@@ -24,13 +24,17 @@ Key components include:
 
 *   **Main Application (`lib/adk/web/app.rb`)**: The core Sinatra application class. It initializes services, manages application state, and registers various route modules.
 *   **Route Modules (`lib/adk/web/routes/`)**: The application's functionality is organized into several route modules:
-    *   `CoreRoutes`: Basic application routes (e.g., homepage).
+    *   `CoreRoutes`: Basic application routes (e.g., homepage, dashboard).
     *   `ApiRoutes`: Endpoints for programmatic interaction.
     *   `ToolsUIRoutes`: UI for discovering and managing tools (native and MCP).
+    *   `AgentGeneratorRoutes`: AI-powered agent code generation from natural language descriptions.
+    *   `ToolGeneratorRoutes`: AI-powered tool code generation from natural language descriptions.
     *   `AgentRuntimeRoutes`: Routes for managing the lifecycle (start/stop) of running agent instances.
     *   `AgentDefinitionRoutes`: UI for creating, viewing, editing, and deleting agent definitions (persistent store, e.g., Redis).
     *   `AgentInteractionRoutes`: Handles chat interactions with agents and direct tool execution.
     *   `DocumentationRoutes`: Serves embedded documentation.
+    *   `AuthenticationRoutes`: Manages authentication schemes and credential configuration.
+    *   `AgentAuthenticationRoutes`: Per-agent authentication configuration and credential management.
 *   **Views (`lib/adk/web/views/`)**: Slim templates are used for rendering HTML.
 *   **Static Assets (`lib/adk/web/public/`)**: CSS, JavaScript, and images. Sass/SCSS files in `public/styles` are compiled to `public/css`.
 *   **Session Management**: Sinatra sessions are used to store user-specific information, such as active chat session IDs.
@@ -45,10 +49,14 @@ graph TD
     C --> CRoutes[CoreRoutes]
     C --> ApiR[ApiRoutes]
     C --> ToolsUI[ToolsUIRoutes]
+    C --> AgentGen[AgentGeneratorRoutes]
+    C --> ToolGen[ToolGeneratorRoutes]
     C --> AgentRuntime[AgentRuntimeRoutes]
     C --> AgentDef[AgentDefinitionRoutes]
     C --> AgentInteract[AgentInteractionRoutes]
     C --> DocsR[DocumentationRoutes]
+    C --> AuthR[AuthenticationRoutes]
+    C --> AgentAuthR[AgentAuthenticationRoutes]
 
     AgentDef --> DStore(Agent Definition Store <br> e.g., Redis)
     AgentRuntime --> AgentsMem(Running Agent Instances <br> In-Memory)
@@ -61,6 +69,8 @@ graph TD
     MCPClients --> ExtMCP[External MCP Tool Servers]
     ToolsUI --> GlobalTools(GlobalToolManager <br> Native Tools)
     ToolsUI --> MCPClients
+    AgentGen --> GeminiAPI[Gemini API]
+    ToolGen --> GeminiAPI
 
     subgraph "ADK Core Services"
         DStore
@@ -74,6 +84,7 @@ graph TD
     style AgentsMem fill:#lightgrey,stroke:#333
     style SService fill:#lightgrey,stroke:#333
     style ExtMCP fill:#orange,stroke:#333
+    style GeminiAPI fill:#lightblue,stroke:#333
 ```
 
 ## Key Features
@@ -84,6 +95,7 @@ The Web UI provides a comprehensive interface for managing and interacting with 
 *   **Create Agents**: Define new agents by specifying their name, description, system prompt, model (e.g., Gemini models), and associated tools.
 *   **View & Edit Agents**: Browse existing agent definitions, modify their configurations, and update them.
 *   **Delete Agents**: Remove agent definitions from the persistent store.
+*   **Export Agents**: Download agent definitions as Ruby code files for use in standalone applications.
 *   **Persistence**: Agent definitions are typically stored in Redis (if configured), allowing them to persist across application restarts.
 
 ### 2. Agent Runtime Management
@@ -95,20 +107,31 @@ The Web UI provides a comprehensive interface for managing and interacting with 
 *   **Chat Interface**: Engage in conversations with started agents. The UI displays the flow of messages, tool calls, and agent responses.
 *   **Direct Execution**: Some tools or agent functionalities might be directly executable through the UI.
 *   **Session Viewing**: Inspect the history of interactions within a session.
+*   **Mermaid Diagrams**: Visualize agent execution flows with automatically generated sequence diagrams.
 
 ### 4. Tool Discovery and Management
 *   **Native Tools**: Discover and view details of tools built directly into the ADK application.
 *   **MCP Tool Integration**: Configure connections to external MCP (Multi-Capability Protocol) tool servers.
 *   **List MCP Tools**: Fetch and display the list of tools available from connected MCP servers.
 *   **Tool Schema Viewing**: Inspect the input and output schemas of available tools.
+*   **Export Tools**: Download native tool implementations as Ruby code files.
 
-### 5. Dynamic UI with HTMX
+### 5. AI Code Generation
+*   **Agent Generator**: Create new agent definitions from natural language descriptions using the Gemini API.
+*   **Tool Generator**: Generate custom tool implementations from descriptions of desired functionality.
+*   **Iterative Refinement**: Preview and refine generated code before saving.
+
+### 6. Authentication Management
+*   **Scheme Configuration**: Configure authentication schemes (API Key, Bearer, OAuth2, OIDC, Service Account).
+*   **Credential Management**: Securely store and manage credentials for external API access.
+*   **Per-Agent Authentication**: Assign authentication configurations to specific agents.
+*   **Token Lifecycle**: Automatic token refresh and expiration handling.
+
+### 7. Dynamic UI with HTMX
 *   The interface uses HTMX to update parts of the page dynamically. This provides a smoother user experience for actions like starting/stopping agents, sending messages, and viewing updated content without full page reloads.
 
-### 6. Documentation Access
+### 8. Documentation Access
 *   The UI includes a section to browse embedded ADK documentation (like the page you are reading).
 
 ### (Conditional) Webhook Listener
-*   If configured (`ADK.config.webhooks.listener_enabled = true`), the `ADK::Web::WebhookListener` is mounted to handle incoming webhooks. This is typically used for agents that need to react to external events. See `webhooks.md` and `configuring_agent_webhooks.md` for more details.
-
-[Further details on specific UI elements, workflows, or advanced configurations can be added here.] 
+*   If configured (`ADK.config.webhooks.listener_enabled = true`), the `ADK::Web::WebhookListener` is mounted to handle incoming webhooks. This is typically used for agents that need to react to external events. See [configuring_agent_webhooks](../guides/configuring_agent_webhooks) for more details. 

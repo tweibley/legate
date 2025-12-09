@@ -205,6 +205,27 @@ This is an abstract base class (`ADK::Tools::BaseAsyncJobTool`) and not directly
     *   **Job Failed in Sidekiq (e.g., in Dead Set)**: The tool call itself might raise an `ADK::ToolError` or return a generic error status.
     *   **Job Not Found/Expired**: The tool call might raise an `ADK::ToolError` or return an error status indicating the result is unavailable.
 
+```mermaid
+graph LR
+    subgraph "Async Tool Flow"
+        A[Agent] -- Calls --> B(Start Async Job Tool <br> e.g., :start_sleepy_job)
+        B -- Enqueues Job --> C[Sidekiq]
+        B -- Returns job_id --> A
+        C -- Executes --> D(Background Worker)
+        D -- Writes Result/Error --> E[Redis]
+        A -- Calls with job_id --> F(Check Job Status Tool <br> :check_job_status)
+        F -- Reads from --> E
+        F -- Returns Status/Result --> A
+    end
+
+    style A fill:#cde,stroke:#333
+    style B fill:#fdc,stroke:#333
+    style C fill:#def,stroke:#333
+    style D fill:#fdd,stroke:#333
+    style E fill:#fcf,stroke:#333
+    style F fill:#dfd,stroke:#333
+```
+
 ---
 
 ## RandomNumberTool
@@ -231,24 +252,3 @@ This is an abstract base class (`ADK::Tools::BaseAsyncJobTool`) and not directly
       "result": 15
     }
     ```
-
-```mermaid
-graph LR
-    subgraph "Async Tool Flow"
-        A[Agent] -- Calls --> B(Start Async Job Tool <br> e.g., :start_sleepy_job)
-        B -- Enqueues Job --> C[Sidekiq]
-        B -- Returns job_id --> A
-        C -- Executes --> D(Background Worker)
-        D -- Writes Result/Error --> E[Redis]
-        A -- Calls with job_id --> F(Check Job Status Tool <br> :check_job_status)
-        F -- Reads from --> E
-        F -- Returns Status/Result --> A
-    end
-
-    style A fill:#cde,stroke:#333
-    style B fill:#fdc,stroke:#333
-    style C fill:#def,stroke:#333
-    style D fill:#fdd,stroke:#333
-    style E fill:#fcf,stroke:#333
-    style F fill:#dfd,stroke:#333
-``` 
