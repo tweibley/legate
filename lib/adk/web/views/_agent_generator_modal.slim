@@ -1,0 +1,209 @@
+/ File: lib/adk/web/views/_agent_generator_modal.slim
+/ AI-powered agent generator modal
+
+#agent-generator-modal.modal
+  .modal-background onclick="closeAgentGeneratorModal()"
+  .modal-card style="width: 90%; max-width: 1200px; max-height: 90vh;"
+    header.modal-card-head
+      p.modal-card-title
+        span.icon.mr-2
+          i.fas.fa-wand-magic-sparkles
+        | Generate Agent with AI
+      button.delete aria-label="close" onclick="closeAgentGeneratorModal()"
+    
+    section.modal-card-body style="display: flex; flex-direction: column; gap: 1.5rem;"
+      / Input Section
+      #agent-generator-input-section
+        .field
+          label.label
+            span.icon.is-small.mr-1
+              i.fas.fa-comment-dots
+            | Describe Your Agent
+          .control
+            textarea#agent-generator-description.textarea(
+              rows="5"
+              placeholder="Describe the agent you want to create. Examples: 'An agent that summarizes customer feedback', 'A workflow that researches a topic then writes an article', 'A webhook agent for GitHub events'"
+            )
+          p.help Describe what you want your agent to do. The AI will generate complete Ruby code based on your description.
+        
+        .field
+          .control
+            button#agent-generator-btn.button.is-primary.is-medium(onclick="generateAgentCode()")
+              span.icon
+                i.fas.fa-wand-magic-sparkles
+              span Generate Code
+            span#agent-generator-loading.ml-3 style="display: none;"
+              span.icon.has-text-info
+                i.fas.fa-spinner.fa-spin
+              span.has-text-grey Generating...
+
+      / Error Display
+      #agent-generator-error.notification.is-danger.is-light style="display: none;"
+        button.delete onclick="this.parentElement.style.display='none'"
+        span#agent-generator-error-message
+
+      / Output Section (hidden until generation)
+      #agent-generator-output-section style="display: none;"
+        .level.mb-3
+          .level-left
+            .level-item
+              p.subtitle.is-5
+                span.icon.is-small.mr-1
+                  i.fas.fa-code
+                | Generated Code
+            .level-item
+              span#agent-generator-name-tag.tag.is-info.is-light
+          .level-right
+            .level-item
+              .buttons
+                button.button.is-small.is-light(onclick="regenerateAgentCode()" title="Generate again with same description")
+                  span.icon.is-small
+                    i.fas.fa-sync
+                  span Regenerate
+                button.button.is-small.is-success.is-light(onclick="copyAgentCode()" title="Copy to clipboard")
+                  span.icon.is-small
+                    i.fas.fa-copy
+                  span Copy
+                button.button.is-small.is-link.is-light(onclick="downloadAgentCode()" title="Download as .rb file")
+                  span.icon.is-small
+                    i.fas.fa-download
+                  span Download
+        
+        .code-preview-container style="max-height: 400px; overflow: auto; border-radius: 6px;"
+          pre
+            code#agent-generator-code.language-ruby
+
+      / Copy success toast
+      #agent-generator-copy-toast.notification.is-success.is-light style="display: none; position: absolute; bottom: 1rem; right: 1rem; padding: 0.75rem 1rem;"
+        span.icon.is-small.mr-1
+          i.fas.fa-check
+        | Copied to clipboard!
+
+    footer.modal-card-foot style="justify-content: flex-end;"
+      button.button onclick="closeAgentGeneratorModal()" Close
+
+javascript:
+  // Agent Generator Modal Functions
+  let generatedAgentCode = '';
+  let suggestedAgentName = 'generated_agent';
+
+  function openAgentGeneratorModal() {
+    document.getElementById('agent-generator-modal').classList.add('is-active');
+    document.getElementById('agent-generator-description').focus();
+  }
+
+  function closeAgentGeneratorModal() {
+    document.getElementById('agent-generator-modal').classList.remove('is-active');
+    // Reset state
+    document.getElementById('agent-generator-error').style.display = 'none';
+  }
+
+  async function generateAgentCode() {
+    const description = document.getElementById('agent-generator-description').value.trim();
+    
+    if (!description) {
+      showAgentGeneratorError('Please enter a description of the agent you want to create.');
+      return;
+    }
+
+    // Show loading state
+    const btn = document.getElementById('agent-generator-btn');
+    const loading = document.getElementById('agent-generator-loading');
+    btn.disabled = true;
+    loading.style.display = 'inline';
+    document.getElementById('agent-generator-error').style.display = 'none';
+    document.getElementById('agent-generator-output-section').style.display = 'none';
+
+    try {
+      const response = await fetch('/agents/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ description: description })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Generation failed');
+      }
+
+      // Store the generated code
+      generatedAgentCode = data.code;
+      suggestedAgentName = data.suggested_name || 'generated_agent';
+
+      // Display the code
+      const codeElement = document.getElementById('agent-generator-code');
+      
+      // Reset highlight.js state before setting new content
+      codeElement.classList.remove('hljs');
+      delete codeElement.dataset.highlighted;
+      codeElement.textContent = data.code;
+      
+      // Apply syntax highlighting
+      if (typeof hljs !== 'undefined') {
+        hljs.highlightElement(codeElement);
+      }
+
+      // Update name tag
+      document.getElementById('agent-generator-name-tag').textContent = suggestedAgentName;
+
+      // Show output section
+      document.getElementById('agent-generator-output-section').style.display = 'block';
+
+    } catch (error) {
+      showAgentGeneratorError(error.message);
+    } finally {
+      btn.disabled = false;
+      loading.style.display = 'none';
+    }
+  }
+
+  function regenerateAgentCode() {
+    generateAgentCode();
+  }
+
+  function showAgentGeneratorError(message) {
+    const errorEl = document.getElementById('agent-generator-error');
+    document.getElementById('agent-generator-error-message').textContent = message;
+    errorEl.style.display = 'block';
+  }
+
+  async function copyAgentCode() {
+    try {
+      await navigator.clipboard.writeText(generatedAgentCode);
+      
+      // Show toast
+      const toast = document.getElementById('agent-generator-copy-toast');
+      toast.style.display = 'block';
+      setTimeout(() => {
+        toast.style.display = 'none';
+      }, 2000);
+    } catch (err) {
+      showAgentGeneratorError('Failed to copy to clipboard');
+    }
+  }
+
+  function downloadAgentCode() {
+    const blob = new Blob([generatedAgentCode], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${suggestedAgentName}.rb`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // Close modal on Escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('agent-generator-modal');
+      if (modal && modal.classList.contains('is-active')) {
+        closeAgentGeneratorModal();
+      }
+    }
+  });
+
