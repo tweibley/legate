@@ -984,31 +984,17 @@ a.agent-stat:hover .icon {
    ======================================== */
 
 .execute-tab-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 1.5rem;
 }
 
 .execute-input-section {
-  grid-column: 1;
+  width: 100%;
 }
 
 .execute-result-section {
-  grid-column: 2;
-}
-
-@media screen and (max-width: 1024px) {
-  .execute-tab-layout {
-    grid-template-columns: 1fr;
-  }
-  
-  .execute-input-section,
-  .execute-result-section {
-    grid-column: 1;
-  }
-  
-  .execute-input-section { grid-row: 1; }
-  .execute-result-section { grid-row: 2; }
+  width: 100%;
 }
 
 /* Code Editor Textarea */
