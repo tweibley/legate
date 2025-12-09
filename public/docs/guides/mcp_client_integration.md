@@ -120,7 +120,7 @@ my_agent = ADK::Agent.new(
         *   If the connection is successful, the client calls `tools/list` on the MCP server.
         *   For each tool schema received from the server whose name matches one in `selected_tool_names`:
             *   `ADK::Mcp::ToolWrapper.from_mcp_schema` is called. This method:
-                *   Converts the MCP tool's JSON Schema (for `inputSchema`) into the ADK parameter format.
+                *   Converts the MCP tool's JSON Schema (for `inputSchema`) into the ADK parameter format. (See [Schema Conversion Details](../advanced/mcp_schema_conversion))
                 *   Dynamically creates an anonymous `ADK::Tool` subclass that acts as a proxy.
                 *   Registers this proxy tool with the agent's specific `ToolRegistry`.
     *   The agent is now aware of both its native tools and the selected, wrapped MCP tools.

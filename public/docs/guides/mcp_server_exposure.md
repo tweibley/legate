@@ -77,7 +77,7 @@ mcp_server.start # This will block and listen on STDIN/STDOUT
 
 *   `AdkToolAdapter.wrap(YourAdkToolClass)`:
     *   Retrieves metadata (name, description, parameters) from `YourAdkToolClass`.
-    *   Uses `ADK::Mcp::Util::SchemaConverter.adk_to_dry_schema` to convert ADK parameter definitions into a `Dry::Schema` block for `fast-mcp` argument validation.
+    *   Uses `ADK::Mcp::Util::SchemaConverter.adk_to_dry_schema` to convert ADK parameter definitions into a `Dry::Schema` block for `fast-mcp` argument validation. (See [Schema Conversion Details](../advanced/mcp_schema_conversion))
     *   Dynamically creates a new class that inherits from `FastMcp::Tool`.
     *   The `call` method of this new class will:
         *   Instantiate `YourAdkToolClass`.
