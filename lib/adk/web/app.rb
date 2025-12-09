@@ -59,6 +59,8 @@ require_relative 'routes/agent_interaction_routes'
 require_relative 'routes/documentation_routes'
 require_relative 'routes/authentication_routes'
 require_relative 'routes/agent_authentication_routes'
+require_relative 'routes/agent_generator_routes'
+require_relative 'routes/tool_generator_routes'
 
 # Load dotenv for development environment variables
 if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
@@ -126,6 +128,9 @@ module ADK
       register ADK::Web::CoreRoutes
       register ADK::Web::ApiRoutes
       register ADK::Web::ToolsUIRoutes
+      # Generator routes must be registered BEFORE definition routes to avoid :name matching "generate"
+      register ADK::Web::AgentGeneratorRoutes
+      register ADK::Web::ToolGeneratorRoutes
       register ADK::Web::AgentRuntimeRoutes
       register ADK::Web::AgentDefinitionRoutes
       register ADK::Web::AgentInteractionRoutes
@@ -373,7 +378,13 @@ module ADK
                     html_parts << format_execution_result_html(step_result_content) # Recursive call
                     html_parts << '</blockquote>'
                   else
-                    html_parts << "<strong>Step #{index + 1} (Success):</strong> <pre>#{Rack::Utils.escape_html(step_result_content.to_s)}</pre>"
+                    # Format as JSON if it's a hash or array, otherwise use to_s
+                    formatted_step_content = if step_result_content.is_a?(Hash) || step_result_content.is_a?(Array)
+                                               JSON.pretty_generate(step_result_content)
+                                             else
+                                               step_result_content.to_s
+                                             end
+                    html_parts << "<strong>Step #{index + 1} (Success):</strong> <pre>#{Rack::Utils.escape_html(formatted_step_content)}</pre>"
                   end
                 when :pending # <-- ADDED Pending Case for Multi-step
                   html_parts << "<strong>Step #{index + 1} (Pending):</strong>"
@@ -404,7 +415,13 @@ module ADK
                 html_parts << format_execution_result_html(result_content) # Recursive call
                 html_parts << '</blockquote>'
               else
-                html_parts << "<p><strong>Result:</strong></p><pre>#{Rack::Utils.escape_html(result_content.to_s)}</pre>"
+                # Format as JSON if it's a hash or array, otherwise use to_s
+                formatted_content = if result_content.is_a?(Hash) || result_content.is_a?(Array)
+                                      JSON.pretty_generate(result_content)
+                                    else
+                                      result_content.to_s
+                                    end
+                html_parts << "<p><strong>Result:</strong></p><pre>#{Rack::Utils.escape_html(formatted_content)}</pre>"
               end
             when :pending # <-- ADDED Pending Case for Single Step
               html_parts << '<p><strong>Status: Pending</strong></p>'

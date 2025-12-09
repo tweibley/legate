@@ -17,7 +17,7 @@ group :development, :test do
 end
 
 group :development do
-  gem 'dotenv', '~> 2.0'
+  gem 'dotenv'
   gem 'pry', '~> 0.14'
   gem 'pry-byebug', '~> 3.10'
   # gem 'temporalio'
