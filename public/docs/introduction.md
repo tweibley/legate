@@ -20,10 +20,10 @@ ADK is a Ruby-based toolkit that empowers developers to:
 
 To begin your journey with ADK, we recommend the following steps:
 
-1.  **Understand the Fundamentals:** Familiarize yourself with the [Core Concepts](./core_concepts/adk_architecture_overview.md) that underpin the ADK, such as the [Agent Lifecycle](./core_concepts/adk_agent_lifecycle.md), [Tools and Registry](./tools/adk_tools_and_registry.md), and [Session Management](./core_concepts/adk_session_service.md).
+1.  **Understand the Fundamentals:** Familiarize yourself with the [Core Concepts](./core_concepts/adk_architecture_overview) that underpin the ADK, such as the [Agent Lifecycle](./core_concepts/adk_agent_lifecycle), [Tools and Registry](./tools/adk_tools_and_registry), and [Session Management](./core_concepts/adk_session_service).
 2.  **Setup Your Environment:** Ensure you have Ruby and Bundler installed. Most ADK projects will start by adding `adk-ruby` to their `Gemfile`.
-3.  **Explore the Configuration:** Learn how to configure ADK globally and per agent by reviewing the [ADK Configuration](./core_concepts/adk_configuration.md) guide.
-4.  **Try the CLI:** Use the [ADK Command-Line Interface](./cli/adk_cli_usage.md) to manage agent definitions, run the web UI, and interact with other ADK components.
+3.  **Explore the Configuration:** Learn how to configure ADK globally and per agent by reviewing the [ADK Configuration](./core_concepts/adk_configuration) guide.
+4.  **Try the CLI:** Use the [ADK Command-Line Interface](./cli/adk_cli_usage) to manage agent definitions, run the web UI, and interact with other ADK components.
 5.  **Run an Example:** (Consider adding a link to a simple example if one exists in the `examples/` directory or a basic "Hello World" type guide).
 
 ## Key Features
@@ -43,9 +43,9 @@ This documentation is organized into several key areas:
 
 *   **[Core Concepts](./core_concepts/):** Deep dives into the fundamental building blocks and architecture of ADK.
 *   **[Guides](./guides/):** Practical step-by-step instructions for common tasks and integrations.
-*   **[CLI Reference](./cli/adk_cli_usage.md):** Detailed information on using the `adk` command-line tool.
-*   **[Web UI Overview](./web_ui/adk_web_ui.md):** Information about the built-in web interface.
-*   **[Built-in Tools Reference](./tools/adk_built_in_tools.md):** Documentation for the tools that come packaged with ADK.
-*   **[Error Handling](./error_handling/adk_error_handling.md):** Guidance on understanding and managing errors within ADK.
+*   **[CLI Reference](./cli/adk_cli_usage):** Detailed information on using the `adk` command-line tool.
+*   **[Web UI Overview](./web_ui/adk_web_ui):** Information about the built-in web interface.
+*   **[Built-in Tools Reference](./tools/adk_built_in_tools):** Documentation for the tools that come packaged with ADK.
+*   **[Error Handling](./error_handling/adk_error_handling):** Guidance on understanding and managing errors within ADK.
 
 We hope this documentation helps you build amazing AI agents with ADK! 

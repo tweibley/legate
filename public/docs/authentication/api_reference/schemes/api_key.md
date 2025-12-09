@@ -343,8 +343,8 @@ scheme = Adk::Auth::Schemes::ApiKey.new(
 
 ## See Also
 
-- [Adk::Auth::Credential](../credential.md)
-- [Adk::Auth::ExchangedCredential](../exchanged_credential.md)
-- [Adk::Auth::Scheme](../scheme.md)
-- [Adk::Auth::TokenManager](../token_manager.md)
-- [API Key Authentication Guide](../../guides/api_key.md) 
+- [Adk::Auth::Credential](../credential)
+- [Adk::Auth::ExchangedCredential](../exchanged_credential)
+- [Adk::Auth::Scheme](../scheme)
+- [Adk::Auth::TokenManager](../token_manager)
+- [API Key Authentication Guide](../../guides/api_key) 

@@ -330,6 +330,6 @@ If you've tried all the solutions and still encounter issues:
 
 ## Next Steps
 
-- [OAuth2 Troubleshooting](./oauth2_issues.md): For OAuth2-specific authentication issues
-- [OpenID Connect Issues](./oidc_issues.md): For OIDC-specific authentication issues
-- [Token Security](./token_security.md): Best practices for token security 
+- [OAuth2 Troubleshooting](./oauth2_issues): For OAuth2-specific authentication issues
+- [OpenID Connect Issues](./oidc_issues): For OIDC-specific authentication issues
+- [Token Security](./token_security): Best practices for token security 

@@ -21,7 +21,7 @@ ADK.configure do |config|
   # See also ADK_LOG_LEVEL environment variable
   config.log_level = :info 
 
-  # Configure the session service (see adk_session_service.md)
+  # Configure the session service (see adk_session_service)
   # config.session_service = ADK::SessionService::InMemory.new
   config.session_service = ADK::SessionService::Redis.new(
     # Optional: Provide custom Redis options hash or client instance
@@ -36,7 +36,7 @@ ADK.configure do |config|
     # Add other Redis options like: password:, timeout:, etc.
   }
 
-  # Configure Webhook settings (see webhooks.md)
+  # Configure Webhook settings (see webhooks)
   config.webhooks.listener_enabled = true
   config.webhooks.listen_address = "0.0.0.0"
   config.webhooks.listen_port = 9293

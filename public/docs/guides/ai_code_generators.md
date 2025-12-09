@@ -273,7 +273,7 @@ After generating code, you have two options:
    - Tools: `lib/tools/` or `agents/lib/tools/`
    - Agents: `lib/agents/` or `agents/lib/agents/`
 
-2. The ADK web server will **automatically load** these files on startup (see [Auto-Loading Custom Code](auto_loading.md))
+2. The ADK web server will **automatically load** these files on startup (see [Auto-Loading Custom Code](auto_loading))
 
 3. Or manually require them in your application:
    ```ruby

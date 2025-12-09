@@ -251,6 +251,6 @@ If you encounter issues with OpenID Connect authentication:
 
 ## Next Steps
 
-- [OAuth2 Authentication](./oauth2.md): Learn more about the underlying OAuth2 protocol
-- [Service Account Authentication](./service_account.md): Use service accounts for server-to-server authentication
-- [Token Lifecycle Management](./token_lifecycle.md): Advanced token management techniques 
+- [OAuth2 Authentication](./oauth2): Learn more about the underlying OAuth2 protocol
+- [Service Account Authentication](./service_account): Use service accounts for server-to-server authentication
+- [Token Lifecycle Management](./token_lifecycle): Advanced token management techniques 

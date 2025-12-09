@@ -319,6 +319,6 @@ logger.info "Token type: #{token.auth_type}, " \
 
 ## See Also
 
-- [Adk::Auth::Credential](./credential.md)
-- [Adk::Auth::Scheme](./scheme.md)
-- [Adk::Auth::TokenManager](./token_manager.md) 
+- [Adk::Auth::Credential](./credential)
+- [Adk::Auth::Scheme](./scheme)
+- [Adk::Auth::TokenManager](./token_manager) 

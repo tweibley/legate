@@ -14,29 +14,29 @@ This section provides comprehensive documentation for all authentication-related
 - [Adk::Auth::Schemes::APIKey](./schemes/api_key) - API Key authentication scheme
 - [Adk::Auth::Schemes::HTTPBearer](./schemes/http_bearer) - HTTP Bearer authentication scheme
 - [Adk::Auth::Schemes::OAuth2](./schemes/oauth2) - OAuth2 authentication scheme
-- [Adk::Auth::Schemes::OpenIDConnect](./schemes/openid_connect.md) - OpenID Connect authentication scheme
-- [Adk::Auth::Schemes::ServiceAccount](./schemes/service_account.md) - Service Account authentication scheme
-- [Adk::Auth::Schemes::GoogleServiceAccount](./schemes/google_service_account.md) - Google Service Account authentication scheme
+- [Adk::Auth::Schemes::OpenIDConnect](./schemes/openid_connect) - OpenID Connect authentication scheme
+- [Adk::Auth::Schemes::ServiceAccount](./schemes/service_account) - Service Account authentication scheme
+- [Adk::Auth::Schemes::GoogleServiceAccount](./schemes/google_service_account) - Google Service Account authentication scheme
 
 ## Authentication Management
 
-- [Adk::Auth::TokenManager](./token_manager.md) - Token lifecycle management
-- [Adk::Auth::TokenStore](./token_store.md) - Secure token storage
-- [Adk::Auth::Encryption](./encryption.md) - Encryption utilities for secure storage
+- [Adk::Auth::TokenManager](./token_manager) - Token lifecycle management
+- [Adk::Auth::TokenStore](./token_store) - Secure token storage
+- [Adk::Auth::Encryption](./encryption) - Encryption utilities for secure storage
 
 ## Integration
 
-- [Adk::Auth::ToolContextExtension](./tool_context_extension.md) - Tool context authentication extensions
-- [Adk::Auth::ExconMiddleware](./excon_middleware.md) - Middleware for Excon HTTP client
-- [Adk::Auth::Runner](./runner.md) - Authentication integration with the ADK Runner
+- [Adk::Auth::ToolContextExtension](./tool_context_extension) - Tool context authentication extensions
+- [Adk::Auth::ExconMiddleware](./excon_middleware) - Middleware for Excon HTTP client
+- [Adk::Auth::Runner](./runner) - Authentication integration with the ADK Runner
 
 ## Coordinators
 
-- [Adk::Auth::Coordinator](./coordinator.md) - Base authentication coordinator
-- [Adk::Auth::Coordinators::OAuth2](./coordinators/oauth2.md) - OAuth2 flow coordinator
-- [Adk::Auth::Coordinators::OIDC](./coordinators/oidc.md) - OpenID Connect flow coordinator
-- [Adk::Auth::Coordinators::ServiceAccount](./coordinators/service_account.md) - Service Account flow coordinator
+- [Adk::Auth::Coordinator](./coordinator) - Base authentication coordinator
+- [Adk::Auth::Coordinators::OAuth2](./coordinators/oauth2) - OAuth2 flow coordinator
+- [Adk::Auth::Coordinators::OIDC](./coordinators/oidc) - OpenID Connect flow coordinator
+- [Adk::Auth::Coordinators::ServiceAccount](./coordinators/service_account) - Service Account flow coordinator
 
 ## Error Handling
 
-- [Adk::Auth::Error](./error.md) - Base authentication error class 
+- [Adk::Auth::Error](./error) - Base authentication error class 

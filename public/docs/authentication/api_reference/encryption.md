@@ -206,6 +206,6 @@ end
 
 ## Related Classes
 
-- [`Adk::Auth::TokenStore`](./token_store.md): Secure storage for authentication tokens
-- [`Adk::Auth::TokenManager`](./token_manager.md): Token lifecycle management
-- [`Adk::SessionService::Redis`](../../core_concepts/session_service.md): Redis session service 
+- [`Adk::Auth::TokenStore`](./token_store): Secure storage for authentication tokens
+- [`Adk::Auth::TokenManager`](./token_manager): Token lifecycle management
+- [`Adk::SessionService::Redis`](../../core_concepts/session_service): Redis session service 

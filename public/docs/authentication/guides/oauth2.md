@@ -259,6 +259,6 @@ If you encounter issues with OAuth2 authentication:
 
 ## Next Steps
 
-- [OpenID Connect](./oidc.md): Learn about OpenID Connect, an identity layer built on top of OAuth2
-- [Token Lifecycle Management](./token_lifecycle.md): Advanced token management techniques
-- [Secure Credential Storage](./secure_storage.md): Best practices for credential security 
+- [OpenID Connect](./oidc): Learn about OpenID Connect, an identity layer built on top of OAuth2
+- [Token Lifecycle Management](./token_lifecycle): Advanced token management techniques
+- [Secure Credential Storage](./secure_storage): Best practices for credential security 

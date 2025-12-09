@@ -562,6 +562,6 @@ If you've tried all the solutions and still encounter issues:
 
 ## Next Steps
 
-- [Token Lifecycle Management](../guides/token_lifecycle.md): Advanced token management techniques
-- [OAuth2 Troubleshooting](./oauth2_issues.md): For OAuth2-specific authentication issues
-- [Environment Variable Management](./environment_variables.md): Best practices for handling environment variables 
+- [Token Lifecycle Management](../guides/token_lifecycle): Advanced token management techniques
+- [OAuth2 Troubleshooting](./oauth2_issues): For OAuth2-specific authentication issues
+- [Environment Variable Management](./environment_variables): Best practices for handling environment variables 

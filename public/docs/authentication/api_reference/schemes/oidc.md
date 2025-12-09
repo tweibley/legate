@@ -438,8 +438,8 @@ scheme = Adk::Auth::Schemes::OpenIDConnect.new(
 
 ## See Also
 
-- [Adk::Auth::Credential](../credential.md)
-- [Adk::Auth::ExchangedCredential](../exchanged_credential.md)
-- [Adk::Auth::Scheme](../scheme.md)
-- [Adk::Auth::TokenManager](../token_manager.md)
-- [OpenID Connect Troubleshooting](../../troubleshooting/oidc_issues.md) 
+- [Adk::Auth::Credential](../credential)
+- [Adk::Auth::ExchangedCredential](../exchanged_credential)
+- [Adk::Auth::Scheme](../scheme)
+- [Adk::Auth::TokenManager](../token_manager)
+- [OpenID Connect Troubleshooting](../../troubleshooting/oidc_issues) 

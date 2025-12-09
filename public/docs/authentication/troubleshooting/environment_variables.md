@@ -537,6 +537,6 @@ ruby env_inspector.rb --list
 
 ## Next Steps
 
-- [Credential Storage Issues](./credential_storage.md): For issues with storing credentials
-- [Token Lifecycle Management](../guides/token_lifecycle.md): Advanced token management techniques
-- [OAuth2 Troubleshooting](./oauth2_issues.md): For OAuth2-specific authentication issues 
+- [Credential Storage Issues](./credential_storage): For issues with storing credentials
+- [Token Lifecycle Management](../guides/token_lifecycle): Advanced token management techniques
+- [OAuth2 Troubleshooting](./oauth2_issues): For OAuth2-specific authentication issues 

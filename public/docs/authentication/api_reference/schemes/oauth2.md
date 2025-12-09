@@ -511,8 +511,8 @@ scheme = Adk::Auth::Schemes::OAuth2.new(
 
 ## See Also
 
-- [Adk::Auth::Credential](../credential.md)
-- [Adk::Auth::ExchangedCredential](../exchanged_credential.md)
-- [Adk::Auth::Scheme](../scheme.md)
-- [Adk::Auth::TokenManager](../token_manager.md)
-- [OAuth2 Troubleshooting](../../troubleshooting/oauth2_issues.md) 
+- [Adk::Auth::Credential](../credential)
+- [Adk::Auth::ExchangedCredential](../exchanged_credential)
+- [Adk::Auth::Scheme](../scheme)
+- [Adk::Auth::TokenManager](../token_manager)
+- [OAuth2 Troubleshooting](../../troubleshooting/oauth2_issues) 

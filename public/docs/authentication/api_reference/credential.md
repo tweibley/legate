@@ -228,6 +228,6 @@ credential = Adk::Auth::Credential.new(
 
 ## See Also
 
-- [Adk::Auth::Scheme](./scheme.md)
-- [Adk::Auth::ExchangedCredential](./exchanged_credential.md)
-- [Adk::Auth::TokenManager](./token_manager.md) 
+- [Adk::Auth::Scheme](./scheme)
+- [Adk::Auth::ExchangedCredential](./exchanged_credential)
+- [Adk::Auth::TokenManager](./token_manager) 

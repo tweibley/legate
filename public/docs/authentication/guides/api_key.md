@@ -186,6 +186,6 @@ connection = ADK::Auth.create_api_key_connection(
 
 ## Next Steps
 
-- [Authentication Overview](./overview.md): Return to the overview of authentication
-- [HTTP Bearer Authentication](./bearer.md): Learn about Bearer token authentication
-- [OAuth2 Authentication](./oauth2.md): Implement OAuth2 authentication flows 
+- [Authentication Overview](./overview): Return to the overview of authentication
+- [HTTP Bearer Authentication](./bearer): Learn about Bearer token authentication
+- [OAuth2 Authentication](./oauth2): Implement OAuth2 authentication flows 

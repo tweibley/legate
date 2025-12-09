@@ -200,7 +200,7 @@ The tool context extensions can raise the following errors:
 
 ## Related Classes
 
-- [`Adk::ToolContext`](../../core_concepts/tool_context.md): The base tool context class
-- [`Adk::Auth::Config`](./config.md): Authentication configuration
-- [`Adk::Auth::TokenManager`](./token_manager.md): Token lifecycle management
-- [`Adk::Auth::Scheme`](./scheme.md): Base class for authentication schemes 
+- [`Adk::ToolContext`](../../core_concepts/tool_context): The base tool context class
+- [`Adk::Auth::Config`](./config): Authentication configuration
+- [`Adk::Auth::TokenManager`](./token_manager): Token lifecycle management
+- [`Adk::Auth::Scheme`](./scheme): Base class for authentication schemes 

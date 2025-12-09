@@ -199,7 +199,7 @@ token = scheme.exchange_auth_response(credential, auth_response)
 
 ## See Also
 
-- [Adk::Auth::Scheme](./scheme.md)
-- [Adk::Auth::Schemes::OAuth2](./schemes/oauth2.md)
-- [Adk::Auth::Schemes::OpenIDConnect](./schemes/oidc.md)
-- [Adk::Auth::ExchangedCredential](./exchanged_credential.md) 
+- [Adk::Auth::Scheme](./scheme)
+- [Adk::Auth::Schemes::OAuth2](./schemes/oauth2)
+- [Adk::Auth::Schemes::OpenIDConnect](./schemes/oidc)
+- [Adk::Auth::ExchangedCredential](./exchanged_credential) 

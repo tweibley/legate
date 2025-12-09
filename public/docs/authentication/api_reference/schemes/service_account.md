@@ -400,9 +400,9 @@ custom_jwt = scheme.create_jwt(credential, {
 
 ## See Also
 
-- [Adk::Auth::Schemes::GoogleServiceAccount](./google_service_account.md)
-- [Adk::Auth::Credential](../credential.md)
-- [Adk::Auth::ExchangedCredential](../exchanged_credential.md)
-- [Adk::Auth::Scheme](../scheme.md)
-- [Adk::Auth::TokenManager](../token_manager.md)
-- [Service Account Authentication Guide](../../guides/service_account.md) 
+- [Adk::Auth::Schemes::GoogleServiceAccount](./google_service_account)
+- [Adk::Auth::Credential](../credential)
+- [Adk::Auth::ExchangedCredential](../exchanged_credential)
+- [Adk::Auth::Scheme](../scheme)
+- [Adk::Auth::TokenManager](../token_manager)
+- [Service Account Authentication Guide](../../guides/service_account) 

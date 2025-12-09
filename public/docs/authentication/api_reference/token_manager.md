@@ -168,7 +168,7 @@ The token manager can raise the following errors:
 
 ## Related Classes
 
-- [`Adk::Auth::TokenStore`](./token_store.md): Secure storage for tokens
-- [`Adk::Auth::ExchangedCredential`](./exchanged_credential.md): Container for exchanged credentials
-- [`Adk::Auth::Schemes::OAuth2`](./schemes/oauth2.md): OAuth2 authentication scheme
-- [`Adk::Auth::ExconMiddleware`](./excon_middleware.md): HTTP client middleware 
+- [`Adk::Auth::TokenStore`](./token_store): Secure storage for tokens
+- [`Adk::Auth::ExchangedCredential`](./exchanged_credential): Container for exchanged credentials
+- [`Adk::Auth::Schemes::OAuth2`](./schemes/oauth2): OAuth2 authentication scheme
+- [`Adk::Auth::ExconMiddleware`](./excon_middleware): HTTP client middleware 

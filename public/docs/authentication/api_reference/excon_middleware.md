@@ -139,7 +139,7 @@ The middleware can raise the following errors:
 
 ## Related Classes
 
-- [`Adk::Auth::Scheme`](./scheme.md): Base class for authentication schemes
-- [`Adk::Auth::Credential`](./credential.md): Container for authentication credentials
-- [`Adk::Auth::TokenManager`](./token_manager.md): Manages token lifecycle
-- [`Adk::Auth::ToolContextExtension`](./tool_context_extension.md): Tool context integration 
+- [`Adk::Auth::Scheme`](./scheme): Base class for authentication schemes
+- [`Adk::Auth::Credential`](./credential): Container for authentication credentials
+- [`Adk::Auth::TokenManager`](./token_manager): Manages token lifecycle
+- [`Adk::Auth::ToolContextExtension`](./tool_context_extension): Tool context integration 

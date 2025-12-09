@@ -208,7 +208,7 @@ result = tool.execute(params)
 
 ## See Also
 
-- [Adk::Auth::Credential](../credential.md)
-- [Adk::Auth::ExchangedCredential](../exchanged_credential.md)
-- [Adk::Auth::Scheme](../scheme.md)
-- [Adk::Auth::TokenManager](../token_manager.md) 
+- [Adk::Auth::Credential](../credential)
+- [Adk::Auth::ExchangedCredential](../exchanged_credential)
+- [Adk::Auth::Scheme](../scheme)
+- [Adk::Auth::TokenManager](../token_manager) 

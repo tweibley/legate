@@ -401,6 +401,6 @@ If you've tried all the solutions and still encounter issues:
 
 ## Next Steps
 
-- [OAuth2 Troubleshooting](./oauth2_issues.md): For OAuth2-specific issues
-- [Token Refresh Problems](./token_refresh.md): For issues with token refresh
-- [Credential Storage Issues](./credential_storage.md): For issues with storing credentials 
+- [OAuth2 Troubleshooting](./oauth2_issues): For OAuth2-specific issues
+- [Token Refresh Problems](./token_refresh): For issues with token refresh
+- [Credential Storage Issues](./credential_storage): For issues with storing credentials 

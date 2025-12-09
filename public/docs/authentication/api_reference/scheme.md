@@ -189,12 +189,12 @@ The `Scheme` class supports different types of authentication flows:
 
 The ADK Ruby library includes the following concrete implementations of `Scheme`:
 
-- [Adk::Auth::Schemes::ApiKey](./schemes/api_key.md): For API key authentication
-- [Adk::Auth::Schemes::HTTPBearer](./schemes/http_bearer.md): For HTTP Bearer token authentication
-- [Adk::Auth::Schemes::OAuth2](./schemes/oauth2.md): For OAuth2 authentication
-- [Adk::Auth::Schemes::OpenIDConnect](./schemes/oidc.md): For OpenID Connect authentication
-- [Adk::Auth::Schemes::ServiceAccount](./schemes/service_account.md): For service account authentication
-- [Adk::Auth::Schemes::GoogleServiceAccount](./schemes/google_service_account.md): For Google service account authentication
+- [Adk::Auth::Schemes::ApiKey](./schemes/api_key): For API key authentication
+- [Adk::Auth::Schemes::HTTPBearer](./schemes/http_bearer): For HTTP Bearer token authentication
+- [Adk::Auth::Schemes::OAuth2](./schemes/oauth2): For OAuth2 authentication
+- [Adk::Auth::Schemes::OpenIDConnect](./schemes/oidc): For OpenID Connect authentication
+- [Adk::Auth::Schemes::ServiceAccount](./schemes/service_account): For service account authentication
+- [Adk::Auth::Schemes::GoogleServiceAccount](./schemes/google_service_account): For Google service account authentication
 
 ## Extension Points
 
@@ -222,7 +222,7 @@ end
 
 ## See Also
 
-- [Adk::Auth::Credential](./credential.md)
-- [Adk::Auth::ExchangedCredential](./exchanged_credential.md)
-- [Adk::Auth::Config](./config.md)
-- [Adk::Auth::TokenManager](./token_manager.md) 
+- [Adk::Auth::Credential](./credential)
+- [Adk::Auth::ExchangedCredential](./exchanged_credential)
+- [Adk::Auth::Config](./config)
+- [Adk::Auth::TokenManager](./token_manager) 

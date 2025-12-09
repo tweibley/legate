@@ -93,9 +93,9 @@ The lifecycle described above pertains to an *instance* of `ADK::Agent`. Agent *
 
 ## Further Reading
 
-*   [`adk_architecture_overview`](./adk_architecture_overview.md)
-*   [`adk_session_service`](./adk_session_service.md)
-*   [`adk_planner`](./adk_planner.md)
-*   [`adk_tools_and_registry`](../tools/adk_tools_and_registry.md) 
-*   [`mcp_client_integration`](../guides/mcp_client_integration.md)
-*   [`adk_definition_store`](./adk_definition_store.md)
+*   [`adk_architecture_overview`](./adk_architecture_overview)
+*   [`adk_session_service`](./adk_session_service)
+*   [`adk_planner`](./adk_planner)
+*   [`adk_tools_and_registry`](../tools/adk_tools_and_registry) 
+*   [`mcp_client_integration`](../guides/mcp_client_integration)
+*   [`adk_definition_store`](./adk_definition_store)

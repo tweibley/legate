@@ -318,8 +318,8 @@ For a complete list of Google API scopes, see the [Google OAuth 2.0 Scopes for G
 
 ## See Also
 
-- [Adk::Auth::Schemes::ServiceAccount](./service_account.md)
-- [Adk::Auth::Credential](../credential.md)
-- [Adk::Auth::ExchangedCredential](../exchanged_credential.md)
-- [Adk::Auth::TokenManager](../token_manager.md)
-- [Google Service Account Authentication Guide](../../guides/service_account.md) 
+- [Adk::Auth::Schemes::ServiceAccount](./service_account)
+- [Adk::Auth::Credential](../credential)
+- [Adk::Auth::ExchangedCredential](../exchanged_credential)
+- [Adk::Auth::TokenManager](../token_manager)
+- [Google Service Account Authentication Guide](../../guides/service_account) 

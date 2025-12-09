@@ -180,6 +180,6 @@ The token store can raise the following errors:
 
 ## Related Classes
 
-- [`Adk::Auth::TokenManager`](./token_manager.md): Token lifecycle management
-- [`Adk::Auth::Encryption`](./encryption.md): Encryption utilities for secure storage
-- [`Adk::SessionService::Base`](../../core_concepts/session_service.md): Base session service class 
+- [`Adk::Auth::TokenManager`](./token_manager): Token lifecycle management
+- [`Adk::Auth::Encryption`](./encryption): Encryption utilities for secure storage
+- [`Adk::SessionService::Base`](../../core_concepts/session_service): Base session service class 
