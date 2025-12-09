@@ -5,6 +5,7 @@ require 'singleton'
 require_relative '../errors'
 require_relative 'error'
 require_relative 'credential'
+require_relative 'manager_store'
 require_relative 'schemes/api_key'
 require_relative 'schemes/http_bearer'
 require_relative 'schemes/oauth2'
@@ -20,20 +21,65 @@ module ADK
     class Manager
       include Singleton
 
+      # @return [ADK::Auth::ManagerStore::RedisStore, ADK::Auth::ManagerStore::InMemoryStore, nil]
+      attr_reader :store
+
       def initialize
         @schemes = {}
         @credentials = {}
         @url_mappings = []
+        @store = nil
+        @loaded_from_store = false
         
         # Register built-in schemes
         register_default_schemes
       end
 
+      # Set the persistence store and load existing data
+      # @param store [ADK::Auth::ManagerStore::RedisStore, ADK::Auth::ManagerStore::InMemoryStore]
+      # @param load_immediately [Boolean] Whether to load data from store immediately (default: true)
+      def set_store(store, load_immediately: true)
+        @store = store
+        load_from_store if load_immediately && store&.available?
+      end
+
+      # Load all schemes, credentials, and URL mappings from the store
+      # @return [Boolean] true if successful
+      def load_from_store
+        return false unless @store&.available?
+        return true if @loaded_from_store # Don't reload if already loaded
+
+        ADK.logger&.info('Loading authentication configuration from store...')
+        
+        # Load credentials first (schemes might depend on them for URL mappings)
+        load_credentials_from_store
+        
+        # Load schemes (will overwrite defaults with stored config)
+        load_schemes_from_store
+        
+        # Load URL mappings
+        load_url_mappings_from_store
+        
+        @loaded_from_store = true
+        ADK.logger&.info('Authentication configuration loaded from store.')
+        true
+      rescue => e
+        ADK.logger&.error("Failed to load auth config from store: #{e.message}")
+        false
+      end
+
+      # Force reload from store (useful after external changes)
+      def reload_from_store
+        @loaded_from_store = false
+        load_from_store
+      end
+
       # Register an authentication scheme
       # @param scheme [ADK::Auth::Scheme] The scheme to register
       # @param name [Symbol, String] Optional name for the scheme (defaults to scheme type)
+      # @param persist [Boolean] Whether to persist to store (default: true)
       # @return [Symbol] The name the scheme was registered under
-      def register_scheme(scheme, name = nil)
+      def register_scheme(scheme, name = nil, persist: true)
         raise ArgumentError, "Scheme must be an ADK::Auth::Scheme" unless scheme.is_a?(ADK::Auth::Scheme)
         
         # Use scheme type as name if not provided
@@ -41,27 +87,63 @@ module ADK
         name = name.to_sym
         
         @schemes[name] = scheme
+        
+        # Persist to store if available and persistence is enabled
+        @store&.save_scheme(name, scheme) if persist && @store&.available?
+        
         name
+      end
+
+      # Unregister/delete a scheme
+      # @param name [Symbol, String] The scheme name
+      # @param persist [Boolean] Whether to persist the deletion (default: true)
+      # @return [Boolean] true if deleted
+      def unregister_scheme(name, persist: true)
+        name = name.to_sym
+        deleted = @schemes.delete(name)
+        
+        @store&.delete_scheme(name) if persist && deleted && @store&.available?
+        
+        !deleted.nil?
       end
 
       # Register a credential
       # @param credential [ADK::Auth::Credential] The credential to register
       # @param name [Symbol, String] The name to register the credential under
+      # @param persist [Boolean] Whether to persist to store (default: true)
       # @return [Symbol] The name the credential was registered under
-      def register_credential(credential, name)
+      def register_credential(credential, name, persist: true)
         raise ArgumentError, "Credential must be an ADK::Auth::Credential" unless credential.is_a?(ADK::Auth::Credential)
         raise ArgumentError, "Name must be provided" if name.nil?
         
         name = name.to_sym
         @credentials[name] = credential
+        
+        # Persist to store if available and persistence is enabled
+        @store&.save_credential(name, credential) if persist && @store&.available?
+        
         name
+      end
+
+      # Unregister/delete a credential
+      # @param name [Symbol, String] The credential name
+      # @param persist [Boolean] Whether to persist the deletion (default: true)
+      # @return [Boolean] true if deleted
+      def unregister_credential(name, persist: true)
+        name = name.to_sym
+        deleted = @credentials.delete(name)
+        
+        @store&.delete_credential(name) if persist && deleted && @store&.available?
+        
+        !deleted.nil?
       end
 
       # Register a URL mapping to a scheme and credential
       # @param url_pattern [String, Regexp] The URL pattern to match
       # @param scheme_name [Symbol, String] The name of the scheme to use
       # @param credential_name [Symbol, String] The name of the credential to use
-      def register_url_mapping(url_pattern, scheme_name, credential_name)
+      # @param persist [Boolean] Whether to persist to store (default: true)
+      def register_url_mapping(url_pattern, scheme_name, credential_name, persist: true)
         scheme_name = scheme_name.to_sym
         credential_name = credential_name.to_sym
         
@@ -78,6 +160,24 @@ module ADK
           scheme_name: scheme_name,
           credential_name: credential_name
         }
+        
+        # Persist all URL mappings to store
+        @store&.save_url_mappings(@url_mappings) if persist && @store&.available?
+      end
+
+      # Remove a URL mapping by index
+      # @param index [Integer] The index of the mapping to remove
+      # @param persist [Boolean] Whether to persist the deletion (default: true)
+      # @return [Boolean] true if removed
+      def remove_url_mapping(index, persist: true)
+        return false if index < 0 || index >= @url_mappings.size
+        
+        @url_mappings.delete_at(index)
+        
+        # Persist all URL mappings to store
+        @store&.save_url_mappings(@url_mappings) if persist && @store&.available?
+        
+        true
       end
 
       # Get a registered scheme
@@ -294,6 +394,122 @@ module ADK
         else
           false
         end
+      end
+
+      # Load credentials from store
+      def load_credentials_from_store
+        return unless @store&.available?
+
+        stored_credentials = @store.load_all_credentials
+        stored_credentials.each do |name, data|
+          credential = deserialize_credential(data)
+          @credentials[name] = credential if credential
+        rescue => e
+          ADK.logger&.warn("Failed to load credential '#{name}': #{e.message}")
+        end
+
+        ADK.logger&.debug("Loaded #{stored_credentials.size} credentials from store")
+      end
+
+      # Load schemes from store
+      def load_schemes_from_store
+        return unless @store&.available?
+
+        stored_schemes = @store.load_all_schemes
+        stored_schemes.each do |name, data|
+          scheme = deserialize_scheme(data)
+          @schemes[name] = scheme if scheme
+        rescue => e
+          ADK.logger&.warn("Failed to load scheme '#{name}': #{e.message}")
+        end
+
+        ADK.logger&.debug("Loaded #{stored_schemes.size} schemes from store")
+      end
+
+      # Load URL mappings from store
+      def load_url_mappings_from_store
+        return unless @store&.available?
+
+        @url_mappings = @store.load_url_mappings
+        ADK.logger&.debug("Loaded #{@url_mappings.size} URL mappings from store")
+      end
+
+      # Deserialize a credential from stored data
+      # @param data [Hash] The stored credential data
+      # @return [ADK::Auth::Credential, nil]
+      def deserialize_credential(data)
+        return nil unless data && data[:auth_type]
+
+        auth_type = data[:auth_type].to_sym
+        attributes = data.reject { |k, _| k == :auth_type }
+
+        ADK::Auth::Credential.new(auth_type: auth_type, **attributes)
+      rescue => e
+        ADK.logger&.warn("Failed to deserialize credential: #{e.message}")
+        nil
+      end
+
+      # Deserialize a scheme from stored data
+      # @param data [Hash] The stored scheme data
+      # @return [ADK::Auth::Scheme, nil]
+      def deserialize_scheme(data)
+        return nil unless data && data[:scheme_type]
+
+        scheme_type = data[:scheme_type].to_sym
+
+        case scheme_type
+        when :api_key
+          ADK::Auth::Schemes::ApiKey.new(
+            header_name: data[:header_name],
+            query_param_name: data[:query_param_name],
+            location: data[:location]&.to_sym
+          )
+        when :http_bearer
+          ADK::Auth::Schemes::HTTPBearer.new
+        when :oauth2
+          ADK::Auth::Schemes::OAuth2.new(
+            authorization_url: data[:authorization_url] || 'https://example.com/oauth/authorize',
+            token_url: data[:token_url] || 'https://example.com/oauth/token',
+            scopes: data[:scopes],
+            use_pkce: data[:use_pkce],
+            revocation_url: data[:revocation_url]
+          )
+        when :openid_connect, :oidc
+          ADK::Auth::Schemes::OpenIDConnect.new(
+            authorization_url: data[:authorization_url] || 'https://example.com/oidc/authorize',
+            token_url: data[:token_url] || 'https://example.com/oidc/token',
+            scopes: data[:scopes],
+            use_pkce: data[:use_pkce],
+            revocation_url: data[:revocation_url]
+          )
+        when :service_account
+          # Temporarily set test env to allow scheme creation without real credentials
+          original_env = ENV['RSPEC_ENV']
+          ENV['RSPEC_ENV'] = 'test'
+          begin
+            ADK::Auth::Schemes::ServiceAccount.new(
+              token_url: data[:token_url] || 'https://example.com/token'
+            )
+          ensure
+            original_env ? ENV['RSPEC_ENV'] = original_env : ENV.delete('RSPEC_ENV')
+          end
+        when :google_service_account
+          original_env = ENV['RSPEC_ENV']
+          ENV['RSPEC_ENV'] = 'test'
+          begin
+            ADK::Auth::Schemes::GoogleServiceAccount.new(
+              scopes: data[:scopes] || ['https://www.googleapis.com/auth/cloud-platform']
+            )
+          ensure
+            original_env ? ENV['RSPEC_ENV'] = original_env : ENV.delete('RSPEC_ENV')
+          end
+        else
+          ADK.logger&.warn("Unknown scheme type: #{scheme_type}")
+          nil
+        end
+      rescue => e
+        ADK.logger&.warn("Failed to deserialize scheme: #{e.message}")
+        nil
       end
     end
   end

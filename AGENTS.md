@@ -13,7 +13,7 @@
 - Authentication system for external API access
 - Background job processing via Sidekiq
 
-**Version:** 0.6.3  
+**Version:** 0.6.6
 **Ruby Requirement:** >= 3.0.0  
 **Author:** Taylor Weibley
 

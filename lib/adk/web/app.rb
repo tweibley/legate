@@ -36,6 +36,7 @@ require_relative '../session_service/redis' # Alternative Redis-based session st
 require_relative '../global_tool_manager' # Discovers and manages native tools available to the application
 # --- Load Authentication System ---
 require_relative '../auth/manager' # Authentication manager for handling authentication schemes and credentials
+require_relative '../auth/manager_store' # Persistence for authentication configuration
 # Explicitly require built-in native tools so GlobalToolManager can find them
 require_relative '../tools/echo'
 require_relative '../tools/calculator'
@@ -165,6 +166,9 @@ module ADK
 
           # 4. Attempt to synchronize running agents based on persistent_status
           synchronize_persistent_agents
+
+          # 5. Initialize Auth Manager Store for persistent auth configuration
+          initialize_auth_manager_store(redis_client)
         rescue Redis::CannotConnectError => e
           @logger.error("Could not connect to Redis. Agent definition persistence disabled. #{e.message}")
           # @definition_store remains nil
@@ -878,6 +882,26 @@ module ADK
         rescue => e
           @logger.error("Unexpected error during persistent agent synchronization: #{e.class} - #{e.message}")
           @logger.error(e.backtrace.first(5).join("\n"))
+        end
+      end
+
+      # Initialize the authentication manager store with Redis for persistence
+      # @param redis_client [Redis] The Redis client instance
+      def initialize_auth_manager_store(redis_client)
+        return unless redis_client
+
+        begin
+          # Create the Redis-backed store for authentication configuration
+          auth_store = ADK::Auth::ManagerStore::RedisStore.new(redis_client: redis_client)
+          
+          # Set the store on the singleton Auth::Manager and load persisted data
+          auth_manager = ADK::Auth::Manager.instance
+          auth_manager.set_store(auth_store, load_immediately: true)
+          
+          @logger.info('Authentication Manager Store initialized and loaded from Redis.')
+        rescue => e
+          @logger.error("Failed to initialize Auth Manager Store: #{e.class} - #{e.message}")
+          @logger.debug(e.backtrace.first(3).join("\n"))
         end
       end
 

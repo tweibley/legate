@@ -435,13 +435,17 @@ javascript:
       
       // Get credentials from the original credential select dropdown
       const credentialSelect = document.getElementById('credential-select');
-      const credentialOptions = credentialSelect.querySelectorAll('option[value!=""]');
+      const credentialOptions = credentialSelect.querySelectorAll('option');
       
       credentialOptions.forEach(option => {
-        const newOption = document.createElement('option');
-        newOption.value = option.value;
-        newOption.textContent = option.textContent;
-        selectElement.appendChild(newOption);
+        // Skip the placeholder option with empty value
+        if (option.value && option.value !== '') {
+          const newOption = document.createElement('option');
+          newOption.value = option.value;
+          newOption.textContent = option.textContent;
+          newOption.dataset.type = option.dataset.type;
+          selectElement.appendChild(newOption);
+        }
       });
     }
   }); 
