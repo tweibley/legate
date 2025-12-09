@@ -27,7 +27,7 @@ graph TD
     end
 
     WebhookTool -- HTTP POST --> ExternalService1
-    HttpClient -- HTTP Request (GET/POST/PUT etc.) --> ExternalService2
+    HttpClient -- HTTP Request (GET/HEAD/POST/PUT etc.) --> ExternalService2
 
     style Agent fill:#ccf,stroke:#333,stroke-width:2px
     style Planner fill:#ccf,stroke:#333,stroke-width:2px
@@ -211,7 +211,7 @@ end
     *   You need standard HMAC-SHA256 signing (`X-Hub-Signature-256`).
     *   You are comfortable with the agent prompt potentially containing the signing secret (use with caution).
 *   Use **`HttpClient` in a Custom Tool** if:
-    *   You need to use other HTTP methods (GET, PUT, DELETE, etc.).
+    *   You need to use other HTTP methods (GET, HEAD, PUT, DELETE, etc.).
     *   You need to send non-JSON request bodies (e.g., XML, form data) and manage `Content-Type` manually.
     *   You require complex custom headers or authentication schemes beyond simple HMAC.
     *   You need to perform logic before or after the HTTP request within the tool itself.

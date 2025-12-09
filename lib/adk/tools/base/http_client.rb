@@ -17,7 +17,7 @@ module ADK
       # Include this module in your Tool class and call `setup_http_client`
       # in your `initialize` method.
       #
-      # It offers helper methods (http_get, http_post, etc.) for common requests,
+      # It offers helper methods (http_get, http_head, http_post, etc.) for common requests,
       # handles base URL joining, JSON encoding/decoding (optional), logging,
       # and wraps Excon errors into standardized ADK::ToolError subclasses.
       module HttpClient
@@ -40,6 +40,10 @@ module ADK
 
         def http_get(path, query: {}, headers: {}, options: {})
           make_request(:get, path, query: query, headers: headers, options: options)
+        end
+
+        def http_head(path, query: {}, headers: {}, options: {})
+          make_request(:head, path, query: query, headers: headers, options: options)
         end
 
         def http_post(path, body: nil, query: {}, headers: {}, options: {})

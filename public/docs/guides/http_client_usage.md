@@ -54,6 +54,7 @@ This method initializes and configures the underlying `Excon::Connection`.
 Once set up, you can use the provided helper methods to make HTTP requests:
 
 *   `http_get(path, query: {}, headers: {}, options: {})`
+*   `http_head(path, query: {}, headers: {}, options: {})` - Returns headers only, no body (efficient for status checks)
 *   `http_post(path, body: nil, query: {}, headers: {}, options: {})`
 *   `http_put(path, body: nil, query: {}, headers: {}, options: {})`
 *   `http_delete(path, query: {}, headers: {}, options: {})`
@@ -87,9 +88,36 @@ rescue ADK::ToolError => e
 end
 ```
 
+### Example: Making a HEAD Request
+
+HEAD requests are useful for checking if a resource exists or getting metadata without downloading the full response body. This is efficient for status checks or verifying URLs.
+
+```ruby
+def check_url_status(url)
+  # HEAD requests work with absolute URLs too
+  response = http_head(url)
+  {
+    status_code: response.status,
+    content_type: response.headers['Content-Type'],
+    content_length: response.headers['Content-Length'],
+    reachable: (200..399).cover?(response.status)
+  }
+rescue ADK::ToolHttpError => e
+  # For a status checker, non-2xx responses may be valid results
+  # You can extract the response from the error
+  if e.response
+    { status_code: e.response.status, reachable: false }
+  else
+    { status_code: nil, reachable: false, error: e.message }
+  end
+rescue ADK::ToolNetworkError, ADK::ToolTimeoutError => e
+  { status_code: nil, reachable: false, error: e.message }
+end
+```
+
 ## 3. Handling Responses
 
-The request helper methods (`http_get`, etc.) return an `Excon::Response` object upon a successful request (typically HTTP 2xx status codes).
+The request helper methods (`http_get`, `http_head`, etc.) return an `Excon::Response` object upon a successful request (typically HTTP 2xx status codes).
 
 You can access various parts of the response:
 
