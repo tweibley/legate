@@ -533,6 +533,7 @@ We use mise to manage our Ruby environment.
     echo 'eval "$(mise activate bash)"' >> ~/.bashrc
     eval "$(mise activate bash)"
     source ~/.bashrc
+
     echo
     echo
     export PATH="$HOME/.local/share/mise/shims:$PATH"
@@ -540,6 +541,7 @@ We use mise to manage our Ruby environment.
     mise use -g ruby@latest
     mise doctor
     gem install --quiet bundler rake
+
     echo
     echo "Done with Ruby install!"
     echo
@@ -551,6 +553,12 @@ We use mise to manage our Ruby environment.
     sudo apt-get install -y redis
     sudo systemctl enable redis-server
     sudo systemctl start redis-server
+
+
+    echo "Install rubygems for app"
+    bundle install
+    echo "Done."
+    echo
     echo "Environment prepared!"
     ```
 
