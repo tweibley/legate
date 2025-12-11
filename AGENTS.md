@@ -862,23 +862,41 @@ This project uses a file-based task management system in `.ai/`:
 See `.cursor/rules/.task-magic/` for detailed rules.
 
 ---
+## For Jules: Our Environment
 
-## For Jules: How to Setup Our Environment
+We use mise to manage our Ruby environment.
 
-We use Docker to ensure a consistent development and testing environment.
-
-1.  **Prepare the environment:**
+1.  **We have ALREADY prepared the environment:**
     ```bash
-    # Installs and sets up mise
     sudo apt update -y && sudo apt install -y curl
+    sudo apt-get install -y libssl-dev libyaml-dev zlib1g-dev libreadline-dev libgdbm-dev
     sudo install -dm 755 /etc/apt/keyrings
     curl -fSs https://mise.jdx.dev/gpg-key.pub | sudo tee /etc/apt/keyrings/mise-archive-keyring.pub 1> /dev/null
     echo "deb [signed-by=/etc/apt/keyrings/mise-archive-keyring.pub arch=amd64] https://mise.jdx.dev/deb stable main" | sudo tee /etc/apt/sources.list.d/mise.list
     sudo apt update
     sudo apt install -y mise
-    echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc
-    mise trust mise.toml
+    echo 'eval "$(mise activate bash)"' >> ~/.bashrc
+    eval "$(mise activate bash)"
+    source ~/.bashrc
+    echo
+    echo
+    export PATH="$HOME/.local/share/mise/shims:$PATH"
+    mise trust -a
     mise use -g ruby@latest
+    mise doctor
+    gem install --quiet bundler rake
+    echo
+    echo "Done with Ruby install!"
+    echo
+    sudo apt-get install lsb-release curl gpg
+    curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+    sudo chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+    sudo apt update
+    sudo apt-get install -y redis
+    sudo systemctl enable redis-server
+    sudo systemctl start redis-server
+    echo "Environment prepared!"
     ```
 
 2.  **Run Tests:**
@@ -888,6 +906,6 @@ We use Docker to ensure a consistent development and testing environment.
     ```
 
 3.  **Environment Variables:**
-    The `docker-compose.yml` is configured to pass `GOOGLE_API_KEY` and `WEBHOOK_RECEIVER_SECRET` from your local environment to the container. Ensure these are set in your local shell or `.env` file before running `docker-compose`. 
+    `GOOGLE_API_KEY` and `WEBHOOK_RECEIVER_SECRET` should be set in your local environment. 
     
     *Note: `ADK_LOG_LEVEL` defaults to `debug` and `REDIS_URL` is automatically configured to point to the redis service.*
