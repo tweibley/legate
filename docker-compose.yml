@@ -1,12 +1,19 @@
 services:
-  adk-redis:
-    image: docker.io/redis:8.0-alpine
-    restart: always
+  app:
+    build: .
+    ports:
+      - "4567:4567"
+    volumes:
+      - .:/app
+    environment:
+      - ADK_LOG_LEVEL=${ADK_LOG_LEVEL:-debug}
+      - REDIS_URL=redis://redis:6379/0
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - WEBHOOK_RECEIVER_SECRET=${WEBHOOK_RECEIVER_SECRET}
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
     ports:
       - "6379:6379"
-    command: redis-server --save 60 1 --loglevel warning
-    volumes:
-      - cache:/data
-volumes:
-  cache:
-    driver: local

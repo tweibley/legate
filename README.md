@@ -517,6 +517,28 @@ After checking out the repo:
    bundle exec ruby examples/multi_tool_agent.rb
    ```
 
+## For Jules: How to Setup Our Environment
+
+We use Docker to ensure a consistent development and testing environment.
+
+1.  **Start the environment:**
+    ```bash
+    # Starts Redis and the Application container with the current directory mounted
+    docker-compose up -d
+    ```
+
+2.  **Run Tests:**
+    ```bash
+    # Execute the test suite inside the container
+    docker-compose run --rm app bundle exec rake spec
+    ```
+
+3.  **Environment Variables:**
+    The `docker-compose.yml` is configured to pass `GOOGLE_API_KEY` and `WEBHOOK_RECEIVER_SECRET` from your local environment to the container. Ensure these are set in your local shell or `.env` file before running `docker-compose`. 
+    
+    *Note: `ADK_LOG_LEVEL` defaults to `debug` and `REDIS_URL` is automatically configured to point to the redis service.*
+
+
 ## Contributing
 
 Bug reports and pull requests are welcome on GitHub at [https://github.com/tweibley/adk-ruby](https://github.com/tweibley/adk-ruby).
