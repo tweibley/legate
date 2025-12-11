@@ -2,7 +2,8 @@
 *.rbc
 /.adk_browser_data
 /.config
-/coverage/
+# Going to let Jules work on this
+# /coverage/
 /InstalledFiles
 /pkg/
 .rspec_status
@@ -40,5 +41,4 @@
 # OS-specific
 .DS_Store
 Thumbs.db
-coverage
 server.log
