@@ -233,7 +233,85 @@ RSpec.describe ADK::Web::WebhookListener do
       end
     end
 
-    # TODO: Add tests for global validators/secrets if needed
-    # TODO: Add tests for static route handling (once implemented)
+    context 'with global validator' do
+      let(:global_validator_proc) { ->(_req, _secret) { true } }
+
+      before do
+        allow(webhook_config).to receive(:global_validator).and_return(global_validator_proc)
+        allow(webhook_config).to receive(:global_secret).and_return('global_secret')
+        # Ensure agent-specific validator is nil so global one is used
+        allow(agent_definition).to receive(:webhook_validator).and_return(nil)
+        # We need to make sure the object in registry (which is used for validator lookup) matches
+        allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(agent_name).and_return(agent_definition)
+      end
+
+      it 'uses global validator when agent validator is not set' do
+        expect(global_validator_proc).to receive(:call).with(anything, 'global_secret').and_return(true)
+
+        header 'Content-Type', 'application/json'
+        post trigger_path, request_json
+        expect(last_response.status).to eq(202)
+      end
+
+      it 'rejects request if global validator fails' do
+        allow(global_validator_proc).to receive(:call).and_return(false)
+
+        header 'Content-Type', 'application/json'
+        post trigger_path, request_json
+        expect(last_response.status).to eq(401)
+      end
+    end
+  end
+
+  describe 'Static Routes' do
+    let(:static_handler) { ->(_req) { [200, { 'Content-Type' => 'text/plain' }, ['Static OK']] } }
+    let(:static_route_config) { instance_double(ADK::Configuration::Webhooks::RouteConfig, handler: static_handler, validator: nil, secret: nil) }
+
+    before do
+      # We need to ensure dynamic routes don't interfere, but they shouldn't with distinct paths
+      allow(webhook_config).to receive(:static_routes).and_return({
+        'GET /static_test' => static_route_config
+      })
+    end
+
+    it 'handles registered static route' do
+      get '/static_test'
+      expect(last_response.status).to eq(200)
+      expect(last_response.body).to eq('Static OK')
+    end
+
+    context 'with validation' do
+      let(:path) { '/validated_static_pass' }
+      let(:static_validator) { ->(_req, _secret) { true } }
+      let(:validated_route_config) {
+        instance_double(ADK::Configuration::Webhooks::RouteConfig,
+          handler: static_handler,
+          validator: static_validator,
+          secret: 'static_secret')
+      }
+
+      before do
+        allow(webhook_config).to receive(:static_routes).and_return({
+          "POST #{path}" => validated_route_config
+        })
+      end
+
+      it 'passes validation' do
+        # We can spy on the validator if we want to ensure it's called
+        expect(static_validator).to receive(:call).with(anything, 'static_secret').and_call_original
+        post path
+        expect(last_response.status).to eq(200)
+      end
+
+      context 'when validator returns false' do
+        let(:path) { '/validated_static_fail' }
+        let(:static_validator) { ->(_req, _secret) { false } }
+
+        it 'fails validation' do
+          post path
+          expect(last_response.status).to eq(401)
+        end
+      end
+    end
   end
 end

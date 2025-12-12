@@ -155,7 +155,8 @@ module ADK
 
         # Perform Validation (Use HASH for secret, IN-MEMORY for validator proc/symbol)
         validator_config = in_memory_definition.webhook_validator || webhook_config.global_validator
-        secret = definition_hash[:webhook_secret] # Secret comes from the store
+        # Use agent secret, falling back to global secret if available
+        secret = definition_hash[:webhook_secret] || webhook_config.global_secret
         if validator_config
           validator_proc = validator_config.is_a?(Proc) ? validator_config : webhook_config.find_validator(validator_config)
 

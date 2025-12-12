@@ -112,6 +112,7 @@ RSpec.describe 'Webhook Integration' do
     allow(webhook_config_double).to receive(:dynamic_agent_route_pattern).and_return('/agents/:agent_name/trigger')
     allow(webhook_config_double).to receive(:static_routes).and_return({})
     allow(webhook_config_double).to receive(:global_validator).and_return(nil)
+    allow(webhook_config_double).to receive(:global_secret).and_return(nil)
     allow(webhook_config_double).to receive(:find_validator).and_return(nil)
     allow(webhook_config_double).to receive(:base_path).and_return('/webhooks') # Allow base_path
 
