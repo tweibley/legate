@@ -42,3 +42,4 @@
 Thumbs.db
 coverage
 server.log
+test_output*.txt
