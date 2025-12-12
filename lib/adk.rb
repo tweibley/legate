@@ -13,7 +13,8 @@ require 'openssl' # For HMAC in validator
 
 # --- Eager Logger Initialization (Moved BEFORE other ADK requires) ---
 module ADK
-  @logger = begin
+  # --- Logger Initialization Logic ---
+  def self.initialize_logger
     default_level = ENV['RACK_ENV'] == 'development' ? 'DEBUG' : 'WARN'
     level_str = ENV['ADK_LOG_LEVEL']&.upcase || default_level
     log_target = $stdout
@@ -38,6 +39,8 @@ module ADK
     end
     logger_instance
   end
+
+  @logger = initialize_logger
 
   # --- Define Logger Accessor Method EARLY ---
   def self.logger
