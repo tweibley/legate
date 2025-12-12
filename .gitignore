@@ -3,7 +3,7 @@
 /.adk_browser_data
 /.config
 # Going to let Jules work on this
-# /coverage/
+/coverage/
 /InstalledFiles
 /pkg/
 .rspec_status
