@@ -525,41 +525,30 @@ We use mise to manage our Ruby environment.
     ```bash
     sudo apt update -y && sudo apt install -y curl
     sudo apt-get install -y libssl-dev libyaml-dev zlib1g-dev libreadline-dev libgdbm-dev
-    sudo install -dm 755 /etc/apt/keyrings
-    curl -fSs https://mise.jdx.dev/gpg-key.pub | sudo tee /etc/apt/keyrings/mise-archive-keyring.pub 1> /dev/null
-    echo "deb [signed-by=/etc/apt/keyrings/mise-archive-keyring.pub arch=amd64] https://mise.jdx.dev/deb stable main" | sudo tee /etc/apt/sources.list.d/mise.list
-    sudo apt update
-    sudo apt install -y mise
-    echo 'eval "$(mise activate bash)"' >> ~/.bashrc
-    eval "$(mise activate bash)"
-    source ~/.bashrc
+    curl https://mise.run | sh
+    export PATH="$HOME/.local/bin:$PATH"
 
-    echo
-    echo
-    export PATH="$HOME/.local/share/mise/shims:$PATH"
+    eval "$(mise activate bash --shims)"
     mise trust -a
-    mise use -g ruby@latest
-    mise doctor
+    mise install # Installs the tools in mise.toml
+
     gem install --quiet bundler rake
 
     echo
     echo "Done with Ruby install!"
     echo
-    sudo apt-get install lsb-release curl gpg
-    curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
-    sudo chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
-    echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
-    sudo apt update
-    sudo apt-get install -y redis
-    sudo systemctl enable redis-server
-    sudo systemctl start redis-server
 
 
-    echo "Install rubygems for app"
-    bundle install
-    echo "Done."
-    echo
     echo "Environment prepared!"
+
+    bundle install
+
+    echo
+    echo
+
+    sudo apt install -y valkey valkey-redis-compat
+    sudo systemctl start valkey
+    sudo systemctl enable valkey
     ```
 
 2.  **Run Tests:**
