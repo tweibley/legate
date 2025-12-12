@@ -117,7 +117,7 @@ RSpec.describe ADK::Planner do
         planner_without_client.instance_variable_set(:@client, nil)
 
         # Mock fallback_plan to return a test result
-        test_fallback_plan = [{ tool: :echo, params: { message: "Planning failed: No LLM client available. Original task: test task" } }]
+        test_fallback_plan = [{ tool: :echo, params: { message: 'Planning failed: No LLM client available. Original task: test task' } }]
         allow(planner_without_client).to receive(:fallback_plan).and_return(test_fallback_plan)
 
         # Log the expected error
@@ -126,15 +126,15 @@ RSpec.describe ADK::Planner do
 
       it 'returns a fallback plan' do
         # Call the plan method which should trigger the fallback
-        result = planner_without_client.plan("test task")
+        result = planner_without_client.plan('test task')
         expect(result).to be_an(Array)
         expect(result.first[:tool]).to eq(:echo)
-        expect(result.first[:params][:message]).to include("Planning failed")
+        expect(result.first[:params][:message]).to include('Planning failed')
       end
     end
 
     context 'when Gemini client is available' do
-      let(:mock_client) { double("Gemini") }
+      let(:mock_client) { double('Gemini') }
       let(:mock_response) {
         {
           'candidates' => [
@@ -156,11 +156,11 @@ RSpec.describe ADK::Planner do
         expect(mock_client).to receive(:generate_content).and_return(mock_response)
 
         # Call the method
-        result = planner.plan("test input")
+        result = planner.plan('test input')
 
         # Verify the result format
         expect(result).to be_a(Hash)
-        expect(result[:thought_process]).to eq("Thinking")
+        expect(result[:thought_process]).to eq('Thinking')
         expect(result[:steps]).to be_an(Array)
         expect(result[:steps][0][:tool]).to eq(:echo)
       end
@@ -175,11 +175,11 @@ RSpec.describe ADK::Planner do
         allow(mock_client).to receive(:generate_content).and_return(empty_response)
 
         # Call the method
-        result = planner.plan("test input")
+        result = planner.plan('test input')
 
         # Verify the result indicates an error
         expect(result).to be_a(Hash)
-        expect(result[:error]).to include("Gemini response was empty")
+        expect(result[:error]).to include('Gemini response was empty')
       end
 
       it 'handles JSON parsing errors' do
@@ -192,11 +192,12 @@ RSpec.describe ADK::Planner do
         allow(mock_client).to receive(:generate_content).and_return(invalid_json)
 
         # Call the method
-        result = planner.plan("test input")
+        result = planner.plan('test input')
 
-        # Verify the result indicates an error
+        # Verify the result uses the fallback structure (since it couldn't parse JSON)
         expect(result).to be_a(Hash)
-        expect(result[:error]).to include("Failed to extract valid JSON")
+        expect(result[:thought_process]).to include('Fallback')
+        expect(result[:steps]).to be_an(Array)
       end
 
       it 'handles general errors during planning' do
@@ -204,20 +205,18 @@ RSpec.describe ADK::Planner do
         error_planner = described_class.new(agent: agent, logger: mock_logger)
 
         # Create a client that raises an error
-        error_client = double("ErrorClient")
-        allow(error_client).to receive(:generate_content).and_raise(StandardError.new("API error"))
+        error_client = double('ErrorClient')
+        allow(error_client).to receive(:generate_content).and_raise(StandardError.new('API error'))
         error_planner.instance_variable_set(:@client, error_client)
-
-        # Mock the fallback_plan to return a controlled result
-        test_fallback = [{ tool: :echo, params: { message: "Error message" } }]
-        allow(error_planner).to receive(:fallback_plan).and_return(test_fallback)
 
         # Expect logger to receive error
         expect(mock_logger).to receive(:error).with(/Error during planning with Gemini/)
 
-        # Call the method and verify fallback is used
-        result = error_planner.plan("test input")
-        expect(result).to eq(test_fallback)
+        # Call the method and verify a fallback hash is returned
+        result = error_planner.plan('test input')
+        expect(result).to be_a(Hash)
+        expect(result[:thought_process]).to eq('Error occurred during planning')
+        expect(result[:steps]).to be_an(Array)
       end
     end
   end
@@ -503,7 +502,7 @@ RSpec.describe ADK::Planner do
 
       it 'combines tools and delegation targets' do
         allow(agent_with_delegation).to receive(:available_tools_metadata).and_return([tool_no_params_metadata])
-        allow(planner_with_delegation).to receive(:format_delegation_targets).and_return("Tool Name: agent_transfer_to_target_agent")
+        allow(planner_with_delegation).to receive(:format_delegation_targets).and_return('Tool Name: agent_transfer_to_target_agent')
 
         result = planner_with_delegation.send(:format_tools_for_prompt)
         expect(result).to include('Tool Name: test')
@@ -558,7 +557,7 @@ RSpec.describe ADK::Planner do
         # The new format doesn't prepend instructions in the same way
         # Just check that the task and tools are included
         expect(prompt).to include('# Instructions')
-        expect(prompt).to include("## User Request")
+        expect(prompt).to include('## User Request')
         expect(prompt).to include(task)
         expect(prompt).to include(tools_description)
       end
@@ -576,7 +575,7 @@ RSpec.describe ADK::Planner do
         prompt = planner.send(:build_multi_step_gemini_prompt, task, tools_description)
         # The new format doesn't include 'AGENT_INSTRUCTION'
         expect(prompt).to include('# Instructions')
-        expect(prompt).to include("## User Request")
+        expect(prompt).to include('## User Request')
         expect(prompt).to include(task)
         expect(prompt).to include(tools_description)
       end
@@ -594,7 +593,7 @@ RSpec.describe ADK::Planner do
         prompt = planner.send(:build_multi_step_gemini_prompt, task, tools_description)
         # The new format doesn't include 'AGENT_INSTRUCTION'
         expect(prompt).to include('# Instructions')
-        expect(prompt).to include("## User Request")
+        expect(prompt).to include('## User Request')
         expect(prompt).to include(task)
         expect(prompt).to include(tools_description)
       end
@@ -612,7 +611,7 @@ RSpec.describe ADK::Planner do
         prompt = planner_with_delegation.send(:build_multi_step_gemini_prompt, task, tools_description)
         # The new format doesn't specifically call out delegation
         # Just check that the task and tools are included
-        expect(prompt).to include("## User Request")
+        expect(prompt).to include('## User Request')
         expect(prompt).to include(task)
         expect(prompt).to include(tools_description)
       end
@@ -625,7 +624,7 @@ RSpec.describe ADK::Planner do
 
     it 'includes the task in the prompt' do
       result = planner_basic.send(:build_multi_step_gemini_prompt, task, tools_description)
-      expect(result).to include("## User Request")
+      expect(result).to include('## User Request')
       expect(result).to include(task)
     end
 
@@ -636,7 +635,7 @@ RSpec.describe ADK::Planner do
 
     it 'includes instructions for JSON format' do
       result = planner_basic.send(:build_multi_step_gemini_prompt, task, tools_description)
-      expect(result).to include('ALWAYS respond with valid JSON format')
+      expect(result).to include('MUST respond with ONLY a valid JSON object')
       expect(result).to include('thought_process')
       expect(result).to include('plan')
     end
