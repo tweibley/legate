@@ -46,8 +46,8 @@
   --radius-lg: 14px;
   --radius-full: 9999px;
   /* --- Font Families --- */
-  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
-  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 /* --- Dark Mode Variables --- */
@@ -404,6 +404,8 @@ strong.has-text-link { /* Navbar Brand */
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* Card footer styling */
+  /* Icon hover animation */
 }
 .dashboard-card .card-content {
   flex: 1;
@@ -426,9 +428,6 @@ strong.has-text-link { /* Navbar Brand */
 }
 .dashboard-card.tools-card::before {
   background: var(--color-info);
-}
-.dashboard-card {
-  /* Card footer styling */
 }
 .dashboard-card .card-footer {
   border-top: 1px solid var(--color-border-light);
@@ -462,9 +461,6 @@ strong.has-text-link { /* Navbar Brand */
 }
 .dashboard-card.docs-card::before {
   background: var(--color-success);
-}
-.dashboard-card {
-  /* Icon hover animation */
 }
 .dashboard-card .icon.is-large {
   transition: transform var(--transition-normal);
@@ -2486,6 +2482,16 @@ pre[style*="background-color: #fafafa;"] {
   line-height: 1.6;
   color: var(--color-text-primary);
   /* Heading styling */
+  /* List styling */
+  /* Paragraph spacing */
+  /* Code blocks with enhanced styling */
+  /* Inline code with improved contrast */
+  /* Blockquotes */
+  /* Tables */
+  /* Horizontal rule */
+  /* Links */
+  /* Images */
+  /* Badges/Labels */
 }
 .box .content h1, .box .content h2, .box .content h3, .box .content h4, .box .content h5, .box .content h6 {
   margin-top: 1.5em;
@@ -2510,9 +2516,6 @@ pre[style*="background-color: #fafafa;"] {
 .box .content h4 {
   font-size: 1em;
 }
-.box .content {
-  /* List styling */
-}
 .box .content ul, .box .content ol {
   padding-left: 1.5em;
   margin-bottom: 1.5em;
@@ -2524,17 +2527,11 @@ pre[style*="background-color: #fafafa;"] {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
 }
-.box .content {
-  /* Paragraph spacing */
-}
 .box .content p {
   margin-bottom: 1.25em;
 }
 .box .content p:last-child {
   margin-bottom: 0;
-}
-.box .content {
-  /* Code blocks with enhanced styling */
 }
 .box .content pre {
   background-color: #f8f9fa;
@@ -2546,6 +2543,7 @@ pre[style*="background-color: #fafafa;"] {
   position: relative;
   overflow-x: auto;
   /* When using highlight.js */
+  /* Language label */
 }
 .box .content pre.hljs {
   padding: 0;
@@ -2562,9 +2560,6 @@ pre[style*="background-color: #fafafa;"] {
   color: #24292e;
   tab-size: 2;
 }
-.box .content pre {
-  /* Language label */
-}
 .box .content pre[data-lang]::before {
   content: attr(data-lang);
   position: absolute;
@@ -2578,9 +2573,6 @@ pre[style*="background-color: #fafafa;"] {
   border-radius: 0 8px 0 6px;
   text-transform: uppercase;
 }
-.box .content {
-  /* Inline code with improved contrast */
-}
 .box .content :not(pre) > code {
   padding: 0.2em 0.4em;
   margin: 0 0.1em;
@@ -2589,9 +2581,6 @@ pre[style*="background-color: #fafafa;"] {
   border-radius: 4px;
   color: #0550ae;
   font-weight: 500;
-}
-.box .content {
-  /* Blockquotes */
 }
 .box .content blockquote {
   margin-left: 0;
@@ -2604,9 +2593,6 @@ pre[style*="background-color: #fafafa;"] {
 }
 .box .content blockquote p + p {
   margin-top: 1em;
-}
-.box .content {
-  /* Tables */
 }
 .box .content table {
   width: 100%;
@@ -2629,18 +2615,12 @@ pre[style*="background-color: #fafafa;"] {
 .box .content table tr:hover {
   background-color: #f1f4f8;
 }
-.box .content {
-  /* Horizontal rule */
-}
 .box .content hr {
   height: 0.25em;
   padding: 0;
   margin: 24px 0;
   background-color: #e1e4e8;
   border: 0;
-}
-.box .content {
-  /* Links */
 }
 .box .content a {
   color: #0366d6;
@@ -2649,16 +2629,10 @@ pre[style*="background-color: #fafafa;"] {
 .box .content a:hover {
   text-decoration: underline;
 }
-.box .content {
-  /* Images */
-}
 .box .content img {
   max-width: 100%;
   box-sizing: border-box;
   border-radius: 3px;
-}
-.box .content {
-  /* Badges/Labels */
 }
 .box .content .badge, .box .content [class^=badge-] {
   display: inline-block;
