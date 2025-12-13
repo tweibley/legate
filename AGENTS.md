@@ -867,34 +867,75 @@ See `.cursor/rules/.task-magic/` for detailed rules.
 We use mise to manage our Ruby environment.
 
 1.  **We have ALREADY prepared the environment:**
-    ```bash
-    sudo apt update -y && sudo apt install -y curl
-    sudo apt-get install -y libssl-dev libyaml-dev zlib1g-dev libreadline-dev libgdbm-dev
+```bash
+#!/bin/bash
+set -e  # Exit immediately if a command exits with a non-zero status
+
+# 1. System Packages: Check individually before apt update/install
+# We gather missing packages first to avoid running apt update unnecessarily
+REQUIRED_PKGS="curl libssl-dev libyaml-dev zlib1g-dev libreadline-dev libgdbm-dev"
+MISSING_PKGS=""
+
+for pkg in $REQUIRED_PKGS; do
+    if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+        MISSING_PKGS="$MISSING_PKGS $pkg"
+    fi
+done
+if [ -n "$MISSING_PKGS" ]; then
+    echo "Installing missing packages: $MISSING_PKGS"
+    sudo apt-get update -y
+    sudo apt-get install -y $MISSING_PKGS
+else
+    echo "System packages already installed."
+fi
+
+# 2. Install Mise: Check for the binary
+if [ ! -f "$HOME/.local/bin/mise" ]; then
+    echo "Installing mise..."
     curl https://mise.run | sh
-    export PATH="$HOME/.local/bin:$PATH"
+else
+    echo "mise already installed."
+fi
 
-    eval "$(mise activate bash --shims)"
-    mise trust -a
-    mise install # Installs the tools in mise.toml
+# Set path for the duration of this script
+export PATH="$HOME/.local/bin:$PATH"
 
-    gem install --quiet bundler rake
+# 3. Activate Mise: Always run this to ensure the current shell has access to tools
+eval "$(mise activate bash --shims)"
 
-    echo
-    echo "Done with Ruby install!"
-    echo
+# 4. Mise Tools: 'mise install' is generally smart, but we can skip if you want pure speed.
+# However, keep it to ensure version compliance.
+mise trust -a
+mise install
 
+# 5. Global Gems: Check if they exist
+if ! gem list -i bundler >/dev/null 2>&1; then
+    gem install --quiet bundler
+fi
 
-    echo "Environment prepared!"
+if ! gem list -i rake >/dev/null 2>&1; then
+    gem install --quiet rake
+fi
 
+echo "Done with Ruby install!"
+
+# 6. Bundle Install: Use 'bundle check' to skip 'bundle install'
+if ! bundle check >/dev/null 2>&1; then
+    echo "Installing project dependencies..."
     bundle install
+else
+    echo "Bundle dependencies satisfied."
+fi
 
-    echo
-    echo
+echo
+echo "Environment prepared!"
 
+if ! dpkg -s valkey >/dev/null 2>&1; then
     sudo apt install -y valkey valkey-redis-compat
-    sudo systemctl start valkey
-    sudo systemctl enable valkey
-    ```
+    sudo systemctl start valkey-server
+    sudo systemctl enable valkey-server
+fi
+```
 
 2.  **Run Tests:**
     ```bash
