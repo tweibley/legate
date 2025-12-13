@@ -2,6 +2,7 @@
 
 require 'spec_helper'
 require 'adk/custom_agent_patch'
+require 'adk/tools/echo'
 
 RSpec.describe "Agent Delegation Integration", :integration do
   let(:mock_session_service) do
@@ -55,47 +56,41 @@ RSpec.describe "Agent Delegation Integration", :integration do
     end
   end
 
-  # Register custom tool
-  let(:calculator_tool) do
+  # Define a proper calculator tool for testing
+  let!(:calculator_tool) do
+    # Define an anonymous class for the tool to keep it self-contained in the test
     Class.new(ADK::Tool) do
-      def self.tool_metadata
-        {
-          name: :calculator,
-          description: 'Performs calculations',
-          parameters: {
-            expression: {
-              type: :string,
-              description: 'The math expression to evaluate'
-            }
-          }
-        }
-      end
+      # Set the explicit tool name directly, as `tool_name` DSL method does not take arguments
+      self.explicit_tool_name = :calculator
+      tool_description 'Performs calculations'
+      parameter :expression, type: :string, description: 'The math expression to evaluate'
 
-      def call(params)
-        begin
-          # Evaluate the expression
-          # Note: Only use eval in controlled environments where input is trusted
-          result = eval(params[:expression])
-          return { result: result }
-        rescue => e
-          return { error: "Calculation error: #{e.message}" }
-        end
+      # The main execution method for the tool
+      def perform_execution(params, _context)
+        # Using `eval` is generally unsafe, but acceptable here in a controlled test environment
+        # where we provide the input.
+        result = eval(params[:expression])
+        { status: :success, result: result }
+      rescue StandardError => e
+        # Return a structured error if the calculation fails
+        { status: :error, error_message: "Calculation error: #{e.message}" }
       end
     end
   end
 
+  # Register built-in tools that are used in the tests
+  let!(:echo_tool) { ADK::Tools::Echo }
+
   before(:each) do
-    # Register the calculator tool globally
-    allow(ADK::GlobalToolManager).to receive(:register_tool).with(:calculator, calculator_tool) do
-      ADK::GlobalToolManager.instance_variable_set(:@tools, { calculator: calculator_tool })
-    end
-    ADK::GlobalToolManager.register_tool(:calculator, calculator_tool)
+    # Reset tool manager to ensure a clean slate for each test
+    ADK::GlobalToolManager.reset!
+    ADK::GlobalToolManager.register_tool(calculator_tool)
+    ADK::GlobalToolManager.register_tool(echo_tool)
 
     # Register agent definitions globally
     allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(:coordinator_agent).and_return(coordinator_definition)
     allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(:calculator_agent).and_return(calculator_definition)
     allow(ADK::GlobalDefinitionRegistry).to receive(:find).with(:research_agent).and_return(research_definition)
-    allow(ADK::GlobalDefinitionRegistry).to receive(:find).and_call_original
 
     # Mock planner to prevent HTTP requests
     mock_planner = instance_double(ADK::Planner)
