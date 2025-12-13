@@ -70,7 +70,7 @@ module ADK
         end.to_app # Convert builder block to a Rack app
 
         # Start the server using Rack::Server
-        puts "Starting ADK web interface on http://#{options[:host]}:#{options[:port]}"
+        say "Starting ADK web interface on http://#{options[:host]}:#{options[:port]}"
         Rack::Server.start(
           app: app,
           Host: options[:host],

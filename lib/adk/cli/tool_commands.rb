@@ -29,17 +29,17 @@ module ADK
         tool = ADK::ToolRegistry.create_instance(tool_name_sym) # Create instance to get params
 
         if tool
-          puts "Tool: #{tool.name}"
-          puts "Description: #{tool.description}"
+          say "Tool: #{tool.name}"
+          say "Description: #{tool.description}"
           if tool.parameters.empty?
-            puts "\nParameters: None"
+            say "\nParameters: None"
           else
-            puts "\nParameters:"
+            say "\nParameters:"
             tool.parameters.each do |param_name, param_info|
               required = param_info[:required] ? 'required' : 'optional'
               type = param_info[:type] || 'any'
-              puts "  - #{param_name} (#{type}, #{required})"
-              puts "    #{param_info[:description]}"
+              say "  - #{param_name} (#{type}, #{required})"
+              say "    #{param_info[:description]}"
             end
           end
         else
@@ -134,7 +134,7 @@ module ADK
         rescue StandardError => e
           say "\nAn unexpected error occurred:", :red
           say "#{e.class} - #{e.message}", :red
-          puts e.backtrace.first(5).join("\n")
+          say e.backtrace.first(5).join("\n")
         end
       end # end execute
     end
