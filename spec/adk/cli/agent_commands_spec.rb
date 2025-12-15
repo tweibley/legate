@@ -382,6 +382,136 @@ RSpec.describe ADK::CLI::AgentCommands do
     end
   end
 
+  # --- Test stop command ---
+  describe '#stop' do
+    let(:agent_name) { :my_running_agent }
+    let(:agent_def) { { description: 'Running agent', persistent_status: 'running' } }
+
+    context 'when definition exists and is running' do
+      before do
+        allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(agent_name).and_return(agent_def)
+      end
+
+      it 'prompts for confirmation and updates status to stopped' do
+        # Expect prompt
+        expected_prompt = "Agent 'my_running_agent' is currently marked as 'running'. Stop it? [y/N] "
+        expect(Thor::LineEditor).to receive(:readline).with(expected_prompt, { add_to_history: false }).and_return('y')
+
+        # Expect update
+        store_mock = instance_double(ADK::DefinitionStore::RedisStore)
+        allow(ADK::DefinitionStore::RedisStore).to receive(:new).and_return(store_mock)
+        expect(store_mock).to receive(:update_definition).with(agent_name, { persistent_status: 'stopped' })
+
+        invoke_command(:stop, agent_name.to_s)
+
+        expect(output.string).to include("Agent 'my_running_agent' has been marked as stopped.")
+      end
+
+      it 'skips prompt when force option is used' do
+        store_mock = instance_double(ADK::DefinitionStore::RedisStore)
+        allow(ADK::DefinitionStore::RedisStore).to receive(:new).and_return(store_mock)
+        expect(store_mock).to receive(:update_definition).with(agent_name, { persistent_status: 'stopped' })
+
+        expect(commands).not_to receive(:yes?)
+
+        invoke_command(:stop, agent_name.to_s, force: true)
+
+        expect(output.string).to include("Agent 'my_running_agent' has been marked as stopped.")
+      end
+
+      it 'cancels stop when user says no' do
+        expected_prompt = "Agent 'my_running_agent' is currently marked as 'running'. Stop it? [y/N] "
+        expect(Thor::LineEditor).to receive(:readline).with(expected_prompt, { add_to_history: false }).and_return('n')
+
+        expect(ADK::DefinitionStore::RedisStore).not_to receive(:new)
+
+        invoke_command(:stop, agent_name.to_s)
+
+        expect(output.string).to include('Stop cancelled.')
+      end
+    end
+
+    context 'when agent is already stopped' do
+      let(:agent_def_stopped) { { description: 'Stopped agent', persistent_status: 'stopped' } }
+      before do
+        allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(agent_name).and_return(agent_def_stopped)
+      end
+
+      it 'informs user and exits without update' do
+        expect(ADK::DefinitionStore::RedisStore).not_to receive(:new)
+
+        invoke_command(:stop, agent_name.to_s)
+
+        expect(output.string).to include("Agent 'my_running_agent' is already stopped.")
+      end
+    end
+
+    context 'when agent definitions not found' do
+      before do
+        allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(agent_name).and_return(nil)
+      end
+
+      it 'prints error and exits' do
+        invoke_command(:stop, agent_name.to_s)
+        expect(output.string).to include("Error: Agent definition 'my_running_agent' not found.")
+        expect(output.string).to include('SystemExit with status 1')
+      end
+    end
+  end
+
+  # --- Test export command ---
+  describe '#export' do
+    let(:agent_name) { :export_agent }
+    let(:agent_def) do
+      {
+        description: 'Agent to export',
+        tools: ['calculator'],
+        model: 'gemini-pro',
+        persistent_status: 'stopped'
+      }
+    end
+
+    before do
+      allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(agent_name).and_return(agent_def)
+    end
+
+    it 'exports to YAML by default (stdout)' do
+      invoke_command(:export, agent_name.to_s)
+
+      # Should contain YAML formatted output (keys as strings because of transform_keys)
+      expect(output.string).to include('description: Agent to export')
+      expect(output.string).to include('model: gemini-pro')
+      # Should not include internal fields
+      expect(output.string).not_to include('persistent_status')
+    end
+
+    it 'exports to JSON when forced (stdout)' do
+      invoke_command(:export, agent_name.to_s, format: 'json')
+
+      expect(output.string).to include('"description": "Agent to export"')
+      expect(output.string).to include('"model": "gemini-pro"')
+    end
+
+    it 'writes to file when output option is provided' do
+      file_path = '/tmp/exported_agent.yaml'
+      expect(File).to receive(:write).with(file_path, anything)
+
+      invoke_command(:export, agent_name.to_s, output: file_path)
+
+      expect(output.string).to include("Agent definition exported to #{file_path}")
+    end
+
+    it 'handles file write errors' do
+      file_path = '/invalid/path/agent.yaml'
+      allow(File).to receive(:write).and_raise(Errno::EACCES, 'Permission denied')
+
+      invoke_command(:export, agent_name.to_s, output: file_path)
+
+      expect(output.string).to include('Error writing to file: Permission denied')
+      expect(output.string).to include('SystemExit with status 1')
+    end
+  end
+
   # --- Test start command ---
   describe '#start' do
     let(:agent_name) { :starter_agent }
@@ -466,11 +596,11 @@ RSpec.describe ADK::CLI::AgentCommands do
 
     context 'when a defined tool is not globally registered' do
       let(:agent_def_missing_tool) {
-        { description: 'Missing tool', tools: ['mock_cli_tool', 'forgotten_tool'], model: 'gemini-test' }
+        { description: 'Missing tool', tools: %w[mock_cli_tool forgotten_tool], model: 'gemini-test' }
       }
 
       let(:agent_definition_object_with_missing) {
-        instance_double(ADK::AgentDefinition, name: agent_name, tool_names: ['mock_cli_tool', 'forgotten_tool'], model_name: 'gemini-test')
+        instance_double(ADK::AgentDefinition, name: agent_name, tool_names: %w[mock_cli_tool forgotten_tool], model_name: 'gemini-test')
       }
 
       before do
@@ -545,13 +675,9 @@ RSpec.describe ADK::CLI::AgentCommands do
     around(:each) do |example|
       # Store original class variable
       original_session_service = nil
-      if ADK::CLI::AgentCommands.class_variable_defined?(:@@session_service)
-        original_session_service = ADK::CLI::AgentCommands.class_variable_get(:@@session_service)
-      end
+      original_session_service = ADK::CLI::AgentCommands.class_variable_get(:@@session_service) if ADK::CLI::AgentCommands.class_variable_defined?(:@@session_service)
       original_execute_service = nil
-      if ADK::CLI::AgentCommands.class_variable_defined?(:@@session_service_for_execute)
-        original_execute_service = ADK::CLI::AgentCommands.class_variable_get(:@@session_service_for_execute)
-      end
+      original_execute_service = ADK::CLI::AgentCommands.class_variable_get(:@@session_service_for_execute) if ADK::CLI::AgentCommands.class_variable_defined?(:@@session_service_for_execute)
 
       # Replace with our test instance
       ADK::CLI::AgentCommands.class_variable_set(:@@session_service, session_service_in_memory)
@@ -694,7 +820,7 @@ RSpec.describe ADK::CLI::AgentCommands do
       }
 
       let(:agent_definition_object_missing) {
-        instance_double(ADK::AgentDefinition, name: agent_name, tool_names: ['mock_cli_tool', 'unregistered_tool'], model_name: 'gemini-exec')
+        instance_double(ADK::AgentDefinition, name: agent_name, tool_names: %w[mock_cli_tool unregistered_tool], model_name: 'gemini-exec')
       }
 
       before do

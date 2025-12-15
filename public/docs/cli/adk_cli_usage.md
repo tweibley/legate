@@ -65,6 +65,12 @@ This subcommand group deals with managing agent definitions stored in the config
         *   Useful for remotely stopping agents without accessing the web UI.
     *   **Example:** `adk agent stop my_calculator --force`
 
+*   **`adk agent export <agent_name> [options]`**: Exports an agent definition to YAML or JSON.
+    *   **Options:**
+        *   `--format`: Output format, either `yaml` (default) or `json`.
+        *   `--output` / `-o`: Output file path. If omitted, prints to stdout.
+    *   **Example:** `adk agent export my_calculator --format=json --output=my_calculator.json`
+
 ### 3.2. Web Server (`adk web`)
 
 This subcommand group manages the built-in development web server, which includes the Web UI and potentially the Webhook Listener.

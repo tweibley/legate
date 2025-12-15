@@ -4,6 +4,7 @@
 require 'thor'
 require 'redis'
 require 'json'
+require 'yaml'
 require 'fileutils' # For creating directories
 require 'cli/ui'    # Correct require
 require_relative '../tool_registry'
@@ -517,6 +518,55 @@ module ADK
         rescue Redis::BaseError => e
           say "Error: Redis connection failed. (#{e.message})", :red
           exit(1)
+        end
+      end
+
+      desc 'export NAME', 'Export an agent definition to YAML or JSON'
+      method_option :format, type: :string, default: 'yaml', enum: %w[yaml json], desc: 'Output format (yaml or json)'
+      method_option :output, type: :string, aliases: '-o', desc: 'Output file path (default: stdout)'
+      def export(name)
+        name_sym = name.to_sym
+
+        # Load definition from Redis
+        definition = nil
+        begin
+          definition = ADK::AgentDefinitionStore.load_from_redis(name_sym)
+        rescue Redis::BaseError => e
+          say "Error: Could not connect to Redis. Is it running? (#{e.message})", :red
+          exit(1)
+        end
+
+        unless definition
+          say "Error: Agent definition '#{name}' not found.", :red
+          exit(1)
+        end
+
+        # Clean up internal fields before export
+        export_data = definition.dup
+        export_data.delete(:persistent_status) # implementation detail
+        # Ensure keys are strings for cleaner JSON/YAML
+        export_data = export_data.transform_keys(&:to_s)
+
+        # Format output
+        output_content = ''
+        case options[:format].downcase
+        when 'json'
+          output_content = JSON.pretty_generate(export_data)
+        when 'yaml'
+          output_content = export_data.to_yaml
+        end
+
+        # Write to file or stdout
+        if options[:output]
+          begin
+            File.write(options[:output], output_content)
+            say "Agent definition exported to #{options[:output]}", :green
+          rescue StandardError => e
+            say "Error writing to file: #{e.message}", :red
+            exit(1)
+          end
+        else
+          say output_content
         end
       end
 
