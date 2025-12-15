@@ -57,6 +57,14 @@ This subcommand group deals with managing agent definitions stored in the config
 *   **`adk agent delete <agent_name>`**: Deletes an agent definition from the store. Prompts for confirmation.
     *   **Example:** `adk agent delete my_calculator`
 
+*   **`adk agent stop <agent_name> [--force]`**: Stops a persistent agent by marking it as 'stopped' in the definition store.
+    *   **Options:**
+        *   `--force`: Skip confirmation prompt
+    *   **Notes:**
+        *   If the agent is running in a web server, it will stop on the next status check or server restart.
+        *   Useful for remotely stopping agents without accessing the web UI.
+    *   **Example:** `adk agent stop my_calculator --force`
+
 ### 3.2. Web Server (`adk web`)
 
 This subcommand group manages the built-in development web server, which includes the Web UI and potentially the Webhook Listener.

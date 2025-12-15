@@ -92,11 +92,13 @@ module ADK
             overall_msg = if any_step_errors then 'Completed with errors'
                           elsif any_step_pending then 'Completed with pending steps'
                           else
-                            'Completed successfully' end
+                            'Completed successfully'
+                          end
             overall_color = if any_step_errors then :red
                             elsif any_step_pending then :yellow
                             else
-                              :green end
+                              :green
+                            end
             say "Overall Plan Status: #{overall_msg}", overall_color
           elsif content_to_display.is_a?(Hash) && content_to_display.key?(:status)
             case content_to_display[:status]
@@ -459,6 +461,65 @@ module ADK
         end
       end
 
+      desc 'stop NAME', 'Stop a persistent agent'
+      long_desc <<-LONGDESC
+        Stops a persistent agent by updating its status in the definition store.
+
+        This command marks the agent as 'stopped' in Redis. If the agent is running
+        in a web server process, it will be stopped the next time the server checks
+        the agent status, or you can restart the web server.
+
+        Note: This command updates the persistent_status in Redis. If no web server
+        is running the agent, this simply ensures the status is set to 'stopped'.
+      LONGDESC
+      method_option :force, type: :boolean, default: false, desc: 'Force stop without confirmation'
+      def stop(name)
+        name_sym = name.to_sym
+        say "Stopping agent '#{name}'..."
+
+        # Load definition from Redis
+        definition = nil
+        begin
+          definition = ADK::AgentDefinitionStore.load_from_redis(name_sym)
+        rescue Redis::BaseError => e
+          say "Error: Could not connect to Redis. Is it running? (#{e.message})", :red
+          exit(1)
+        end
+
+        unless definition
+          say "Error: Agent definition '#{name}' not found.", :red
+          exit(1)
+        end
+
+        # Check current status
+        current_status = definition[:persistent_status] || 'stopped'
+        if current_status == 'stopped'
+          say "Agent '#{name}' is already stopped.", :yellow
+          return
+        end
+
+        # Confirm if not forced
+        if !options[:force] && !yes?("Agent '#{name}' is currently marked as '#{current_status}'. Stop it? [y/N]", :yellow)
+          say 'Stop cancelled.', :yellow
+          return
+        end
+
+        # Update the persistent_status to stopped
+        begin
+          # Get the definition store to update status
+          store = ADK::DefinitionStore::RedisStore.new
+          store.update_definition(name_sym, { persistent_status: 'stopped' })
+          say "Agent '#{name}' has been marked as stopped.", :green
+          say '  Note: If running in a web server, the agent will stop on next status check or server restart.', :cyan
+        rescue ADK::DefinitionStore::StoreError => e
+          say "Error updating agent status: #{e.message}", :red
+          exit(1)
+        rescue Redis::BaseError => e
+          say "Error: Redis connection failed. (#{e.message})", :red
+          exit(1)
+        end
+      end
+
       desc 'execute NAME TASK', 'Execute a task using agent definition (ephemeral)'
       long_desc <<-LONGDESC
         Loads agent definition, instantiates agent, runs TASK within a session context,
@@ -503,7 +564,8 @@ module ADK
           if adk_session then say "Continuing session: #{session_id_opt}", :cyan
           else
             say "Warning: Session ID '#{session_id_opt}' provided but not found. Starting a new session.", :yellow
-            session_id_opt = nil end
+            session_id_opt = nil
+          end
         end
         unless adk_session
           adk_session = session_service_instance.create_session(app_name: name, user_id: 'cli_user')
