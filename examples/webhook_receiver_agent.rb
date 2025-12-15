@@ -12,7 +12,7 @@ require 'json'
 # Another process (e.g., a web server running ADK::Web::WebhookListener)
 # would look up this definition by name to handle incoming webhooks.
 
-puts "Defining agent :webhook_receiver..."
+ADK.logger.debug 'Defining agent :webhook_receiver...'
 
 webhook_receiver_definition = ADK::AgentDefinition.new.define do |a|
   a.name(:webhook_receiver)
@@ -37,9 +37,7 @@ webhook_receiver_definition = ADK::AgentDefinition.new.define do |a|
     # Ensure request_body is parsed if it's a JSON string
     parsed_body = request_body.is_a?(String) ? JSON.parse(request_body) : request_body
     msg = parsed_body['message']
-    unless msg.is_a?(String) && !msg.empty?
-      raise ADK::WebhookConfigurationError, "Missing or invalid 'message' in webhook payload."
-    end
+    raise ADK::WebhookConfigurationError, "Missing or invalid 'message' in webhook payload." unless msg.is_a?(String) && !msg.empty?
 
     "Received webhook message: '#{msg}'"
   rescue JSON::ParserError => e
@@ -56,5 +54,5 @@ end
 # Register the definition globally so it can be found by name.
 ADK::GlobalDefinitionRegistry.register(webhook_receiver_definition)
 
-puts "Agent definition '#{webhook_receiver_definition.name}' created and registered globally."
-puts "Note: This script only defines and registers the agent. A separate webhook listener process is needed to use it."
+ADK.logger.debug "Agent definition '#{webhook_receiver_definition.name}' created and registered globally."
+ADK.logger.debug 'Note: This script only defines and registers the agent. A separate webhook listener process is needed to use it.'

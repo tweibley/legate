@@ -1,6 +1,10 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+# Suppress logs when stdin is piped (for clean stdout output in pipe workflows)
+# This must happen BEFORE requiring ADK to prevent log initialization noise
+ENV['ADK_LOG_LEVEL'] ||= 'SILENT' unless $stdin.tty?
+
 require_relative '../lib/adk' # Load ADK library first
 ADK.load_environment # Handle Bundler, Dotenv, etc.
 require_relative '../lib/adk/cli' # Use require_relative for CLI component

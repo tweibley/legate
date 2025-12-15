@@ -396,6 +396,101 @@ module ADK
         end
       end
 
+      desc 'ai_generate', 'Generate agent definition code using AI from a natural language description'
+      long_desc <<-LONGDESC
+        Uses AI (Gemini LLM) to generate a production-ready agent definition based on
+        your natural language description.
+
+        Input sources (in priority order):
+          1. --description / -d : Inline description
+          2. --prompt-file / -f : Read description from a file
+          3. stdin : Pipe description via stdin (auto-enables stdout output)
+
+        Output destinations:
+          - Default: Writes to ./<suggested_name>_agent.rb
+          - --output / -o : Custom output file path
+          - --stdout : Output to stdout instead of file
+          - When reading from stdin: Auto-outputs to stdout
+
+        Examples:
+          adk agent ai_generate -d "An agent that helps with customer support"
+          adk agent ai_generate -f prompt.txt -o ./agents/support_agent.rb
+          echo "A hello world agent" | adk agent ai_generate
+          echo "A calculator agent" | adk agent ai_generate > calc_agent.rb
+
+        Requires GOOGLE_API_KEY environment variable to be set.
+      LONGDESC
+      method_option :description, aliases: '-d', type: :string, desc: 'Description of the agent to generate'
+      method_option :prompt_file, aliases: '-f', type: :string, desc: 'Read description from a file'
+      method_option :output, aliases: '-o', type: :string, desc: 'Output file path (default: ./<suggested_name>_agent.rb)'
+      method_option :stdout, type: :boolean, default: false, desc: 'Output to stdout instead of file'
+      method_option :force, type: :boolean, default: false, desc: 'Overwrite existing file without prompting'
+      def ai_generate
+        require_relative '../generators'
+
+        description = nil
+        from_stdin = false
+
+        # Priority: --description > --prompt-file > stdin
+        if options[:description] && !options[:description].strip.empty?
+          description = options[:description].strip
+        elsif options[:prompt_file]
+          unless File.exist?(options[:prompt_file])
+            say "Error: Prompt file '#{options[:prompt_file]}' not found.", :red
+            exit(1)
+          end
+          description = File.read(options[:prompt_file]).strip
+        elsif !$stdin.tty?
+          # Reading from stdin (piped input)
+          description = $stdin.read.strip
+          from_stdin = true
+        end
+
+        if description.nil? || description.empty?
+          say 'Error: No description provided. Use --description, --prompt-file, or pipe via stdin.', :red
+          exit(1)
+        end
+
+        # Determine output mode
+        output_to_stdout = options[:stdout] || from_stdin
+
+        say 'Generating agent code via AI...', :cyan unless output_to_stdout
+
+        begin
+          result = ADK::Generators::AgentGenerator.generate(description: description)
+          code = result[:code]
+          suggested_name = result[:suggested_name]
+
+          if output_to_stdout
+            puts code
+          else
+            # Write to file
+            file_path = options[:output] || "./#{suggested_name}_agent.rb"
+
+            if File.exist?(file_path) && !options[:force] && !yes?("File '#{file_path}' already exists. Overwrite? [y/N]", :yellow)
+              say 'Generation cancelled.', :yellow
+              exit(0)
+            end
+
+            File.write(file_path, code)
+            say "Agent definition generated and saved to '#{file_path}'", :green
+            say "  Suggested name: #{suggested_name}", :cyan
+          end
+        rescue ADK::Generators::AgentGenerator::ApiKeyMissingError => e
+          say "Error: #{e.message}", :red
+          exit(1)
+        rescue ADK::Generators::AgentGenerator::ApiError => e
+          say "Error: #{e.message}", :red
+          exit(1)
+        rescue ADK::Generators::AgentGenerator::GenerationError => e
+          say "Error: #{e.message}", :red
+          exit(1)
+        rescue StandardError => e
+          say "Unexpected error: #{e.class} - #{e.message}", :red
+          exit(1)
+        end
+      end
+
       desc 'start NAME', 'Verify agent definition loading and start (Ephemeral)'
       long_desc <<-LONGDESC
         Loads agent definition, instantiates agent, starts agent runtime state,

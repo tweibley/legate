@@ -1,6 +1,6 @@
 # AI-Powered Code Generators
 
-This guide explains how to use the AI-powered code generators in the ADK Web UI to quickly create agents and tools from natural language descriptions.
+This guide explains how to use the AI-powered code generators to quickly create agents and tools from natural language descriptions.
 
 ## Overview
 
@@ -9,9 +9,49 @@ ADK includes two AI-powered generators that use Google's Gemini AI to create pro
 1. **Agent Generator** - Creates complete `AgentDefinition` code for any type of agent
 2. **Tool Generator** - Creates complete `Tool` class code with proper DSL and patterns
 
-Both generators are accessible from the Web UI and produce downloadable Ruby files that you can integrate into your projects.
+Both generators are accessible from the **Web UI** and the **CLI**, producing Ruby code that you can integrate into your projects.
 
-## Agent Generator
+## CLI Commands
+
+The AI generators are available via the command line, with full support for piping:
+
+### Agent Generation
+
+```bash
+# Inline description
+adk agent ai_generate -d "An agent that helps with customer support"
+
+# From a file
+adk agent ai_generate -f prompt.txt -o ./agents/support_agent.rb
+
+# Via stdin (automatically outputs to stdout)
+echo "A calculator agent" | adk agent ai_generate > calc_agent.rb
+```
+
+### Tool Generation
+
+```bash
+# Inline description
+adk tool ai_generate -d "A tool that converts temperatures"
+
+# Via stdin (pipe-friendly)
+echo "A URL status checker" | adk tool ai_generate > url_checker.rb
+```
+
+### CLI Options
+
+| Option | Description |
+|--------|-------------|
+| `-d, --description` | Inline description |
+| `-f, --prompt-file` | Read description from file |
+| `-o, --output` | Output file path |
+| `--stdout` | Force output to stdout |
+| `--force` | Overwrite existing file |
+
+> **Note:** When input comes from stdin, output automatically goes to stdout for pipe-friendly workflows.
+
+## Web UI - Agent Generator
+
 
 ### Accessing the Generator
 

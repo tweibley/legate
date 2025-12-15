@@ -8,8 +8,8 @@ This document analyzes the capabilities exposed via the **CLI** (`bin/adk`) and 
 
 | Feature | CLI | Web UI | Gap |
 |:--------|:---:|:------:|:----|
-| **Agent Generation (AI-powered)** | ❌ | ✅ | Web can generate agents via AI prompt |
-| **Tool Generation (AI-powered)** | ❌ | ✅ | Web can generate tools via AI prompt |
+| **Agent Generation (AI-powered)** | ✅ | ✅ | Both can generate agents via AI (`adk agent ai_generate`) |
+| **Tool Generation (AI-powered)** | ✅ | ✅ | Both can generate tools via AI (`adk tool ai_generate`) |
 | **Sidekiq Job Management** | ✅ | ❌ | CLI has `sidekiq start/stop/status/list_jobs` |
 | **Deployment Asset Generation** | ✅ | ❌ | CLI has `deployment generate` for cloud platforms |
 | **Project Scaffolding** | ✅ | ❌ | CLI has `skaffold generate` to create new projects |

@@ -86,15 +86,13 @@ module ADK
 
             params_to_execute[key.to_sym] = value # Store as symbol key
             say "  Parsed: #{key} = '#{value}'"
-          else
+          elsif args.length == 1 && tool.parameters.length == 1 && tool.parameters.values.first[:required]
             # Simplified single arg handling
-            if args.length == 1 && tool.parameters.length == 1 && tool.parameters.values.first[:required]
-              single_key = tool.parameters.keys.first
-              say "Info: Assuming single argument '#{arg}' maps to required parameter '#{single_key}'.", :cyan
-              params_to_execute[single_key] = arg
-            elsif !args.empty?
-              say "Warning: Argument '#{arg}' ignored. Please use 'key=value' format for parameters.", :yellow
-            end
+            single_key = tool.parameters.keys.first
+            say "Info: Assuming single argument '#{arg}' maps to required parameter '#{single_key}'.", :cyan
+            params_to_execute[single_key] = arg
+          elsif !args.empty?
+            say "Warning: Argument '#{arg}' ignored. Please use 'key=value' format for parameters.", :yellow
           end
         end
 
@@ -137,6 +135,104 @@ module ADK
           say e.backtrace.first(5).join("\n")
         end
       end # end execute
+
+      desc 'ai_generate', 'Generate tool class code using AI from a natural language description'
+      long_desc <<-LONGDESC
+        Uses AI (Gemini LLM) to generate a production-ready tool class based on
+        your natural language description. The AI automatically determines if the
+        tool should be a simple tool, HTTP API tool, or async tool.
+
+        Input sources (in priority order):
+          1. --description / -d : Inline description
+          2. --prompt-file / -f : Read description from a file
+          3. stdin : Pipe description via stdin (auto-enables stdout output)
+
+        Output destinations:
+          - Default: Writes to ./<suggested_name>.rb
+          - --output / -o : Custom output file path
+          - --stdout : Output to stdout instead of file
+          - When reading from stdin: Auto-outputs to stdout
+
+        Examples:
+          adk tool ai_generate -d "A tool that converts temperatures between Celsius and Fahrenheit"
+          adk tool ai_generate -d "A tool that checks if a URL is reachable" -o ./tools/url_checker.rb
+          echo "A calculator that adds two numbers" | adk tool ai_generate
+          echo "A weather API tool" | adk tool ai_generate > weather_tool.rb
+
+        Requires GOOGLE_API_KEY environment variable to be set.
+      LONGDESC
+      method_option :description, aliases: '-d', type: :string, desc: 'Description of the tool to generate'
+      method_option :prompt_file, aliases: '-f', type: :string, desc: 'Read description from a file'
+      method_option :output, aliases: '-o', type: :string, desc: 'Output file path (default: ./<suggested_name>.rb)'
+      method_option :stdout, type: :boolean, default: false, desc: 'Output to stdout instead of file'
+      method_option :force, type: :boolean, default: false, desc: 'Overwrite existing file without prompting'
+      def ai_generate
+        require_relative '../generators'
+
+        description = nil
+        from_stdin = false
+
+        # Priority: --description > --prompt-file > stdin
+        if options[:description] && !options[:description].strip.empty?
+          description = options[:description].strip
+        elsif options[:prompt_file]
+          unless File.exist?(options[:prompt_file])
+            say "Error: Prompt file '#{options[:prompt_file]}' not found.", :red
+            exit(1)
+          end
+          description = File.read(options[:prompt_file]).strip
+        elsif !$stdin.tty?
+          # Reading from stdin (piped input)
+          description = $stdin.read.strip
+          from_stdin = true
+        end
+
+        if description.nil? || description.empty?
+          say 'Error: No description provided. Use --description, --prompt-file, or pipe via stdin.', :red
+          exit(1)
+        end
+
+        # Determine output mode
+        output_to_stdout = options[:stdout] || from_stdin
+
+        say 'Generating tool code via AI...', :cyan unless output_to_stdout
+
+        begin
+          result = ADK::Generators::ToolGenerator.generate(description: description)
+          code = result[:code]
+          suggested_name = result[:suggested_name]
+          tool_type = result[:tool_type]
+
+          if output_to_stdout
+            puts code
+          else
+            # Write to file
+            file_path = options[:output] || "./#{suggested_name}.rb"
+
+            if File.exist?(file_path) && !options[:force] && !yes?("File '#{file_path}' already exists. Overwrite? [y/N]", :yellow)
+              say 'Generation cancelled.', :yellow
+              exit(0)
+            end
+
+            File.write(file_path, code)
+            say "Tool code generated and saved to '#{file_path}'", :green
+            say "  Suggested name: #{suggested_name}", :cyan
+            say "  Tool type: #{tool_type}", :cyan
+          end
+        rescue ADK::Generators::ToolGenerator::ApiKeyMissingError => e
+          say "Error: #{e.message}", :red
+          exit(1)
+        rescue ADK::Generators::ToolGenerator::ApiError => e
+          say "Error: #{e.message}", :red
+          exit(1)
+        rescue ADK::Generators::ToolGenerator::GenerationError => e
+          say "Error: #{e.message}", :red
+          exit(1)
+        rescue StandardError => e
+          say "Unexpected error: #{e.class} - #{e.message}", :red
+          exit(1)
+        end
+      end
     end
   end
 end

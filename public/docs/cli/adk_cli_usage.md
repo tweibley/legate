@@ -65,6 +65,23 @@ This subcommand group deals with managing agent definitions stored in the config
         *   Useful for remotely stopping agents without accessing the web UI.
     *   **Example:** `adk agent stop my_calculator --force`
 
+*   **`adk agent ai_generate [options]`**: Uses AI (Gemini LLM) to generate production-ready agent definition code from a natural language description.
+    *   **Input Options (one required):**
+        *   `--description` / `-d`: Inline description
+        *   `--prompt-file` / `-f`: Read description from a file
+        *   **stdin**: Pipe description via stdin (auto-outputs to stdout)
+    *   **Output Options:**
+        *   `--output` / `-o`: Custom output file path (default: `./<suggested_name>_agent.rb`)
+        *   `--stdout`: Force output to stdout instead of file
+        *   `--force`: Overwrite existing file without prompting
+    *   **Environment:** Requires `GOOGLE_API_KEY` to be set
+    *   **Examples:**
+        ```bash
+        adk agent ai_generate -d "An agent that helps with customer support"
+        adk agent ai_generate -f prompt.txt -o ./agents/support_agent.rb
+        echo "A calculator agent" | adk agent ai_generate > calc_agent.rb
+        ```
+
 *   **`adk agent export <agent_name> [options]`**: Exports an agent definition to YAML or JSON.
     *   **Options:**
         *   `--format`: Output format, either `yaml` (default) or `json`.
@@ -96,6 +113,23 @@ This subcommand group manages the built-in development web server, which include
         - webhook_tool: Sends an outbound HTTP POST request (webhook).
         - ... (other built-in and custom tools)
         ```
+
+*   **`adk tool ai_generate [options]`**: Uses AI (Gemini LLM) to generate production-ready tool class code from a natural language description. Automatically determines if the tool should be simple, HTTP API, or async.
+    *   **Input Options (one required):**
+        *   `--description` / `-d`: Inline description
+        *   `--prompt-file` / `-f`: Read description from a file
+        *   **stdin**: Pipe description via stdin (auto-outputs to stdout)
+    *   **Output Options:**
+        *   `--output` / `-o`: Custom output file path (default: `./<suggested_name>.rb`)
+        *   `--stdout`: Force output to stdout instead of file
+        *   `--force`: Overwrite existing file without prompting
+    *   **Environment:** Requires `GOOGLE_API_KEY` to be set
+    *   **Examples:**
+        ```bash
+        adk tool ai_generate -d "A tool that converts temperatures"
+        echo "A URL status checker" | adk tool ai_generate > url_checker.rb
+        ```
+
 
 ### 3.4. Session Management (`adk session`)
 
