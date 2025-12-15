@@ -152,9 +152,9 @@ This document analyzes the capabilities exposed via the **CLI** (`bin/adk`) and 
 ## Recommendations
 
 ### Add to CLI (High Priority)
-1. **Authentication commands** — `adk auth schemes list`, `adk auth credentials create`, etc.
-2. **Agent stop command** — `adk agent stop <name>` (currently only start is available)
-3. **Export/download agent** — `adk agent export <name>` to output definition
+1. **Authentication commands** — ✅ DONE (`adk auth schemes/credentials/mappings`)
+2. **Agent stop command** — ✅ DONE (`adk agent stop`)
+3. **Export/download agent** — ✅ DONE (`adk agent export`)
 
 ### Add to Web UI (High Priority)
 1. **Sidekiq dashboard** — Show worker status, queue depths, job list
@@ -179,7 +179,7 @@ Tool Execution          ✓      ✗
 Tool AI Generation      ✗      ✓
 Session Management      ✓      ✓
 Sidekiq Management      ✓      ✗
-Authentication          ✗      ✓✓
+Authentication          ✓✓     ✓✓
 Deployment              ✓      ✗
 Scaffolding             ✓      ✗
 Documentation           ✗      ✓
