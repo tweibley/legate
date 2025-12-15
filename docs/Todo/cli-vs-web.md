@@ -15,9 +15,9 @@ This document analyzes the capabilities exposed via the **CLI** (`bin/adk`) and 
 | **Project Scaffolding** | ✅ | ❌ | CLI has `skaffold generate` to create new projects |
 | **Session Management UI** | Partial | ✅ | Web has session switching, delete in chat context |
 | **Tool Download/Export** | ❌ | ✅ | Web can download tool code as `.rb` file |
-| **Agent Download/Export** | ❌ | ✅ | Web can download agent definition as `.rb` file |
+| **Agent Download/Export** | ✅ | ✅ | Both can export agent definitions |
 | **Agent Duplication** | ❌ | ✅ | Web can duplicate agents |
-| **Authentication Management** | ❌ | ✅ | Web has full auth scheme/credential/mapping CRUD |
+| **Authentication Management** | ✅ | ✅ | Both have full auth scheme/credential/mapping management |
 | **Agent Auth Assignment** | ❌ | ✅ | Web can assign auth to agents |
 | **Documentation Browser** | ❌ | ✅ | Web has `/docs` route for viewing docs |
 | **Dashboard/Metrics** | ❌ | ✅ | Web has dashboard with activity, stats |
@@ -42,15 +42,15 @@ This document analyzes the capabilities exposed via the **CLI** (`bin/adk`) and 
 | AI-generate agent | ❌ | `POST /agents/generate` |
 | Duplicate agent | ❌ | `POST /agents/:name/duplicate` |
 | Edit agent fields | ❌ | `PUT /agents/:name/update/:field` |
-| Export agent (JSON) | ❌ | `GET /agents/:name/export` |
-| Download agent (.rb) | ❌ | `GET /agents/:name/download` |
+| Export agent (JSON) | `adk agent export <name>` | `GET /agents/:name/export` |
+| Download agent (.rb) | `adk agent export <name>` | `GET /agents/:name/download` |
 | Start agent | `adk agent start <name>` | `POST /agents/:name/start` |
-| Stop agent | — | `POST /agents/:name/stop` |
+| Stop agent | `adk agent stop <name>` | `POST /agents/:name/stop` |
 | Execute task | `adk agent execute <name> <task>` | `POST /agents/:name/execute` |
 | Interactive chat | `adk agent chat <name>` | `GET/POST /agents/:name/chat` |
 
 **Gaps:**
-- CLI lacks: AI generation, duplication, field editing, export/download, stop command
+- CLI lacks: AI generation, duplication, field editing
 - Web lacks: `generate` for creating file boilerplate (though AI generation is more powerful)
 
 ---
@@ -105,22 +105,25 @@ This document analyzes the capabilities exposed via the **CLI** (`bin/adk`) and 
 
 | Capability | CLI Command | Web Route |
 |:-----------|:------------|:----------|
-| List auth schemes | ❌ | `GET /auth/schemes` |
-| Create auth scheme | ❌ | `POST /auth/schemes` |
-| Update auth scheme | ❌ | `PUT /auth/schemes/:name` |
-| Delete auth scheme | ❌ | `DELETE /auth/schemes/:name` |
-| List credentials | ❌ | `GET /auth/credentials` |
-| Create credential | ❌ | `POST /auth/credentials` |
-| Update credential | ❌ | `PUT /auth/credentials/:name` |
-| Delete credential | ❌ | `DELETE /auth/credentials/:name` |
+| List auth schemes | `adk auth:schemes list` | `GET /auth/schemes` |
+| Show auth scheme | `adk auth:schemes show <name>` | — |
+| Create auth scheme | `adk auth:schemes create <name>` | `POST /auth/schemes` |
+| Delete auth scheme | `adk auth:schemes delete <name>` | `DELETE /auth/schemes/:name` |
+| List credentials | `adk auth:credentials list` | `GET /auth/credentials` |
+| Show credential | `adk auth:credentials show <name>` | — |
+| Create credential | `adk auth:credentials create <name>` | `POST /auth/credentials` |
+| Delete credential | `adk auth:credentials delete <name>` | `DELETE /auth/credentials/:name` |
 | Test credential | ❌ | `POST /auth/credentials/:name/test` |
-| List mappings | ❌ | `GET /auth/mappings` |
-| Create/Update mapping | ❌ | `POST/PUT /auth/mappings` |
+| List mappings | `adk auth:mappings list` | `GET /auth/mappings` |
+| Create mapping | `adk auth:mappings create` | `POST/PUT /auth/mappings` |
+| Delete mapping | `adk auth:mappings delete` | — |
 | Auth debug dashboard | ❌ | `GET /auth/debug` |
 | Assign auth to agent | ❌ | `POST /agents/:name/auth/assign` |
 | Test agent auth | ❌ | `POST /agents/:name/auth/test` |
 
-**Gap:** CLI has **no authentication management** commands. All auth configuration is Web-only.
+**Remaining Gaps:**
+- CLI lacks: credential testing, auth debug dashboard, agent auth assignment
+- Web lacks: individual scheme/credential show commands (uses modal instead)
 
 ---
 

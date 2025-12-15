@@ -337,5 +337,5 @@
 
 ## CLI Feature Parity Tasks
 
-- [ ] **ID 75: CLI Authentication Commands** (Priority: high)
+- [x] **ID 75: CLI Authentication Commands** (Priority: high)
 > Add authentication management commands to the CLI (`adk auth schemes`, `adk auth credentials`, `adk auth mappings`) to mirror web UI capabilities. See [cli_auth_commands.md](file:///plans/features/cli_auth_commands.md) for detailed implementation plan.
