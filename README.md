@@ -700,6 +700,59 @@ To start the web UI:
 bundle exec adk web start
 ```
 
+## CLI Authentication Management
+
+ADK provides comprehensive CLI commands for managing authentication schemes, credentials, and URL mappings:
+
+```bash
+# View authentication status
+bundle exec adk auth status
+
+# Manage authentication schemes (API Key, Bearer, OAuth2, OIDC, Service Account)
+bundle exec adk auth scheme list
+bundle exec adk auth scheme create my_scheme  # Interactive creation
+bundle exec adk auth scheme show my_scheme
+bundle exec adk auth scheme delete my_scheme
+
+# Manage credentials
+bundle exec adk auth credential list
+bundle exec adk auth credential create my_cred  # Interactive creation
+bundle exec adk auth credential show my_cred
+bundle exec adk auth credential test my_cred    # Test validity
+bundle exec adk auth credential delete my_cred
+
+# Manage URL-to-credential mappings
+bundle exec adk auth mapping list
+bundle exec adk auth mapping create            # Interactive creation
+bundle exec adk auth mapping delete 0          # Delete by index
+```
+
+## AI-Powered Code Generation
+
+ADK includes LLM-powered generators for creating agents and tools from natural language descriptions:
+
+```bash
+# Generate an agent using AI
+bundle exec adk agent ai-generate
+# You'll be prompted to describe the agent, e.g.:
+# "An agent that monitors GitHub PRs and posts summaries to Slack"
+
+# Generate a tool using AI
+bundle exec adk tool ai-generate
+# You'll be prompted to describe the tool, e.g.:
+# "A tool that fetches weather data from OpenWeatherMap API"
+```
+
+**Requirements:**
+- `GOOGLE_API_KEY` environment variable must be set (for Gemini LLM)
+
+**Generated code includes:**
+- Proper class structure following ADK conventions
+- DSL-based metadata (descriptions, parameters)
+- Appropriate tool selection for agents
+- HTTP client integration for API-based tools
+- Error handling patterns
+
 ## Inbound Webhooks (New!)
 
 The ADK now supports triggering agent tasks via incoming HTTP webhooks. This allows external systems (like Git repositories, CI/CD pipelines, monitoring tools, or other applications) to initiate agent workflows asynchronously.

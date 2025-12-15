@@ -78,11 +78,17 @@ lib/adk/
 ├── cli.rb                # Entry point for CLI module
 ├── cli/                  # Thor CLI commands
 │   ├── agent_commands.rb
+│   ├── auth_commands.rb  # Authentication management
 │   ├── deployment_commands.rb
 │   ├── session_commands.rb
 │   ├── sidekiq_commands.rb
+│   ├── skaffold_commands.rb
 │   ├── tool_commands.rb
 │   └── web_commands.rb
+├── generators.rb         # Entry point for generators module
+├── generators/           # AI-powered code generators
+│   ├── agent_generator.rb  # Generate agent definitions via LLM
+│   └── tool_generator.rb   # Generate tool classes via LLM
 ├── configuration.rb      # ADK.config singleton
 ├── configuration/        # Configuration submodules
 │   └── webhooks.rb
@@ -646,10 +652,36 @@ bundle exec adk web start                    # Start web server (port 4567)
 
 # Agents
 bundle exec adk agent list                   # List defined agents
+bundle exec adk agent save <name>            # Save agent definition
+bundle exec adk agent delete <name>          # Delete an agent
+bundle exec adk agent generate <name>        # Generate agent boilerplate (interactive)
+bundle exec adk agent ai-generate            # Generate agent using AI (LLM-powered)
+bundle exec adk agent start <name>           # Start agent runtime
+bundle exec adk agent stop <name>            # Stop agent runtime
 bundle exec adk agent execute <name> <task>  # Run agent task
+bundle exec adk agent chat <name>            # Interactive chat with agent
+bundle exec adk agent export <name>          # Export agent definition
 
 # Tools
 bundle exec adk tool list                    # List available tools
+bundle exec adk tool info <name>             # Show tool details
+bundle exec adk tool execute <name> [args]   # Execute a tool directly
+bundle exec adk tool ai-generate             # Generate tool using AI (LLM-powered)
+
+# Authentication
+bundle exec adk auth status                  # Show auth configuration status
+bundle exec adk auth scheme list             # List authentication schemes
+bundle exec adk auth scheme show <name>      # Show scheme details
+bundle exec adk auth scheme create <name>    # Create new auth scheme (interactive)
+bundle exec adk auth scheme delete <name>    # Delete an auth scheme
+bundle exec adk auth credential list         # List stored credentials
+bundle exec adk auth credential show <name>  # Show credential details
+bundle exec adk auth credential create <name> # Create new credential (interactive)
+bundle exec adk auth credential delete <name> # Delete a credential
+bundle exec adk auth credential test <name>  # Test credential validity
+bundle exec adk auth mapping list            # List URL-to-scheme mappings
+bundle exec adk auth mapping create          # Create new URL mapping (interactive)
+bundle exec adk auth mapping delete <index>  # Delete a URL mapping
 
 # Sidekiq (async jobs)
 bundle exec adk sidekiq start               # Start worker process
@@ -659,7 +691,30 @@ bundle exec adk sidekiq list_jobs           # List pending jobs in queue
 
 # Sessions
 bundle exec adk session list                # List sessions
+
+# Project Scaffolding
+bundle exec adk skaffold <project_name>     # Generate new ADK project structure
 ```
+
+### AI-Powered Code Generation
+
+ADK includes LLM-powered generators for creating agents and tools from natural language descriptions:
+
+```bash
+# Generate an agent interactively
+bundle exec adk agent ai-generate
+# Prompts for description like: "An agent that monitors GitHub PRs and posts summaries to Slack"
+
+# Generate a tool interactively  
+bundle exec adk tool ai-generate
+# Prompts for description like: "A tool that fetches weather data from OpenWeatherMap API"
+```
+
+The generators use the Gemini LLM (requires `GOOGLE_API_KEY`) to produce well-structured Ruby code that follows ADK conventions. Generated code includes:
+- Proper class structure inheriting from `ADK::Agent` or `ADK::Tool`
+- DSL-based metadata (descriptions, parameters)
+- Appropriate tool selection for agents
+- HTTP client integration for API tools
 
 ---
 
