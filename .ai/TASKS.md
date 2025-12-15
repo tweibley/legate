@@ -332,3 +332,10 @@
 - [x] **ID 74: Reset Agent Persistent Status on Server Startup** (Priority: high)
 > Dependencies: 73
 > Modify `synchronize_persistent_agents` to reset all stale `persistent_status` values to 'stopped' on startup, ensuring the UI accurately reflects that no agents are running immediately after server start.
+
+---
+
+## CLI Feature Parity Tasks
+
+- [ ] **ID 75: CLI Authentication Commands** (Priority: high)
+> Add authentication management commands to the CLI (`adk auth schemes`, `adk auth credentials`, `adk auth mappings`) to mirror web UI capabilities. See [cli_auth_commands.md](file:///plans/features/cli_auth_commands.md) for detailed implementation plan.

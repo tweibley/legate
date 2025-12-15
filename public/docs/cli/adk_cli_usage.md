@@ -106,7 +106,88 @@ Manages Sidekiq workers and jobs.
 
 (More subcommands might exist, refer to `adk sidekiq help`)
 
-### 3.6. Deployment (`adk deployment`)
+### 3.6. Authentication (`adk auth`)
+
+Manages authentication schemes, credentials, and URL mappings. These commands interact with the same `ADK::Auth::Manager` used by the web UI.
+
+#### Status
+
+*   **`adk auth status`**: Shows an overview of the authentication system.
+    *   **Example Output:**
+        ```
+        Authentication System Status
+
+          Schemes:     6
+          Credentials: 2
+          Mappings:    1
+
+          Scheme types: api_key, http_bearer, oauth2
+          Credential types: api_key, oauth2
+        ```
+
+#### Scheme Management (`adk auth schemes`)
+
+*   **`adk auth schemes list`**: Lists all registered authentication schemes.
+*   **`adk auth schemes show <name>`**: Shows details for a specific scheme.
+*   **`adk auth schemes create <name> --type=<type> [options]`**: Creates a new scheme.
+    *   **Required Options:**
+        *   `--type`: Scheme type (`api_key`, `http_bearer`, `oauth2`, `oidc`, `service_account`, `google_service_account`)
+    *   **Type-specific Options (OAuth2/OIDC):**
+        *   `--authorization-url`: OAuth2 authorization endpoint
+        *   `--token-url`: OAuth2 token endpoint
+        *   `--userinfo-url`: OIDC userinfo endpoint
+        *   `--scopes`: Space-separated scopes
+        *   `--use-pkce`: Enable PKCE
+    *   **Example:**
+        ```bash
+        adk auth schemes create my_oauth --type=oauth2 \
+          --authorization-url="https://auth.example.com/authorize" \
+          --token-url="https://auth.example.com/token"
+        ```
+*   **`adk auth schemes delete <name> [--force]`**: Deletes a scheme.
+
+#### Credential Management (`adk auth credentials`)
+
+*   **`adk auth credentials list`**: Lists all credentials (sensitive values are masked).
+*   **`adk auth credentials show <name>`**: Shows credential details with masked values.
+*   **`adk auth credentials create <name> --type=<type> [options]`**: Creates a new credential.
+    *   **Required Options:**
+        *   `--type`: Credential type (`api_key`, `http_bearer`, `oauth2`, `oidc`, `service_account`, `google_service_account`, `basic`)
+    *   **Type-specific Options:**
+        *   `--api-key`: API key value (or `ENV:VAR_NAME` for environment variable)
+        *   `--bearer-token`: Bearer token value
+        *   `--client-id`: OAuth2/OIDC client ID
+        *   `--client-secret`: OAuth2/OIDC client secret
+        *   `--service-account-key`: Service account JSON key
+        *   `--service-account-key-file`: Path to service account key file
+        *   `--username`, `--password`: Basic auth credentials
+    *   **Example:**
+        ```bash
+        adk auth credentials create my_api_key --type=api_key --api-key="ENV:MY_API_KEY"
+        ```
+*   **`adk auth credentials delete <name> [--force]`**: Deletes a credential.
+*   **`adk auth credentials test <name> [--url=<url>]`**: Tests a credential's validity.
+
+#### URL Mapping (`adk auth mappings`)
+
+*   **`adk auth mappings list`**: Lists all URL-to-auth mappings.
+*   **`adk auth mappings create --pattern=<pattern> --scheme=<name> --credential=<name> [--regex]`**: Creates a mapping.
+    *   **Required Options:**
+        *   `--pattern`: URL pattern to match
+        *   `--scheme`: Name of the scheme to use
+        *   `--credential`: Name of the credential to use
+    *   **Optional:**
+        *   `--regex`: Treat pattern as a regular expression
+    *   **Example:**
+        ```bash
+        adk auth mappings create \
+          --pattern="https://api.example.com/*" \
+          --scheme=api_key \
+          --credential=my_api_key
+        ```
+*   **`adk auth mappings delete <index>`**: Deletes a mapping by its index.
+
+### 3.7. Deployment (`adk deployment`)
 
 Helps in generating assets for deploying your ADK application.
 
@@ -160,7 +241,7 @@ bundle exec adk deployment generate . --cloud gcp \
 
 This will create a directory `./my_adk_prod_deployment/` containing a `Dockerfile`, `.dockerignore`, `config.ru`, a `deploy-gcp.sh` script, a `cloudbuild.yaml` file, and a `README-GCP-DEPLOYMENT.md` guide.
 
-### 3.7. Help (`adk help`)
+### 3.8. Help (`adk help`)
 
 *   **`adk help`**: Displays the main help message listing all available subcommands.
 *   **`adk help <subcommand>`**: Displays detailed help for a specific subcommand (e.g., `adk help agent`).

@@ -10,6 +10,7 @@ require_relative 'cli/session_commands'
 require_relative 'cli/sidekiq_commands'
 require_relative 'cli/deployment_commands'
 require_relative 'cli/skaffold_commands'
+require_relative 'cli/auth_commands'
 
 module ADK
   module CLI
@@ -32,6 +33,8 @@ module ADK
                'Generate deployment assets for cloud platforms')
       register(SkaffoldCommands, 'skaffold', 'skaffold [PROJECT_NAME]',
                'Generate a new ADK project structure (alias: new, init)')
+      register(AuthCommands, 'auth', 'auth <command>',
+               'Manage authentication schemes, credentials, and URL mappings')
     end
     # --- End Main class definition ---
   end # End CLI module
