@@ -13,9 +13,13 @@ module ADK
       include OutputHelper
 
       desc 'list', 'List available tools from the registry'
+      method_option :json, type: :boolean, default: false,
+                           desc: 'Output result in JSON format'
       def list
         tools = ADK::GlobalToolManager.list_all_tools
-        if tools.empty?
+        if json_mode?
+          puts JSON.generate({ tools: tools.map { |t| { name: t[:name].to_s, description: t[:description] } } })
+        elsif tools.empty?
           say 'No tools registered.'
         else
           say 'Available tools:', :bold
@@ -68,6 +72,9 @@ module ADK
       method_option :json, type: :boolean, default: false,
                            desc: 'Output result in JSON format (implies --quiet)'
       def execute(name, *args)
+        # Suppress all logging in JSON mode for clean output
+        ADK.logger.level = Logger::FATAL if json_mode?
+
         tool_name_sym = name.to_sym
         tool = ADK::GlobalToolManager.create_instance(tool_name_sym)
 

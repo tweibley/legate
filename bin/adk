@@ -2,8 +2,9 @@
 # frozen_string_literal: true
 
 # Suppress logs when stdin is piped (for clean stdout output in pipe workflows)
+# or when --json flag is used (for clean machine-readable output)
 # This must happen BEFORE requiring ADK to prevent log initialization noise
-ENV['ADK_LOG_LEVEL'] ||= 'SILENT' unless $stdin.tty?
+ENV['ADK_LOG_LEVEL'] ||= 'SILENT' if !$stdin.tty? || ARGV.include?('--json')
 
 require_relative '../lib/adk' # Load ADK library first
 ADK.load_environment # Handle Bundler, Dotenv, etc.

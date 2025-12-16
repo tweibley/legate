@@ -209,25 +209,41 @@ module ADK
 
       # --- Definition Management Commands (Existing - no changes shown for brevity) ---
       desc 'list', 'List all defined agents'
+      method_option :json, type: :boolean, default: false,
+                           desc: 'Output result in JSON format'
       def list
         begin
           ADK::AgentDefinitionStore.load_all_from_redis
         rescue Redis::BaseError => e
-          say "Error: Could not connect to Redis to load agent definitions. Is it running? (#{e.message})", :red
+          if json_mode?
+            puts JSON.generate({ status: 'error', error_message: "Could not connect to Redis. #{e.message}" })
+          else
+            say "Error: Could not connect to Redis to load agent definitions. Is it running? (#{e.message})", :red
+          end
           exit(1)
         end
         definitions = ADK::AgentDefinitionStore.all
-        if definitions.empty?
+        if json_mode?
+          agents = definitions.sort_by { |name, _| name.to_s }.map do |name, data|
+            {
+              name: name.to_s,
+              description: data[:description] || nil,
+              model: data[:model] || ADK::Agent::DEFAULT_MODEL,
+              tools: data[:tools] || []
+            }
+          end
+          puts JSON.generate({ agents: agents })
+        elsif definitions.empty?
           say 'No agent definitions found.'
-          return
-        end
-        say 'Defined Agents:', :bold
-        definitions.sort_by { |name, _| name.to_s }.each do |name, data|
-          description = data[:description] || '[No description]'
-          tools = data[:tools]
-          model = data[:model] || "#{ADK::Agent::DEFAULT_MODEL} (Default)"
-          tools_str = tools.empty? ? 'None' : tools.join(', ')
-          say "- #{name}: #{description} (Model: #{model}, Tools: #{tools_str})"
+        else
+          say 'Defined Agents:', :bold
+          definitions.sort_by { |name, _| name.to_s }.each do |name, data|
+            description = data[:description] || '[No description]'
+            tools = data[:tools]
+            model = data[:model] || "#{ADK::Agent::DEFAULT_MODEL} (Default)"
+            tools_str = tools.empty? ? 'None' : tools.join(', ')
+            say "- #{name}: #{description} (Model: #{model}, Tools: #{tools_str})"
+          end
         end
       end
 
@@ -689,6 +705,9 @@ module ADK
       method_option :json, type: :boolean, default: false,
                            desc: 'Output result in JSON format (implies --quiet)'
       def execute(name, task)
+        # Suppress all logging in JSON mode for clean output
+        ADK.logger.level = Logger::FATAL if json_mode?
+
         name_sym = name.to_sym
         status("Loading agent '#{name}' to execute task: \"#{task}\"...")
         definition_hash = ADK::AgentDefinitionStore.find(name_sym)
