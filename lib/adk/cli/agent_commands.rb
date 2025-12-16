@@ -516,9 +516,16 @@ module ADK
         This is a diagnostic tool to verify agent definition loads properly.
         Use 'execute' or 'chat' command to run an actual task with the agent.
       LONGDESC
+      method_option :quiet, type: :boolean, default: false, aliases: '-q',
+                            desc: 'Suppress status messages, only output result'
+      method_option :json, type: :boolean, default: false,
+                           desc: 'Output result in JSON format (implies --quiet)'
       def start(name)
+        # Suppress all logging in JSON mode for clean output
+        ADK.logger.level = Logger::FATAL if json_mode?
+
         name_sym = name.to_sym
-        say "Loading agent '#{name}'..."
+        status("Loading agent '#{name}'...")
 
         # First check the global registry
         agent_definition_object = ADK::GlobalDefinitionRegistry.find(name_sym)
@@ -528,51 +535,63 @@ module ADK
           definition_hash = ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
           unless definition_hash
-            say "Error: Agent definition '#{name}' not found.", :red
+            output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
             exit(1)
           end
 
-          say "Creating agent '#{name}' from definition object..."
+          status("Creating agent '#{name}' from definition object...")
           agent_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
 
           unless agent_definition_object
-            say "Error: Could not create a valid AgentDefinition object for '#{name}' from the loaded hash.", :red
+            output_error("Could not create a valid AgentDefinition object for '#{name}' from the loaded hash.", metadata: { agent: name })
             exit(1)
           end
         end
 
         agent = nil
+        result_data = nil
         begin
           # Pass the definition object directly. Session service will use global default.
           agent = ADK::Agent.new(definition: agent_definition_object)
 
-          say "  - Agent uses model: #{agent.model_name}", :cyan
-          say "  - Agent instruction: #{agent.instruction.inspect}", :cyan
-
           # Tool loading is now handled by ADK::Agent#initialize via the definition.
-          # We can check which tools the agent *actually* loaded for verification.
           loaded_tool_names = agent.tools.map(&:name)
           defined_tool_names = agent_definition_object.tool_names.to_a
           missing_tools = defined_tool_names - loaded_tool_names
 
-          say "  - Warning: Tools defined but not loaded/found: [#{missing_tools.join(', ')}]", :yellow unless missing_tools.empty?
-          say "  - Loaded tools: [#{loaded_tool_names.join(', ')}]", :cyan
+          status("  - Agent uses model: #{agent.model_name}", :cyan)
+          status("  - Agent instruction: #{agent.instruction.inspect}", :cyan)
+          status("  - Warning: Tools defined but not loaded/found: [#{missing_tools.join(', ')}]", :yellow) unless missing_tools.empty?
+          status("  - Loaded tools: [#{loaded_tool_names.join(', ')}]", :cyan)
 
-          say '  - Starting agent runtime...', :cyan, false
+          status('  - Starting agent runtime...', :cyan)
           agent.start
-          say 'started.', :cyan
-          say "\nAgent '#{name}' is ready.", :green
+          status('started.', :cyan)
+          status("\nAgent '#{name}' is ready.", :green)
+
+          result_data = {
+            status: 'ready',
+            agent: name,
+            model: agent.model_name,
+            tools: loaded_tool_names.map(&:to_s),
+            missing_tools: missing_tools.map(&:to_s)
+          }
         rescue StandardError => e
-          say "\nError during agent setup: #{e.class} - #{e.message}", :red
-          puts e.backtrace.first(5).join("\n")
+          output_error(e, metadata: { agent: name })
+          puts e.backtrace.first(5).join("\n") unless json_mode?
           exit(1)
         ensure
           if agent&.running?
-            say '  - Stopping agent runtime...', :cyan, false
+            status('  - Stopping agent runtime...', :cyan)
             agent.stop
-            say 'stopped.', :cyan
+            status('stopped.', :cyan)
           end
         end
+
+        # Output final result in JSON mode
+        return unless json_mode? && result_data
+
+        puts JSON.generate(result_data)
       end
 
       desc 'stop NAME', 'Stop a persistent agent'
@@ -587,33 +606,44 @@ module ADK
         is running the agent, this simply ensures the status is set to 'stopped'.
       LONGDESC
       method_option :force, type: :boolean, default: false, desc: 'Force stop without confirmation'
+      method_option :quiet, type: :boolean, default: false, aliases: '-q',
+                            desc: 'Suppress status messages, only output result'
+      method_option :json, type: :boolean, default: false,
+                           desc: 'Output result in JSON format (implies --quiet)'
       def stop(name)
+        # Suppress all logging in JSON mode for clean output
+        ADK.logger.level = Logger::FATAL if json_mode?
+
         name_sym = name.to_sym
-        say "Stopping agent '#{name}'..."
+        status("Stopping agent '#{name}'...")
 
         # Load definition from Redis
         definition = nil
         begin
           definition = ADK::AgentDefinitionStore.load_from_redis(name_sym)
         rescue Redis::BaseError => e
-          say "Error: Could not connect to Redis. Is it running? (#{e.message})", :red
+          output_error("Could not connect to Redis. Is it running? (#{e.message})", metadata: { agent: name })
           exit(1)
         end
 
         unless definition
-          say "Error: Agent definition '#{name}' not found.", :red
+          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
           exit(1)
         end
 
         # Check current status
         current_status = definition[:persistent_status] || 'stopped'
         if current_status == 'stopped'
-          say "Agent '#{name}' is already stopped.", :yellow
+          if json_mode?
+            puts JSON.generate({ status: 'already_stopped', agent: name })
+          else
+            say "Agent '#{name}' is already stopped.", :yellow
+          end
           return
         end
 
-        # Confirm if not forced
-        if !options[:force] && !yes?("Agent '#{name}' is currently marked as '#{current_status}'. Stop it? [y/N]", :yellow)
+        # Confirm if not forced (skip in quiet/json mode)
+        if !(options[:force] || quiet_mode?) && !yes?("Agent '#{name}' is currently marked as '#{current_status}'. Stop it? [y/N]", :yellow)
           say 'Stop cancelled.', :yellow
           return
         end
@@ -623,13 +653,18 @@ module ADK
           # Get the definition store to update status
           store = ADK::DefinitionStore::RedisStore.new
           store.update_definition(name_sym, { persistent_status: 'stopped' })
-          say "Agent '#{name}' has been marked as stopped.", :green
-          say '  Note: If running in a web server, the agent will stop on next status check or server restart.', :cyan
+
+          if json_mode?
+            puts JSON.generate({ status: 'stopped', agent: name, previous_status: current_status })
+          else
+            say "Agent '#{name}' has been marked as stopped.", :green
+            say '  Note: If running in a web server, the agent will stop on next status check or server restart.', :cyan
+          end
         rescue ADK::DefinitionStore::StoreError => e
-          say "Error updating agent status: #{e.message}", :red
+          output_error("Error updating agent status: #{e.message}", metadata: { agent: name })
           exit(1)
         rescue Redis::BaseError => e
-          say "Error: Redis connection failed. (#{e.message})", :red
+          output_error("Redis connection failed. (#{e.message})", metadata: { agent: name })
           exit(1)
         end
       end
