@@ -3,6 +3,7 @@
 
 require 'thor'
 # Require the files that DEFINE the command classes first
+require_relative 'cli/output_helper'
 require_relative 'cli/agent_commands'
 require_relative 'cli/tool_commands'
 require_relative 'cli/web_commands'

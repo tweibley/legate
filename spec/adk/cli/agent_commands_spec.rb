@@ -739,11 +739,13 @@ RSpec.describe ADK::CLI::AgentCommands do
         expect(output.string).to match(/Started new session: [\w-]{36}/)
         expect(output.string).to include('Agent uses model: gemini-exec')
         expect(output.string).to include('Loaded tools: [mock_cli_tool]')
-        expect(output.string).to match(/Running task in session [\w-]{36}: '#{task}'...finished./)
+        expect(output.string).to match(/Running task in session [\w-]{36}: '#{task}'.../)
+        expect(output.string).to include('finished.')
         expect(output.string).to include('Task Result:')
         expect(output.string).to include('Success:')
         expect(output.string).to include('Result: Task completed!')
-        expect(output.string).to include('Stopping agent runtime...stopped.')
+        expect(output.string).to include('Stopping agent runtime...')
+        expect(output.string).to include('stopped.')
         expect(output.string).not_to include('Intentional Exit') # Should not exit on success
       end
     end

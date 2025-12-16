@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 require 'thor'
-require_relative '../tool_registry' # Require the registry
+require_relative '../global_tool_manager' # Require the global manager
 require_relative '../tool_context' # <--- ADDED require
 require 'securerandom' # <-- ADDED require for dummy context
 
@@ -10,9 +10,11 @@ module ADK
   module CLI
     # CLI commands for tool management using ToolRegistry
     class ToolCommands < Thor
+      include OutputHelper
+
       desc 'list', 'List available tools from the registry'
       def list
-        tools = ADK::ToolRegistry.list_tools
+        tools = ADK::GlobalToolManager.list_all_tools
         if tools.empty?
           say 'No tools registered.'
         else
@@ -26,7 +28,7 @@ module ADK
       desc 'info NAME', 'Show information about a tool from the registry'
       def info(name)
         tool_name_sym = name.to_sym
-        tool = ADK::ToolRegistry.create_instance(tool_name_sym) # Create instance to get params
+        tool = ADK::GlobalToolManager.create_instance(tool_name_sym) # Create instance to get params
 
         if tool
           say "Tool: #{tool.name}"
@@ -61,12 +63,16 @@ module ADK
       the job_id will be printed. Use the check_job_status tool
       in a subsequent call to get the final result.
       LONGDESC
+      method_option :quiet, type: :boolean, default: false, aliases: '-q',
+                            desc: 'Suppress status messages, only output result'
+      method_option :json, type: :boolean, default: false,
+                           desc: 'Output result in JSON format (implies --quiet)'
       def execute(name, *args)
         tool_name_sym = name.to_sym
-        tool = ADK::ToolRegistry.create_instance(tool_name_sym)
+        tool = ADK::GlobalToolManager.create_instance(tool_name_sym)
 
         unless tool
-          say "Error: Tool '#{name}' not found in registry.", :red
+          output_error("Tool '#{name}' not found in registry.", metadata: { tool: name })
           exit(1)
         end
 
@@ -80,24 +86,24 @@ module ADK
             value = parts[1]
 
             unless valid_param_names.include?(key)
-              say "Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring.", :yellow
+              status("Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring.", :yellow)
               next
             end
 
             params_to_execute[key.to_sym] = value # Store as symbol key
-            say "  Parsed: #{key} = '#{value}'"
+            status("  Parsed: #{key} = '#{value}'")
           elsif args.length == 1 && tool.parameters.length == 1 && tool.parameters.values.first[:required]
             # Simplified single arg handling
             single_key = tool.parameters.keys.first
-            say "Info: Assuming single argument '#{arg}' maps to required parameter '#{single_key}'.", :cyan
+            status("Info: Assuming single argument '#{arg}' maps to required parameter '#{single_key}'.", :cyan)
             params_to_execute[single_key] = arg
           elsif !args.empty?
-            say "Warning: Argument '#{arg}' ignored. Please use 'key=value' format for parameters.", :yellow
+            status("Warning: Argument '#{arg}' ignored. Please use 'key=value' format for parameters.", :yellow)
           end
         end
 
         begin
-          say "Executing tool '#{name}' with parsed params: #{params_to_execute.inspect}"
+          status("Executing tool '#{name}' with parsed params: #{params_to_execute.inspect}")
           # --- Create a dummy context for direct tool execution ---
           dummy_context = ADK::ToolContext.new(session_id: "cli_direct_#{SecureRandom.hex(4)}", user_id: 'cli_user',
                                                app_name: 'cli_tool_exec')
@@ -105,7 +111,21 @@ module ADK
           # --- Call execute with context ---
           result_hash = tool.execute(params_to_execute, dummy_context)
 
-          say "\nResult:", :bold
+          status("\nResult:", :bold)
+          output_result(result_hash, metadata: { tool: name }, format_method: :format_tool_result)
+        rescue ADK::Error, ArgumentError => e
+          output_error(e, metadata: { tool: name })
+          exit(1)
+        rescue StandardError => e
+          output_error(e, metadata: { tool: name })
+          puts e.backtrace.first(5).join("\n") unless json_mode?
+          exit(1)
+        end
+      end # end execute
+
+      no_commands do
+        # Format tool result in human-readable format
+        def format_tool_result(result_hash)
           if result_hash.is_a?(Hash) && result_hash.key?(:status)
             case result_hash[:status]
             when :success
@@ -126,15 +146,8 @@ module ADK
             say 'Unknown Result Format:', :yellow
             say "  Data: #{result_hash.inspect}"
           end
-        rescue ADK::Error, ArgumentError => e
-          say "\nError executing tool:", :red
-          say e.message, :red
-        rescue StandardError => e
-          say "\nAn unexpected error occurred:", :red
-          say "#{e.class} - #{e.message}", :red
-          say e.backtrace.first(5).join("\n")
         end
-      end # end execute
+      end
 
       desc 'ai_generate', 'Generate tool class code using AI from a natural language description'
       long_desc <<-LONGDESC

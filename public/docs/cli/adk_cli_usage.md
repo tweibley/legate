@@ -88,6 +88,39 @@ This subcommand group deals with managing agent definitions stored in the config
         *   `--output` / `-o`: Output file path. If omitted, prints to stdout.
     *   **Example:** `adk agent export my_calculator --format=json --output=my_calculator.json`
 
+*   **`adk agent execute <agent_name> <task> [options]`**: Executes a single task with an agent and exits.
+    *   **Required Arguments:**
+        *   `<agent_name>`: Name of the agent to execute.
+        *   `<task>`: The task/prompt to execute.
+    *   **Options:**
+        *   `--session-id=<id>`: Continue an existing session.
+        *   `--redis`: Use Redis for session storage instead of in-memory.
+        *   `--quiet` / `-q`: Suppress status messages, only output result.
+        *   `--json`: Output result in JSON format (implies --quiet).
+    *   **Examples:**
+        ```bash
+        # Normal execution with verbose status
+        adk agent execute my_calculator "What is 5 + 3?"
+        
+        # Quiet mode - only show result
+        adk agent execute my_calculator "What is 5 + 3?" --quiet
+        
+        # JSON output for scripting/automation
+        adk agent execute my_calculator "What is 5 + 3?" --json
+        ```
+    *   **JSON Output Format:**
+        ```json
+        {
+          "session_id": "uuid-here",
+          "agent": "my_calculator",
+          "result": {
+            "role": "agent",
+            "content": {"status": "success", "result": "8"},
+            "timestamp": "2025-12-16 00:00:00 UTC"
+          }
+        }
+        ```
+
 ### 3.2. Web Server (`adk web`)
 
 This subcommand group manages the built-in development web server, which includes the Web UI and potentially the Webhook Listener.
@@ -130,6 +163,14 @@ This subcommand group manages the built-in development web server, which include
         echo "A URL status checker" | adk tool ai_generate > url_checker.rb
         ```
 
+*   **`adk tool execute <tool_name> [param=value ...] [options]`**: Executes a tool directly with parameters.
+    *   **Options:**
+        *   `--quiet` / `-q`: Suppress status messages, only output result.
+        *   `--json`: Output result in JSON format (implies --quiet).
+    *   **Example:**
+        ```bash
+        adk tool execute calculator operand1=5 operand2=3 operation=add --json
+        ```
 
 ### 3.4. Session Management (`adk session`)
 

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 require 'adk/cli/tool_commands'
-require 'adk/tool_registry'
+require 'adk/global_tool_manager'
 require 'adk/tool_context'
 require 'stringio'
 require 'thor/shell/basic'
@@ -36,9 +36,9 @@ RSpec.describe ADK::CLI::ToolCommands do
     allow(shell).to receive(:stderr).and_return(output)
     commands.shell = shell
 
-    # Mock ADK::ToolRegistry methods
-    allow(ADK::ToolRegistry).to receive(:list_tools).and_return([])
-    allow(ADK::ToolRegistry).to receive(:create_instance).and_return(nil)
+    # Mock ADK::GlobalToolManager methods (the actual class used by ToolCommands)
+    allow(ADK::GlobalToolManager).to receive(:list_all_tools).and_return([])
+    allow(ADK::GlobalToolManager).to receive(:create_instance).and_return(nil)
 
     # Mock exit to prevent aborting the test suite
     allow(commands).to receive(:exit)
@@ -68,7 +68,7 @@ RSpec.describe ADK::CLI::ToolCommands do
       end
 
       before do
-        allow(ADK::ToolRegistry).to receive(:list_tools).and_return(tool_list)
+        allow(ADK::GlobalToolManager).to receive(:list_all_tools).and_return(tool_list)
       end
 
       it 'lists the available tools' do
@@ -92,18 +92,18 @@ RSpec.describe ADK::CLI::ToolCommands do
       let(:tool_instance) { MockCliTestTool.new }
 
       before do
-        allow(ADK::ToolRegistry).to receive(:create_instance).with(:mock_tool).and_return(tool_instance)
+        allow(ADK::GlobalToolManager).to receive(:create_instance).with(:mock_tool).and_return(tool_instance)
         # Ensure name is consistent for test
         allow(tool_instance).to receive(:name).and_return(:mock_tool)
       end
 
       it 'prints tool information' do
         invoke_command(:info, 'mock_tool')
-        expect(output.string).to include("Tool: mock_tool")
-        expect(output.string).to include("Description: A mock tool for CLI tool command tests.")
-        expect(output.string).to include("Parameters:")
-        expect(output.string).to include("- param1 (string, required)")
-        expect(output.string).to include("- param2 (string, optional)")
+        expect(output.string).to include('Tool: mock_tool')
+        expect(output.string).to include('Description: A mock tool for CLI tool command tests.')
+        expect(output.string).to include('Parameters:')
+        expect(output.string).to include('- param1 (string, required)')
+        expect(output.string).to include('- param2 (string, optional)')
       end
     end
   end
@@ -112,17 +112,17 @@ RSpec.describe ADK::CLI::ToolCommands do
     let(:tool_instance) { MockCliTestTool.new }
 
     before do
-      allow(ADK::ToolRegistry).to receive(:create_instance).with(:mock_tool).and_return(tool_instance)
+      allow(ADK::GlobalToolManager).to receive(:create_instance).with(:mock_tool).and_return(tool_instance)
     end
 
     context 'when tool does not exist' do
       before do
-        allow(ADK::ToolRegistry).to receive(:create_instance).with(:unknown).and_return(nil)
+        allow(ADK::GlobalToolManager).to receive(:create_instance).with(:unknown).and_return(nil)
       end
 
       it 'prints error and exits' do
         invoke_command(:execute, 'unknown')
-        expect(output.string).to include("Error: Tool 'unknown' not found in registry.")
+        expect(output.string).to include("Tool 'unknown' not found in registry.")
       end
     end
 
@@ -131,8 +131,8 @@ RSpec.describe ADK::CLI::ToolCommands do
         invoke_command(:execute, 'mock_tool', 'param1=value1', 'param2=value2')
 
         expect(output.string).to include("Executing tool 'mock_tool'")
-        expect(output.string).to include("Success:")
-        expect(output.string).to include("Output: Executed with value1 and value2")
+        expect(output.string).to include('Success:')
+        expect(output.string).to include('Output: Executed with value1 and value2')
       end
 
       it 'ignores invalid parameters and warns' do
@@ -150,11 +150,10 @@ RSpec.describe ADK::CLI::ToolCommands do
 
         # Let's mock a tool with single required param
         single_param_tool = double('SingleParamTool',
-          name: :single,
-          parameters: { input: { type: :string, required: true } },
-          execute: { status: :success, result: 'ok' }
-        )
-        allow(ADK::ToolRegistry).to receive(:create_instance).with(:single).and_return(single_param_tool)
+                                   name: :single,
+                                   parameters: { input: { type: :string, required: true } },
+                                   execute: { status: :success, result: 'ok' })
+        allow(ADK::GlobalToolManager).to receive(:create_instance).with(:single).and_return(single_param_tool)
 
         invoke_command(:execute, 'single', 'test_input')
         expect(output.string).to include("Assuming single argument 'test_input' maps to required parameter 'input'")
@@ -163,23 +162,23 @@ RSpec.describe ADK::CLI::ToolCommands do
       it 'reports error when tool execution fails' do
         invoke_command(:execute, 'mock_tool', 'param1=error')
 
-        expect(output.string).to include("Error executing tool:")
-        expect(output.string).to include("Simulated tool error")
+        # New format uses output_error which doesn't have "Error executing tool:" prefix
+        expect(output.string).to include('Simulated tool error')
       end
 
       it 'reports pending status correctly' do
         invoke_command(:execute, 'mock_tool', 'param1=pending')
 
-        expect(output.string).to include("Pending:")
-        expect(output.string).to include("Job ID: job-123")
+        expect(output.string).to include('Pending:')
+        expect(output.string).to include('Job ID: job-123')
       end
 
       it 'handles unexpected errors gracefully' do
         allow(tool_instance).to receive(:execute).and_raise(StandardError, 'Unexpected crash')
         invoke_command(:execute, 'mock_tool', 'param1=test')
 
-        expect(output.string).to include("An unexpected error occurred:")
-        expect(output.string).to include("Unexpected crash")
+        # New format uses output_error
+        expect(output.string).to include('Unexpected crash')
       end
     end
   end

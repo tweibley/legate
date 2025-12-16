@@ -659,6 +659,7 @@ bundle exec adk agent ai-generate            # Generate agent using AI (LLM-powe
 bundle exec adk agent start <name>           # Start agent runtime
 bundle exec adk agent stop <name>            # Stop agent runtime
 bundle exec adk agent execute <name> <task>  # Run agent task
+  # Options: --session-id=<id>, --redis, --quiet/-q, --json
 bundle exec adk agent chat <name>            # Interactive chat with agent
 bundle exec adk agent export <name>          # Export agent definition
 
@@ -666,6 +667,7 @@ bundle exec adk agent export <name>          # Export agent definition
 bundle exec adk tool list                    # List available tools
 bundle exec adk tool info <name>             # Show tool details
 bundle exec adk tool execute <name> [args]   # Execute a tool directly
+  # Options: --quiet/-q, --json
 bundle exec adk tool ai-generate             # Generate tool using AI (LLM-powered)
 
 # Authentication
