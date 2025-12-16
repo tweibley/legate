@@ -93,24 +93,24 @@ module ADK
             value = parts[1]
 
             unless valid_param_names.include?(key)
-              status("Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring.", :yellow)
+              status_message("Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring.", :yellow)
               next
             end
 
             params_to_execute[key.to_sym] = value # Store as symbol key
-            status("  Parsed: #{key} = '#{value}'")
+            status_message("  Parsed: #{key} = '#{value}'")
           elsif args.length == 1 && tool.parameters.length == 1 && tool.parameters.values.first[:required]
             # Simplified single arg handling
             single_key = tool.parameters.keys.first
-            status("Info: Assuming single argument '#{arg}' maps to required parameter '#{single_key}'.", :cyan)
+            status_message("Info: Assuming single argument '#{arg}' maps to required parameter '#{single_key}'.", :cyan)
             params_to_execute[single_key] = arg
           elsif !args.empty?
-            status("Warning: Argument '#{arg}' ignored. Please use 'key=value' format for parameters.", :yellow)
+            status_message("Warning: Argument '#{arg}' ignored. Please use 'key=value' format for parameters.", :yellow)
           end
         end
 
         begin
-          status("Executing tool '#{name}' with parsed params: #{params_to_execute.inspect}")
+          status_message("Executing tool '#{name}' with parsed params: #{params_to_execute.inspect}")
           # --- Create a dummy context for direct tool execution ---
           dummy_context = ADK::ToolContext.new(session_id: "cli_direct_#{SecureRandom.hex(4)}", user_id: 'cli_user',
                                                app_name: 'cli_tool_exec')
@@ -118,7 +118,7 @@ module ADK
           # --- Call execute with context ---
           result_hash = tool.execute(params_to_execute, dummy_context)
 
-          status("\nResult:", :bold)
+          status_message("\nResult:", :bold)
           output_result(result_hash, metadata: { tool: name }, format_method: :format_tool_result)
         rescue ADK::Error, ArgumentError => e
           output_error(e, metadata: { tool: name })

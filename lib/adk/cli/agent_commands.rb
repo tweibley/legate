@@ -525,7 +525,7 @@ module ADK
         ADK.logger.level = Logger::FATAL if json_mode?
 
         name_sym = name.to_sym
-        status("Loading agent '#{name}'...")
+        status_message("Loading agent '#{name}'...")
 
         # First check the global registry
         agent_definition_object = ADK::GlobalDefinitionRegistry.find(name_sym)
@@ -539,7 +539,7 @@ module ADK
             exit(1)
           end
 
-          status("Creating agent '#{name}' from definition object...")
+          status_message("Creating agent '#{name}' from definition object...")
           agent_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
 
           unless agent_definition_object
@@ -559,15 +559,15 @@ module ADK
           defined_tool_names = agent_definition_object.tool_names.to_a
           missing_tools = defined_tool_names - loaded_tool_names
 
-          status("  - Agent uses model: #{agent.model_name}", :cyan)
-          status("  - Agent instruction: #{agent.instruction.inspect}", :cyan)
-          status("  - Warning: Tools defined but not loaded/found: [#{missing_tools.join(', ')}]", :yellow) unless missing_tools.empty?
-          status("  - Loaded tools: [#{loaded_tool_names.join(', ')}]", :cyan)
+          status_message("  - Agent uses model: #{agent.model_name}", :cyan)
+          status_message("  - Agent instruction: #{agent.instruction.inspect}", :cyan)
+          status_message("  - Warning: Tools defined but not loaded/found: [#{missing_tools.join(', ')}]", :yellow) unless missing_tools.empty?
+          status_message("  - Loaded tools: [#{loaded_tool_names.join(', ')}]", :cyan)
 
-          status('  - Starting agent runtime...', :cyan)
+          status_message('  - Starting agent runtime...', :cyan)
           agent.start
-          status('started.', :cyan)
-          status("\nAgent '#{name}' is ready.", :green)
+          status_message('started.', :cyan)
+          status_message("\nAgent '#{name}' is ready.", :green)
 
           result_data = {
             status: 'ready',
@@ -582,9 +582,9 @@ module ADK
           exit(1)
         ensure
           if agent&.running?
-            status('  - Stopping agent runtime...', :cyan)
+            status_message('  - Stopping agent runtime...', :cyan)
             agent.stop
-            status('stopped.', :cyan)
+            status_message('stopped.', :cyan)
           end
         end
 
@@ -615,7 +615,7 @@ module ADK
         ADK.logger.level = Logger::FATAL if json_mode?
 
         name_sym = name.to_sym
-        status("Stopping agent '#{name}'...")
+        status_message("Stopping agent '#{name}'...")
 
         # Load definition from Redis
         definition = nil
@@ -666,6 +666,68 @@ module ADK
         rescue Redis::BaseError => e
           output_error("Redis connection failed. (#{e.message})", metadata: { agent: name })
           exit(1)
+        end
+      end
+
+      desc 'status NAME', 'Check the status of a persistent agent'
+      long_desc <<-LONGDESC
+        Shows the current status of a persistent agent from the definition store.
+
+        Displays the agent's persistent_status (running, stopped, etc.) along with
+        basic agent information. This is useful for checking if an agent is currently
+        active or has been stopped.
+      LONGDESC
+      method_option :quiet, type: :boolean, default: false, aliases: '-q',
+                            desc: 'Suppress status messages, only output result'
+      method_option :json, type: :boolean, default: false,
+                           desc: 'Output result in JSON format (implies --quiet)'
+      def status(name)
+        # Suppress all logging in JSON mode for clean output
+        ADK.logger.level = Logger::FATAL if json_mode?
+
+        name_sym = name.to_sym
+        status_message("Checking status of agent '#{name}'...")
+
+        # Load definition from Redis
+        definition = nil
+        begin
+          definition = ADK::AgentDefinitionStore.load_from_redis(name_sym)
+        rescue Redis::BaseError => e
+          output_error("Could not connect to Redis. Is it running? (#{e.message})", metadata: { agent: name })
+          exit(1)
+        end
+
+        unless definition
+          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          exit(1)
+        end
+
+        persistent_status = definition[:persistent_status] || 'stopped'
+        model = definition[:model] || ADK::Agent::DEFAULT_MODEL
+        description = definition[:description] || '[No description]'
+        tools = definition[:tools] || []
+
+        if json_mode?
+          puts JSON.generate({
+                               agent: name,
+                               status: persistent_status,
+                               model: model,
+                               description: description,
+                               tools: tools
+                             })
+        else
+          say "Agent: #{name}", :bold
+          case persistent_status
+          when 'running'
+            say "  Status: #{persistent_status}", :green
+          when 'stopped'
+            say "  Status: #{persistent_status}", :yellow
+          else
+            say "  Status: #{persistent_status}", :cyan
+          end
+          say "  Model: #{model}"
+          say "  Description: #{description}"
+          say "  Tools: #{tools.empty? ? 'None' : tools.join(', ')}"
         end
       end
 
@@ -744,7 +806,7 @@ module ADK
         ADK.logger.level = Logger::FATAL if json_mode?
 
         name_sym = name.to_sym
-        status("Loading agent '#{name}' to execute task: \"#{task}\"...")
+        status_message("Loading agent '#{name}' to execute task: \"#{task}\"...")
         definition_hash = ADK::AgentDefinitionStore.find(name_sym)
         definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
@@ -753,7 +815,7 @@ module ADK
           exit(1)
         end
 
-        status("Creating agent '#{name}' from definition object...")
+        status_message("Creating agent '#{name}' from definition object...")
         agent_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
 
         unless agent_definition_object
@@ -766,17 +828,17 @@ module ADK
         adk_session = nil
         if session_id_opt
           adk_session = session_service_instance.get_session(session_id: session_id_opt)
-          if adk_session then status("Continuing session: #{session_id_opt}", :cyan)
+          if adk_session then status_message("Continuing session: #{session_id_opt}", :cyan)
           else
-            status("Warning: Session ID '#{session_id_opt}' provided but not found. Starting a new session.", :yellow)
+            status_message("Warning: Session ID '#{session_id_opt}' provided but not found. Starting a new session.", :yellow)
             session_id_opt = nil
           end
         end
         unless adk_session
           adk_session = session_service_instance.create_session(app_name: name, user_id: 'cli_user')
           session_id_opt = adk_session.id
-          status("Started new session: #{session_id_opt}", :cyan)
-          status("  (Using #{options[:redis] ? 'Redis' : 'in-memory'} session storage)", :cyan)
+          status_message("Started new session: #{session_id_opt}", :cyan)
+          status_message("  (Using #{options[:redis] ? 'Redis' : 'in-memory'} session storage)", :cyan)
         end
 
         agent = nil
@@ -790,7 +852,7 @@ module ADK
             session_service: session_service_instance
           )
 
-          status("  - Agent uses model: #{agent.model_name}", :cyan)
+          status_message("  - Agent uses model: #{agent.model_name}", :cyan)
 
           # Tool loading is now handled by ADK::Agent#initialize via the definition.
           loaded_tool_instances = agent.tools
@@ -798,19 +860,19 @@ module ADK
           defined_tool_names = agent_definition_object.tool_names.to_a
           missing_tools = defined_tool_names - loaded_tool_names
 
-          status("  - Warning: Tools defined but not loaded/found: [#{missing_tools.join(', ')}]", :yellow) unless missing_tools.empty?
-          status("  - Loaded tools: [#{loaded_tool_names.join(', ')}]", :cyan)
-          status('  - Starting agent runtime...', :cyan)
+          status_message("  - Warning: Tools defined but not loaded/found: [#{missing_tools.join(', ')}]", :yellow) unless missing_tools.empty?
+          status_message("  - Loaded tools: [#{loaded_tool_names.join(', ')}]", :cyan)
+          status_message('  - Starting agent runtime...', :cyan)
           agent.start
-          status('started.', :cyan)
-          status("  - Running task in session #{session_id_opt}: '#{task}'...", :cyan)
+          status_message('started.', :cyan)
+          status_message("  - Running task in session #{session_id_opt}: '#{task}'...", :cyan)
           final_event_or_error = agent.run_task(
             session_id: session_id_opt,
             user_input: task,
             session_service: session_service_instance
           )
-          status('finished.', :cyan)
-          status("\nTask Result:", :bold)
+          status_message('finished.', :cyan)
+          status_message("\nTask Result:", :bold)
           output_result(final_event_or_error, metadata: { session_id: session_id_opt, agent: name }, format_method: :format_cli_result)
         rescue StandardError => e
           e_outer = e
@@ -818,9 +880,9 @@ module ADK
           puts e.backtrace.first(5).join("\n") unless json_mode?
         ensure
           if agent&.running?
-            status('  - Stopping agent runtime...', :cyan)
+            status_message('  - Stopping agent runtime...', :cyan)
             agent.stop
-            status('stopped.', :cyan)
+            status_message('stopped.', :cyan)
           end
           exit(1) if e_outer
         end

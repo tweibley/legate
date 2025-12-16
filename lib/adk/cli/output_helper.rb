@@ -12,7 +12,7 @@ module ADK
       # Write status/progress message (suppressed in quiet or json mode)
       # @param message [String] The status message to display
       # @param color [Symbol, nil] Optional color for Thor's say method
-      def status(message, color = nil)
+      def status_message(message, color = nil)
         return if quiet_mode?
 
         say message, color
