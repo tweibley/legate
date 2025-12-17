@@ -339,3 +339,6 @@
 
 - [x] **ID 75: CLI Authentication Commands** (Priority: high)
 > Add authentication management commands to the CLI (`adk auth schemes`, `adk auth credentials`, `adk auth mappings`) to mirror web UI capabilities. See [cli_auth_commands.md](file:///plans/features/cli_auth_commands.md) for detailed implementation plan.
+
+- [ ] **ID 76: CLI User ID Option** (Priority: high)
+> Add `--user-id` option to CLI commands that create/use sessions (`agent execute`, `agent chat`, `session execute`, `tool execute`). This enables consistent user identity across CLI and web, and allows resuming chat sessions. See [cli_user_id.md](file:///plans/features/cli_user_id.md) for detailed implementation plan.

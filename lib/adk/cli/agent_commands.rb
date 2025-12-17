@@ -797,6 +797,7 @@ module ADK
       LONGDESC
       method_option :session_id, type: :string, desc: 'Optional ID of an existing session to use.'
       method_option :redis, type: :boolean, default: false, desc: 'Use Redis for session storage instead of in-memory.'
+      method_option :user_id, type: :string, default: 'cli_user', desc: 'User ID for the session'
       method_option :quiet, type: :boolean, default: false, aliases: '-q',
                             desc: 'Suppress status messages, only output result'
       method_option :json, type: :boolean, default: false,
@@ -835,7 +836,7 @@ module ADK
           end
         end
         unless adk_session
-          adk_session = session_service_instance.create_session(app_name: name, user_id: 'cli_user')
+          adk_session = session_service_instance.create_session(app_name: name, user_id: options[:user_id])
           session_id_opt = adk_session.id
           status_message("Started new session: #{session_id_opt}", :cyan)
           status_message("  (Using #{options[:redis] ? 'Redis' : 'in-memory'} session storage)", :cyan)
@@ -905,6 +906,7 @@ module ADK
       method_option :session_id, type: :string, desc: 'ID of an existing session to resume.'
       method_option :session_service, type: :string, default: 'memory', enum: %w[memory redis],
                                       desc: 'Session service to use (memory or redis).'
+      method_option :user_id, type: :string, default: 'cli_user', desc: 'User ID for the session'
       def chat(agent_name_str)
         ::CLI::UI::StdoutRouter.enable
         agent_name_sym = agent_name_str.to_sym
@@ -970,7 +972,7 @@ module ADK
             end
           end
           unless adk_session # If still no session (either not provided, or provided but not found)
-            adk_session = session_service_instance.create_session(app_name: agent_name_str, user_id: "cli_chat_user_#{SecureRandom.hex(3)}")
+            adk_session = session_service_instance.create_session(app_name: agent_name_str, user_id: options[:user_id])
             current_session_id = adk_session.id # Update current_session_id with the new one
             ::CLI::UI.puts "{{green:Started new session:}} #{current_session_id} (#{options[:session_service]})"
           end

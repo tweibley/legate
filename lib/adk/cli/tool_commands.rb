@@ -71,6 +71,7 @@ module ADK
                             desc: 'Suppress status messages, only output result'
       method_option :json, type: :boolean, default: false,
                            desc: 'Output result in JSON format (implies --quiet)'
+      method_option :user_id, type: :string, default: 'cli_user', desc: 'User ID for the tool context'
       def execute(name, *args)
         # Suppress all logging in JSON mode for clean output
         ADK.logger.level = Logger::FATAL if json_mode?
@@ -112,7 +113,7 @@ module ADK
         begin
           status_message("Executing tool '#{name}' with parsed params: #{params_to_execute.inspect}")
           # --- Create a dummy context for direct tool execution ---
-          dummy_context = ADK::ToolContext.new(session_id: "cli_direct_#{SecureRandom.hex(4)}", user_id: 'cli_user',
+          dummy_context = ADK::ToolContext.new(session_id: "cli_direct_#{SecureRandom.hex(4)}", user_id: options[:user_id],
                                                app_name: 'cli_tool_exec')
 
           # --- Call execute with context ---

@@ -30,7 +30,7 @@ module ADK
 
         say "Found #{sessions.length} session(s):", :bold
         sessions.each do |session|
-          created_at = Time.parse(session.created_at).strftime('%Y-%m-%d %H:%M:%S')
+          created_at = session.created_at.strftime('%Y-%m-%d %H:%M:%S')
           say "  ID: #{session.id}", :cyan
           say "    App: #{session.app_name}"
           say "    User: #{session.user_id}"
@@ -50,7 +50,7 @@ module ADK
           return
         end
 
-        created_at = Time.parse(session.created_at).strftime('%Y-%m-%d %H:%M:%S')
+        created_at = session.created_at.strftime('%Y-%m-%d %H:%M:%S')
         say 'Session Details:', :bold
         say "  ID: #{session.id}", :cyan
         say "  App: #{session.app_name}"
@@ -95,6 +95,7 @@ module ADK
       desc 'execute AGENT_NAME TASK --session-id=SESSION_ID',
            'Execute a task using an agent with a specific Redis session'
       method_option :session_id, type: :string, desc: 'ID of an existing Redis session to use'
+      method_option :user_id, type: :string, default: 'cli_user', desc: 'User ID for the session'
       def execute(agent_name, task)
         # This is a wrapper around the agent execute command that uses Redis sessions
         # We'll delegate to the agent_commands.rb implementation but with Redis session service
@@ -129,7 +130,7 @@ module ADK
 
         unless adk_session
           # Create a new Redis session
-          adk_session = session_service.create_session(app_name: agent_name, user_id: 'cli_user')
+          adk_session = session_service.create_session(app_name: agent_name, user_id: options[:user_id])
           session_id = adk_session.id
           say "Started new Redis session: #{session_id}", :cyan
         end
