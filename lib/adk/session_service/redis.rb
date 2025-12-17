@@ -43,7 +43,7 @@ module ADK
 
       # Authentication-specific data namespace in session state
       AUTH_TOKEN_CACHE_KEY = :auth_token_cache
-      
+
       # Sensitive fields that should always be encrypted
       SENSITIVE_FIELDS = [
         AUTH_TOKEN_CACHE_KEY,
@@ -72,18 +72,18 @@ module ADK
         @redis_client = redis_client || connect_redis
         @session_ttl = session_ttl
         @encryption_enabled = enable_encryption
-        
+
         if @encryption_enabled
           # Check if encryption is possible
           begin
             ADK::Auth::Encryption.encrypt('test')
             ADK.logger.info("RedisSessionService initialized with encryption. Session TTL: #{session_ttl || 'None'}")
-          rescue => e
+          rescue StandardError => e
             ADK.logger.warn("Encryption requested but unavailable: #{e.message}. Falling back to unencrypted mode.")
             @encryption_enabled = false
           end
         end
-        
+
         ADK.logger.info("RedisSessionService initialized. Encryption: #{@encryption_enabled}, Session TTL: #{session_ttl || 'None'}")
       end
 
@@ -104,7 +104,7 @@ module ADK
         # Initialize an auth_token_cache in the initial state if not present
         secure_initial_state = initial_state.dup
         secure_initial_state[AUTH_TOKEN_CACHE_KEY] ||= {}
-        
+
         session = ADK::Session.new(
           app_name: app_name,
           user_id: user_id,
@@ -118,7 +118,7 @@ module ADK
           # Process state for storage, applying encryption to sensitive fields
           processed_state = process_state_for_storage(session.state_to_h)
           state_json = JSON.generate(processed_state)
-          
+
           session_data = {
             app_name: session.app_name,
             user_id: session.user_id,
@@ -179,19 +179,10 @@ module ADK
           session_hash_data = results[0]
           event_json_list = results[1]
 
-          # Check if session hash exists
+          # Check if session hash exists - return nil if not found
           if session_hash_data.nil? || session_hash_data.empty?
-            ADK.logger.warn("Session not found in Redis: #{session_id}. Creating new session.")
-            # For this E2E test, derive app/user from session_id (simplification)
-            # A real app might need app_name/user_id passed differently.
-            app_name = session_id # Use session_id as app_name for this example
-            user_id = 'webhook_user' # Default user_id
-            begin
-              return create_session(app_name: app_name, user_id: user_id)
-            rescue => e
-              ADK.logger.error("Failed to auto-create session #{session_id} after not found: #{e.message}")
-              return nil # Return nil if creation also fails
-            end
+            ADK.logger.debug("Session not found in Redis: #{session_id}")
+            return nil
           end
 
           # Deserialize session state
@@ -210,14 +201,12 @@ module ADK
           # Deserialize events
           events = []
           event_json_list&.each_with_index do |event_json, index|
-            begin
-              event_hash = JSON.parse(event_json, symbolize_names: true)
-              event = ADK::Event.from_h(event_hash)
-              events << event if event # from_h returns nil on error
-            rescue JSON::ParserError => e
-              ADK.logger.error("Failed to parse event JSON at index #{index} for session #{session_id}: #{e.message}. Data: #{event_json}")
-              # Optionally add a placeholder event? Or just skip. Skipping for now.
-            end
+            event_hash = JSON.parse(event_json, symbolize_names: true)
+            event = ADK::Event.from_h(event_hash)
+            events << event if event # from_h returns nil on error
+          rescue JSON::ParserError => e
+            ADK.logger.error("Failed to parse event JSON at index #{index} for session #{session_id}: #{e.message}. Data: #{event_json}")
+            # Optionally add a placeholder event? Or just skip. Skipping for now.
           end
 
           # Reconstruct Session object
@@ -233,10 +222,14 @@ module ADK
           session = ADK::Session.new(**session_data_for_init)
 
           # Manually set timestamps after initialization from stored values
-          session.instance_variable_set(:@created_at,
-                                        Time.iso8601(session_hash_data['created_at'])) if session_hash_data['created_at']
-          session.instance_variable_set(:@updated_at,
-                                        Time.iso8601(session_hash_data['updated_at'])) if session_hash_data['updated_at']
+          if session_hash_data['created_at']
+            session.instance_variable_set(:@created_at,
+                                          Time.iso8601(session_hash_data['created_at']))
+          end
+          if session_hash_data['updated_at']
+            session.instance_variable_set(:@updated_at,
+                                          Time.iso8601(session_hash_data['updated_at']))
+          end
 
           ADK.logger.debug("Retrieved session from Redis: #{session_id}")
           session
@@ -366,7 +359,11 @@ module ADK
           end
         rescue ::Redis::BaseError => e
           ADK.logger.error("Redis error appending event to session #{session_id}: #{e.class} - #{e.message}")
-          @redis_client.unwatch rescue nil # Best effort to unwatch
+          begin
+            @redis_client.unwatch
+          rescue StandardError
+            nil
+          end # Best effort to unwatch
           false
         end
       end
@@ -460,13 +457,11 @@ module ADK
             # Deserialize events
             events = []
             events_list&.each do |event_json|
-              begin
-                event_h = JSON.parse(event_json, symbolize_names: true)
-                ev = ADK::Event.from_h(event_h)
-                events << ev if ev
-              rescue JSON::ParserError
-                # Skip events that can't be parsed
-              end
+              event_h = JSON.parse(event_json, symbolize_names: true)
+              ev = ADK::Event.from_h(event_h)
+              events << ev if ev
+            rescue JSON::ParserError
+              # Skip events that can't be parsed
             end
 
             # Reconstruct Session object
@@ -475,10 +470,14 @@ module ADK
               initial_state: state, events: events, session_service: self
             }
             session = ADK::Session.new(**session_data_for_init)
-            session.instance_variable_set(:@created_at,
-                                          Time.iso8601(hash_data['created_at'])) if hash_data['created_at']
-            session.instance_variable_set(:@updated_at,
-                                          Time.iso8601(hash_data['updated_at'])) if hash_data['updated_at']
+            if hash_data['created_at']
+              session.instance_variable_set(:@created_at,
+                                            Time.iso8601(hash_data['created_at']))
+            end
+            if hash_data['updated_at']
+              session.instance_variable_set(:@updated_at,
+                                            Time.iso8601(hash_data['updated_at']))
+            end
             sessions << session
           rescue ArgumentError, TypeError => e
             ADK.logger.error("Error reconstructing session object during list for ID #{session_id}: #{e.class} - #{e.message}")
@@ -508,17 +507,18 @@ module ADK
       # @raise [ADK::Error] If serialization or Redis operations fail.
       def save_scoped_state(scope, key, value)
         state_key = redis_scoped_state_key(scope, key)
-        
+
         begin
           # Encrypt sensitive data based on scope/key
-          processed_value = should_encrypt_scoped_state?(scope, key) ? 
-                           encrypt_value(value) : value
-          
+          processed_value = if should_encrypt_scoped_state?(scope, key)
+                              encrypt_value(value)
+                            else
+                              value
+                            end
+
           value_json = JSON.generate(processed_value)
           @redis_client.set(state_key, value_json)
-          if @session_ttl&.positive?
-            @redis_client.expire(state_key, @session_ttl)
-          end
+          @redis_client.expire(state_key, @session_ttl) if @session_ttl&.positive?
         rescue JSON::GeneratorError => e
           ADK.logger.error("Failed to serialize scoped state value: #{e.message}")
           raise ADK::Error, 'Failed to serialize scoped state value.'
@@ -536,25 +536,25 @@ module ADK
       # @return [Object, nil] The deserialized value or nil if not found.
       def load_scoped_state(scope, key)
         state_key = redis_scoped_state_key(scope, key)
-        
+
         begin
           value_json = @redis_client.get(state_key)
           return nil unless value_json
 
           value = JSON.parse(value_json, symbolize_names: true)
-          
+
           # Try to decrypt if the value looks encrypted
-          if @encryption_enabled && value.is_a?(String) && 
+          if @encryption_enabled && value.is_a?(String) &&
              ADK::Auth::Encryption.encrypted?(value)
             begin
               decrypted_value = ADK::Auth::Encryption.decrypt(value)
               return JSON.parse(decrypted_value, symbolize_names: true)
-            rescue => e
+            rescue StandardError => e
               ADK.logger.warn("Failed to decrypt scoped state value (#{scope}:#{key}): #{e.message}")
               # Return value as-is if decryption fails
             end
           end
-          
+
           value
         rescue JSON::ParserError => e
           ADK.logger.error("Failed to parse scoped state value: #{e.message}")
@@ -599,9 +599,9 @@ module ADK
           end
         end
       end
-      
+
       # Helper methods for auth token management
-      
+
       # Stores an auth token in the session state
       # @param session [ADK::Session] The session to store the token in
       # @param cache_key [String, Symbol] A unique key for the token
@@ -610,14 +610,14 @@ module ADK
       def store_auth_token(session, cache_key, token)
         # Ensure auth_token_cache exists in state
         session.state[AUTH_TOKEN_CACHE_KEY] ||= {}
-        
+
         # Serialize and encrypt the token
         serialized = JSON.generate(token.to_h)
         encrypted = encrypt_value(serialized)
-        
+
         # Store in session state
         session.state[AUTH_TOKEN_CACHE_KEY][cache_key.to_sym] = encrypted
-        
+
         # Append an event to update the session state in Redis
         event = ADK::Event.new(
           role: 'system',
@@ -626,7 +626,7 @@ module ADK
         )
         append_event(session_id: session.id, event: event)
       end
-      
+
       # Retrieves an auth token from the session state
       # @param session [ADK::Session] The session to retrieve the token from
       # @param cache_key [String, Symbol] The unique key for the token
@@ -634,25 +634,25 @@ module ADK
       def retrieve_auth_token(session, cache_key)
         # Check if auth_token_cache exists
         return nil unless session.state[AUTH_TOKEN_CACHE_KEY]
-        
+
         # Get the encrypted token
         encrypted = session.state[AUTH_TOKEN_CACHE_KEY][cache_key.to_sym]
         return nil unless encrypted
-        
+
         # Decrypt and deserialize
         begin
           decrypted = decrypt_value(encrypted)
           token_hash = JSON.parse(decrypted, symbolize_names: true)
-          
+
           # Convert to ExchangedCredential
           require_relative '../auth/exchanged_credential'
           ADK::Auth::ExchangedCredential.from_h(token_hash)
-        rescue => e
+        rescue StandardError => e
           ADK.logger.error("Failed to retrieve auth token: #{e.message}")
           nil
         end
       end
-      
+
       # Generate a new encryption key and return it
       # @return [String] A new encryption key in Base64 format
       def generate_encryption_key
@@ -698,40 +698,40 @@ module ADK
       def redis_scoped_state_key(scope, key)
         "#{REDIS_SCOPED_STATE_PREFIX}#{scope}:#{key}"
       end
-      
+
       # Process state before storage, encrypting sensitive fields
       # @param state [Hash] The state to process
       # @return [Hash] The processed state with encrypted fields
       def process_state_for_storage(state)
         return state unless @encryption_enabled
-        
+
         processed = {}
-        
+
         state.each do |key, value|
-          if should_encrypt_field?(key) && value
-            processed[key] = encrypt_value(value)
-          else
-            processed[key] = value
-          end
+          processed[key] = if should_encrypt_field?(key) && value
+                             encrypt_value(value)
+                           else
+                             value
+                           end
         end
-        
+
         processed
       end
-      
+
       # Process state after retrieval, decrypting encrypted fields
       # @param state [Hash] The state to process
       # @return [Hash] The processed state with decrypted fields
       def process_state_from_storage(state)
         return state unless @encryption_enabled
-        
+
         processed = {}
-        
+
         state.each do |key, value|
-          if should_encrypt_field?(key) && value && value.is_a?(String) && 
+          if should_encrypt_field?(key) && value && value.is_a?(String) &&
              ADK::Auth::Encryption.encrypted?(value)
             begin
               processed[key] = decrypt_value(value)
-            rescue => e
+            rescue StandardError => e
               ADK.logger.warn("Failed to decrypt state field #{key}: #{e.message}")
               processed[key] = value
             end
@@ -739,56 +739,54 @@ module ADK
             processed[key] = value
           end
         end
-        
+
         processed
       end
-      
+
       # Check if a field should be encrypted
       # @param field [Symbol] The field to check
       # @return [Boolean] True if the field should be encrypted
       def should_encrypt_field?(field)
         SENSITIVE_FIELDS.include?(field.to_sym)
       end
-      
+
       # Check if scoped state should be encrypted
       # @param scope [String] The scope
       # @param key [String] The key
       # @return [Boolean] True if the state should be encrypted
       def should_encrypt_scoped_state?(scope, key)
-        scope == 'auth' || 
-        scope == 'credentials' || 
-        key.to_s.include?('token') || 
-        key.to_s.include?('secret') || 
-        key.to_s.include?('password') || 
-        key.to_s.include?('key')
+        scope == 'auth' ||
+          scope == 'credentials' ||
+          key.to_s.include?('token') ||
+          key.to_s.include?('secret') ||
+          key.to_s.include?('password') ||
+          key.to_s.include?('key')
       end
-      
+
       # Encrypt a value for storage
       # @param value [Object] The value to encrypt
       # @return [String] The encrypted value
       def encrypt_value(value)
         return value unless @encryption_enabled
-        
+
         # Convert non-string values to JSON before encryption
-        if !value.is_a?(String)
-          value = JSON.generate(value)
-        end
-        
+        value = JSON.generate(value) unless value.is_a?(String)
+
         ADK::Auth::Encryption.encrypt(value)
-      rescue => e
+      rescue StandardError => e
         ADK.logger.warn("Encryption failed, storing unencrypted: #{e.message}")
         value
       end
-      
+
       # Decrypt a value from storage
       # @param encrypted [String] The encrypted value
       # @return [Object] The decrypted value
       def decrypt_value(encrypted)
-        return encrypted unless @encryption_enabled && encrypted.is_a?(String) && 
-                              ADK::Auth::Encryption.encrypted?(encrypted)
-        
+        return encrypted unless @encryption_enabled && encrypted.is_a?(String) &&
+                                ADK::Auth::Encryption.encrypted?(encrypted)
+
         decrypted = ADK::Auth::Encryption.decrypt(encrypted)
-        
+
         # Try to parse as JSON in case it was a serialized object
         begin
           JSON.parse(decrypted, symbolize_names: true)

@@ -64,9 +64,7 @@ require_relative 'routes/agent_generator_routes'
 require_relative 'routes/tool_generator_routes'
 
 # Load dotenv for development environment variables
-if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
-  begin; require 'dotenv/load'; rescue LoadError; end
-end
+begin; require 'dotenv/load'; rescue LoadError; end if ENV['RACK_ENV'] == 'development' || Sinatra::Base.development?
 
 module ADK
   module Web
@@ -102,8 +100,8 @@ module ADK
 
       # --- Sinatra Settings ---
       set :root, File.expand_path('../../..', __dir__) # Project root directory
-      set :views, File.expand_path('../views', __FILE__) # Views directory for Slim templates
-      set :public_folder, File.expand_path('../public', __FILE__) # Directory for static assets (CSS, JS, images)
+      set :views, File.expand_path('views', __dir__) # Views directory for Slim templates
+      set :public_folder, File.expand_path('public', __dir__) # Directory for static assets (CSS, JS, images)
       set :slim, pretty: true # Configure Slim for readable HTML output
 
       # --- Constants ---
@@ -147,8 +145,8 @@ module ADK
         # In-memory hash storing active/running ADK::Agent instances, keyed by agent name.
         @agents = {}
         # Service responsible for managing chat sessions (stores conversation history).
-        # Defaulting to in-memory storage.
-        @session_service = ADK::SessionService::InMemory.new
+        # Uses the global ADK.config.session_service for consistency with CLI.
+        @session_service = ADK.config.session_service
         # --- MODIFIED: Initialize Definition Store ---
         @definition_store = nil
         begin
@@ -176,7 +174,7 @@ module ADK
           # Catch errors specifically from store initialization if any
           @logger.error("Failed to initialize Definition Store: #{e.message}")
           # @definition_store remains nil
-        rescue => e # Catch other potential errors during Redis init
+        rescue StandardError => e # Catch other potential errors during Redis init
           @logger.error("Unexpected error during Redis/Definition Store initialization: #{e.class} - #{e.message}")
           # @definition_store remains nil
         end
@@ -194,9 +192,9 @@ module ADK
         # @return [String] Relative time string (e.g., "2 minutes ago")
         def time_ago_in_words(time)
           return 'just now' unless time
-          
+
           seconds = (Time.now.utc - time.utc).to_i
-          
+
           case seconds
           when 0..59
             'just now'
@@ -206,15 +204,15 @@ module ADK
             "#{seconds / 60} minutes ago"
           when 3600..7199
             '1 hour ago'
-          when 7200..86399
+          when 7200..86_399
             "#{seconds / 3600} hours ago"
-          when 86400..172799
+          when 86_400..172_799
             'yesterday'
           else
-            "#{seconds / 86400} days ago"
+            "#{seconds / 86_400} days ago"
           end
         end
-        
+
         # Fetches tool lists from one or more MCP (Multi-Capability Protocol) servers.
         # Connects to each server defined in the mcp_configs array, lists its tools,
         # and handles connection errors or timeouts.
@@ -244,9 +242,7 @@ module ADK
                   # Transform keys to symbols for the client
                   symbolized_config = config.transform_keys(&:to_sym)
                   # --- NEW: Explicitly convert string 'stdio' value to symbol :stdio ---
-                  if symbolized_config[:type] == 'stdio'
-                    symbolized_config[:type] = :stdio
-                  end
+                  symbolized_config[:type] = :stdio if symbolized_config[:type] == 'stdio'
                   # Pass the modified hash with symbol keys and potentially symbolized type value
                   client = ADK::Mcp::Client.new(symbolized_config)
                   # Connect implicitly calls list_tools during handshake in current implementation
@@ -342,15 +338,15 @@ module ADK
             overall_status = result_data[:status]
           elsif result_data.is_a?(Array) && result_data.all? { |h| h.is_a?(Hash) && h.key?(:status) }
             # Multi-step array - determine overall status
-            if result_data.any? { |h| h[:status] == :error }
-              overall_status = :error
-            elsif result_data.any? { |h| h[:status] == :pending }
-              overall_status = :pending
-            elsif result_data.empty? # Empty plan result
-              overall_status = :warning # Or treat as error?
-            else # All success
-              overall_status = :success
-            end
+            overall_status = if result_data.any? { |h| h[:status] == :error }
+                               :error
+                             elsif result_data.any? { |h| h[:status] == :pending }
+                               :pending
+                             elsif result_data.empty? # Empty plan result
+                               :warning # Or treat as error?
+                             else # All success
+                               :success
+                             end
           else # Unexpected format, treat as error
             overall_status = :error
             # Wrap the unexpected data into a standard error hash for consistent handling below
@@ -465,16 +461,15 @@ module ADK
                 when :error
                   response_data[:msg_class] = 'is-danger'
                   original_error = content[:error_message] || 'Agent error (no message)'
-                  if original_error == 'I cannot fulfill this request with the available tools (empty plan).'
-                    response_data[:display_content] =
-                      "Sorry, I couldn't determine how to handle that request with the tools I have available."
-                  else
-                    response_data[:display_content] = original_error
-                  end
+                  response_data[:display_content] = if original_error == 'I cannot fulfill this request with the available tools (empty plan).'
+                                                      "Sorry, I couldn't determine how to handle that request with the tools I have available."
+                                                    else
+                                                      original_error
+                                                    end
                 when :pending
                   response_data[:msg_class] = 'is-warning'
                   response_data[:display_content] = "Task pending... Job ID: #{content[:job_id]}" # Changed workflow_id to job_id
-                  if content[:message] then response_data[:display_content] << " - #{content[:message]}"; end
+                  response_data[:display_content] << " - #{content[:message]}" if content[:message]
                 else
                   response_data[:display_content] = "Agent response has unknown status: #{content[:status]}"
                 end
@@ -540,22 +535,20 @@ module ADK
               display_content = content[:result]
             when :error
               original_error = content[:error_message] || 'Agent error (no message)'
-              if original_error == 'I cannot fulfill this request with the available tools (empty plan).'
-                display_content = "Sorry, I couldn't determine how to handle that request with the tools I have available."
-              else
-                display_content = original_error
-              end
+              display_content = if original_error == 'I cannot fulfill this request with the available tools (empty plan).'
+                                  "Sorry, I couldn't determine how to handle that request with the tools I have available."
+                                else
+                                  original_error
+                                end
             when :pending
               display_content = "Task pending... Job ID: #{content[:job_id]}" # Changed workflow_id to job_id
-              if content[:message] then display_content << " - #{content[:message]}"; end
+              display_content << " - #{content[:message]}" if content[:message]
             else
               display_content = "Agent response (unknown status): #{content.inspect}"
             end
           elsif content.is_a?(Hash) && content.key?(:tool_name)
             display_content = "Tool request: #{content[:tool_name]}"
-            if content[:params] && !content[:params].empty?
-              display_content += ' with parameters'
-            end
+            display_content += ' with parameters' if content[:params] && !content[:params].empty?
           elsif content.is_a?(Hash) && (content.key?(:result) || content.key?(:error))
             if content[:error]
               display_content = "Tool error: #{content[:error]}"
@@ -601,11 +594,9 @@ module ADK
         end
 
         def pretty_json(object)
-          begin
-            JSON.pretty_generate(object)
-          rescue => e
-            object.inspect
-          end
+          JSON.pretty_generate(object)
+        rescue StandardError => e
+          object.inspect
         end
 
         # --- START: MERMAID HELPERS (Corrected for delegate_task rich result) ---
@@ -637,23 +628,22 @@ module ADK
             tool_name_str = step_in_plan[:tool_name]&.to_s
             participants_set.add("Tool(#{tool_name_str})") if tool_name_str && !tool_name_str.empty?
 
-            if step_in_plan[:tool_name]&.to_sym == :delegate_task &&
-               step_in_plan == plan_details.last &&
-               event_content.dig(:result, :status) == :success &&
-               event_content.dig(:result, :result).is_a?(Hash) &&
-               event_content.dig(:result, :result, :plan_details)
+            next unless step_in_plan[:tool_name]&.to_sym == :delegate_task &&
+                        step_in_plan == plan_details.last &&
+                        event_content.dig(:result, :status) == :success &&
+                        event_content.dig(:result, :result).is_a?(Hash) &&
+                        event_content.dig(:result, :result, :plan_details)
 
-              delegated_agent_full_content = event_content.dig(:result, :result)
-              target_agent_name_param = step_in_plan.dig(:params,
-                                                         :target_agent_name) || step_in_plan.dig(:params,
-                                                                                                 'target_agent_name')
-              delegated_agent_actual_name = delegated_agent_full_content.dig(:name)&.to_s || target_agent_name_param || 'DelegatedAgent'
-              delegated_agent_participant_alias = "Agent(#{delegated_agent_actual_name})"
+            delegated_agent_full_content = event_content.dig(:result, :result)
+            target_agent_name_param = step_in_plan.dig(:params,
+                                                       :target_agent_name) || step_in_plan.dig(:params,
+                                                                                               'target_agent_name')
+            delegated_agent_actual_name = delegated_agent_full_content.dig(:name)&.to_s || target_agent_name_param || 'DelegatedAgent'
+            delegated_agent_participant_alias = "Agent(#{delegated_agent_actual_name})"
 
-              participants_set.add(delegated_agent_participant_alias)
-              collect_participants_recursive(delegated_agent_full_content, participants_set,
-                                             delegated_agent_participant_alias)
-            end
+            participants_set.add(delegated_agent_participant_alias)
+            collect_participants_recursive(delegated_agent_full_content, participants_set,
+                                           delegated_agent_participant_alias)
           end
         end
 
@@ -710,11 +700,11 @@ module ADK
                 result_value = original_tool_output_for_this_step[:result]
                 if result_value.is_a?(String) && result_value == '[Complex Result Structure]'
                   actual_result = event_content[:result][:result]
-                  if actual_result.is_a?(String)
-                    mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Result: \"#{actual_result}\""
-                  else
-                    mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Result: [Complex Result Structure]"
-                  end
+                  mermaid_def_array << if actual_result.is_a?(String)
+                                         "  #{tool_participant}-->>#{current_agent_participant_name}: Result: \"#{actual_result}\""
+                                       else
+                                         "  #{tool_participant}-->>#{current_agent_participant_name}: Result: [Complex Result Structure]"
+                                       end
                 else
                   result_summary = summarize_for_mermaid(original_tool_output_for_this_step[:result])
                   mermaid_def_array << "  #{tool_participant}-->>#{current_agent_participant_name}: Result: #{result_summary}"
@@ -743,11 +733,11 @@ module ADK
                           end
             if core_result.is_a?(String) && core_result == '[Complex Result Structure]'
               actual_result = event_content[:result][:result]
-              if actual_result.is_a?(String)
-                final_response_summary = "Final Result: \"#{actual_result}\""
-              else
-                final_response_summary = 'Final Result: [Complex Result Structure]'
-              end
+              final_response_summary = if actual_result.is_a?(String)
+                                         "Final Result: \"#{actual_result}\""
+                                       else
+                                         'Final Result: [Complex Result Structure]'
+                                       end
             else
               final_response_summary = "Final Result: #{summarize_for_mermaid(core_result)}"
             end
@@ -814,11 +804,10 @@ module ADK
           end
           escaped_summary = escape_mermaid_label(raw_summary_str)
           if escaped_summary.length > max_length
-            final_summary = escaped_summary[0...(max_length - 3)] + '...'
+            escaped_summary[0...(max_length - 3)] + '...'
           else
-            final_summary = escaped_summary
+            escaped_summary
           end
-          final_summary
         end
 
         # MODIFIED: Simplified escape_mermaid_label
@@ -837,11 +826,10 @@ module ADK
           s = s.gsub(/->>/, '->>')
           s = s.gsub(/-->>/, '-->>')
           s = s.gsub(/->/, '->')
-          s = s.gsub(/--/, '- -') # also to prevent '--' being parsed as start of solid line in some contexts
+          s.gsub(/--/, '- -') # also to prevent '--' being parsed as start of solid line in some contexts
 
           # Parentheses and backticks are often fine in message text, remove aggressive escaping for them for now.
           # Colons are fine.
-          s
         end
         # --- END MERMAID HELPERS ---
       end # end helpers
@@ -868,18 +856,16 @@ module ADK
             begin
               @definition_store.update_definition(agent_name, { persistent_status: 'stopped' })
               reset_count += 1
-            rescue ADK::DefinitionStore::StoreError => se
-              @logger.error("Failed to reset persistent_status for agent '#{agent_name}': #{se.message}")
+            rescue ADK::DefinitionStore::StoreError => e
+              @logger.error("Failed to reset persistent_status for agent '#{agent_name}': #{e.message}")
             end
           end
 
-          if reset_count.positive?
-            @logger.info("Reset #{reset_count} agent(s) from 'running' to 'stopped' status.")
-          end
+          @logger.info("Reset #{reset_count} agent(s) from 'running' to 'stopped' status.") if reset_count.positive?
           @logger.info('Finished synchronizing persistent agent statuses.')
         rescue ADK::DefinitionStore::StoreError => e
           @logger.error("Store error during persistent agent synchronization: #{e.message}")
-        rescue => e
+        rescue StandardError => e
           @logger.error("Unexpected error during persistent agent synchronization: #{e.class} - #{e.message}")
           @logger.error(e.backtrace.first(5).join("\n"))
         end
@@ -893,13 +879,13 @@ module ADK
         begin
           # Create the Redis-backed store for authentication configuration
           auth_store = ADK::Auth::ManagerStore::RedisStore.new(redis_client: redis_client)
-          
+
           # Set the store on the singleton Auth::Manager and load persisted data
           auth_manager = ADK::Auth::Manager.instance
           auth_manager.set_store(auth_store, load_immediately: true)
-          
+
           @logger.info('Authentication Manager Store initialized and loaded from Redis.')
-        rescue => e
+        rescue StandardError => e
           @logger.error("Failed to initialize Auth Manager Store: #{e.class} - #{e.message}")
           @logger.debug(e.backtrace.first(3).join("\n"))
         end
@@ -919,9 +905,13 @@ module ADK
               logger.warn("Definition store not available, cannot update persistent_status for agent '#{name}'.")
             end
             logger.info("Agent '#{name}' stopped.")
-            ADK::ActivityLog.log(:agent_stopped, { name: name }) rescue nil
+            begin
+              ADK::ActivityLog.log(:agent_stopped, { name: name })
+            rescue StandardError
+              nil
+            end
             true
-          rescue => e
+          rescue StandardError => e
             logger.error("Error stopping agent '#{name}': #{e.message}")
             false
           end
@@ -1015,7 +1005,11 @@ module ADK
           logger.warn("Definition store not available, cannot update persistent_status for agent '#{name}'.")
         end
         logger.info("Agent '#{name}' started successfully.")
-        ADK::ActivityLog.log(:agent_started, { name: name }) rescue nil
+        begin
+          ADK::ActivityLog.log(:agent_started, { name: name })
+        rescue StandardError
+          nil
+        end
         agent
       rescue StandardError => e
         logger.error("Failed to start agent '#{name}': #{e.class} - #{e.message}")
