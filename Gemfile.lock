@@ -10,9 +10,9 @@ PATH
       dry-struct (~> 1.6)
       dry-types (~> 1.7)
       excon (~> 0.104)
-      faraday
-      faraday-net_http
-      fast-mcp
+      faraday (~> 2.0)
+      faraday-net_http (~> 3.0)
+      fast-mcp (~> 1.1)
       gemini-ai (~> 4.2.0)
       jwt (~> 2.7)
       kramdown (~> 2.4)
@@ -20,13 +20,13 @@ PATH
       logger (~> 1.5)
       logging (~> 2.3)
       oauth2 (~> 2.0)
-      ostruct
+      ostruct (~> 0.6)
       prometheus-client (~> 2.1)
       puma (~> 6.4)
       rbnacl (~> 7.1)
       redis (~> 5.0)
       sass-embedded (~> 1.72)
-      sidekiq
+      sidekiq (~> 7.0)
       sinatra (~> 3.1)
       sinatra-contrib (~> 3.1)
       slim (~> 5.1)
@@ -386,7 +386,7 @@ DEPENDENCIES
   kramdown
   kramdown-parser-gfm
   mustermann (~> 3.0)
-  pry (~> 0.14, >= 0)
+  pry (~> 0.14)
   pry-byebug (~> 3.10)
   puma
   rack-test

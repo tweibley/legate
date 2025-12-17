@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.summary       = 'Agent Development Kit for Ruby'
   spec.description   = 'A framework for building and managing AI agents in Ruby, with support for tools, planning, sessions, and integrations.'
   spec.homepage      = 'https://github.com/tweibley/adk-ruby'
-  spec.license       = 'NODHHLICENSE'
+  spec.license       = 'Nonstandard'
   spec.required_ruby_version = '>= 3.0.0'
 
   spec.metadata['homepage_uri'] = spec.homepage
@@ -28,19 +28,19 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'logger', '~> 1.5'
   spec.add_dependency 'prometheus-client', '~> 2.1'
   spec.add_dependency 'redis', '~> 5.0'
-  spec.add_dependency 'sidekiq'
+  spec.add_dependency 'sidekiq', '~> 7.0'
   spec.add_dependency 'thor', '~> 1.2'
   # spec.add_dependency 'dry-container', '~> 0.8.0'
   spec.add_dependency 'dry-struct', '~> 1.6'
   spec.add_dependency 'dry-types', '~> 1.7'
   spec.add_dependency 'excon', '~> 0.104'
-  spec.add_dependency 'fast-mcp'
+  spec.add_dependency 'fast-mcp', '~> 1.1'
   spec.add_dependency 'logging', '~> 2.3'
 
   # Web UI dependencies
   spec.add_dependency 'coffee-script', '~> 2.4'
-  spec.add_dependency 'faraday'
-  spec.add_dependency 'faraday-net_http'
+  spec.add_dependency 'faraday', '~> 2.0'
+  spec.add_dependency 'faraday-net_http', '~> 3.0'
   spec.add_dependency 'gemini-ai', '~> 4.2.0'
   spec.add_dependency 'jwt', '~> 2.7'
   spec.add_dependency 'kramdown', '~> 2.4'
@@ -56,10 +56,10 @@ Gem::Specification.new do |spec|
   # CLI
   spec.add_dependency 'cli-ui', '~> 2.2'
   spec.add_dependency 'dotenv', '~> 3.1'
-  spec.add_dependency 'ostruct'
+  spec.add_dependency 'ostruct', '~> 0.6'
 
   spec.add_development_dependency 'dry-schema', '~> 1.13'
-  spec.add_development_dependency 'pry'
+  spec.add_development_dependency 'pry', '~> 0.14'
   spec.add_development_dependency 'rake', '~> 13.0'
   spec.add_development_dependency 'rspec', '~> 3.12'
   spec.add_development_dependency 'simplecov', '~> 0.21'
