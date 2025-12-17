@@ -13,39 +13,43 @@ require 'openssl' # For HMAC in validator
 
 # --- Eager Logger Initialization (Moved BEFORE other ADK requires) ---
 module ADK
-  # --- Logger Initialization Logic ---
-  def self.initialize_logger
-    default_level = ENV['RACK_ENV'] == 'development' ? 'DEBUG' : 'WARN'
-    level_str = ENV['ADK_LOG_LEVEL']&.upcase || default_level
-    log_target = $stdout
-    if %w[NONE SILENT].include?(level_str)
-      log_target = IO::NULL
-      level = Logger::FATAL + 1
-    else
-      level = case level_str
-              when 'DEBUG' then Logger::DEBUG
-              when 'INFO' then Logger::INFO
-              when 'WARN' then Logger::WARN
-              when 'ERROR' then Logger::ERROR
-              when 'FATAL' then Logger::FATAL
-              else Logger::WARN
-              end
+  SILENT_LOG_LEVELS = %w[NONE SILENT].freeze
+
+  class << self
+    # --- Logger Initialization Logic ---
+    def initialize_logger
+      default_level = ENV['RACK_ENV'] == 'development' ? 'DEBUG' : 'WARN'
+      level_str = ENV['ADK_LOG_LEVEL']&.upcase || default_level
+      log_target = $stdout
+      if SILENT_LOG_LEVELS.include?(level_str)
+        log_target = IO::NULL
+        level = Logger::FATAL + 1
+      else
+        level = case level_str
+                when 'DEBUG' then Logger::DEBUG
+                when 'INFO' then Logger::INFO
+                when 'WARN' then Logger::WARN
+                when 'ERROR' then Logger::ERROR
+                when 'FATAL' then Logger::FATAL
+                else Logger::WARN
+                end
+      end
+      logger_instance = Logger.new(log_target)
+      logger_instance.level = level
+      logger_instance.formatter = proc { |severity, _, _, msg| "#{severity}: #{msg}\n" }
+      unless SILENT_LOG_LEVELS.include?(level_str)
+        puts "--> ADK Logger initialized with level: #{level_str}, target: #{log_target == IO::NULL ? 'NULL' : 'STDOUT'}"
+      end
+      logger_instance
     end
-    logger_instance = Logger.new(log_target)
-    logger_instance.level = level
-    logger_instance.formatter = proc { |severity, _, _, msg| "#{severity}: #{msg}\n" }
-    unless %w[NONE SILENT].include?(level_str)
-      puts "--> ADK Logger initialized with level: #{level_str}, target: #{log_target == IO::NULL ? 'NULL' : 'STDOUT'}"
+
+    # --- Define Logger Accessor Method EARLY ---
+    def logger
+      @logger
     end
-    logger_instance
   end
 
   @logger = initialize_logger
-
-  # --- Define Logger Accessor Method EARLY ---
-  def self.logger
-    @logger
-  end
 end
 # --- End Eager Logger Initialization & Accessor ---
 
