@@ -2,6 +2,7 @@
 
 require 'spec_helper'
 require 'adk/cli/tool_commands'
+require 'adk/global_tool_manager'
 require 'adk/tool_registry'
 require 'adk/tool_context'
 require 'stringio'
@@ -36,9 +37,9 @@ RSpec.describe ADK::CLI::ToolCommands do
     allow(shell).to receive(:stderr).and_return(output)
     commands.shell = shell
 
-    # Mock ADK::ToolRegistry methods
-    allow(ADK::ToolRegistry).to receive(:list_tools).and_return([])
-    allow(ADK::ToolRegistry).to receive(:create_instance).and_return(nil)
+    # Mock ADK::GlobalToolManager methods
+    allow(ADK::GlobalToolManager).to receive(:list_all_tools).and_return([])
+    allow(ADK::GlobalToolManager).to receive(:create_instance).and_return(nil)
 
     # Mock exit to prevent aborting the test suite
     allow(commands).to receive(:exit)
@@ -68,7 +69,7 @@ RSpec.describe ADK::CLI::ToolCommands do
       end
 
       before do
-        allow(ADK::ToolRegistry).to receive(:list_tools).and_return(tool_list)
+        allow(ADK::GlobalToolManager).to receive(:list_all_tools).and_return(tool_list)
       end
 
       it 'lists the available tools' do
@@ -92,7 +93,7 @@ RSpec.describe ADK::CLI::ToolCommands do
       let(:tool_instance) { MockCliTestTool.new }
 
       before do
-        allow(ADK::ToolRegistry).to receive(:create_instance).with(:mock_tool).and_return(tool_instance)
+        allow(ADK::GlobalToolManager).to receive(:create_instance).with(:mock_tool).and_return(tool_instance)
         # Ensure name is consistent for test
         allow(tool_instance).to receive(:name).and_return(:mock_tool)
       end
@@ -112,12 +113,12 @@ RSpec.describe ADK::CLI::ToolCommands do
     let(:tool_instance) { MockCliTestTool.new }
 
     before do
-      allow(ADK::ToolRegistry).to receive(:create_instance).with(:mock_tool).and_return(tool_instance)
+      allow(ADK::GlobalToolManager).to receive(:create_instance).with(:mock_tool).and_return(tool_instance)
     end
 
     context 'when tool does not exist' do
       before do
-        allow(ADK::ToolRegistry).to receive(:create_instance).with(:unknown).and_return(nil)
+        allow(ADK::GlobalToolManager).to receive(:create_instance).with(:unknown).and_return(nil)
       end
 
       it 'prints error and exits' do
@@ -142,6 +143,13 @@ RSpec.describe ADK::CLI::ToolCommands do
         expect(output.string).to include("Parsed: param1 = 'value1'")
       end
 
+      it 'suggests corrections for misspelled parameters' do
+        invoke_command(:execute, 'mock_tool', 'param1=value1', 'paramm2=foo')
+
+        expect(output.string).to include("Warning: Provided parameter 'paramm2' is not defined")
+        expect(output.string).to include("Did you mean 'param2'?")
+      end
+
       it 'handles single argument as required parameter if applicable' do
         # MockCliTestTool has param1 as required, but it also has param2
         # The logic in ToolCommands:
@@ -154,7 +162,7 @@ RSpec.describe ADK::CLI::ToolCommands do
           parameters: { input: { type: :string, required: true } },
           execute: { status: :success, result: 'ok' }
         )
-        allow(ADK::ToolRegistry).to receive(:create_instance).with(:single).and_return(single_param_tool)
+        allow(ADK::GlobalToolManager).to receive(:create_instance).with(:single).and_return(single_param_tool)
 
         invoke_command(:execute, 'single', 'test_input')
         expect(output.string).to include("Assuming single argument 'test_input' maps to required parameter 'input'")

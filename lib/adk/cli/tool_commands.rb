@@ -2,17 +2,18 @@
 # frozen_string_literal: true
 
 require 'thor'
-require_relative '../tool_registry' # Require the registry
+require_relative '../global_tool_manager' # Require the global manager
 require_relative '../tool_context' # <--- ADDED require
 require 'securerandom' # <-- ADDED require for dummy context
+require 'did_you_mean' # For parameter suggestions
 
 module ADK
   module CLI
-    # CLI commands for tool management using ToolRegistry
+    # CLI commands for tool management using GlobalToolManager
     class ToolCommands < Thor
       desc 'list', 'List available tools from the registry'
       def list
-        tools = ADK::ToolRegistry.list_tools
+        tools = ADK::GlobalToolManager.list_all_tools
         if tools.empty?
           say 'No tools registered.'
         else
@@ -26,7 +27,7 @@ module ADK
       desc 'info NAME', 'Show information about a tool from the registry'
       def info(name)
         tool_name_sym = name.to_sym
-        tool = ADK::ToolRegistry.create_instance(tool_name_sym) # Create instance to get params
+        tool = ADK::GlobalToolManager.create_instance(tool_name_sym) # Create instance to get params
 
         if tool
           say "Tool: #{tool.name}"
@@ -63,7 +64,7 @@ module ADK
       LONGDESC
       def execute(name, *args)
         tool_name_sym = name.to_sym
-        tool = ADK::ToolRegistry.create_instance(tool_name_sym)
+        tool = ADK::GlobalToolManager.create_instance(tool_name_sym)
 
         unless tool
           say "Error: Tool '#{name}' not found in registry.", :red
@@ -80,7 +81,13 @@ module ADK
             value = parts[1]
 
             unless valid_param_names.include?(key)
-              say "Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring.", :yellow
+              msg = "Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring."
+
+              # Add "Did you mean?" suggestion
+              suggestion = DidYouMean::SpellChecker.new(dictionary: valid_param_names).correct(key).first
+              msg += " Did you mean '#{suggestion}'?" if suggestion
+
+              say msg, :yellow
               next
             end
 
