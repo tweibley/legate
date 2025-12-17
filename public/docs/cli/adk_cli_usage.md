@@ -57,13 +57,35 @@ This subcommand group deals with managing agent definitions stored in the config
 *   **`adk agent delete <agent_name>`**: Deletes an agent definition from the store. Prompts for confirmation.
     *   **Example:** `adk agent delete my_calculator`
 
-*   **`adk agent stop <agent_name> [--force]`**: Stops a persistent agent by marking it as 'stopped' in the definition store.
+*   **`adk agent stop \u003cagent_name\u003e [options]`**: Stops a persistent agent by marking it as 'stopped' in the definition store.
     *   **Options:**
         *   `--force`: Skip confirmation prompt
+        *   `--quiet` / `-q`: Suppress status messages, only output result.
+        *   `--json`: Output result in JSON format (implies --quiet).
     *   **Notes:**
         *   If the agent is running in a web server, it will stop on the next status check or server restart.
         *   Useful for remotely stopping agents without accessing the web UI.
     *   **Example:** `adk agent stop my_calculator --force`
+
+*   **`adk agent start \u003cagent_name\u003e [options]`**: Starts a persistent agent by marking it as 'running' in the definition store.
+    *   **Options:**
+        *   `--quiet` / `-q`: Suppress status messages, only output result.
+        *   `--json`: Output result in JSON format (implies --quiet).
+    *   **Example:** `adk agent start my_calculator --json`
+
+*   **`adk agent status \u003cagent_name\u003e [options]`**: Checks the current status of an agent.
+    *   **Options:**
+        *   `--json`: Output result in JSON format.
+    *   **Example:** `adk agent status my_calculator --json`
+    *   **JSON Output Format:**
+        ```json
+        {
+          "agent": "my_calculator",
+          "status": "running",
+          "model": "gemini-2.0-flash",
+          "tools": ["calculator"]
+        }
+        ```
 
 *   **`adk agent ai_generate [options]`**: Uses AI (Gemini LLM) to generate production-ready agent definition code from a natural language description.
     *   **Input Options (one required):**
@@ -94,6 +116,7 @@ This subcommand group deals with managing agent definitions stored in the config
         *   `<task>`: The task/prompt to execute.
     *   **Options:**
         *   `--session-id=<id>`: Continue an existing session.
+        *   `--user-id=<id>`: Associate session with a user ID for tracking and resumption.
         *   `--redis`: Use Redis for session storage instead of in-memory.
         *   `--quiet` / `-q`: Suppress status messages, only output result.
         *   `--json`: Output result in JSON format (implies --quiet).

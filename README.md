@@ -114,6 +114,23 @@ For the asynchronous job feature:
    bundle exec adk sidekiq stop
    ```
 
+   **Agent Commands with JSON Output:**
+   ```bash
+   # List agents in JSON format (useful for scripts)
+   bundle exec adk agent list --json
+   
+   # Check agent status
+   bundle exec adk agent status my_agent --json
+   
+   # Execute with quiet or JSON output
+   bundle exec adk agent execute my_agent "task" --quiet  # Only show result
+   bundle exec adk agent execute my_agent "task" --json   # JSON output
+   
+   # Use --user-id for session tracking
+   bundle exec adk agent execute my_agent "task" --user-id=user123
+   bundle exec adk agent chat my_agent --user-id=user123
+   ```
+
    For custom worker configurations, you can specify a require path:
    ```bash
    bundle exec adk sidekiq start --require path/to/your/worker.rb

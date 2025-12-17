@@ -657,10 +657,15 @@ bundle exec adk agent delete <name>          # Delete an agent
 bundle exec adk agent generate <name>        # Generate agent boilerplate (interactive)
 bundle exec adk agent ai-generate            # Generate agent using AI (LLM-powered)
 bundle exec adk agent start <name>           # Start agent runtime
+  # Options: --quiet/-q, --json
 bundle exec adk agent stop <name>            # Stop agent runtime
+  # Options: --quiet/-q, --json, --force
+bundle exec adk agent status <name>          # Check agent status
+  # Options: --json
 bundle exec adk agent execute <name> <task>  # Run agent task
-  # Options: --session-id=<id>, --redis, --quiet/-q, --json
+  # Options: --session-id=<id>, --user-id=<id>, --redis, --quiet/-q, --json
 bundle exec adk agent chat <name>            # Interactive chat with agent
+  # Options: --user-id=<id>
 bundle exec adk agent export <name>          # Export agent definition
 
 # Tools
