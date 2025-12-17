@@ -84,18 +84,30 @@ module ADK
     # @param hash [Hash] The hash containing event data (uses symbolized keys).
     # @return [ADK::Event] A new Event object.
     def self.from_h(hash)
-      # Ensure keys are symbolized for consistent access
-      sym_hash = hash.transform_keys(&:to_sym)
+      # Optimized: Extract fields manually to avoid full hash allocation via transform_keys
+      role = hash.key?(:role) ? hash[:role] : hash['role']
+      content = hash.key?(:content) ? hash[:content] : hash['content']
+      ts_val = hash.key?(:timestamp) ? hash[:timestamp] : hash['timestamp']
+      tool_name = hash.key?(:tool_name) ? hash[:tool_name] : hash['tool_name']
+      state_delta = hash.key?(:state_delta) ? hash[:state_delta] : hash['state_delta']
+
+      # Validate state_delta type to preserve strict behavior (fail on invalid type)
+      if state_delta && !state_delta.is_a?(Hash)
+        ADK.logger.error("Event.from_h: Type error during deserialization (check state_delta?): state_delta must be a Hash. Hash: #{hash.inspect}")
+        return nil
+      end
+
+      event_id = hash.key?(:event_id) ? hash[:event_id] : hash['event_id']
 
       new(
-        role: sym_hash[:role]&.to_sym, # Safely convert role to symbol
-        content: sym_hash[:content],
+        role: role&.to_sym,
+        content: content,
         # Safely parse timestamp
-        timestamp: sym_hash[:timestamp] ? Time.iso8601(sym_hash[:timestamp]) : Time.now.utc,
-        tool_name: sym_hash[:tool_name]&.to_sym, # Safely convert tool_name to symbol
-        # Deserialize state_delta, ensuring keys are symbols
-        state_delta: sym_hash[:state_delta]&.transform_keys(&:to_sym),
-        event_id: sym_hash[:event_id]
+        timestamp: ts_val ? Time.iso8601(ts_val) : Time.now.utc,
+        tool_name: tool_name&.to_sym,
+        # Pass state_delta directly; initialize handles validation and symbolization/copy
+        state_delta: state_delta,
+        event_id: event_id
       )
     rescue ArgumentError => e
       ADK.logger.error("Event.from_h: Failed to parse timestamp or invalid role: #{e.message}. Hash: #{hash.inspect}")
