@@ -1,0 +1,41 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'fileutils'
+
+# path to your application root.
+APP_ROOT = File.expand_path('..', __dir__)
+
+def system!(*args)
+  system(*args) || abort("\n== Command #{args} failed ==")
+end
+
+FileUtils.chdir APP_ROOT do
+  puts '== Installing dependencies =='
+  system! 'gem install bundler --conservative'
+  system('bundle check') || system!('bundle install')
+
+  puts "\n== Copying .env.example to .env =="
+  unless File.exist?('.env')
+    FileUtils.cp '.env.example', '.env'
+    puts 'Created .env'
+  end
+
+  puts "\n== Checking prerequisites =="
+  # Check Ruby version
+  required_ruby = '3.0.0'
+  if Gem::Version.new(RUBY_VERSION) < Gem::Version.new(required_ruby)
+    puts "⚠ Ruby #{RUBY_VERSION} is older than required #{required_ruby}"
+  else
+    puts "✓ Ruby #{RUBY_VERSION}"
+  end
+
+  if system('redis-cli ping > /dev/null 2>&1')
+    puts '✓ Redis is running'
+  else
+    puts '⚠ Redis not running. Please start Redis.'
+  end
+
+  puts "\n== Setup complete! =="
+  puts "Run 'bundle exec adk web start' to start the server."
+end
