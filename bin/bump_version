@@ -1,0 +1,149 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Script to bump the version number in all the right places.
+# Usage:
+#   bin/bump_version patch   # 0.6.7 -> 0.6.8
+#   bin/bump_version minor   # 0.6.7 -> 0.7.0
+#   bin/bump_version major   # 0.6.7 -> 1.0.0
+#   bin/bump_version 0.7.0   # Set specific version
+
+require 'fileutils'
+
+class VersionBumper
+  VERSION_FILES = {
+    'adk-ruby.gemspec' => {
+      pattern: /spec\.version\s*=\s*['"](\d+\.\d+\.\d+)['"]/,
+      replacement: ->(v) { "spec.version       = '#{v}'" }
+    },
+    'lib/adk/version.rb' => {
+      pattern: /VERSION\s*=\s*['"](\d+\.\d+\.\d+)['"]/,
+      replacement: ->(v) { "VERSION = '#{v}'" }
+    },
+    'AGENTS.md' => {
+      pattern: /\*\*Version:\*\*\s*(\d+\.\d+\.\d+)/,
+      replacement: ->(v) { "**Version:** #{v}" }
+    }
+  }.freeze
+
+  def initialize
+    @root = File.expand_path('..', __dir__)
+  end
+
+  def current_version
+    gemspec_path = File.join(@root, 'adk-ruby.gemspec')
+    content = File.read(gemspec_path)
+    match = content.match(/spec\.version\s*=\s*['"](\d+\.\d+\.\d+)['"]/)
+    raise 'Could not find current version in gemspec' unless match
+
+    match[1]
+  end
+
+  def parse_version(version_string)
+    parts = version_string.split('.').map(&:to_i)
+    raise "Invalid version format: #{version_string}" unless parts.length == 3
+
+    { major: parts[0], minor: parts[1], patch: parts[2] }
+  end
+
+  def version_to_string(version_hash)
+    "#{version_hash[:major]}.#{version_hash[:minor]}.#{version_hash[:patch]}"
+  end
+
+  def calculate_new_version(bump_type)
+    current = parse_version(current_version)
+
+    case bump_type.downcase
+    when 'patch'
+      current[:patch] += 1
+    when 'minor'
+      current[:minor] += 1
+      current[:patch] = 0
+    when 'major'
+      current[:major] += 1
+      current[:minor] = 0
+      current[:patch] = 0
+    else
+      # Assume it's a specific version string
+      if bump_type.match?(/^\d+\.\d+\.\d+$/)
+        return bump_type
+      else
+        raise "Unknown bump type or invalid version: #{bump_type}"
+      end
+    end
+
+    version_to_string(current)
+  end
+
+  def update_file(file_path, config, new_version)
+    full_path = File.join(@root, file_path)
+    
+    unless File.exist?(full_path)
+      puts "  ⚠️  #{file_path} not found, skipping"
+      return false
+    end
+
+    content = File.read(full_path)
+    
+    unless content.match?(config[:pattern])
+      puts "  ⚠️  Version pattern not found in #{file_path}, skipping"
+      return false
+    end
+
+    new_content = content.gsub(config[:pattern], config[:replacement].call(new_version))
+    File.write(full_path, new_content)
+    puts "  ✅ Updated #{file_path}"
+    true
+  end
+
+  def run_bundle_install
+    puts "\n📦 Running bundle install to update Gemfile.lock..."
+    Dir.chdir(@root) do
+      system('bundle install --quiet')
+    end
+    puts "  ✅ Gemfile.lock updated"
+  end
+
+  def bump(bump_type)
+    old_version = current_version
+    new_version = calculate_new_version(bump_type)
+
+    puts "🔄 Bumping version: #{old_version} → #{new_version}\n\n"
+
+    VERSION_FILES.each do |file, config|
+      update_file(file, config, new_version)
+    end
+
+    run_bundle_install
+
+    puts "\n✨ Version bump complete!"
+    puts "   Old version: #{old_version}"
+    puts "   New version: #{new_version}"
+    puts "\nNext steps:"
+    puts "  1. Review the changes: git diff"
+    puts "  2. Commit: git commit -am 'Bump version to #{new_version}'"
+    puts "  3. Tag: git tag v#{new_version}"
+    puts "  4. Build gem: gem build adk-ruby.gemspec"
+  end
+end
+
+# Main execution
+if ARGV.empty?
+  puts "Usage: #{$PROGRAM_NAME} <bump_type>"
+  puts ""
+  puts "Bump types:"
+  puts "  patch   - Bump patch version (0.6.7 -> 0.6.8)"
+  puts "  minor   - Bump minor version (0.6.7 -> 0.7.0)"
+  puts "  major   - Bump major version (0.6.7 -> 1.0.0)"
+  puts "  X.Y.Z   - Set specific version (e.g., 1.0.0)"
+  puts ""
+  puts "Current version: #{VersionBumper.new.current_version}"
+  exit 1
+end
+
+begin
+  VersionBumper.new.bump(ARGV[0])
+rescue StandardError => e
+  puts "❌ Error: #{e.message}"
+  exit 1
+end
