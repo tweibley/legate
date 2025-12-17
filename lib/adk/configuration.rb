@@ -3,7 +3,7 @@
 require 'adk/agent'
 require 'redis' # Required for RedisStore
 require_relative 'definition_store/redis_store' # Require the actual store
-require_relative 'session_service/in_memory' # Corrected path
+require_relative 'session_service/redis' # Use Redis for session persistence
 require 'adk/configuration/webhooks'
 
 module ADK
@@ -28,7 +28,7 @@ module ADK
     def initialize
       # Set defaults
       @definition_store = ADK::DefinitionStore::RedisStore.new(redis_client: Redis.new(ADK.redis_options))
-      @session_service = ADK::SessionService::InMemory.new
+      @session_service = ADK::SessionService::Redis.new
       @default_model_name = 'gemini-2.5-flash'
       @default_temperature = 0.7
       @webhooks = ADK::Configuration::Webhooks.new
