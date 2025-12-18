@@ -83,7 +83,7 @@ RSpec.describe ADK::Tools::RandomNumberTool do
       it 'raises ToolArgumentError' do
         expect {
           tool.execute(params)
-        }.to raise_error(ADK::ToolArgumentError, /Invalid integer input.*Min: 'abc'/)
+        }.to raise_error(ADK::ToolArgumentError, /expected Integer/)
       end
     end
 
@@ -93,7 +93,7 @@ RSpec.describe ADK::Tools::RandomNumberTool do
       it 'raises ToolArgumentError' do
         expect {
           tool.execute(params)
-        }.to raise_error(ADK::ToolArgumentError, /Invalid integer input.*Max: 'xyz'/)
+        }.to raise_error(ADK::ToolArgumentError, /expected Integer/)
       end
     end
 

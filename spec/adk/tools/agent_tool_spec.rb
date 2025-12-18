@@ -356,14 +356,14 @@ RSpec.describe ADK::Tools::AgentTool do
         bad_params = { task: task_to_delegate } # Missing target_agent_name
         expect {
           tool.execute(bad_params, mock_context)
-        }.to raise_error(ADK::ToolArgumentError, /Missing required parameters: target_agent_name/)
+        }.to raise_error(ADK::ToolArgumentError, /Missing required parameters for tool 'delegate_task': target_agent_name/)
       end
 
       it 'raises ADK::ToolArgumentError if task is missing' do
         bad_params = { target_agent_name: target_agent_name.to_s } # Missing task
         expect {
           tool.execute(bad_params, mock_context)
-        }.to raise_error(ADK::ToolArgumentError, /Missing required parameters: task/)
+        }.to raise_error(ADK::ToolArgumentError, /Missing required parameters for tool 'delegate_task': task/)
       end
     end
   end
