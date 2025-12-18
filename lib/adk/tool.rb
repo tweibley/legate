@@ -27,6 +27,7 @@ module ADK
         @tool_name = name.to_sym
         @description = description
         @parameters_definition = parameters
+        @_tool_metadata_cache = nil # Invalidate cache
       end
 
       # --- Fallback Metadata Method (Commented out as DSL version takes precedence) ---
