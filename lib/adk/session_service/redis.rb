@@ -319,9 +319,6 @@ module ADK
                 end
               end
 
-              # Process state for storage, encrypting sensitive data
-              processed_state = process_state_for_storage(session.state_to_h)
-
               # Execute a Redis transaction to atomically update all related data
               # All commands will be queued and executed as a single atomic unit
               results = @redis_client.multi do |multi|
@@ -330,7 +327,13 @@ module ADK
 
                 # Update session hash with new state and timestamp
                 multi.hset(session_key, 'updated_at', session.updated_at.iso8601(3))
-                multi.hset(session_key, 'state', JSON.generate(processed_state))
+
+                # Only update state if it changed
+                if event.state_delta && !event.state_delta.empty?
+                  # Process state for storage, encrypting sensitive data
+                  processed_state = process_state_for_storage(session.state_to_h)
+                  multi.hset(session_key, 'state', JSON.generate(processed_state))
+                end
 
                 # Refresh TTL if configured
                 if @session_ttl&.positive?

@@ -17,6 +17,7 @@ require 'forwardable'
 require 'json'
 require_relative 'global_definition_registry'
 require_relative 'global_tool_manager' # Added
+require_relative 'tool_loader'
 require 'socket'
 require 'set' # Required for the Set class in _check_circular_dependency
 require 'securerandom' # Added for SecureRandom
@@ -241,7 +242,7 @@ module ADK
       newly_discovered_tool_names = Set.new
       unless tool_paths_to_load.empty?
         initial_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
-        _discover_and_load_tools(tool_paths_to_load)
+        ADK::ToolLoader.load_from_paths(tool_paths_to_load)
         current_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
         newly_discovered_tool_names = current_global_tools - initial_global_tools
         ADK.logger.debug("[Agent Init '#{@name}'] Newly discovered tool names: #{newly_discovered_tool_names.to_a.inspect}")
@@ -856,37 +857,6 @@ module ADK
       (name && name != :'') ? name : nil
     end
 
-    # Discovers and loads tool definition files from specified paths.
-    # @param paths [Array<String>] An array of directory paths to search.
-    # @return [void]
-    def _discover_and_load_tools(paths)
-      return if paths.empty?
-
-      ADK.logger.debug("Starting tool discovery in paths: #{paths.inspect}")
-
-      paths.each do |path|
-        absolute_dir_path = File.expand_path(path, Dir.pwd)
-
-        unless Dir.exist?(absolute_dir_path)
-          ADK.logger.warn("Tool discovery path does not exist or is not a directory: '#{path}' (resolved to '#{absolute_dir_path}'). Skipping.")
-          next
-        end
-
-        Dir.glob(File.join(absolute_dir_path, '*.rb')).each do |absolute_file_path|
-          begin
-            ADK.logger.debug("Attempting to load tool file using 'require': #{absolute_file_path}")
-            # Use require instead of load to prevent re-registration issues
-            require absolute_file_path
-            ADK.logger.debug("Successfully required (or already required): #{absolute_file_path}")
-          rescue LoadError, SyntaxError => e
-            ADK.logger.error("Failed to require/eval tool file '#{absolute_file_path}': #{e.class} - #{e.message}")
-          rescue StandardError => e
-            ADK.logger.error("Error encountered while requiring/processing tool file '#{absolute_file_path}': #{e.class} - #{e.message}")
-          end
-        end
-      end
-      ADK.logger.debug('Finished tool discovery.')
-    end
 
     # --- REFACTORED: execute_plan now returns hash { details: [...], last_result: original_hash } ---
     # Executes a plan, logging tool request/result events via the session service.

@@ -7,6 +7,7 @@ require 'json'
 require 'yaml'
 require 'logger' # Needed for sample entrypoint
 require 'securerandom' # Needed for suggested project ID
+require 'shellwords'
 
 module ADK
   module CLI
@@ -674,27 +675,28 @@ module ADK
         deploy_script_path = File.join(directory, 'deploy-gcp.sh')
 
         # Extract GCP options with defaults from class_options
-        project_id = options[:gcp_project_id] # Already validated in generate_gcp_assets
-        region = options[:gcp_region]
-        redis_name = options[:gcp_redis_instance_name]
-        main_service_name = options[:gcp_service_name]
-        main_memory = options[:gcp_memory]
-        main_cpu = options[:gcp_cpu]
+        # Escape inputs for Bash safety
+        project_id = Shellwords.escape(options[:gcp_project_id])
+        region = Shellwords.escape(options[:gcp_region])
+        redis_name = Shellwords.escape(options[:gcp_redis_instance_name])
+        main_service_name = Shellwords.escape(options[:gcp_service_name])
+        main_memory = Shellwords.escape(options[:gcp_memory])
+        main_cpu = Shellwords.escape(options[:gcp_cpu])
         base_name = options[:name] # Used for image naming
         deployment_dir_basename = File.basename(directory) # Get basename
 
         # Image names
-        main_image_name = "#{base_name}-web" # Assume main entry point is web
-        main_image_tag = 'latest'
-        # Derive Artifact Registry location from region for image URI
-        ar_location = region # Typically the same, but made explicit
-        ar_repo_name = 'adk-images' # Keep consistent with script template
-        main_image_uri = "#{ar_location}-docker.pkg.dev/#{project_id}/#{ar_repo_name}/#{main_image_name}:#{main_image_tag}"
+        main_image_name = Shellwords.escape("#{base_name}-web")
+        main_image_tag = Shellwords.escape('latest')
+
+        # Artifact Registry setup
+        ar_location = region # Already escaped
+        ar_repo_name = Shellwords.escape('adk-images')
 
         # Cloud Build config file path (relative to project root)
-        cloudbuild_config_file = File.join(deployment_dir_basename, 'cloudbuild.yaml')
+        cloudbuild_config_file = Shellwords.escape(File.join(deployment_dir_basename, 'cloudbuild.yaml'))
         # Dockerfile path relative to deployment dir
-        main_dockerfile_path_relative = 'Dockerfile' # Dockerfile is inside the deploy dir context for the script
+        main_dockerfile_path_relative = Shellwords.escape('Dockerfile')
 
         # --- Script Content ---
         # This script is more comprehensive than before, includes setup
@@ -704,23 +706,23 @@ module ADK
           set -euo pipefail # Enable strict mode
 
           # --- Configuration (Edit these if needed) ---
-          PROJECT_ID="#{project_id}"
-          REGION="#{region}"
-          REDIS_INSTANCE_NAME="#{redis_name}"
-          MAIN_SERVICE_NAME="#{main_service_name}"
-          MAIN_DOCKERFILE="#{main_dockerfile_path_relative}" # Relative path within deployment dir
-          MAIN_IMAGE_NAME="#{main_image_name}"
-          MAIN_IMAGE_TAG="#{main_image_tag}"
-          MAIN_MEMORY="#{main_memory}"
-          MAIN_CPU="#{main_cpu}"
+          PROJECT_ID=#{project_id}
+          REGION=#{region}
+          REDIS_INSTANCE_NAME=#{redis_name}
+          MAIN_SERVICE_NAME=#{main_service_name}
+          MAIN_DOCKERFILE=#{main_dockerfile_path_relative} # Relative path within deployment dir
+          MAIN_IMAGE_NAME=#{main_image_name}
+          MAIN_IMAGE_TAG=#{main_image_tag}
+          MAIN_MEMORY=#{main_memory}
+          MAIN_CPU=#{main_cpu}
 
           # Secrets Configuration
           SECRET_NAME="google-api-key" # Name of the secret in Secret Manager
           SECRET_ENV_VAR="GOOGLE_API_KEY" # Env var name in Cloud Run
 
           # Artifact Registry Repository
-          AR_REPO_NAME="#{ar_repo_name}" # Artifact Registry repo name
-          AR_LOCATION="#{ar_location}" # Often same as REGION, but can differ
+          AR_REPO_NAME=#{ar_repo_name} # Artifact Registry repo name
+          AR_LOCATION=#{ar_location} # Often same as REGION, but can differ
 
           # VPC Access Connector (Required for Redis)
           CONNECTOR_NAME="adk-vpc-connector" # Name for the VPC Access Connector
@@ -865,7 +867,7 @@ module ADK
           # --- Build and Push Main Docker Image ---
           info "Building main application image: ${MAIN_IMAGE_URI}..."
           # Using Cloud Build with an explicit config file
-          CONFIG_FILE="#{cloudbuild_config_file}"
+          CONFIG_FILE=#{cloudbuild_config_file}
           gcloud builds submit --config "${CONFIG_FILE}" --project="${PROJECT_ID}" --substitutions=_IMAGE_URI="${MAIN_IMAGE_URI}" .
           if [[ $? -ne 0 ]]; then
             error "Failed to build main image using ${CONFIG_FILE}"
