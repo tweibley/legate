@@ -45,7 +45,7 @@ RSpec.describe ADK::Tools::Echo do
 
       # Updated to expect ADK::ToolArgumentError
       it 'raises an ADK::ToolArgumentError' do
-        expect { tool.execute(params) }.to raise_error(ADK::ToolArgumentError, /Missing required parameters: message/)
+        expect { tool.execute(params) }.to raise_error(ADK::ToolArgumentError, /Missing required parameters for tool 'echo': message/)
       end
     end
 
@@ -64,9 +64,9 @@ RSpec.describe ADK::Tools::Echo do
       let(:params) { { message: 'Exists' } } # Start with valid params
 
       it 'logs an error and raises a ToolError' do
-        # Stub fetch to simulate the parameter disappearing after validation
-        allow(params).to receive(:fetch).with('message').and_return(nil)
-        allow(params).to receive(:fetch).with(:message, nil).and_return(nil)
+        # Mock validate_and_coerce_params to return a hash where message is nil
+        # This simulates internal data corruption or unexpected nil return
+        allow(tool).to receive(:validate_and_coerce_params).and_return({ message: nil })
 
         allow(ADK.logger).to receive(:error) # Prevent logging noise
 
@@ -82,9 +82,13 @@ RSpec.describe ADK::Tools::Echo do
       let(:fetch_error) { StandardError.new('Something broke!') }
 
       it 'logs the error and raises a ToolError' do
-        # Stub fetch to raise an unexpected error
-        allow(params).to receive(:fetch).with('message').and_raise(fetch_error)
-        allow(params).to receive(:fetch).with(:message, nil).and_raise(fetch_error)
+        # We need to mock validate_and_coerce_params to return a mock object that raises on fetch
+        mock_params = instance_double(Hash)
+        allow(mock_params).to receive(:fetch).and_raise(fetch_error)
+        allow(tool).to receive(:validate_and_coerce_params).and_return(mock_params)
+        # We also need to mock :[] access if used
+        allow(mock_params).to receive(:[]).and_return(nil)
+        allow(mock_params).to receive(:inspect).and_return("{}")
 
         allow(ADK.logger).to receive(:error) # Prevent logging noise
 
