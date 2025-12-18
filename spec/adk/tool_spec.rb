@@ -87,6 +87,20 @@ RSpec.describe ADK::Tool do
       expect { tool_instance.execute(params, nil) }.not_to raise_error
       expect(tool_instance.received_context).to be_nil
     end
+
+    context 'when perform_execution is not implemented' do
+      let(:incomplete_tool_class) do
+        Class.new(ADK::Tool) do
+          self.explicit_tool_name = :incomplete_tool
+          tool_description 'Incomplete tool'
+        end
+      end
+      let(:incomplete_tool) { incomplete_tool_class.new }
+
+      it 'raises NotImplementedError' do
+        expect { incomplete_tool.execute({}, context) }.to raise_error(NotImplementedError)
+      end
+    end
   end
 
   describe '#validate_params' do

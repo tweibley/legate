@@ -8,6 +8,41 @@ require_relative 'global_tool_manager'
 require_relative 'tool/metadata_dsl'
 
 module ADK
+  # Base class for all tools that can be used by Agents.
+  #
+  # Tools are the way agents interact with the outside world. To create a new tool,
+  # inherit from this class, use the DSL to define metadata, and implement
+  # the {#perform_execution} method.
+  #
+  # @example Creating a custom weather tool
+  #   class WeatherTool < ADK::Tool
+  #     tool_description 'Fetches current weather for a location'
+  #
+  #     parameter :location, type: :string, required: true,
+  #               description: 'City name (e.g. "San Francisco")'
+  #
+  #     parameter :unit, type: :string, required: false,
+  #               description: 'Temperature unit (celsius/fahrenheit)'
+  #
+  #     private
+  #
+  #     def perform_execution(params, context)
+  #       location = params[:location]
+  #       # ... fetch weather logic ...
+  #       weather_data = "Sunny, 25C"
+  #
+  #       {
+  #         status: :success,
+  #         result: weather_data
+  #       }
+  #     rescue => e
+  #       {
+  #         status: :error,
+  #         error_message: "Failed to fetch weather: #{e.message}"
+  #       }
+  #     end
+  #   end
+  #
   class Tool
     # --- Include the DSL ---
     include MetadataDsl
@@ -104,10 +139,20 @@ module ADK
 
     private
 
-    # Perform the actual execution of the tool
-    # @param params [Hash] The validated parameters to execute with
-    # @param context [ADK::ToolContext, nil] Contextual information (session details).
-    # @return [Object] The result of the execution
+    # Perform the actual execution of the tool.
+    #
+    # This method must be implemented by subclasses to define the tool's behavior.
+    #
+    # @param params [Hash] The validated parameters to execute with. Keys are symbols.
+    # @param context [ADK::ToolContext] Contextual information (session, user, state).
+    #
+    # @return [Hash] The result hash containing:
+    #   * :status [Symbol] :success, :error, or :pending
+    #   * :result [Object] The output data (if success)
+    #   * :error_message [String] Error description (if error)
+    #   * :job_id [String] Job ID (if pending/async)
+    #
+    # @raise [NotImplementedError] if the subclass does not implement this method.
     def perform_execution(params, context)
       raise NotImplementedError, 'Subclasses must implement #perform_execution(params, context)'
     end
