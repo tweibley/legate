@@ -9,6 +9,41 @@ require_relative 'tool/metadata_dsl'
 require 'json'
 
 module ADK
+  # Base class for all tools that can be used by Agents.
+  #
+  # Tools are the way agents interact with the outside world. To create a new tool,
+  # inherit from this class, use the DSL to define metadata, and implement
+  # the {#perform_execution} method.
+  #
+  # @example Creating a custom weather tool
+  #   class WeatherTool < ADK::Tool
+  #     tool_description 'Fetches current weather for a location'
+  #
+  #     parameter :location, type: :string, required: true,
+  #               description: 'City name (e.g. "San Francisco")'
+  #
+  #     parameter :unit, type: :string, required: false,
+  #               description: 'Temperature unit (celsius/fahrenheit)'
+  #
+  #     private
+  #
+  #     def perform_execution(params, context)
+  #       location = params[:location]
+  #       # ... fetch weather logic ...
+  #       weather_data = "Sunny, 25C"
+  #
+  #       {
+  #         status: :success,
+  #         result: weather_data
+  #       }
+  #     rescue => e
+  #       {
+  #         status: :error,
+  #         error_message: "Failed to fetch weather: #{e.message}"
+  #       }
+  #     end
+  #   end
+  #
   class Tool
     # --- Include the DSL ---
     include MetadataDsl
@@ -28,6 +63,7 @@ module ADK
         @tool_name = name.to_sym
         @description = description
         @parameters_definition = parameters
+        @_tool_metadata_cache = nil # Invalidate cache
       end
 
       # --- Fallback Metadata Method (Commented out as DSL version takes precedence) ---
@@ -67,16 +103,16 @@ module ADK
       @parameters = metadata[:parameters] || {}
 
       # Lenient check for missing metadata
-      if @name.nil? || @name == :'' || @description.nil? || @description.empty?
-        is_anonymous = !self.class.name || self.class.name.empty? || self.class.name.start_with?('#<Class:')
-        unless is_anonymous
-          missing = []
-          missing << ':name' if @name.nil? || @name == :''
-          missing << ':description' if @description.nil? || @description.empty?
-          ADK.logger.warn("Tool class #{self.class} initialized with missing metadata: [#{missing.join(', ')}] using #{self.class.tool_metadata}. Tool may not function correctly.")
-        end
-        @description ||= ''
+      return unless @name.nil? || @name == :'' || @description.nil? || @description.empty?
+
+      is_anonymous = !self.class.name || self.class.name.empty? || self.class.name.start_with?('#<Class:')
+      unless is_anonymous
+        missing = []
+        missing << ':name' if @name.nil? || @name == :''
+        missing << ':description' if @description.nil? || @description.empty?
+        ADK.logger.warn("Tool class #{self.class} initialized with missing metadata: [#{missing.join(', ')}] using #{self.class.tool_metadata}. Tool may not function correctly.")
       end
+      @description ||= ''
     end
 
     # Execute the tool
@@ -186,6 +222,7 @@ module ADK
           begin
             parsed = JSON.parse(value)
             raise ArgumentError unless parsed.is_a?(Array)
+
             parsed
           rescue StandardError
             raise ADK::ToolArgumentError, "expected Array, got #{value.class} (#{value.inspect})"
@@ -200,6 +237,7 @@ module ADK
           begin
             parsed = JSON.parse(value)
             raise ArgumentError unless parsed.is_a?(Hash)
+
             parsed
           rescue StandardError
             raise ADK::ToolArgumentError, "expected Hash, got #{value.class} (#{value.inspect})"
@@ -213,10 +251,20 @@ module ADK
       end
     end
 
-    # Perform the actual execution of the tool
-    # @param params [Hash] The validated parameters to execute with
-    # @param context [ADK::ToolContext, nil] Contextual information (session details).
-    # @return [Object] The result of the execution
+    # Perform the actual execution of the tool.
+    #
+    # This method must be implemented by subclasses to define the tool's behavior.
+    #
+    # @param params [Hash] The validated parameters to execute with. Keys are symbols.
+    # @param context [ADK::ToolContext] Contextual information (session, user, state).
+    #
+    # @return [Hash] The result hash containing:
+    #   * :status [Symbol] :success, :error, or :pending
+    #   * :result [Object] The output data (if success)
+    #   * :error_message [String] Error description (if error)
+    #   * :job_id [String] Job ID (if pending/async)
+    #
+    # @raise [NotImplementedError] if the subclass does not implement this method.
     def perform_execution(params, context)
       raise NotImplementedError, 'Subclasses must implement #perform_execution(params, context)'
     end
