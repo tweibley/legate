@@ -994,6 +994,51 @@ RSpec.describe ADK::Agent do
       end
     end
 
+    context 'when plan is empty' do
+      before { allow(planner_double).to receive(:plan).and_return([]) }
+
+      context 'with fallback_mode :echo' do
+        subject(:agent) {
+          create_agent(
+            tool_names_array: [:echo],
+            fallback_mode: :echo,
+            session_service: ADK::SessionService::InMemory.new,
+            planner_override: planner_double
+          )
+        }
+
+        it 'falls back to echo tool' do
+          expect(logger_double).to receive(:warn).with(/Falling back to echo mode/)
+
+          final_event = agent.run_task(session_id: session_id, user_input: user_input, session_service: real_session_service)
+
+          expect(final_event.content[:status]).to eq(:success)
+          expect(final_event.content[:result]).to eq(user_input)
+        end
+      end
+
+      context 'with fallback_mode :error (default)' do
+        subject(:agent) {
+          create_agent(
+            tool_names_array: [:mock_tool],
+            fallback_mode: :error,
+            session_service: ADK::SessionService::InMemory.new,
+            planner_override: planner_double
+          )
+        }
+
+        it 'returns an error event' do
+          expect(logger_double).to receive(:warn).with(/I cannot fulfill this request with the available tools/)
+
+          final_event = agent.run_task(session_id: session_id, user_input: user_input, session_service: real_session_service)
+
+          # The agent returns a nested structure on error: { details: { status: :error, ... }, last_result: nil }
+          expect(final_event.content[:details][:status]).to eq(:error)
+          expect(final_event.content[:details][:error_message]).to match(/cannot fulfill this request/)
+        end
+      end
+    end
+
     context 'with output_key state management' do
       let(:output_key_name) { :my_agent_output }
       let(:agent_with_output_key) do
