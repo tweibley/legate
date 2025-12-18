@@ -33,7 +33,7 @@ end
 class MockAnotherTool < ADK::Tool
   tool_description 'Another mock tool.'
   self.explicit_tool_name = :another_tool
-  parameter :value, type: :integer
+  parameter :value # No type specified to allow testing both String and Integer behavior
 
   def perform_execution(params, _context)
     { status: :success, result: params[:value] * 2 }

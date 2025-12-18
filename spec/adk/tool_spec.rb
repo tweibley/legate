@@ -67,20 +67,21 @@ RSpec.describe ADK::Tool do
   # end
 
   describe '#execute' do
-    it 'validates parameters before calling perform_execution' do
-      expect(tool_instance).to receive(:validate_params).with(params).ordered.and_call_original
-      expect(tool_instance).to receive(:perform_execution).with(params, context).ordered.and_call_original
+    it 'validates and coerces parameters before calling perform_execution' do
+      expect(tool_instance).to receive(:validate_and_coerce_params).with(params).ordered.and_call_original
+      expect(tool_instance).to receive(:perform_execution).with(kind_of(Hash), context).ordered.and_call_original
       tool_instance.execute(params, context)
     end
 
     it 'passes parameters and context to perform_execution' do
       tool_instance.execute(params, context)
+      # perform_execution receives coerced params (new hash), so we check equality of content
       expect(tool_instance.received_params).to eq(params)
       expect(tool_instance.received_context).to eq(context)
     end
 
     it 'raises error if required parameters are missing' do
-      expect { tool_instance.execute({}, context) }.to raise_error(ADK::Error, /Missing required parameters: req/)
+      expect { tool_instance.execute({}, context) }.to raise_error(ADK::Error, /Missing required parameters for tool 'dummy': req/)
     end
 
     it 'handles context being nil (for potential backward compatibility)' do
@@ -95,7 +96,7 @@ RSpec.describe ADK::Tool do
     end
 
     it 'raises error if required parameters are missing' do
-      expect { tool_instance.validate_params({}) }.to raise_error(ADK::Error, /Missing required parameters: req/)
+      expect { tool_instance.validate_params({}) }.to raise_error(ADK::Error, /Missing required parameters for tool 'dummy': req/)
     end
   end
 

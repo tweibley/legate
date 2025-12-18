@@ -132,7 +132,7 @@ RSpec.describe ADK::Tools::Calculator do
       it 'raises ToolArgumentError' do
         expect {
           tool.execute(params)
-        }.to raise_error(ADK::ToolArgumentError, /Invalid numeric input/i)
+        }.to raise_error(ADK::ToolArgumentError, /expected Numeric\/Float/)
       end
     end
 
@@ -140,6 +140,7 @@ RSpec.describe ADK::Tools::Calculator do
       let(:params) { { operand1: 10, operand2: nil, operation: 'add' } }
 
       it 'raises ToolArgumentError wrapping the TypeError' do
+        # validate_and_coerce_params passes nil through, so internal validation catches it
         expect {
           tool.execute(params)
         }.to raise_error(ADK::ToolArgumentError, /Invalid numeric input.*Op2: ''/i) # nil becomes ''
@@ -151,7 +152,7 @@ RSpec.describe ADK::Tools::Calculator do
       let(:params) { { operand1: 10, operation: 'add' } } # Missing operand2
 
       it 'raises an ADK::ToolArgumentError' do
-        expect { tool.execute(params) }.to raise_error(ADK::ToolArgumentError, /Missing required parameters: operand2/)
+        expect { tool.execute(params) }.to raise_error(ADK::ToolArgumentError, /Missing required parameters for tool 'calculator': operand2/)
       end
     end
   end

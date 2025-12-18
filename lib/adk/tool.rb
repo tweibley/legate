@@ -6,6 +6,7 @@ require 'logger'
 require_relative 'tool_context'
 require_relative 'global_tool_manager'
 require_relative 'tool/metadata_dsl'
+require 'json'
 
 module ADK
   class Tool
@@ -83,25 +84,134 @@ module ADK
     # @param context [ADK::ToolContext, nil] Contextual information (session details).
     # @return [Hash] A hash with :status (:success, :error, :pending) and :result/:error_message/:workflow_id.
     def execute(params = {}, context = nil)
-      validate_params(params)
-      ADK.logger.debug("Executing tool '#{@name}' with validated params: #{params.inspect} and context: #{context&.to_h.inspect}")
-      perform_execution(params, context)
+      coerced_params = validate_and_coerce_params(params)
+      ADK.logger.debug("Executing tool '#{@name}' with validated params: #{coerced_params.inspect} and context: #{context&.to_h.inspect}")
+      perform_execution(coerced_params, context)
     end
 
-    # Validate the parameters
+    # Validate the parameters (Deprecated: Use validate_and_coerce_params)
+    # This method is kept for backward compatibility and wraps the new logic,
+    # but ignores the coerced return value.
     def validate_params(params)
+      validate_and_coerce_params(params)
+      nil
+    end
+
+    # Validate and coerce parameters based on metadata types
+    # @param params [Hash] Input parameters
+    # @return [Hash] New hash with symbol keys and coerced values
+    # @raise [ADK::ToolArgumentError] if validation fails
+    def validate_and_coerce_params(params)
+      # 1. Normalize keys to symbols
+      normalized_params = params.transform_keys(&:to_sym)
+
       current_parameters = @parameters || {}
-      required_param_names = current_parameters.select { |_, p| p[:required] }.keys.map(&:to_s)
-      present_keys = params.keys.map(&:to_s)
+
+      # 2. Check for missing required parameters
+      # Use symbol keys for check
+      required_param_names = current_parameters.select { |_, p| p[:required] }.keys
+      present_keys = normalized_params.keys
       missing_params = required_param_names - present_keys
+
       unless missing_params.empty?
-        log_message = "Validation failed for tool '#{@name}'. Required(string): #{required_param_names.inspect}, Received keys(string): #{present_keys.inspect}, Received params: #{params.inspect}"
-        ADK.logger.error(log_message)
-        raise ADK::ToolArgumentError, "Missing required parameters: #{missing_params.join(', ')}"
+        msg = "Missing required parameters for tool '#{@name}': #{missing_params.join(', ')}."
+        msg += " Provided: [#{present_keys.empty? ? 'None' : present_keys.join(', ')}]."
+
+        ADK.logger.error("Validation failed: #{msg} Params: #{params.inspect}")
+        raise ADK::ToolArgumentError, msg
       end
+
+      # 3. Type Validation & Coercion
+      coerced_params = normalized_params.dup
+
+      current_parameters.each do |param_name, param_def|
+        # Only process if present
+        next unless coerced_params.key?(param_name)
+
+        value = coerced_params[param_name]
+        expected_type = param_def[:type]
+        next unless expected_type
+
+        begin
+          coerced_value = coerce_value(value, expected_type)
+          coerced_params[param_name] = coerced_value
+        rescue ArgumentError, TypeError => e
+          raise ADK::ToolArgumentError, "Parameter '#{param_name}' for tool '#{@name}' error: #{e.message}"
+        end
+      end
+
+      coerced_params
     end
 
     private
+
+    # Coerce a value to the expected type
+    def coerce_value(value, type)
+      return value if value.nil?
+
+      case type
+      when :string
+        value.to_s
+      when :integer
+        # Integer(val) handles strings like "123" and numbers like 123.0 (truncates)
+        begin
+          Integer(value)
+        rescue ArgumentError, TypeError
+          raise ADK::ToolArgumentError, "expected Integer, got #{value.class} (#{value.inspect})"
+        end
+      when :float, :numeric
+        # :numeric treated as Float for broad compatibility
+        begin
+          Float(value)
+        rescue ArgumentError, TypeError
+          raise ADK::ToolArgumentError, "expected Numeric/Float, got #{value.class} (#{value.inspect})"
+        end
+      when :boolean
+        if value.is_a?(TrueClass) || value.is_a?(FalseClass)
+          value
+        elsif value.is_a?(String)
+          case value.downcase
+          when 'true', 't', 'yes', '1' then true
+          when 'false', 'f', 'no', '0' then false
+          else
+            raise ADK::ToolArgumentError, "expected Boolean, got String '#{value}'"
+          end
+        else
+          raise ADK::ToolArgumentError, "expected Boolean, got #{value.class} (#{value.inspect})"
+        end
+      when :array
+        if value.is_a?(Array)
+          value
+        elsif value.is_a?(String)
+          begin
+            parsed = JSON.parse(value)
+            raise ArgumentError unless parsed.is_a?(Array)
+            parsed
+          rescue StandardError
+            raise ADK::ToolArgumentError, "expected Array, got #{value.class} (#{value.inspect})"
+          end
+        else
+          raise ADK::ToolArgumentError, "expected Array, got #{value.class} (#{value.inspect})"
+        end
+      when :hash
+        if value.is_a?(Hash)
+          value
+        elsif value.is_a?(String)
+          begin
+            parsed = JSON.parse(value)
+            raise ArgumentError unless parsed.is_a?(Hash)
+            parsed
+          rescue StandardError
+            raise ADK::ToolArgumentError, "expected Hash, got #{value.class} (#{value.inspect})"
+          end
+        else
+          raise ADK::ToolArgumentError, "expected Hash, got #{value.class} (#{value.inspect})"
+        end
+      else
+        # Unknown type or 'any', return as is
+        value
+      end
+    end
 
     # Perform the actual execution of the tool
     # @param params [Hash] The validated parameters to execute with
