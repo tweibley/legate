@@ -7,11 +7,27 @@ require 'json'
 require 'logger'
 
 module ADK
+  # Orchestrates the planning process using Gemini LLM.
+  #
+  # The Planner takes a user request and available tools, constructs a prompt,
+  # sends it to the LLM, and parses the response into a structured plan of execution.
+  # It handles multi-step planning, tool selection, and fallback strategies.
   class Planner
-    attr_reader :agent, :logger, :model_name # Add model_name reader
+    # @return [ADK::Agent] The agent instance this planner belongs to.
+    attr_reader :agent
+    # @return [Logger] The logger instance.
+    attr_reader :logger
+    # @return [String, nil] The model name being used.
+    attr_reader :model_name
 
-    # --- MODIFY initialize signature and logic ---
-    def initialize(agent:, model_name: nil, **options) # Add model_name param
+    # Initializes a new Planner instance.
+    #
+    # @param agent [ADK::Agent] The agent that owns this planner.
+    # @param model_name [String, nil] The specific Gemini model to use (overrides agent default).
+    # @param options [Hash] Additional options.
+    # @option options [Logger] :logger Logger instance to use (defaults to ADK.logger).
+    # @option options [String] :api_key Google API key (defaults to ENV['GOOGLE_API_KEY']).
+    def initialize(agent:, model_name: nil, **options)
       @agent = agent
       @logger = options[:logger] || ADK.logger
       @api_key = options[:api_key] || ENV['GOOGLE_API_KEY']
@@ -43,15 +59,23 @@ module ADK
       end
     end
 
-    # Plan a task using the gemini-ai gem
-    # @param task [String] The task to plan
-    # @param invocation_id [String] The invocation ID from the agent run
-    # @return [Array] The plan (array of step hashes) or a fallback plan on error
+    # Generates a multi-step execution plan for the given user input.
+    #
+    # @param user_input [String] The user's request or task description.
+    # @param invocation_id [String, nil] The unique ID for this invocation (used for callbacks).
+    # @return [Hash] A hash containing the thought process and the list of steps.
+    #   * :thought_process [String] The LLM's reasoning.
+    #   * :steps [Array<Hash>] The sequence of tool execution steps.
+    #     Each step hash contains:
+    #     * :tool [Symbol] The name of the tool to execute.
+    #     * :params [Hash] The parameters for the tool.
+    #     * :reason [String] The reason for this step.
+    #   Returns a fallback plan structure on error.
     def plan(user_input, invocation_id = nil)
       # Check if client is available, fallback if not
       unless @client
-        logger.error("Gemini client not initialized. Falling back to default plan.")
-        return fallback_plan(user_input, "No LLM client available")
+        logger.error('Gemini client not initialized. Falling back to default plan.')
+        return fallback_plan(user_input, 'No LLM client available')
       end
 
       # Format tools for the prompt
@@ -77,7 +101,7 @@ module ADK
         logger.debug { "Agent '#{@agent.name}': Executing before_model_callback for model input." }
         callback_result = begin
           @agent.before_model_callback.call(modified_prompt, callback_context)
-        rescue => e
+        rescue StandardError => e
           logger.error("Error in before_model_callback: #{e.class}: #{e.message}")
           logger.debug(e.backtrace.join("\n"))
           nil # Continue execution on error
@@ -92,7 +116,7 @@ module ADK
 
       # Use the LLM client from the Gemini wrapper
       begin
-        # Note: Structured output (responseSchema) would be ideal here but requires
+        # NOTE: Structured output (responseSchema) would be ideal here but requires
         # investigation into gemini-ai gem support. For now, rely on prompt engineering
         # and robust JSON extraction with fallback to echo tool.
         # See: https://ai.google.dev/gemini-api/docs/structured-output
@@ -127,7 +151,7 @@ module ADK
           logger.debug { "Agent '#{@agent.name}': Executing after_model_callback for model output." }
           callback_result = begin
             @agent.after_model_callback.call(modified_response, callback_context)
-          rescue => e
+          rescue StandardError => e
             logger.error("Error in after_model_callback: #{e.class}: #{e.message}")
             logger.debug(e.backtrace.join("\n"))
             nil # Continue execution on error
@@ -149,7 +173,7 @@ module ADK
           # Try to extract any useful text from the LLM response for the fallback message
           fallback_message = extract_fallback_message(modified_response, user_input)
           return {
-            thought_process: "Fallback: Could not parse structured plan from model response",
+            thought_process: 'Fallback: Could not parse structured plan from model response',
             steps: fallback_plan_steps(fallback_message)
           }
         end
@@ -162,7 +186,7 @@ module ADK
       rescue StandardError => e
         logger.error("Error during planning with Gemini: #{e.class}: #{e.message}")
         {
-          thought_process: "Error occurred during planning",
+          thought_process: 'Error occurred during planning',
           steps: fallback_plan_steps("I encountered an error while processing your request: #{e.message}")
         }
       end
@@ -224,9 +248,7 @@ module ADK
       delegation_targets_description = format_delegation_targets
       sequential_sub_agents_description = format_sequential_sub_agents
 
-      if tools_metadata.empty? && delegation_targets_description.empty? && sequential_sub_agents_description.empty?
-        return 'No tools or delegable agents available.'
-      end
+      return 'No tools or delegable agents available.' if tools_metadata.empty? && delegation_targets_description.empty? && sequential_sub_agents_description.empty?
 
       tools_description = tools_metadata.map do |metadata|
         # Use metadata hash directly
@@ -263,7 +285,7 @@ module ADK
       delegation_targets = @agent.definition.delegation_targets
       logger.info("Planner including #{delegation_targets.size} delegation targets: #{delegation_targets.to_a.join(', ')}")
 
-      targets_description = delegation_targets.map do |target_name|
+      delegation_targets.map do |target_name|
         # Try to find the target agent definition for its description
         target_def = nil
         begin
@@ -282,8 +304,6 @@ module ADK
             - task (string, required): The task to delegate to the #{target_name} agent
         DELEGATE_DESC
       end.join("\n\n")
-
-      targets_description
     end
 
     # Format sequential sub-agents for the prompt
@@ -294,7 +314,7 @@ module ADK
       sub_agent_names = @agent.definition.sequential_sub_agent_names
       logger.info("Planner including #{sub_agent_names.size} sequential sub-agents: #{sub_agent_names.to_a.join(', ')}")
 
-      sub_agents_description = sub_agent_names.map do |agent_name|
+      sub_agent_names.map do |agent_name|
         # Try to find the sub-agent definition for its description
         agent_def = nil
         begin
@@ -313,11 +333,13 @@ module ADK
             - task (string, required): The task to execute using the #{agent_name} agent
         SEQ_AGENT_DESC
       end.join("\n\n")
-
-      sub_agents_description
     end
 
-    # --- Build the multi-step prompt ---
+    # Builds the prompt string to send to Gemini.
+    #
+    # @param user_input [String] The user's original request.
+    # @param tools_description [String] Formatted description of available tools.
+    # @return [String] The complete prompt including instructions, tool info, and user input.
     def build_multi_step_gemini_prompt(user_input, tools_description)
       # Check if agent has delegation targets
       has_delegation_targets = @agent.definition.respond_to?(:delegation_targets) &&
@@ -332,7 +354,7 @@ module ADK
         # Instructions
 
         You are an AI assistant that helps people by breaking down tasks into actionable steps using available tools.
-        #{!instruction_text.empty? ? "\n" + instruction_text + "\n" : ""}
+        #{!instruction_text.empty? ? "\n" + instruction_text + "\n" : ''}
 
         ## Response Format - CRITICAL
 
@@ -413,7 +435,11 @@ module ADK
       prompt
     end
 
-    # Parse the text response from Gemini, expecting a JSON array
+    # Parses the text response from Gemini, expecting a JSON array.
+    #
+    # @deprecated Use {#validate_and_format_multi_step_plan} instead.
+    # @param response_text [String] The raw response text from the LLM.
+    # @return [Array] The parsed JSON array, or empty array on failure.
     def parse_gemini_response(response_text)
       logger.debug("Attempting to parse Gemini response text: #{response_text}")
 
@@ -435,7 +461,7 @@ module ADK
       if json_array_match
         # Use the matched array part
         candidate_json = json_array_match[1].strip
-        logger.debug("Found JSON array match via regex")
+        logger.debug('Found JSON array match via regex')
       else
         # Method 2: Clean up markdown code blocks
         clean_text = response_text.strip
@@ -443,21 +469,21 @@ module ADK
           # Extract content from ```json ... ``` block
           match = clean_text.match(/```json\s*(.*?)\s*```/m)
           candidate_json = match ? match[1].strip : clean_text
-          logger.debug("Extracted from ```json block")
+          logger.debug('Extracted from ```json block')
         elsif clean_text.include?('```')
           # Extract content from ``` ... ``` block
           match = clean_text.match(/```\s*(.*?)\s*```/m)
           candidate_json = match ? match[1].strip : clean_text
-          logger.debug("Extracted from ``` block")
+          logger.debug('Extracted from ``` block')
         else
           candidate_json = clean_text
-          logger.debug("Using cleaned text as-is")
+          logger.debug('Using cleaned text as-is')
         end
       end
 
       # Handle edge cases and empty array
       if candidate_json.nil? || candidate_json.empty?
-        logger.error("Empty JSON candidate after extraction")
+        logger.error('Empty JSON candidate after extraction')
         return []
       end
 
@@ -479,11 +505,15 @@ module ADK
         logger.error("Raw response text was: #{response_text}")
         logger.error("Extracted candidate was: #{candidate_json}")
         # Return empty array instead of raising, for resilience
-        return []
+        []
       end
     end
 
-    # --- NEW: Validate the parsed multi-step response ---
+    # Validates and formats the multi-step plan response from the LLM.
+    #
+    # @api private
+    # @param llm_response [String] The raw response string from the LLM.
+    # @return [Hash] A hash containing :thought_process and :formatted_steps, or :error.
     def validate_and_format_multi_step_plan(llm_response)
       # Try multiple methods to extract JSON from the response
       parsed_json = nil
@@ -493,7 +523,7 @@ module ADK
       if json_code_block_match
         begin
           parsed_json = JSON.parse(json_code_block_match[1])
-          logger.debug("Successfully extracted JSON from markdown code block")
+          logger.debug('Successfully extracted JSON from markdown code block')
         rescue JSON::ParserError => e
           logger.debug("Failed to parse JSON from code block: #{e.message}")
         end
@@ -507,7 +537,7 @@ module ADK
         if json_match
           begin
             parsed_json = JSON.parse(json_match[1])
-            logger.debug("Successfully extracted JSON via regex pattern")
+            logger.debug('Successfully extracted JSON via regex pattern')
           rescue JSON::ParserError => e
             logger.debug("Failed to parse extracted JSON: #{e.message}")
           end
@@ -521,7 +551,7 @@ module ADK
         if simple_match
           begin
             parsed_json = JSON.parse(simple_match[0])
-            logger.debug("Successfully extracted JSON via simple pattern")
+            logger.debug('Successfully extracted JSON via simple pattern')
           rescue JSON::ParserError => e
             logger.debug("Failed to parse JSON from simple pattern: #{e.message}")
           end
@@ -531,17 +561,17 @@ module ADK
       # If we still don't have valid JSON, log and return error
       if parsed_json.nil?
         logger.warn("Failed to extract valid JSON from LLM response. Full response:\n#{llm_response}")
-        return { error: "Failed to extract valid JSON from LLM response" }
+        return { error: 'Failed to extract valid JSON from LLM response' }
       end
 
       # Extract plan array from the JSON
-      plan = parsed_json["plan"]
-      thought_process = parsed_json["thought_process"]
+      plan = parsed_json['plan']
+      thought_process = parsed_json['thought_process']
 
       # Add enhanced error handling and plan validation
       if plan.nil? || !plan.is_a?(Array) || plan.empty?
         logger.warn("Invalid or empty plan structure: #{parsed_json.inspect}")
-        return { error: "Invalid or empty plan structure returned by the model" }
+        return { error: 'Invalid or empty plan structure returned by the model' }
       end
 
       # Ensure each step has the required fields
@@ -551,40 +581,46 @@ module ADK
         step_number = index + 1
 
         # Common validation for all step types
-        unless step.key?("step") && step.key?("type") && step.key?("reason")
+        unless step.key?('step') && step.key?('type') && step.key?('reason')
           logger.warn("Step #{step_number} is missing required fields: #{step.inspect}")
           return { error: "Step #{step_number} is missing required fields" }
         end
 
         # Type-specific validation - only accept tool_use
-        if step["type"] != "tool_use"
+        if step['type'] != 'tool_use'
           logger.warn("Step #{step_number} has invalid type: #{step['type']}")
           return { error: "Step #{step_number} has invalid type: #{step['type']}" }
         end
 
         # Validate tool use fields
-        unless step.key?("tool_name") && step.key?("tool_input")
+        unless step.key?('tool_name') && step.key?('tool_input')
           logger.warn("Step #{step_number} is missing required tool fields: #{step.inspect}")
           return { error: "Step #{step_number} is missing required tool fields" }
         end
 
         # Check if tool_input is a hash
-        unless step["tool_input"].is_a?(Hash)
-          logger.warn("Step #{step_number} has invalid tool_input (not a hash): #{step["tool_input"].inspect}")
+        unless step['tool_input'].is_a?(Hash)
+          logger.warn("Step #{step_number} has invalid tool_input (not a hash): #{step['tool_input'].inspect}")
           return { error: "Step #{step_number} has invalid tool_input: must be a hash/object" }
         end
 
         # Format as proper tool step
         formatted_steps << {
-          tool: step["tool_name"].to_sym,
-          params: step["tool_input"].transform_keys { |k| k.to_sym rescue k },
-          reason: step["reason"]
+          tool: step['tool_name'].to_sym,
+          params: step['tool_input'].transform_keys { |k|
+            begin
+              k.to_sym
+            rescue StandardError
+              k
+            end
+          },
+          reason: step['reason']
         }
       end
 
       # Return the formatted plan
       if formatted_steps.empty?
-        { error: "No valid steps could be extracted from the plan" }
+        { error: 'No valid steps could be extracted from the plan' }
       else
         {
           thought_process: thought_process,
@@ -621,7 +657,7 @@ module ADK
     def fallback_plan_steps(message)
       echo_tool_exists = agent.available_tools_metadata.any? { |m| m[:name] == :echo }
       if echo_tool_exists
-        [{ tool: :echo, params: { message: message }, reason: "Fallback response" }]
+        [{ tool: :echo, params: { message: message }, reason: 'Fallback response' }]
       else
         logger.error('Fallback failed: Echo tool not available to the agent.')
         []
