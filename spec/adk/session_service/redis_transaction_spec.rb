@@ -77,6 +77,26 @@ RSpec.describe ADK::SessionService::Redis, 'Transaction Tests' do
       end
     end
 
+    context 'when event has no state_delta' do
+      let(:simple_event) { ADK::Event.new(role: :user, content: 'hello') }
+
+      before do
+        # Expect fewer results because we skip hset state
+        # rpush + hset(updated_at) + expire(session) + expire(events) = 4
+        allow(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([1, 1, 1, 1])
+        allow(mock_redis).to receive(:rpush).and_return(1)
+        allow(mock_redis).to receive(:hset).with(session_key, 'updated_at', anything).and_return(1)
+        allow(mock_redis).to receive(:expire).and_return(true)
+        # We need to stub JSON.generate for simple event
+        allow(JSON).to receive(:generate).with(simple_event.to_h).and_return('{"role":"user","content":"hello"}')
+      end
+
+      it 'does not update state in Redis' do
+        expect(mock_redis).to receive(:hset).with(session_key, 'state', anything).never
+        expect(service.append_event(session_id: session_id, event: simple_event)).to be true
+      end
+    end
+
     context 'with WATCH conflict' do
       before do
         # Setup all the commands that will be called inside multi block
