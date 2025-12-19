@@ -10,3 +10,8 @@
 **Learning:** The method signature `def execute(params = {}, context = nil)` only handles missing arguments, not explicit `nil`.
 **Action:** Future reliability improvements should guard against `nil` input in `execute` to prevent crashes.
 
+## 2025-02-21 - [Parameter Coercion Verification]
+
+**Gap:** `ADK::Tool#validate_and_coerce_params` lacked unit tests for specific type coercion logic (e.g., string "true" -> boolean true, JSON string -> Array), relying only on happy-path integration usage.
+**Learning:** Complex coercion logic inside base classes is often assumed correct but can hide subtle bugs with edge cases (like "yes"/"no" booleans or malformed JSON) if not isolatedly tested.
+**Action:** Added `spec/adk/tool_parameter_coercion_spec.rb` to exhaustively test all coercion types and failure modes using an anonymous tool class.
