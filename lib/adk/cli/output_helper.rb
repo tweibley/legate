@@ -9,6 +9,15 @@ module ADK
     # Provides methods to conditionally output status messages and format results
     # based on --quiet and --json flags.
     module OutputHelper
+      # Configure logger based on CLI options (--verbose, --quiet, --json)
+      def configure_logger_for_cli
+        if options[:verbose]
+          ADK.logger.level = Logger::DEBUG
+        elsif quiet_mode?
+          ADK.logger.level = Logger::FATAL
+        end
+      end
+
       # Write status/progress message (suppressed in quiet or json mode)
       # @param message [String] The status message to display
       # @param color [Symbol, nil] Optional color for Thor's say method

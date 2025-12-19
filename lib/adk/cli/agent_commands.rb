@@ -520,9 +520,10 @@ module ADK
                             desc: 'Suppress status messages, only output result'
       method_option :json, type: :boolean, default: false,
                            desc: 'Output result in JSON format (implies --quiet)'
+      method_option :verbose, type: :boolean, default: false, aliases: '-v',
+                              desc: 'Enable verbose logging (DEBUG level)'
       def start(name)
-        # Suppress all logging in JSON mode for clean output
-        ADK.logger.level = Logger::FATAL if json_mode?
+        configure_logger_for_cli
 
         name_sym = name.to_sym
         status_message("Loading agent '#{name}'...")
@@ -802,9 +803,10 @@ module ADK
                             desc: 'Suppress status messages, only output result'
       method_option :json, type: :boolean, default: false,
                            desc: 'Output result in JSON format (implies --quiet)'
+      method_option :verbose, type: :boolean, default: false, aliases: '-v',
+                              desc: 'Enable verbose logging (DEBUG level)'
       def execute(name, task)
-        # Suppress all logging in JSON mode for clean output
-        ADK.logger.level = Logger::FATAL if json_mode?
+        configure_logger_for_cli
 
         name_sym = name.to_sym
         status_message("Loading agent '#{name}' to execute task: \"#{task}\"...")
@@ -907,7 +909,10 @@ module ADK
       method_option :session_service, type: :string, default: 'memory', enum: %w[memory redis],
                                       desc: 'Session service to use (memory or redis).'
       method_option :user_id, type: :string, default: 'cli_user', desc: 'User ID for the session'
+      method_option :verbose, type: :boolean, default: false, aliases: '-v',
+                              desc: 'Enable verbose logging (DEBUG level)'
       def chat(agent_name_str)
+        configure_logger_for_cli
         ::CLI::UI::StdoutRouter.enable
         agent_name_sym = agent_name_str.to_sym
 

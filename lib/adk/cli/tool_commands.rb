@@ -72,9 +72,10 @@ module ADK
       method_option :json, type: :boolean, default: false,
                            desc: 'Output result in JSON format (implies --quiet)'
       method_option :user_id, type: :string, default: 'cli_user', desc: 'User ID for the tool context'
+      method_option :verbose, type: :boolean, default: false, aliases: '-v',
+                              desc: 'Enable verbose logging (DEBUG level)'
       def execute(name, *args)
-        # Suppress all logging in JSON mode for clean output
-        ADK.logger.level = Logger::FATAL if json_mode?
+        configure_logger_for_cli
 
         tool_name_sym = name.to_sym
         tool = ADK::GlobalToolManager.create_instance(tool_name_sym)
