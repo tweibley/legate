@@ -189,7 +189,7 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
 
     it 'logs error and does not raise if Redis fails' do
       allow(mock_redis).to receive(:setex).and_raise(Redis::TimeoutError)
-      expect(ADK.logger).to receive(:error).with(/Failed to store result for job #{jid}/)
+      expect(ADK.logger).to receive(:error).with(/Failed to store success for job #{jid}/)
       expect { described_class.store_job_result(jid, result_data) }.not_to raise_error
     end
 
@@ -257,7 +257,7 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
 
     it 'logs error and does not raise if Redis fails' do
       allow(mock_redis).to receive(:setex).and_raise(Redis::TimeoutError)
-      expect(ADK.logger).to receive(:error).with(/Failed to store pending status for job #{jid}/)
+      expect(ADK.logger).to receive(:error).with(/Failed to store pending for job #{jid}/)
       expect { described_class.store_job_pending(jid) }.not_to raise_error
     end
 

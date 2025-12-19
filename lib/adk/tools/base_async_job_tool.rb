@@ -48,8 +48,10 @@ module ADK
         raise NotImplementedError, "#{self.class.name} must implement #prepare_job_arguments(params, context)"
       end
 
+      private
+
       # Helper method to convert a hash with symbol keys to string keys
-      private def stringify_hash_keys(hash)
+      def stringify_hash_keys(hash)
         hash.transform_keys(&:to_s)
       end
 
@@ -57,106 +59,107 @@ module ADK
       # @param params [Hash] The validated parameters.
       # @param context [ADK::ToolContext] The execution context.
       # @return [Hash] { status: :pending, job_id: ... } or { status: :error, ... }
-      private def perform_execution(params, context)
-        worker_class = sidekiq_worker_class
+      def perform_execution(params, context)
+        worker_class = validate_worker_class!
         job_args = prepare_job_arguments(params, context)
         job_options = sidekiq_job_options
 
+        log_job_enqueue(worker_class, job_args, job_options)
+        enqueue_job(worker_class, job_args, job_options)
+      end
+
+      def validate_worker_class!
+        worker_class = sidekiq_worker_class
         unless worker_class && worker_class.respond_to?(:perform_async)
           msg = "sidekiq_worker_class not defined or invalid for tool '#{name}'."
           ADK.logger.error(msg)
           raise ADK::ToolError, msg
         end
+        worker_class
+      end
 
+      def log_job_enqueue(worker_class, job_args, job_options)
         ADK.logger.info("Enqueuing Sidekiq job for worker '#{worker_class.name}' for tool '#{name}'.")
         ADK.logger.debug("Job Args: #{job_args.inspect}")
         ADK.logger.debug("Job Options: #{job_options.inspect}")
+      end
 
-        begin
-          # Convert any symbol keys in job arguments to strings for JSON serialization
-          job_args = job_args.map do |arg|
-            arg.is_a?(Hash) ? stringify_hash_keys(arg) : arg
-          end
-
-          # Use perform_async to enqueue the job
-          jid = worker_class.set(job_options).perform_async(*job_args)
-
-          unless jid
-            msg = "Failed to enqueue Sidekiq job for '#{name}'. perform_async returned nil."
-            ADK.logger.error(msg)
-            raise ADK::ToolError, msg
-          end
-
-          ADK.logger.info("Successfully enqueued Sidekiq job '#{jid}' for tool '#{name}'. Task is pending.")
-          { status: :pending, job_id: jid }
-        rescue Redis::BaseError => e # Catch specific Redis errors
-          msg = "Failed to enqueue job for tool '#{name}': Could not connect to Redis. #{e.message}"
-          ADK.logger.error(msg)
-          raise ADK::ToolError, msg
-        rescue StandardError => e
-          # Catch other unexpected errors during enqueueing
-          msg = "Unexpected error enqueuing Sidekiq job for tool '#{name}': #{e.class} - #{e.message}"
-          ADK.logger.error(msg)
-          ADK.logger.error(e.backtrace.first(5).join("\n"))
-          raise ADK::ToolError, msg # Wrap unexpected errors
+      def enqueue_job(worker_class, raw_job_args, job_options)
+        job_args = raw_job_args.map do |arg|
+          arg.is_a?(Hash) ? stringify_hash_keys(arg) : arg
         end
+
+        jid = worker_class.set(job_options).perform_async(*job_args)
+        raise_if_enqueue_failed(jid)
+
+        ADK.logger.info("Successfully enqueued Sidekiq job '#{jid}' for tool '#{name}'. Task is pending.")
+        { status: :pending, job_id: jid }
+      rescue Redis::BaseError => error
+        handle_redis_error(error)
+      rescue StandardError => error
+        handle_generic_error(error)
+      end
+
+      def raise_if_enqueue_failed(jid)
+        return if jid
+
+        msg = "Failed to enqueue Sidekiq job for '#{name}'. perform_async returned nil."
+        ADK.logger.error(msg)
+        raise ADK::ToolError, msg
+      end
+
+      def handle_redis_error(error)
+        msg = "Failed to enqueue job for tool '#{name}': Could not connect to Redis. #{error.message}"
+        ADK.logger.error(msg)
+        raise ADK::ToolError, msg
+      end
+
+      def handle_generic_error(error)
+        msg = "Unexpected error enqueuing Sidekiq job for tool '#{name}': #{error.class} - #{error.message}"
+        ADK.logger.error(msg)
+        ADK.logger.error(error.backtrace.first(5).join("\n"))
+        raise ADK::ToolError, msg
       end
 
       # --- Static Helpers for Workers to Store Status/Results --- #
 
-      # Helper method for Sidekiq workers to call *at the beginning* of their perform method
-      # to indicate the job has started processing.
-      # @param jid [String] The Job ID (available inside the worker).
-      # @param redis_options [Hash] Redis connection options (optional, uses ADK defaults if nil).
+      public
+
+      # Helper for Sidekiq workers to indicate job started processing.
+      # @param jid [String] Job ID
+      # @param redis_options [Hash] Redis options (optional)
       def self.store_job_pending(jid, redis_options = nil)
-        redis = Redis.new(redis_options || ADK.redis_options)
-        key = "#{JOB_RESULT_REDIS_PREFIX}#{jid}"
-        # Store pending status hash. Use the same TTL as results.
-        result_data = { status: :pending, message: 'Job processing started.' }
-        redis.setex(key, JOB_RESULT_TTL, result_data.to_json)
-        ADK.logger.debug("Stored pending status for job #{jid} at key #{key}")
-      rescue StandardError => e
-        ADK.logger.error("Failed to store pending status for job #{jid}: #{e.class} - #{e.message}")
-        # Log but don't raise, allow job processing to continue if possible.
-      ensure
-        redis&.close
+        store_in_redis(jid, { status: :pending, message: 'Job processing started.' }, redis_options)
       end
 
-      # Helper method for Sidekiq workers to call upon completion to store their results in Redis.
-      # @param jid [String] The Job ID (available inside the worker).
-      # @param result [Object] The result data (must be JSON-serializable).
-      # @param redis_options [Hash] Redis connection options (optional, uses ADK defaults if nil).
+      # Helper for Sidekiq workers to store results in Redis.
+      # @param jid [String] Job ID
+      # @param result [Object] Result data (JSON-serializable)
+      # @param redis_options [Hash] Redis options (optional)
       def self.store_job_result(jid, result, redis_options = nil)
-        redis = Redis.new(redis_options || ADK.redis_options)
-        key = "#{JOB_RESULT_REDIS_PREFIX}#{jid}"
-        # Store result hash including status
-        result_data = { status: :success, result: result }
-        redis.setex(key, JOB_RESULT_TTL, result_data.to_json)
-        ADK.logger.debug("Stored successful result for job #{jid} at key #{key}")
-      rescue StandardError => e
-        ADK.logger.error("Failed to store result for job #{jid}: #{e.class} - #{e.message}")
-        # Don't raise, just log the error. The job itself succeeded.
-      ensure
-        redis&.close
+        store_in_redis(jid, { status: :success, result: result }, redis_options)
       end
 
-      # Helper method for Sidekiq workers to call upon failure to store error information.
-      # @param jid [String] The Job ID.
-      # @param error_message [String] The error message.
-      # @param error_class [String] The class name of the error (optional).
-      # @param redis_options [Hash] Redis connection options (optional, uses ADK defaults if nil).
+      # Helper for Sidekiq workers to store error info.
+      # @param jid [String] Job ID
+      # @param error_message [String] Error message
+      # @param error_class [String] Error class name
+      # @param redis_options [Hash] Redis options (optional)
       def self.store_job_error(jid, error_message, error_class = 'StandardError', redis_options = nil)
+        store_in_redis(jid, { status: :error, error_message: "#{error_class}: #{error_message}" }, redis_options)
+      end
+
+      def self.store_in_redis(jid, data, redis_options)
         redis = Redis.new(redis_options || ADK.redis_options)
         key = "#{JOB_RESULT_REDIS_PREFIX}#{jid}"
-        # Store error hash including status
-        result_data = { status: :error, error_message: "#{error_class}: #{error_message}" }
-        redis.setex(key, JOB_RESULT_TTL, result_data.to_json)
-        ADK.logger.debug("Stored error result for job #{jid} at key #{key}")
+        redis.setex(key, JOB_RESULT_TTL, data.to_json)
+        ADK.logger.debug("Stored #{data[:status]} for job #{jid} at key #{key}")
       rescue StandardError => e
-        ADK.logger.error("Failed to store error for job #{jid}: #{e.class} - #{e.message}")
+        ADK.logger.error("Failed to store #{data[:status]} for job #{jid}: #{e.class} - #{e.message}")
       ensure
         redis&.close
       end
+      private_class_method :store_in_redis
     end
   end
 end
