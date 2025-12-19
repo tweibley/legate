@@ -1,0 +1,54 @@
+--> ADK Logger initialized with level: DEBUG, target: STDOUT
+INFO: Gemini AI Beta patch loaded - API will use v1beta endpoint
+DEBUG: Tool subclass ADK::Mcp::ToolWrapper inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+INFO: ADK::DefinitionStore::RedisStore initialized.
+WARN: Encryption requested but unavailable: Encryption key not found. Set ADK_AUTH_ENCRYPTION_KEY environment variable.. Falling back to unencrypted mode.
+INFO: RedisSessionService initialized. Encryption: false, Session TTL: 604800
+INFO: Sidekiq client configured with Redis: redis://localhost:6379/0
+INFO: ADK::Mcp module loaded.
+INFO: InMemorySessionService initialized.
+INFO: InMemorySessionService initialized.
+DEBUG: Tool subclass ADK::Tools::Echo inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::Calculator inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::CatFacts inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::RandomNumberTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::AgentTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::BaseAsyncJobTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::CheckJobStatusTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::SleepyTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::WebhookTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Defining agent :webhook_receiver...
+DEBUG: GlobalDefinitionRegistry: Registered definition for :webhook_receiver
+DEBUG: Agent definition 'webhook_receiver' created and registered globally.
+DEBUG: Note: This script only defines and registers the agent. A separate webhook listener process is needed to use it.
+INFO: Explicitly registering built-in ADK tools...
+DEBUG: GlobalToolManager: Registered tool 'echo' with class ADK::Tools::Echo.
+DEBUG: GlobalToolManager: Registered tool 'calculator' with class ADK::Tools::Calculator.
+DEBUG: GlobalToolManager: Registered tool 'cat_facts' with class ADK::Tools::CatFacts.
+DEBUG: GlobalToolManager: Registered tool 'random_number' with class ADK::Tools::RandomNumberTool.
+DEBUG: GlobalToolManager: Registered tool 'delegate_task' with class ADK::Tools::AgentTool.
+DEBUG: GlobalToolManager: Registered tool 'check_job_status' with class ADK::Tools::CheckJobStatusTool.
+DEBUG: GlobalToolManager: Registered tool 'start_sleepy_job' with class ADK::Tools::SleepyTool.
+DEBUG: GlobalToolManager: Registered tool 'webhook_tool' with class ADK::Tools::WebhookTool.
+INFO: Explicit tool registration complete. Current global tools: [:echo, :calculator, :cat_facts, :random_number, :delegate_task, :check_job_status, :start_sleepy_job, :webhook_tool]
+INFO: InMemorySessionService initialized.
+INFO: Sidekiq client configured with Redis: redis://localhost:6379/0
+
+ADK::Tools::Base::HttpClient
+  SSRF Protection
+    setup_http_client
+      allows public IPs
+      blocks loopback IPs (127.0.0.1)
+      blocks private IPs (192.168.x.x)
+      blocks private IPs (10.x.x.x)
+      blocks localhost
+      blocks AWS metadata IP (169.254.169.254)
+    make_request with absolute URL
+      blocks absolute URLs pointing to private IPs
+      blocks absolute URLs pointing to localhost
+
+Finished in 0.01758 seconds (files took 2.07 seconds to load)
+8 examples, 0 failures
+
+Coverage report generated for RSpec to /app/coverage.
+Line Coverage: 21.04% (2040 / 9696)

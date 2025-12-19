@@ -12,6 +12,8 @@ RSpec.describe ADK::Tools::WebhookTool do
   let(:payload) { { message: 'hello' } }
 
   before do
+    WebMock.enable!
+    WebMock.disable_net_connect!(allow_localhost: true)
     allow(ADK.logger).to receive(:info)
     allow(ADK.logger).to receive(:debug)
     allow(ADK.logger).to receive(:error)
@@ -24,7 +26,7 @@ RSpec.describe ADK::Tools::WebhookTool do
 
       expect {
         tool.execute({ url: url, payload: payload }, context: context)
-      }.to raise_error(ADK::ToolArgumentError, /Security Error: Blocked access/)
+      }.to raise_error(ADK::ToolSecurityError, /SSRF protection/)
     end
 
     it 'blocks requests to private IPs' do
@@ -32,7 +34,7 @@ RSpec.describe ADK::Tools::WebhookTool do
 
       expect {
         tool.execute({ url: url, payload: payload }, context: context)
-      }.to raise_error(ADK::ToolArgumentError, /Security Error: Blocked access/)
+      }.to raise_error(ADK::ToolSecurityError, /SSRF protection/)
     end
 
     it 'blocks requests to cloud metadata' do
@@ -40,12 +42,16 @@ RSpec.describe ADK::Tools::WebhookTool do
 
       expect {
         tool.execute({ url: url, payload: payload }, context: context)
-      }.to raise_error(ADK::ToolArgumentError, /Security Error: Blocked access/)
+      }.to raise_error(ADK::ToolSecurityError, /SSRF protection/)
     end
 
     it 'allows requests to public IPs' do
-      url = 'http://8.8.8.8/webhook' # Google DNS IP (public)
+      url = 'http://public-domain.com/webhook'
       stub_request(:post, url).to_return(status: 200)
+
+      # Mock DNS to return a safe public IP
+      allow(Resolv).to receive(:getaddresses).and_call_original
+      allow(Resolv).to receive(:getaddresses).with('public-domain.com').and_return(['1.2.3.4'])
 
       result = tool.execute({ url: url, payload: payload }, context: context)
       expect(result[:status]).to eq(:success)

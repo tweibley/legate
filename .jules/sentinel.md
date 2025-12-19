@@ -1,12 +1,5 @@
-## 2025-12-18 - Script Generation Injection
+## 2024-05-23 - SSRF Protection in HttpClient
 
-**Vulnerability:** User input was interpolated into a generated Bash script inside double quotes (`VAR="#{input}"`). Malicious input containing quotes could break out and execute arbitrary commands when the user runs the script.
-**Learning:** `Shellwords.escape` is essential not just for `system()` calls but also when generating shell scripts programmatically.
-**Prevention:** Use `Shellwords.escape(input)` and remove surrounding quotes in the target script template (e.g., `VAR=#{escaped_input}`).
-
-## 2025-12-17 - [SSRF in WebhookTool]
-
-**Vulnerability:** `ADK::Tools::WebhookTool` allowed agents to send HTTP requests to any URL, including `localhost` and private IPs.
-**Learning:** Tools that accept URLs as input must explicitly validate the destination to prevent Server-Side Request Forgery (SSRF), especially given the agent's ability to explore networks.
-**Prevention:** Implemented `validate_url_security` using `Resolv` and `IPAddr` to block access to private, loopback, and link-local addresses. This pattern should be applied to any future tools making outbound HTTP requests.
-
+**Vulnerability:** Tools using `ADK::Tools::Base::HttpClient` were vulnerable to Server-Side Request Forgery (SSRF) as they could access private networks (localhost, 10.x.x.x, etc.) and cloud metadata services.
+**Learning:** `WebMock` does not intercept `Resolv` calls, so DNS based validation logic executes even in tests using `stub_request`. To properly test SSRF protection without relying on external DNS, one must mock `Resolv` or verify that the protection logic handles resolution failures securely.
+**Prevention:** Implemented a centralized `validate_url_security` method in `HttpClient` that resolves hostnames and checks against `PRIVATE_IP_RANGES`. This enforces SSRF protection for all tools including `HttpClient` (like `WebhookTool`).

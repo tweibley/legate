@@ -4,6 +4,8 @@
 require 'excon'
 require 'json'
 require 'uri' # For URI.join
+require 'resolv'
+require 'ipaddr'
 
 require_relative '../../tool/error' # Use the errors defined in Step 2
 require_relative '../../version'
@@ -31,6 +33,18 @@ module ADK
         end
 
         attr_reader :http_client, :http_base_url
+
+        PRIVATE_IP_RANGES = [
+          IPAddr.new('0.0.0.0/8'),        # Current network (can be localhost)
+          IPAddr.new('127.0.0.0/8'),      # Loopback
+          IPAddr.new('10.0.0.0/8'),       # Private A
+          IPAddr.new('172.16.0.0/12'),    # Private B
+          IPAddr.new('192.168.0.0/16'),   # Private C
+          IPAddr.new('169.254.0.0/16'),   # Link-local
+          IPAddr.new('::1/128'),          # IPv6 Loopback
+          IPAddr.new('fc00::/7'),         # IPv6 Private
+          IPAddr.new('fe80::/10')         # IPv6 Link-local
+        ].freeze
 
         # Make request helpers public API for tools including this module
 
@@ -72,6 +86,8 @@ module ADK
           begin
             @http_base_url = URI.parse(base_url.to_s)
             raise URI::InvalidURIError, 'Scheme must be http or https' unless @http_base_url.is_a?(URI::HTTP) || @http_base_url.is_a?(URI::HTTPS)
+
+            validate_url_security(@http_base_url)
           rescue URI::InvalidURIError => e
             raise ADK::ToolError, "Invalid base_url provided: #{base_url} - #{e.message}", cause: e
           end
@@ -129,6 +145,38 @@ module ADK
           raise ADK::ToolError, "Invalid URL or path provided: #{path} - #{e.message}", cause: e
         end
 
+        def validate_url_security(uri)
+          hostname = uri.host
+          return unless hostname
+
+          ips = begin
+            Resolv.getaddresses(hostname)
+          rescue Resolv::ResolvError
+            []
+          end
+
+          # If DNS resolution fails, try to parse as IP directly
+          if ips.empty?
+            begin
+              IPAddr.new(hostname)
+              ips << hostname
+            rescue IPAddr::InvalidAddressError
+              # Cannot resolve and not an IP - treat as potentially unsafe if we are strict,
+              # or just allow and let Excon fail.
+              return
+            end
+          end
+
+          ips.each do |ip|
+            ip_addr = IPAddr.new(ip)
+            PRIVATE_IP_RANGES.each do |range|
+              raise ADK::ToolSecurityError, "SSRF protection: Request to #{hostname} (#{ip}) blocked because it resolves to a private or loopback address." if range.include?(ip_addr)
+            end
+          rescue IPAddr::InvalidAddressError
+            # Ignore invalid IPs returned by DNS (unlikely)
+          end
+        end
+
         # Centralized method for making HTTP requests and handling common errors/wrapping.
         def make_request(method, path, body: nil, query: {}, headers: {}, options: {})
           # Ensure setup was called, but @http_client might not be used if path is absolute
@@ -142,6 +190,9 @@ module ADK
           request_params[:method] = method
 
           target_uri, is_absolute = resolve_target_uri(path)
+
+          # Validate absolute URLs for SSRF
+          validate_url_security(target_uri) if is_absolute
 
           # Path/Query setup differs slightly for absolute vs relative
           if is_absolute

@@ -20,6 +20,10 @@ module ADK
     end
   end
 
+  # Error raised when a tool attempts an operation that violates security policies,
+  # such as Server-Side Request Forgery (SSRF) attempts or accessing restricted resources.
+  class ToolSecurityError < ToolError; end
+
   # Error raised when a tool encounters a network-related issue during execution,
   # such as connection failures, DNS resolution problems, or SSL/TLS certificate errors
   # that are not specifically timeout or HTTP status errors.
