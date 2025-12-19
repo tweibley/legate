@@ -492,6 +492,40 @@ module ADK
         end
       end
 
+      # Retrieves a value from the state associated with the session.
+      # @param session_id [String] The ID of the session.
+      # @param key [Symbol] The key for the state entry.
+      # @return [Object, nil] The value if found, or nil.
+      def get_state(session_id:, key:)
+        key_str = key.to_s
+        if key_str.include?(':')
+          prefix, real_key = key_str.split(':', 2)
+          return load_scoped_state(prefix, real_key) if ADK::Session::VALID_PREFIXES.include?(prefix)
+        end
+
+        state_json = @redis_client.hget(redis_session_key(session_id), 'state')
+        return nil unless state_json
+
+        begin
+          encrypted = JSON.parse(state_json, symbolize_names: true)
+          process_state_from_storage(encrypted)[key.to_sym]
+        rescue JSON::ParserError => e
+          ADK.logger.error("Failed to parse state JSON for session #{session_id}: #{e.message}")
+          nil
+        end
+      end
+
+      # Sets a key-value pair in the state associated with the session.
+      # @param session_id [String] The ID of the session.
+      # @param key [Symbol] The key for the state entry.
+      # @param value [Object] The value to store.
+      # @return [void]
+      def set_state(session_id:, key:, value:)
+        event = ADK::Event.new(role: :system, content: "Setting state key '#{key}'", state_delta: { key => value })
+        append_event(session_id: session_id, event: event)
+        nil
+      end
+
       # Indicates this session service implementation persists data.
       # @return [Boolean] Always returns true as Redis provides persistence.
       def persistent?

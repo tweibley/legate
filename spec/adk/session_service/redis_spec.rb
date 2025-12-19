@@ -653,4 +653,29 @@ RSpec.describe ADK::SessionService::Redis do
       # ... existing code ...
     end
   end
+
+  describe '#get_state' do
+    it 'retrieves state value' do
+      allow(mock_redis).to receive(:hget).with(session_key, 'state').and_return('{"my_key":"my_value"}')
+      expect(service.get_state(session_id: session_id, key: :my_key)).to eq('my_value')
+    end
+
+    it 'handles scoped state retrieval correctly' do
+      allow(mock_redis).to receive(:get).with('adk:state:user:my_scoped_key').and_return('{"value":"scoped_value"}')
+      expect(service.get_state(session_id: session_id, key: 'user:my_scoped_key')).to eq({ value: 'scoped_value' })
+    end
+  end
+
+  describe '#set_state' do
+    it 'sets state value via append_event' do
+      expect(service).to receive(:append_event) do |args|
+        expect(args[:session_id]).to eq(session_id)
+        event = args[:event]
+        expect(event).to be_a(ADK::Event)
+        expect(event.state_delta).to eq({ my_key: 'new_value' })
+      end
+
+      service.set_state(session_id: session_id, key: :my_key, value: 'new_value')
+    end
+  end
 end
