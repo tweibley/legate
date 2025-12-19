@@ -177,7 +177,8 @@ module ADK
     def self.from_h(hash)
       sym_hash = hash.transform_keys(&:to_sym) # Ensure keys are symbols
       events_data = sym_hash[:events] || []
-      events = events_data.map { |event_hash| ADK::Event.from_h(event_hash.transform_keys(&:to_sym)) }.compact
+      # Optimization: Pass event hash directly to Event.from_h which handles string/symbol keys efficiently
+      events = events_data.map { |event_hash| ADK::Event.from_h(event_hash) }.compact
 
       new(
         id: sym_hash[:id],
