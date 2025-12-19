@@ -3,6 +3,16 @@
 module ADK
   class Tool
     # Module to provide a more concise DSL for defining tool metadata.
+    #
+    # @example Defining a tool with metadata
+    #   class Calculator < ADK::Tool
+    #     tool_description "Performs basic arithmetic operations"
+    #
+    #     parameter :expression,
+    #       type: :string,
+    #       description: "Mathematical expression to evaluate (e.g., '2 + 2')",
+    #       required: true
+    #   end
     module MetadataDsl
       def self.included(base)
         base.extend ClassMethods
@@ -50,14 +60,25 @@ module ADK
         end
       end
 
+      # DSL methods mixed into the tool class.
       module ClassMethods
-        # DSL method for setting description
+        # Sets the description of the tool.
+        #
+        # @param text [String] A clear explanation of what the tool does (used by the planner)
+        # @return [String] The set description
         def tool_description(text)
           initialize_dsl_storage # Ensure vars exist
           self.description = text.to_s
         end
 
-        # DSL method for defining a parameter
+        # Defines a parameter for the tool.
+        #
+        # @param name [Symbol] The name of the parameter
+        # @param options [Hash] Parameter configuration
+        # @option options [Symbol] :type The expected type (:string, :integer, :boolean, :array, :hash)
+        # @option options [String] :description Description of the parameter for the LLM
+        # @option options [Boolean] :required (false) Whether the parameter is mandatory
+        # @return [Hash] The set parameter definition
         def parameter(name, options = {})
           initialize_dsl_storage # Ensure hash exists
           raise ArgumentError, 'Parameter name must be a Symbol' unless name.is_a?(Symbol)

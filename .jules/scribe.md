@@ -1,3 +1,9 @@
+## 2025-12-19 - Tool DSL Undocumented
+
+**Gap:** `ADK::Tool::MetadataDsl` had zero documentation for `parameter` and `tool_description`, forcing developers to read source code or rely on examples elsewhere to know valid options like `:type` or `:required`.
+**Learning:** DSLs are the primary user interface for a framework; they must be self-documenting with clear parameter options.
+**Action:** Prioritize documenting DSL modules over internal implementation details.
+
 ## 2025-12-18 - ADK::Planner Documentation Gap
 
 **Gap:** `ADK::Planner` was undocumented despite being the central orchestration component for LLM planning. Its return structure was implicit.
@@ -9,4 +15,3 @@
 **Gap:** `ADK::Tool#perform_execution` return type is documented as `Object` but the framework expects a structured Hash `{:status, :result}`, leading to potential runtime errors for new tool developers.
 **Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
 **Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
-
