@@ -6,3 +6,8 @@
 2. Automatically coerce string inputs to the expected type (Integer, Float, Boolean, JSON Array/Hash) based on DSL definition.
 3. Validate types strictly if coercion fails.
 This improves CLI ergonomics (no need to manually parse strings in tools) and debugging speed.
+
+## 2024-05-24 - Helpful Parameter Typo Suggestions
+
+**Learning:** Since `ADK::Tool` gracefully ignores extra parameters, traditional "unknown argument" errors are impossible to trigger. However, missing required parameters often stem from typos (e.g., `:locatoin` vs `:location`).
+**Action:** Enhanced `validate_and_coerce_params` to use `DidYouMean` (if available) to scan provided parameters for similarities to *missing required* parameters, offering specific "Did you mean?" suggestions in the error message.

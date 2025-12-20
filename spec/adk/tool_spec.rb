@@ -84,6 +84,13 @@ RSpec.describe ADK::Tool do
       expect { tool_instance.execute({}, context) }.to raise_error(ADK::Error, /Missing required parameters for tool 'dummy': req/)
     end
 
+    it 'suggests corrections for misspelled parameters when did_you_mean is available' do
+      # Pass a typo 'reeq' instead of 'req'
+      expect {
+        tool_instance.execute({ reeq: 'value' }, context)
+      }.to raise_error(ADK::Error, /Found 'reeq', did you mean 'req'/)
+    end
+
     it 'handles context being nil (for potential backward compatibility)' do
       expect { tool_instance.execute(params, nil) }.not_to raise_error
       expect(tool_instance.received_context).to be_nil

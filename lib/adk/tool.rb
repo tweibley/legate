@@ -7,6 +7,11 @@ require_relative 'tool_context'
 require_relative 'global_tool_manager'
 require_relative 'tool/metadata_dsl'
 require 'json'
+begin
+  require 'did_you_mean'
+rescue LoadError
+  # did_you_mean is not strictly required, but provides better error messages
+end
 
 module ADK
   # Base class for all tools that can be used by Agents.
@@ -71,7 +76,7 @@ module ADK
       #   ...
       # end
       # --- End Fallback Metadata Method ---
-    end # End Class-level
+    end
     # --- End Class-level ---
 
     # --- Self-Registration Hook ---
@@ -153,6 +158,8 @@ module ADK
         msg = "Missing required parameters for tool '#{@name}': #{missing_params.join(', ')}."
         msg += " Provided: [#{present_keys.empty? ? 'None' : present_keys.join(', ')}]."
 
+        msg += suggest_missing_params_corrections(missing_params, present_keys)
+
         ADK.logger.error("Validation failed: #{msg} Params: #{params.inspect}")
         raise ADK::ToolArgumentError, msg
       end
@@ -180,6 +187,21 @@ module ADK
     end
 
     private
+
+    # Generate "Did you mean?" suggestions for missing parameters
+    def suggest_missing_params_corrections(missing_params, present_keys)
+      return '' unless defined?(DidYouMean::SpellChecker)
+
+      suggestions_msg = ''
+      missing_params.each do |missing_param|
+        checker = DidYouMean::SpellChecker.new(dictionary: present_keys)
+        suggestions = checker.correct(missing_param)
+        suggestions.each do |suggestion|
+          suggestions_msg += " Found '#{suggestion}', did you mean '#{missing_param}'?"
+        end
+      end
+      suggestions_msg
+    end
 
     # Coerce a value to the expected type
     def coerce_value(value, type)
