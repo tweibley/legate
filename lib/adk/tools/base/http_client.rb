@@ -4,6 +4,8 @@
 require 'excon'
 require 'json'
 require 'uri' # For URI.join
+require 'resolv'
+require 'ipaddr'
 
 require_relative '../../tool/error' # Use the errors defined in Step 2
 require_relative '../../version'
@@ -72,6 +74,9 @@ module ADK
           begin
             @http_base_url = URI.parse(base_url.to_s)
             raise URI::InvalidURIError, 'Scheme must be http or https' unless @http_base_url.is_a?(URI::HTTP) || @http_base_url.is_a?(URI::HTTPS)
+
+            # Validates the base URL host to prevent pointing to internal services
+            validate_url_security(@http_base_url.host)
           rescue URI::InvalidURIError => e
             raise ADK::ToolError, "Invalid base_url provided: #{base_url} - #{e.message}", cause: e
           end
@@ -114,8 +119,6 @@ module ADK
           end
         end
 
-        # TODO: Add any private helper methods if needed
-
         private
 
         def resolve_target_uri(path)
@@ -127,6 +130,30 @@ module ADK
           end
         rescue URI::InvalidURIError => e
           raise ADK::ToolError, "Invalid URL or path provided: #{path} - #{e.message}", cause: e
+        end
+
+        # Validates that the target host is not a private, loopback, or link-local address (SSRF protection).
+        # @param hostname [String] The hostname or IP address to validate.
+        # @raise [ADK::ToolSecurityError] If the host resolves to a restricted IP address.
+        def validate_url_security(hostname)
+          # Resolve hostname to IPs (handles both IPv4 and IPv6)
+          begin
+            ips = Resolv.getaddresses(hostname)
+          rescue Resolv::ResolvError => e
+            raise ADK::ToolSecurityError, "Could not resolve hostname: #{hostname}", cause: e
+          end
+
+          # If no IPs found (rare if no error raised), treat as error
+          raise ADK::ToolSecurityError, "Could not resolve hostname: #{hostname}" if ips.empty?
+
+          ips.each do |ip_str|
+            ip = IPAddr.new(ip_str)
+            raise ADK::ToolSecurityError, "Security Error: Blocked access to restricted network address #{ip_str} (#{hostname})" if ip.loopback? || ip.link_local? || ip.private?
+          rescue IPAddr::InvalidAddressError
+            # If we can't parse the IP, we should probably be safe and block it, or log it.
+            # But Resolv should return valid IP strings.
+            raise ADK::ToolSecurityError, "Security Error: Invalid IP address resolved: #{ip_str}"
+          end
         end
 
         # Centralized method for making HTTP requests and handling common errors/wrapping.
@@ -142,6 +169,9 @@ module ADK
           request_params[:method] = method
 
           target_uri, is_absolute = resolve_target_uri(path)
+
+          # If the user provided an absolute URL, we must validate its security
+          validate_url_security(target_uri.host) if is_absolute
 
           # Path/Query setup differs slightly for absolute vs relative
           if is_absolute

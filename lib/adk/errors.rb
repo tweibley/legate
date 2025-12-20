@@ -32,6 +32,9 @@ module ADK
   # Raise this when input parameters fail validation within the tool's logic.
   class ToolArgumentError < ToolError; end
 
+  # Raised when a security violation is detected within a tool (e.g., SSRF attempt).
+  class ToolSecurityError < ToolError; end
+
   # --- Agent and Session Errors ---
   # Placeholder for potential future errors related to agent lifecycle or session management
 

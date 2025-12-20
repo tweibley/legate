@@ -5,6 +5,7 @@ require 'spec_helper'
 require 'adk/tools/webhook_tool'
 require 'adk/tool_context'
 require 'webmock/rspec'
+require 'adk/errors'
 
 RSpec.describe ADK::Tools::WebhookTool do
   let(:context) { instance_double('ADK::ToolContext') }
@@ -24,7 +25,7 @@ RSpec.describe ADK::Tools::WebhookTool do
 
       expect {
         tool.execute({ url: url, payload: payload }, context: context)
-      }.to raise_error(ADK::ToolArgumentError, /Security Error: Blocked access/)
+      }.to raise_error(ADK::ToolSecurityError, /Security Error: Blocked access/)
     end
 
     it 'blocks requests to private IPs' do
@@ -32,7 +33,7 @@ RSpec.describe ADK::Tools::WebhookTool do
 
       expect {
         tool.execute({ url: url, payload: payload }, context: context)
-      }.to raise_error(ADK::ToolArgumentError, /Security Error: Blocked access/)
+      }.to raise_error(ADK::ToolSecurityError, /Security Error: Blocked access/)
     end
 
     it 'blocks requests to cloud metadata' do
@@ -40,7 +41,7 @@ RSpec.describe ADK::Tools::WebhookTool do
 
       expect {
         tool.execute({ url: url, payload: payload }, context: context)
-      }.to raise_error(ADK::ToolArgumentError, /Security Error: Blocked access/)
+      }.to raise_error(ADK::ToolSecurityError, /Security Error: Blocked access/)
     end
 
     it 'allows requests to public IPs' do

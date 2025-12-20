@@ -6,8 +6,6 @@ require_relative 'base/http_client'
 require 'openssl'
 require 'json'
 require 'uri'
-require 'resolv'
-require 'ipaddr'
 
 module ADK
   module Tools
@@ -31,7 +29,7 @@ module ADK
         super(**options)
         # Provide a dummy base_url, required by setup_http_client.
         # The actual target URL is provided absolute in perform_execution.
-        setup_http_client(base_url: 'https://placeholder.invalid')
+        setup_http_client(base_url: 'https://8.8.8.8')
       end
 
       private
@@ -50,7 +48,7 @@ module ADK
         begin
           uri = URI.parse(target_url)
           raise URI::InvalidURIError, 'URL must be http or https' unless uri.is_a?(URI::HTTP) || uri.is_a?(URI::HTTPS)
-          validate_url_security(uri.host)
+          # Security validation is now handled by HttpClient#make_request
         rescue URI::InvalidURIError => e
           raise ADK::ToolArgumentError, "Invalid URL provided: #{target_url} - #{e.message}", cause: e
         end
@@ -91,34 +89,6 @@ module ADK
         rescue ADK::ToolError => e
           ADK.logger.error("WebhookTool: Error sending webhook to #{target_url}: #{e.message}")
           raise
-        end
-      end
-
-      # Validates that the target host is not a private, loopback, or link-local address (SSRF protection).
-      # @param hostname [String] The hostname or IP address to validate.
-      # @raise [ADK::ToolArgumentError] If the host resolves to a restricted IP address.
-      def validate_url_security(hostname)
-        # Resolve hostname to IPs (handles both IPv4 and IPv6)
-        begin
-          ips = Resolv.getaddresses(hostname)
-        rescue Resolv::ResolvError => e
-          raise ADK::ToolArgumentError, "Could not resolve hostname: #{hostname}", cause: e
-        end
-
-        # If no IPs found (rare if no error raised), treat as error
-        raise ADK::ToolArgumentError, "Could not resolve hostname: #{hostname}" if ips.empty?
-
-        ips.each do |ip_str|
-          begin
-            ip = IPAddr.new(ip_str)
-            if ip.loopback? || ip.link_local? || ip.private?
-              raise ADK::ToolArgumentError, "Security Error: Blocked access to restricted network address #{ip_str} (#{hostname})"
-            end
-          rescue IPAddr::InvalidAddressError
-            # If we can't parse the IP, we should probably be safe and block it, or log it.
-            # But Resolv should return valid IP strings.
-            raise ADK::ToolArgumentError, "Security Error: Invalid IP address resolved: #{ip_str}"
-          end
         end
       end
     end
