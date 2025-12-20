@@ -10,3 +10,8 @@
 **Learning:** The method signature `def execute(params = {}, context = nil)` only handles missing arguments, not explicit `nil`.
 **Action:** Future reliability improvements should guard against `nil` input in `execute` to prevent crashes.
 
+## 2025-12-20 - [Logger Injection Ignored in ToolContext]
+
+**Gap:** `ADK::ToolContext` accepts a `logger` argument in `#initialize` but completely ignores it, using the global `ADK.logger` in all methods.
+**Learning:** Tests passing a mock logger to the constructor will fail to intercept log calls because the class relies on the global singleton.
+**Action:** Always verify if injected dependencies are actually used; mock the global `ADK.logger` for this class instead of using dependency injection.
