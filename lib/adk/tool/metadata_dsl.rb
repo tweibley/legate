@@ -51,13 +51,28 @@ module ADK
       end
 
       module ClassMethods
-        # DSL method for setting description
+        # Sets the description of the tool.
+        # This description is used by the Planner to understand when to use this tool.
+        #
+        # @param text [String] The description of the tool's purpose and capabilities.
+        # @return [String] The set description.
         def tool_description(text)
           initialize_dsl_storage # Ensure vars exist
           self.description = text.to_s
         end
 
-        # DSL method for defining a parameter
+        # Defines a parameter that the tool accepts.
+        #
+        # @param name [Symbol] The name of the parameter.
+        # @param options [Hash] Configuration options for the parameter.
+        # @option options [Symbol] :type The expected type of the parameter.
+        #   Supported types: :string, :integer, :float, :numeric, :boolean, :array, :hash.
+        #   If omitted, no type coercion is performed.
+        # @option options [Boolean] :required (false) Whether the parameter is mandatory.
+        # @option options [String] :description A description of the parameter for the LLM.
+        # @return [Hash] The registered parameter options.
+        # @example Defining a location parameter
+        #   parameter :location, type: :string, required: true, description: 'City name (e.g. San Francisco)'
         def parameter(name, options = {})
           initialize_dsl_storage # Ensure hash exists
           raise ArgumentError, 'Parameter name must be a Symbol' unless name.is_a?(Symbol)
