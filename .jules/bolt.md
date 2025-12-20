@@ -13,3 +13,7 @@
 **Learning:** Tool metadata resolution (`tool_metadata`, which infers names and consolidates DSL/legacy attributes) was being recalculated on every tool instantiation. Since tools are instantiated frequently (e.g., every step in `execute_plan` and during planning prompts), this was a significant overhead (~1.03s vs 0.07s for 100k instantiations).
 **Action:** Implemented caching for `tool_metadata` using `@_tool_metadata_cache`. Replaced `attr_accessor` with manual setters in `MetadataDsl` to ensure proper cache invalidation when metadata changes. Always look for "static" calculations in hot paths (like class instantiation) that can be memoized.
 
+## 2025-12-19 - [Session Deserialization Optimization]
+
+**Learning:** `ADK::Session.from_h` was calling `transform_keys(&:to_sym)` on every event hash before passing it to `ADK::Event.from_h`. Since `ADK::Event.from_h` already handles string keys efficiently, this created N redundant intermediate hashes during session loading.
+**Action:** Removed the redundant transformation in the loop. Always check if the callee handles input normalization before performing it in the caller, especially in O(N) loops.

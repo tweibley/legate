@@ -444,5 +444,16 @@ RSpec.describe ADK::Session do
       expect(logger_spy).to receive(:error).with(/Session\.from_h: Failed to deserialize.*Error:.*Data:.*#{Regexp.escape(bad_timestamp_hash.inspect)}/m)
       expect(described_class.from_h(bad_timestamp_hash)).to be_nil
     end
+
+    it '.from_h handles hash with string keys (optimization verification)' do
+      # Simulate JSON.parse result where keys are strings
+      string_key_hash = JSON.parse(JSON.generate(session_hash))
+      deserialized = described_class.from_h(string_key_hash)
+
+      expect(deserialized).to be_a(ADK::Session)
+      expect(deserialized.id).to eq(session_id)
+      expect(deserialized.events.size).to eq(1)
+      expect(deserialized.events.first.content).to eq('hi')
+    end
   end
 end
