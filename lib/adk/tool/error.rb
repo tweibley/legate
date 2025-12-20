@@ -20,13 +20,18 @@ module ADK
     end
   end
 
+  # Raised specifically when tool arguments are invalid (e.g., missing, wrong type).
+  # Inherits from {ADK::ToolError}.
+  # Raise this when input parameters fail validation within the tool's logic.
+  class ToolArgumentError < ToolError; end
+
   # Error raised when a tool encounters a network-related issue during execution,
   # such as connection failures, DNS resolution problems, or SSL/TLS certificate errors
   # that are not specifically timeout or HTTP status errors.
   class ToolNetworkError < ToolError; end
 
   # Error raised specifically when an SSL/TLS certificate verification fails during an HTTP request.
-  # Inherits from ToolNetworkError as it\'s a specific type of network problem.
+  # Inherits from ToolNetworkError as it's a specific type of network problem.
   class ToolCertificateError < ToolNetworkError; end
 
   # Error raised when a tool operation times out, typically during network requests

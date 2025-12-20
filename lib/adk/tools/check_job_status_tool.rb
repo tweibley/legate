@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 require_relative '../tool'
-require_relative '../error'
+require_relative '../errors'
 require 'sidekiq/api' # For checking job status
 require 'redis'       # For retrieving results
 require 'json'        # For parsing results
