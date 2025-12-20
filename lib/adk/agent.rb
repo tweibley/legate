@@ -211,6 +211,7 @@ module ADK
       @fallback_mode = definition.fallback_mode # Assumes :error is default in AgentDefinition
       @selected_tool_names = definition.tool_names.to_a # Tool names are directly from definition
 
+      @planner = planner_override || ADK::Planner.new(agent: self, model_name: @model_name)
       # MAS Attributes Initialization
       @parent_agent = nil # Will be set by parent if this is a sub-agent
       @sub_agents = []    # Will be populated if this agent has sub-agents defined
@@ -300,8 +301,6 @@ module ADK
 
       @selected_tool_names = @definition.tool_names.to_a # Ensure this uses the definition
       @mcp_clients = [] # Store active MCP client instances
-
-      @planner = planner_override || ADK::Planner.new(agent: self, model_name: @model_name)
 
       # Validate essential components using respond_to? for duck typing
       unless @session_service&.respond_to?(:get_session) && @session_service&.respond_to?(:append_event)

@@ -33,7 +33,8 @@ module ADK
       @api_key = options[:api_key] || ENV['GOOGLE_API_KEY']
       @client = nil
       # Determine model to use: passed param > agent default > hardcoded default (fallback)
-      @configured_model_name = model_name && !model_name.empty? ? model_name : ADK::Agent::DEFAULT_MODEL
+      @model_name = model_name && !model_name.empty? ? model_name : ADK::Agent::DEFAULT_MODEL
+      @configured_model_name = @model_name # Keep for client init
 
       if @api_key.nil? || @api_key.empty?
         @logger.error('GOOGLE_API_KEY not found. GeminiPlanner requires an API key.')
