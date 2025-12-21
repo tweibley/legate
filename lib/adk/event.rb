@@ -22,6 +22,10 @@ module ADK
   # @!attribute [r] event_id
   #   @return [String] A unique ID for this specific event instance.
   Event = Struct.new(:role, :content, :timestamp, :tool_name, :state_delta, :event_id, keyword_init: true) do
+    # Constants for validation to avoid array allocation
+    VALID_ROLES = %i[user agent tool_request tool_result].freeze
+    TOOL_ROLES = %i[tool_request tool_result].freeze
+
     # @param role [Symbol] :user, :agent, :tool_request, :tool_result
     # @param content [String, Hash] Event payload. Should be JSON-serializable.
     # @param timestamp [Time, nil] Timestamp (defaults to Time.now.utc).
@@ -30,11 +34,11 @@ module ADK
     # @param event_id [String, nil] Unique event ID (defaults to SecureRandom.uuid).
     def initialize(role:, content:, timestamp: nil, tool_name: nil, state_delta: nil, event_id: nil)
       # Basic validation
-      unless %i[user agent tool_request tool_result].include?(role)
+      unless VALID_ROLES.include?(role)
         raise ArgumentError, "Invalid role: #{role}. Must be :user, :agent, :tool_request, or :tool_result."
       end
 
-      if %i[tool_request tool_result].include?(role) && (tool_name.nil? || !tool_name.is_a?(Symbol))
+      if TOOL_ROLES.include?(role) && (tool_name.nil? || !tool_name.is_a?(Symbol))
         ADK.logger.warn("Event: :#{role} event created without a valid :tool_name symbol.")
       end
 
