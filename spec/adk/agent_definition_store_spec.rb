@@ -161,6 +161,19 @@ RSpec.describe ADK::AgentDefinitionStore do
     end
   end
 
+  describe '.all_names' do
+    it 'returns all agent names from Redis' do
+      expect(mock_redis).to receive(:smembers).with(redis_set_key).and_return(%w[agent1 agent2])
+      expect(described_class.all_names).to contain_exactly('agent1', 'agent2')
+    end
+
+    it 'returns empty array on Redis error' do
+      expect(mock_redis).to receive(:smembers).and_raise(Redis::BaseError, 'Fail')
+      expect(ADK.logger).to receive(:error).with(/Failed to load agent names/)
+      expect(described_class.all_names).to eq([])
+    end
+  end
+
   describe '.save_to_redis' do
     let(:expected_redis_data) do
       {

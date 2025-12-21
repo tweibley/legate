@@ -73,6 +73,18 @@ module ADK
       "#{REDIS_AGENT_HASH_PREFIX}#{name}"
     end
 
+    # Get all agent names from Redis.
+    # @return [Array<String>] List of agent names.
+    def self.all_names
+      redis = Redis.new(ADK.redis_options)
+      redis.smembers(REDIS_AGENTS_SET_KEY)
+    rescue Redis::BaseError => e
+      ADK.logger.error("AgentDefinitionStore: Failed to load agent names from Redis: #{e.message}")
+      []
+    ensure
+      redis&.close
+    end
+
     # Save/update a definition to Redis.
     # @param name [Symbol, String] Agent name.
     # @param definition_hash [Hash] Definition data.
