@@ -69,7 +69,7 @@ $ gem install adk-ruby
 - `RACK_ENV`: Set to `development` or `production` (default: `development`)
 - `ADK_LOG_LEVEL`: Logging level (default: `DEBUG` in development, `WARN` otherwise, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, `NONE`).
 - `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379/0`). Used for session storage (if using Redis) and Sidekiq.
-- `GEMINI_API_KEY`: Your Google API key for the planner (required if using default `ADK::Planner`).
+- `GOOGLE_API_KEY`: Your Google API key for the planner (required if using default `ADK::Planner`).
 - `HTTP_PROXY`, `HTTPS_PROXY`: Standard proxy variables if needed for LLM API calls.
 
 ### Redis Setup
@@ -138,13 +138,12 @@ For the asynchronous job feature:
 
 ## Quick Start
 
-1.  **Create a `.env` file:**
+1.  **Setup Environment:**
+   ```bash
+   bin/setup
    ```
-   RACK_ENV=development
-   ADK_LOG_LEVEL=DEBUG  # Optional, for detailed logging
-   REDIS_URL=redis://localhost:6379/0
-   GEMINI_API_KEY=your_gemini_api_key_here
-   ```
+   This will install dependencies and create a `.env` file from `.env.example`.
+   Edit `.env` to add your `GOOGLE_API_KEY`.
 
 2.  **(Optional) Run Sidekiq Workers:** If using async tools, start workers using the ADK CLI (see Sidekiq Setup).
 
@@ -516,9 +515,11 @@ After checking out the repo:
    ```
 
 2. **Setup Environment:**
+   ```bash
+   bin/setup
+   ```
    - Ensure Redis is running
-   - Create a `.env` file with required variables (see Configuration)
-   - Set `ADK_LOG_LEVEL=DEBUG` for detailed logging
+   - Edit `.env` to set `GOOGLE_API_KEY`
 
 3. **Run Tests:**
    ```bash
