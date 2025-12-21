@@ -60,9 +60,9 @@ RSpec.describe 'Agent MCP Fix' do
         # Don't actually call start/stop since that requires more mocking
       }.not_to raise_error
 
-      # Test specific connect_mcp_servers method without the agent.start wrapper
+      # Test ConnectionManager logic
       expect {
-        agent.send(:connect_mcp_servers)
+        agent.instance_variable_get(:@mcp_connection_manager).connect_all
       }.not_to raise_error
     end
 
@@ -101,9 +101,9 @@ RSpec.describe 'Agent MCP Fix' do
         # Don't actually call start/stop since that requires more mocking
       }.not_to raise_error
 
-      # Test specific connect_mcp_servers method without the agent.start wrapper
+      # Test ConnectionManager logic
       expect {
-        agent.send(:connect_mcp_servers)
+        agent.instance_variable_get(:@mcp_connection_manager).connect_all
       }.not_to raise_error
     end
   end
