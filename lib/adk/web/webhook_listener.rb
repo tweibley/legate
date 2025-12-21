@@ -94,193 +94,33 @@ module ADK
 
       # Dynamic route handler using pattern matching
       post '*' do
-        webhook_config = ADK.config.webhooks
-        agent_name_sym = nil
+        agent_name_sym = match_and_authorize_dynamic_route!
 
-        # Match request path against configured pattern
-        configured_pattern = webhook_config.dynamic_agent_route_pattern
-        pattern = Mustermann.new(configured_pattern, type: :sinatra)
-        match_params = pattern.params(request.path_info)
+        logger.info("WebhookListener: Processing dynamic agent trigger for: #{agent_name_sym}")
 
-        # Only proceed if the pattern matches
-        unless match_params
-          return pass # Didn't match dynamic pattern, try other routes (static, not_found)
-        end
+        # Load agent definition
+        definition_hash, in_memory_definition = fetch_agent_definition(agent_name_sym)
 
-        # Pattern matched. Now check if handler enabled.
-        unless webhook_config.enable_dynamic_agent_handler
-          logger.warn('Webhook dynamic route matched, but handler is disabled.')
-          halt 403, json({ status: :error, error_message: 'Dynamic agent webhooks are disabled.' }) # Explicit 403
-        end
-
-        # Handler enabled and pattern matched. Extract agent name.
-        agent_name_param = match_params['agent_name']
-        if agent_name_param
-          agent_name_sym = agent_name_param.to_sym
-        else
-          logger.error("Webhook dynamic route matched, but required 'agent_name' parameter missing in pattern or path.")
-          # Consider this a server config error if name is expected but missing
-          halt 500, json({ status: :error, error_message: 'Internal Server Error: Route configuration issue.' })
-        end
-
-        # --- Handler Logic (Agent name confirmed) ---
         # Read raw body *first* for validation purposes
         request.body.rewind
         raw_request_body = request.body.read
         request.body.rewind # Rewind again for potential JSON parsing or handler use
 
-        parsed_json_body = env['rack.input.json'] # Parsed by 'before' hook if Content-Type was JSON
+        # Validate request
+        validate_webhook_request!(agent_name_sym, definition_hash, in_memory_definition)
 
-        logger.info("WebhookListener: Processing dynamic agent trigger for: #{agent_name_sym}")
+        # Transform payload
+        parsed_json_body = env['rack.input.json']
+        payload_for_transform = parsed_json_body || raw_request_body
+        transformed_user_input = transform_payload(agent_name_sym, in_memory_definition, payload_for_transform)
 
-        # Load agent definition (errors handled by Sinatra error blocks)
-        store = ADK.config.definition_store
-        raise ADK::ConfigurationError, 'Definition store not available via ADK.config.definition_store' unless store
+        # Extract Session ID
+        session_id = extract_session_id(agent_name_sym, in_memory_definition, payload_for_transform)
 
-        # --- MODIFIED: Fetch hash AND in-memory definition --- #
-        definition_hash = store.get_definition(agent_name_sym)
-        in_memory_definition = ADK::GlobalDefinitionRegistry.find(agent_name_sym)
+        # Enqueue Job
+        job_id = enqueue_webhook_job(agent_name_sym, session_id, transformed_user_input)
 
-        unless in_memory_definition
-          # This indicates the agent definition file wasn't loaded in the listener process
-          logger.error("WebhookListener: In-memory definition for :#{agent_name_sym} not found in GlobalDefinitionRegistry.")
-          halt 500, json({ status: :error, error_message: 'Internal Server Error: Agent definition not loaded.' })
-        end
-
-        # --- Check webhook_enabled using the HASH from the store --- #
-        unless definition_hash && definition_hash[:webhook_enabled]
-          logger.warn("Agent '#{agent_name_sym}' is not enabled for webhooks (webhook_enabled=false or definition hash missing). Definition Hash: #{definition_hash.inspect}")
-          halt 404, json({ status: :error, error_message: 'Webhook endpoint not found for this agent.' })
-        end
-
-        # Perform Validation (Use HASH for secret, IN-MEMORY for validator proc/symbol)
-        validator_config = in_memory_definition.webhook_validator || webhook_config.global_validator
-        # Use agent secret, falling back to global secret if available
-        secret = definition_hash[:webhook_secret] || webhook_config.global_secret
-        if validator_config
-          validator_proc = validator_config.is_a?(Proc) ? validator_config : webhook_config.find_validator(validator_config)
-
-          if validator_proc.nil?
-            logger.error("Webhook validation failed for '#{agent_name_sym}': Validator '#{validator_config}' not found.")
-            halt 500, json({ status: :error, error_message: 'Internal Server Error: Validator configuration issue.' })
-          end
-
-          begin
-            is_valid = validator_proc.call(request, secret)
-            unless is_valid
-              logger.warn("Webhook validation failed for agent '#{agent_name_sym}'.")
-              halt 401,
-                   json({ status: :error, error_message: 'Unauthorized: Invalid request signature or credentials.' })
-            end
-            logger.debug("Webhook validation successful for agent '#{agent_name_sym}'.")
-          rescue StandardError => e
-            logger.error("Error during webhook validation for '#{agent_name_sym}': #{e.message}")
-            halt 500, json({ status: :error, error_message: 'Internal Server Error during validation.' })
-          end
-        else
-          logger.debug("No validator configured for agent '#{agent_name_sym}', skipping validation.")
-        end
-
-        # 5. Perform Transformation (Required if webhook_enabled is true)
-        # --- USE IN-MEMORY DEFINITION FOR PROC --- #
-        transformer = in_memory_definition.webhook_transformer
-        unless transformer.is_a?(Proc)
-          logger.error("Webhook configuration error for '#{agent_name_sym}': Missing webhook_transformer Proc in in-memory definition.")
-          halt 500,
-               json({ status: :error,
-                      error_message: 'Internal Server Error: Agent webhook configuration incomplete (transformer).' })
-        end
-
-        begin
-          # Pass the parsed JSON body if available, otherwise the raw body string
-          payload_for_transform = parsed_json_body || raw_request_body
-          transformed_user_input = transformer.call(payload_for_transform)
-          logger.debug("Webhook payload transformed successfully for agent '#{agent_name_sym}'.")
-        rescue ADK::WebhookConfigurationError => e
-          # Re-raise specific config errors to be caught by dedicated handler
-          raise e
-        rescue StandardError => e
-          logger.error("Error during webhook transformation for '#{agent_name_sym}': #{e.class} - #{e.message}")
-          halt 500, json({ status: :error, error_message: 'Internal Server Error during payload transformation.' })
-        end
-
-        # 6. Extract Session ID (Required if webhook_enabled is true)
-        # --- USE IN-MEMORY DEFINITION FOR PROC --- #
-        extractor = in_memory_definition.webhook_session_extractor
-        unless extractor.is_a?(Proc)
-          logger.error("Webhook configuration error for '#{agent_name_sym}': Missing webhook_session_extractor Proc in in-memory definition.")
-          halt 500,
-               json({ status: :error,
-                      error_message: 'Internal Server Error: Agent webhook configuration incomplete (session extractor).' })
-        end
-
-        begin
-          # Pass the parsed JSON body if available, otherwise the raw body string
-          payload_for_extract = parsed_json_body || raw_request_body
-          session_id = extractor.call(payload_for_extract)
-          raise ADK::WebhookConfigurationError,
-                'Session extractor must return a non-empty String session ID.' unless session_id.is_a?(String) && !session_id.strip.empty?
-
-          logger.debug("Webhook session ID extracted successfully for agent '#{agent_name_sym}': #{session_id}")
-        rescue ADK::WebhookConfigurationError => e
-          # Re-raise specific config errors to be caught by dedicated handler
-          raise e
-        rescue StandardError => e
-          logger.error("Error during webhook session extraction for '#{agent_name_sym}': #{e.class} - #{e.message}")
-          halt 500, json({ status: :error, error_message: 'Internal Server Error during session ID extraction.' })
-        end
-
-        # 7. Enqueue Job
-        begin
-          # TODO: Define ADK::WebhookJobWorker class
-          # worker_class = ADK::WebhookJobWorker
-          worker_class_name = 'ADK::WebhookJobWorker' # Use string name for Sidekiq
-
-          # Prepare session service config (assuming Redis for now based on user prompt)
-          # We need the config used by the worker, not necessarily the instance itself.
-          # ADK.redis_options provides the base Redis config hash.
-          session_service_config = ADK.redis_options.dup
-          # Optionally add type marker if multiple service types could be used?
-          # session_service_config[:type] = :redis # Symbols might not serialize well
-
-          # --- Ensure config keys are strings for Sidekiq ---
-          string_key_config = session_service_config.transform_keys(&:to_s)
-          string_key_config['type'] = 'redis' # Use string type marker
-          # --------------------------------------------------
-
-          job_payload = {
-            'agent_definition_name' => agent_name_sym.to_s,
-            'session_id' => session_id,
-            'transformed_user_input' => transformed_user_input,
-            'session_service_config' => string_key_config # Use stringified keys
-          }
-
-          # Use Sidekiq Client API directly
-          job_id = Sidekiq::Client.push(
-            'queue' => 'adk_webhooks', # TODO: Make queue name configurable?
-            'class' => worker_class_name,
-            'args' => [job_payload]
-          )
-
-          if job_id.nil?
-            logger.error("Failed to enqueue webhook job for agent '#{agent_name_sym}': Sidekiq push returned nil.")
-            halt 503, json({ status: :error, error_message: 'Service Unavailable: Failed to queue background job.' })
-          end
-
-          logger.info("Webhook job enqueued successfully for agent '#{agent_name_sym}'. Session: #{session_id}, Job ID: #{job_id}")
-
-        # Catch standard errors during push, differentiate status code
-        rescue Redis::CannotConnectError => e
-          logger.error("Failed to enqueue webhook job (Redis Connect Error) for agent '#{agent_name_sym}': #{e.class} - #{e.message}")
-          halt 503, json({ status: :error, error_message: 'Service Unavailable: Error connecting to job queue.' })
-        rescue StandardError => e
-          logger.error("Unexpected error during job enqueuing for '#{agent_name_sym}': #{e.class} - #{e.message}")
-          # Check if it's likely a Sidekiq issue vs. other standard error?
-          # For now, return 500 for unexpected errors during this phase.
-          halt 500, json({ status: :error, error_message: 'Internal Server Error during job queuing.' })
-        end
-
-        # 8. Return 202 Accepted
+        # Return 202 Accepted
         content_type :json
         status 202
         json({ status: :accepted, message: "Request for agent '#{agent_name_sym}' accepted and queued.",
@@ -299,6 +139,149 @@ module ADK
       end
 
       private
+
+      def match_and_authorize_dynamic_route!
+        webhook_config = ADK.config.webhooks
+        configured_pattern = webhook_config.dynamic_agent_route_pattern
+        pattern = Mustermann.new(configured_pattern, type: :sinatra)
+        match_params = pattern.params(request.path_info)
+
+        # Only proceed if the pattern matches
+        unless match_params
+          return pass # Didn't match dynamic pattern, try other routes (static, not_found)
+        end
+
+        # Pattern matched. Now check if handler enabled.
+        unless webhook_config.enable_dynamic_agent_handler
+          logger.warn('Webhook dynamic route matched, but handler is disabled.')
+          halt 403, json({ status: :error, error_message: 'Dynamic agent webhooks are disabled.' }) # Explicit 403
+        end
+
+        # Handler enabled and pattern matched. Extract agent name.
+        agent_name_param = match_params['agent_name']
+        unless agent_name_param
+          logger.error("Webhook dynamic route matched, but required 'agent_name' parameter missing in pattern or path.")
+          # Consider this a server config error if name is expected but missing
+          halt 500, json({ status: :error, error_message: 'Internal Server Error: Route configuration issue.' })
+        end
+
+        agent_name_param.to_sym
+      end
+
+      def fetch_agent_definition(agent_name_sym)
+        store = ADK.config.definition_store
+        raise ADK::ConfigurationError, 'Definition store not available via ADK.config.definition_store' unless store
+
+        definition_hash = store.get_definition(agent_name_sym)
+        in_memory_definition = ADK::GlobalDefinitionRegistry.find(agent_name_sym)
+
+        unless in_memory_definition
+          logger.error("WebhookListener: In-memory definition for :#{agent_name_sym} not found in GlobalDefinitionRegistry.")
+          halt 500, json({ status: :error, error_message: 'Internal Server Error: Agent definition not loaded.' })
+        end
+
+        # --- Check webhook_enabled using the HASH from the store --- #
+        unless definition_hash && definition_hash[:webhook_enabled]
+          logger.warn("Agent '#{agent_name_sym}' is not enabled for webhooks (webhook_enabled=false or definition hash missing). Definition Hash: #{definition_hash.inspect}")
+          halt 404, json({ status: :error, error_message: 'Webhook endpoint not found for this agent.' })
+        end
+
+        [definition_hash, in_memory_definition]
+      end
+
+      def validate_webhook_request!(agent_name_sym, definition_hash, in_memory_definition)
+        webhook_config = ADK.config.webhooks
+        validator_config = in_memory_definition.webhook_validator || webhook_config.global_validator
+        secret = definition_hash[:webhook_secret] || webhook_config.global_secret
+
+        return unless validator_config
+
+        validator_proc = validator_config.is_a?(Proc) ? validator_config : webhook_config.find_validator(validator_config)
+
+        if validator_proc.nil?
+          logger.error("Webhook validation failed for '#{agent_name_sym}': Validator '#{validator_config}' not found.")
+          halt 500, json({ status: :error, error_message: 'Internal Server Error: Validator configuration issue.' })
+        end
+
+        begin
+          is_valid = validator_proc.call(request, secret)
+          unless is_valid
+            logger.warn("Webhook validation failed for agent '#{agent_name_sym}'.")
+            halt 401, json({ status: :error, error_message: 'Unauthorized: Invalid request signature or credentials.' })
+          end
+          logger.debug("Webhook validation successful for agent '#{agent_name_sym}'.")
+        rescue StandardError => e
+          logger.error("Error during webhook validation for '#{agent_name_sym}': #{e.message}")
+          halt 500, json({ status: :error, error_message: 'Internal Server Error during validation.' })
+        end
+      end
+
+      def transform_payload(agent_name_sym, in_memory_definition, payload)
+        transformer = in_memory_definition.webhook_transformer
+        unless transformer.is_a?(Proc)
+          logger.error("Webhook configuration error for '#{agent_name_sym}': Missing webhook_transformer Proc in in-memory definition.")
+          halt 500, json({ status: :error, error_message: 'Internal Server Error: Agent webhook configuration incomplete (transformer).' })
+        end
+
+        transformer.call(payload)
+      rescue ADK::WebhookConfigurationError => e
+        raise e
+      rescue StandardError => e
+        logger.error("Error during webhook transformation for '#{agent_name_sym}': #{e.class} - #{e.message}")
+        halt 500, json({ status: :error, error_message: 'Internal Server Error during payload transformation.' })
+      end
+
+      def extract_session_id(agent_name_sym, in_memory_definition, payload)
+        extractor = in_memory_definition.webhook_session_extractor
+        unless extractor.is_a?(Proc)
+          logger.error("Webhook configuration error for '#{agent_name_sym}': Missing webhook_session_extractor Proc in in-memory definition.")
+          halt 500, json({ status: :error, error_message: 'Internal Server Error: Agent webhook configuration incomplete (session extractor).' })
+        end
+
+        session_id = extractor.call(payload)
+        raise ADK::WebhookConfigurationError, 'Session extractor must return a non-empty String session ID.' unless session_id.is_a?(String) && !session_id.strip.empty?
+
+        session_id
+      rescue ADK::WebhookConfigurationError => e
+        raise e
+      rescue StandardError => e
+        logger.error("Error during webhook session extraction for '#{agent_name_sym}': #{e.class} - #{e.message}")
+        halt 500, json({ status: :error, error_message: 'Internal Server Error during session ID extraction.' })
+      end
+
+      def enqueue_webhook_job(agent_name_sym, session_id, transformed_user_input)
+        worker_class_name = 'ADK::WebhookJobWorker'
+        session_service_config = ADK.redis_options.dup
+        string_key_config = session_service_config.transform_keys(&:to_s)
+        string_key_config['type'] = 'redis'
+
+        job_payload = {
+          'agent_definition_name' => agent_name_sym.to_s,
+          'session_id' => session_id,
+          'transformed_user_input' => transformed_user_input,
+          'session_service_config' => string_key_config
+        }
+
+        job_id = Sidekiq::Client.push(
+          'queue' => 'adk_webhooks',
+          'class' => worker_class_name,
+          'args' => [job_payload]
+        )
+
+        if job_id.nil?
+          logger.error("Failed to enqueue webhook job for agent '#{agent_name_sym}': Sidekiq push returned nil.")
+          halt 503, json({ status: :error, error_message: 'Service Unavailable: Failed to queue background job.' })
+        end
+
+        logger.info("Webhook job enqueued successfully for agent '#{agent_name_sym}'. Session: #{session_id}, Job ID: #{job_id}")
+        job_id
+      rescue Redis::CannotConnectError => e
+        logger.error("Failed to enqueue webhook job (Redis Connect Error) for agent '#{agent_name_sym}': #{e.class} - #{e.message}")
+        halt 503, json({ status: :error, error_message: 'Service Unavailable: Error connecting to job queue.' })
+      rescue StandardError => e
+        logger.error("Unexpected error during job enqueuing for '#{agent_name_sym}': #{e.class} - #{e.message}")
+        halt 500, json({ status: :error, error_message: 'Internal Server Error during job queuing.' })
+      end
 
       # --- Instance method to set up static routes ---
       def setup_static_routes!
