@@ -12,3 +12,8 @@
 
 **Action:** Created `lib/adk/tool_loader.rb` to encapsulate file traversal and loading. Refactored `ADK::Agent` to delegate to this new module. This maintains the same behavior but enforces better module boundaries.
 
+## 2025-12-19 - Extracting MCP Connection Management
+
+**Issue:** `ADK::Agent` was acting as a God class, managing the lifecycle of MCP (Model Context Protocol) connections, client instantiation, and tool discovery alongside its core responsibilities of planning and execution.
+**Learning:** Mixing connection lifecycle management with business logic creates tight coupling and makes the `Agent` class difficult to test and maintain. Connection management is a distinct responsibility that should be encapsulated.
+**Action:** Extracted `ADK::Mcp::ConnectionManager` to handle all MCP-related operations (connect, disconnect, tool discovery). This decoupling simplifies `ADK::Agent` and promotes better separation of concerns.
