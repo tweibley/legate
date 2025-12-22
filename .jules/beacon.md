@@ -10,3 +10,8 @@
 **Learning:** The method signature `def execute(params = {}, context = nil)` only handles missing arguments, not explicit `nil`.
 **Action:** Future reliability improvements should guard against `nil` input in `execute` to prevent crashes.
 
+## 2025-12-18 - [Tool Parameter Coercion Coverage]
+
+**Gap:** `ADK::Tool` parameter coercion logic (specifically `coerce_value`) was implicitly tested via other tests but lacked dedicated, exhaustive edge-case coverage for types like Boolean (string variants) and JSON structures.
+**Learning:** Private methods like `coerce_value` are critical for reliability when processing LLM outputs, but often get overlooked in unit tests that focus on "happy path" execution of specific tools.
+**Action:** When testing core framework components that handle external input (like tools), create focused specs that exercise validation logic in isolation using anonymous subclasses, ensuring all type coercion paths are verified.
