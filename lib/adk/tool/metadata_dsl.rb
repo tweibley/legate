@@ -51,13 +51,40 @@ module ADK
       end
 
       module ClassMethods
-        # DSL method for setting description
+        # Sets the description for the tool.
+        #
+        # This description is used by the Planner (LLM) to understand what the tool does
+        # and when to use it. It should be clear, concise, and descriptive.
+        #
+        # @param text [String] The description of the tool.
+        # @return [void]
+        #
+        # @example
+        #   tool_description 'Calculates the sum of two numbers'
         def tool_description(text)
           initialize_dsl_storage # Ensure vars exist
           self.description = text.to_s
         end
 
-        # DSL method for defining a parameter
+        # Defines a parameter for the tool.
+        #
+        # Parameters defined here are automatically validated and coerced before
+        # execution. The Planner uses this metadata to construct correct calls to the tool.
+        #
+        # @param name [Symbol] The name of the parameter.
+        # @param options [Hash] Configuration options for the parameter.
+        # @option options [Symbol] :type The expected type of the parameter.
+        #   Supported types: :string, :integer, :float, :boolean, :array, :hash.
+        # @option options [Boolean] :required (false) Whether the parameter is required.
+        # @option options [String] :description A description of the parameter for the Planner.
+        # @return [void]
+        # @raise [ArgumentError] if the parameter name is not a Symbol.
+        #
+        # @example Defining a required string parameter
+        #   parameter :location, type: :string, required: true, description: 'The city name'
+        #
+        # @example Defining an optional integer parameter
+        #   parameter :limit, type: :integer, required: false, description: 'Max results'
         def parameter(name, options = {})
           initialize_dsl_storage # Ensure hash exists
           raise ArgumentError, 'Parameter name must be a Symbol' unless name.is_a?(Symbol)
