@@ -6,3 +6,8 @@
 2. Automatically coerce string inputs to the expected type (Integer, Float, Boolean, JSON Array/Hash) based on DSL definition.
 3. Validate types strictly if coercion fails.
 This improves CLI ergonomics (no need to manually parse strings in tools) and debugging speed.
+
+## 2024-05-22 - DidYouMean for Custom CLI Inputs
+
+**Learning:** Ruby's `did_you_mean` gem (bundled) provides a `SpellChecker` class that can be easily used for custom suggestions against any list of strings, not just method names.
+**Action:** Use `DidYouMean::SpellChecker.new(dictionary: list).correct(input).first` to improve CLI error messages when a user input matches nothing but is close to a valid option.
