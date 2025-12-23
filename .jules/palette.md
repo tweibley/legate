@@ -1,8 +1,5 @@
-## 2024-05-23 - Enhanced Tool Validation & Coercion
+## 2024-05-22 - CLI "Did You Mean?" Suggestions
 
-**Learning:** Developers (and LLMs) often pass tool parameters as strings (e.g., from CLI or JSON) even when the tool expects integers or booleans. Previously, this caused confusing type errors or silent failures deep in execution.
-**Action:** Implemented `validate_and_coerce_params` in `ADK::Tool` to:
-1. Provide rich error messages for missing parameters (listing what was missing AND what was provided).
-2. Automatically coerce string inputs to the expected type (Integer, Float, Boolean, JSON Array/Hash) based on DSL definition.
-3. Validate types strictly if coercion fails.
-This improves CLI ergonomics (no need to manually parse strings in tools) and debugging speed.
+**Learning:** Ruby's bundled `did_you_mean` gem is excellent for providing helpful suggestions in CLI tools without adding external dependencies. Centralizing error handling in Thor commands (e.g., via a helper like `handle_agent_not_found`) allows for consistent application of such UX improvements across multiple commands.
+
+**Action:** When implementing CLI lookups that can fail (e.g., finding resources by name), always consider implementing a suggestion mechanism using `DidYouMean::SpellChecker` and centralized error handling to catch typos early and guide the user.
