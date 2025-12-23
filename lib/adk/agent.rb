@@ -60,20 +60,21 @@ module ADK
     # --- End Builder Class ---
 
     # --- Class Method for Configuration DSL ---
-    # Provides a block-based DSL for configuring and creating an Agent instance.
+    # Provides a block-based DSL for defining an Agent configuration.
     #
     # @example
-    #   agent = ADK::Agent.define do |a|
-    #     a.name = 'news_agent'
-    #     a.description = 'Summarizes news articles.'
-    #     a.model_name = 'gemini-pro'
-    #     a.discover_tools_in 'path/to/my_tools'
-    #     a.add_tool_classes MyCustomTool
-    #     a.fallback_mode = :echo
+    #   definition = ADK::Agent.define do |a|
+    #     a.name :news_agent
+    #     a.description 'Summarizes news articles.'
+    #     a.instruction 'You are a helpful news summarizer.'
+    #     a.model_name 'gemini-pro'
+    #     a.use_tool :calculator
+    #     a.fallback_mode :echo
     #   end
     #
-    # @yieldparam builder [ADK::Agent::AgentBuilder] The builder object to configure the agent.
-    # @return [ADK::Agent] The newly configured agent instance.
+    # @yieldparam dsl [ADK::AgentDefinition::DefinitionProxy] The DSL proxy for configuration.
+    #   Common methods: `name`, `description`, `instruction`, `use_tool`, `model_name`, `fallback_mode`.
+    # @return [ADK::AgentDefinition] The newly created agent definition.
     # @raise [ArgumentError] if the block is not provided or required attributes are missing.
     def self.define(&block)
       raise ArgumentError, 'ADK::Agent.define requires a block.' unless block_given?
