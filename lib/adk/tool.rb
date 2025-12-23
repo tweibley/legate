@@ -186,68 +186,60 @@ module ADK
       return value if value.nil?
 
       case type
-      when :string
-        value.to_s
-      when :integer
-        # Integer(val) handles strings like "123" and numbers like 123.0 (truncates)
-        begin
-          Integer(value)
-        rescue ArgumentError, TypeError
-          raise ADK::ToolArgumentError, "expected Integer, got #{value.class} (#{value.inspect})"
-        end
-      when :float, :numeric
-        # :numeric treated as Float for broad compatibility
-        begin
-          Float(value)
-        rescue ArgumentError, TypeError
-          raise ADK::ToolArgumentError, "expected Numeric/Float, got #{value.class} (#{value.inspect})"
-        end
-      when :boolean
-        if value.is_a?(TrueClass) || value.is_a?(FalseClass)
-          value
-        elsif value.is_a?(String)
-          case value.downcase
-          when 'true', 't', 'yes', '1' then true
-          when 'false', 'f', 'no', '0' then false
-          else
-            raise ADK::ToolArgumentError, "expected Boolean, got String '#{value}'"
-          end
-        else
-          raise ADK::ToolArgumentError, "expected Boolean, got #{value.class} (#{value.inspect})"
-        end
-      when :array
-        if value.is_a?(Array)
-          value
-        elsif value.is_a?(String)
-          begin
-            parsed = JSON.parse(value)
-            raise ArgumentError unless parsed.is_a?(Array)
+      when :string then value.to_s
+      when :integer then coerce_integer(value)
+      when :float, :numeric then coerce_float(value)
+      when :boolean then coerce_boolean(value)
+      when :array then coerce_array(value)
+      when :hash then coerce_hash(value)
+      else value # Unknown type or 'any', return as is
+      end
+    end
 
-            parsed
-          rescue StandardError
-            raise ADK::ToolArgumentError, "expected Array, got #{value.class} (#{value.inspect})"
-          end
-        else
-          raise ADK::ToolArgumentError, "expected Array, got #{value.class} (#{value.inspect})"
-        end
-      when :hash
-        if value.is_a?(Hash)
-          value
-        elsif value.is_a?(String)
-          begin
-            parsed = JSON.parse(value)
-            raise ArgumentError unless parsed.is_a?(Hash)
+    def coerce_integer(value)
+      Integer(value)
+    rescue ArgumentError, TypeError
+      raise ADK::ToolArgumentError, "expected Integer, got #{value.class} (#{value.inspect})"
+    end
 
-            parsed
-          rescue StandardError
-            raise ADK::ToolArgumentError, "expected Hash, got #{value.class} (#{value.inspect})"
-          end
-        else
-          raise ADK::ToolArgumentError, "expected Hash, got #{value.class} (#{value.inspect})"
-        end
-      else
-        # Unknown type or 'any', return as is
-        value
+    def coerce_float(value)
+      Float(value)
+    rescue ArgumentError, TypeError
+      raise ADK::ToolArgumentError, "expected Numeric/Float, got #{value.class} (#{value.inspect})"
+    end
+
+    def coerce_boolean(value)
+      return value if value.is_a?(TrueClass) || value.is_a?(FalseClass)
+
+      raise ADK::ToolArgumentError, "expected Boolean, got #{value.class} (#{value.inspect})" unless value.is_a?(String)
+
+      case value.downcase
+      when 'true', 't', 'yes', '1' then true
+      when 'false', 'f', 'no', '0' then false
+      else raise ADK::ToolArgumentError, "expected Boolean, got String '#{value}'"
+      end
+    end
+
+    def coerce_array(value)
+      parse_json_structure(value, Array, 'Array')
+    end
+
+    def coerce_hash(value)
+      parse_json_structure(value, Hash, 'Hash')
+    end
+
+    def parse_json_structure(value, expected_class, type_name)
+      return value if value.is_a?(expected_class)
+
+      raise ADK::ToolArgumentError, "expected #{type_name}, got #{value.class} (#{value.inspect})" unless value.is_a?(String)
+
+      begin
+        parsed = JSON.parse(value)
+        raise ArgumentError unless parsed.is_a?(expected_class)
+
+        parsed
+      rescue StandardError
+        raise ADK::ToolArgumentError, "expected #{type_name}, got #{value.class} (#{value.inspect})"
       end
     end
 
