@@ -832,29 +832,33 @@ module ADK
     def get_tool_name_from_class(tool_class)
       return nil unless tool_class.is_a?(Class) && tool_class < ADK::Tool
 
-      begin
-        metadata = tool_class.tool_metadata
-      rescue StandardError => e
-        ADK.logger.error("Error calling tool_metadata on #{tool_class}: #{e.class} - #{e.message} - Backtrace: #{e.backtrace.first(3).join(' | ')}")
-        metadata = {} # Default to empty hash if metadata call fails, for diagnosis
-      end
-      name = metadata[:name]&.to_sym
+      # 1. Try metadata
+      name = _get_tool_name_from_metadata(tool_class)
+      return name if name && name != :''
 
-      if name.nil? || name == :''
-        # Check deprecated @tool_name (instance variable on the class itself)
-        if tool_class.instance_variable_defined?(:@tool_name)
-          name = tool_class.instance_variable_get(:@tool_name)&.to_sym
-          # ADK.logger.debug { "get_tool_name_from_class: Using name from deprecated @tool_name for #{tool_class}: #{name.inspect}" } if name
-        end
-
-        # If still no name, try inferred_name as a primary fallback if metadata[:name] is missing
-        if (name.nil? || name == '') && tool_class.respond_to?(:inferred_name)
-          name = tool_class.inferred_name
-          # ADK.logger.debug { "get_tool_name_from_class: Using inferred_name for #{tool_class}: #{name.inspect}" } if name
-        end
+      # 2. Try deprecated @tool_name ivar
+      if tool_class.instance_variable_defined?(:@tool_name)
+        name = tool_class.instance_variable_get(:@tool_name)&.to_sym
+        return name if name && name != :''
       end
 
-      (name && name != :'') ? name : nil
+      # 3. Try inferred_name
+      if tool_class.respond_to?(:inferred_name)
+        name = tool_class.inferred_name
+        return name if name && name != :''
+      end
+
+      nil
+    end
+
+    private
+
+    def _get_tool_name_from_metadata(tool_class)
+      metadata = tool_class.tool_metadata
+      metadata[:name]&.to_sym
+    rescue StandardError => e
+      ADK.logger.error("Error calling tool_metadata on #{tool_class}: #{e.class} - #{e.message} - Backtrace: #{e.backtrace.first(3).join(' | ')}")
+      nil
     end
 
 
