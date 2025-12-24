@@ -36,6 +36,7 @@
 
 # Environment variables
 .env*
+!.env.example
 
 # OS-specific
 .DS_Store
