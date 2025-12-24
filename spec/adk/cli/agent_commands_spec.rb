@@ -732,14 +732,22 @@ RSpec.describe ADK::CLI::AgentCommands do
         expect(mock_agent_instance).to receive(:start)
         expect(mock_agent_instance).to receive(:stop)
 
+        # Mock CLI::UI interactions
+        allow(::CLI::UI::StdoutRouter).to receive(:enable)
+        allow(::CLI::UI::Spinner).to receive(:spin).and_yield(instance_double(::CLI::UI::Spinner))
+
         invoke_command(:execute, agent_name.to_s, task)
 
         expect(output.string).to include("Loading agent 'executor_agent' to execute task: \"#{task}\"...")
         expect(output.string).to match(/Started new session: [\w-]{36}/)
         expect(output.string).to include('Agent uses model: gemini-exec')
         expect(output.string).to include('Loaded tools: [mock_cli_tool]')
-        expect(output.string).to match(/Running task in session [\w-]{36}: '#{task}'.../)
-        expect(output.string).to include('finished.')
+        # The 'Running task' message is now handled by the spinner, so we check for spinner invocation
+        expect(::CLI::UI::Spinner).to have_received(:spin).with(/Running task in session [\w-]{36}: '#{task}'/)
+
+        # 'finished.' was removed from status_message in the implementation change because spinner completion shows checkmark
+        expect(output.string).not_to include('finished.')
+
         expect(output.string).to include('Task Result:')
         expect(output.string).to include('Success:')
         expect(output.string).to include('Result: Task completed!')
@@ -786,10 +794,15 @@ RSpec.describe ADK::CLI::AgentCommands do
         # Don't expect create_session with explicit arguments - let it call through if needed
         allow(session_service_in_memory).to receive(:get_session).with(session_id: existing_session_id).and_return(existing_session)
 
+        # Mock CLI::UI interactions
+        allow(::CLI::UI::StdoutRouter).to receive(:enable)
+        allow(::CLI::UI::Spinner).to receive(:spin).and_yield(instance_double(::CLI::UI::Spinner))
+
         invoke_command(:execute, agent_name.to_s, task, session_id: existing_session_id)
 
         expect(output.string).to include("Continuing session: #{existing_session_id}")
-        expect(output.string).to include("Running task in session #{existing_session_id}")
+        # Expect spinner invocation instead of printed output for running task
+        expect(::CLI::UI::Spinner).to have_received(:spin).with(/Running task in session #{existing_session_id}/)
         expect(output.string).to include('Result: Used existing session')
       end
 
