@@ -9,6 +9,25 @@ module ADK
   # Represents a single interaction or step within a Session's history.
   # Immutable object after creation.
   #
+  # Events record everything that happens in a session: user input, agent responses,
+  # tool executions, and state changes.
+  #
+  # @example Creating a basic user event
+  #   ADK::Event.new(
+  #     role: :user,
+  #     content: "Hello agent!"
+  #   )
+  #
+  # @example Creating a tool result event with state updates
+  #   # This event will update the session state key :last_search_count to 5
+  #   # when processed by the session service.
+  #   ADK::Event.new(
+  #     role: :tool_result,
+  #     tool_name: :search_tool,
+  #     content: { count: 5, items: [...] },
+  #     state_delta: { last_search_count: 5 }
+  #   )
+  #
   # @!attribute [r] role
   #   @return [Symbol] The origin of the event (:user, :agent, :tool_request, :tool_result).
   # @!attribute [r] content
@@ -18,7 +37,9 @@ module ADK
   # @!attribute [r] tool_name
   #   @return [Symbol, nil] The name of the tool involved (for :tool_request, :tool_result roles).
   # @!attribute [r] state_delta
-  #   @return [Hash, nil] Optional hash representing state changes associated with this event. Keys should be symbols.
+  #   @return [Hash, nil] Optional hash representing state changes associated with this event.
+  #     Keys must be symbols. When the event is added to a session, these values are merged
+  #     into the session state (shallow merge).
   # @!attribute [r] event_id
   #   @return [String] A unique ID for this specific event instance.
   Event = Struct.new(:role, :content, :timestamp, :tool_name, :state_delta, :event_id, keyword_init: true) do
@@ -30,13 +51,9 @@ module ADK
     # @param event_id [String, nil] Unique event ID (defaults to SecureRandom.uuid).
     def initialize(role:, content:, timestamp: nil, tool_name: nil, state_delta: nil, event_id: nil)
       # Basic validation
-      unless %i[user agent tool_request tool_result].include?(role)
-        raise ArgumentError, "Invalid role: #{role}. Must be :user, :agent, :tool_request, or :tool_result."
-      end
+      raise ArgumentError, "Invalid role: #{role}. Must be :user, :agent, :tool_request, or :tool_result." unless %i[user agent tool_request tool_result].include?(role)
 
-      if %i[tool_request tool_result].include?(role) && (tool_name.nil? || !tool_name.is_a?(Symbol))
-        ADK.logger.warn("Event: :#{role} event created without a valid :tool_name symbol.")
-      end
+      ADK.logger.warn("Event: :#{role} event created without a valid :tool_name symbol.") if %i[tool_request tool_result].include?(role) && (tool_name.nil? || !tool_name.is_a?(Symbol))
 
       # Validate state_delta is a Hash or nil
       unless state_delta.nil? || state_delta.is_a?(Hash)
@@ -45,7 +62,9 @@ module ADK
       end
 
       # Ensure content is somewhat reasonable (avoids deep inspection for performance)
-      unless content.is_a?(String) || content.is_a?(Hash) || content.is_a?(Array) || content.is_a?(NilClass) || content.is_a?(Numeric) || content.is_a?(TrueClass) || content.is_a?(FalseClass)
+      unless content.is_a?(String) || content.is_a?(Hash) || content.is_a?(Array) ||
+             content.is_a?(NilClass) || content.is_a?(Numeric) ||
+             content.is_a?(TrueClass) || content.is_a?(FalseClass)
         ADK.logger.warn("Event: Content is of unusual type (#{content.class}): #{content.inspect}")
       end
 
