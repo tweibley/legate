@@ -372,10 +372,14 @@ RSpec.describe ADK::Agent do
     end
 
     it 'correctly initializes mcp_servers from definition' do
-      mcp_config = [{ host: 'localhost', port: 1234 }]
+      mcp_config = [{ type: 'stdio', command: 'echo', args: ['hello'] }]
       allow(mock_definition).to receive(:mcp_servers).and_return(mcp_config)
       agent = create_agent_from_definition(mock_definition)
-      expect(agent.instance_variable_get(:@mcp_servers_config)).to eq(mcp_config)
+      manager = agent.instance_variable_get(:@mcp_connection_manager)
+      expect(manager).to be_an_instance_of(ADK::Mcp::ConnectionManager)
+      # Check internal state of manager - normalized config has symbol keys
+      configs = manager.instance_variable_get(:@configs)
+      expect(configs.first[:type]).to eq(:stdio)
     end
 
     context 'with sub-agent instantiation' do
