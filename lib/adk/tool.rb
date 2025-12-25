@@ -71,7 +71,7 @@ module ADK
       #   ...
       # end
       # --- End Fallback Metadata Method ---
-    end # End Class-level
+    end
     # --- End Class-level ---
 
     # --- Self-Registration Hook ---
@@ -101,6 +101,9 @@ module ADK
       @name = metadata[:name]
       @description = metadata[:description]
       @parameters = metadata[:parameters] || {}
+
+      # Optimization: Pre-calculate required parameter names to avoid repeated select/keys calls
+      @required_param_names = @parameters.select { |_, p| p[:required] }.keys.freeze
 
       # Lenient check for missing metadata
       return unless @name.nil? || @name == :'' || @description.nil? || @description.empty?
@@ -139,15 +142,20 @@ module ADK
     # @raise [ADK::ToolArgumentError] if validation fails
     def validate_and_coerce_params(params)
       # 1. Normalize keys to symbols
-      normalized_params = params.transform_keys(&:to_sym)
+      # Optimization: Check if keys are already symbols to avoid transform_keys allocation
+      # This is a common case when internal code calls tools
+      keys_are_symbols = params.keys.all? { |k| k.is_a?(Symbol) }
+      # Ensure we work on a copy to avoid side effects on the input
+      normalized_params = keys_are_symbols ? params.dup : params.transform_keys(&:to_sym)
 
       current_parameters = @parameters || {}
 
       # 2. Check for missing required parameters
-      # Use symbol keys for check
-      required_param_names = current_parameters.select { |_, p| p[:required] }.keys
+      # Use pre-calculated required params if available (for instances created after optimization)
+      # Fallback to calculation for backward compatibility or weird states
+      req_names = @required_param_names || current_parameters.select { |_, p| p[:required] }.keys
       present_keys = normalized_params.keys
-      missing_params = required_param_names - present_keys
+      missing_params = req_names - present_keys
 
       unless missing_params.empty?
         msg = "Missing required parameters for tool '#{@name}': #{missing_params.join(', ')}."
