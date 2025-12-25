@@ -25,7 +25,7 @@ module ADK
     logger_instance.level = level
     logger_instance.formatter = proc { |severity, _, _, msg| "#{severity}: #{msg}\n" }
 
-    announce_logger(level_str, log_target)
+    announce_logger(logger_instance, level_str, log_target)
     logger_instance
   end
 
@@ -57,11 +57,13 @@ module ADK
       end
     end
 
-    def announce_logger(level_str, log_target)
+    def announce_logger(logger_instance, level_str, log_target)
       return if SILENT_LOG_LEVELS.include?(level_str)
 
       target_name = log_target == IO::NULL ? 'NULL' : 'STDOUT'
-      puts "--> ADK Logger initialized with level: #{level_str}, target: #{target_name}"
+      # Log at DEBUG level so it only appears when debugging is enabled.
+      # This respects the logger's level automatically.
+      logger_instance.debug "--> ADK Logger initialized with level: #{level_str}, target: #{target_name}"
     end
   end
 
@@ -217,7 +219,8 @@ module ADK
   module SessionService; end
 end
 
-ADK.logger.info 'Explicitly registering built-in ADK tools...'
+# Use DEBUG level for internal tool registration to reduce CLI noise
+ADK.logger.debug 'Explicitly registering built-in ADK tools...'
 [
   ADK::Tools::Echo,
   ADK::Tools::Calculator,
@@ -235,4 +238,4 @@ ADK.logger.info 'Explicitly registering built-in ADK tools...'
     ADK::GlobalToolManager.register_tool(tool_klass)
   end
 end
-ADK.logger.info "Explicit tool registration complete. Current global tools: #{ADK::GlobalToolManager.registered_tool_names.inspect}"
+ADK.logger.debug "Explicit tool registration complete. Current global tools: #{ADK::GlobalToolManager.registered_tool_names.inspect}"
