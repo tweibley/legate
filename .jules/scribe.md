@@ -1,12 +1,5 @@
-## 2025-12-18 - ADK::Planner Documentation Gap
+## 2024-05-24 - [ADK::Agent#run_task Documentation]
 
-**Gap:** `ADK::Planner` was undocumented despite being the central orchestration component for LLM planning. Its return structure was implicit.
-**Learning:** Core "brain" components must have explicit contracts documented, especially when they return complex structures like plans parsed from LLM output.
-**Action:** Always document return types of service objects that wrap external APIs or perform complex parsing.
-
-## 2025-12-17 - ADK::Tool Contract Clarity
-
-**Gap:** `ADK::Tool#perform_execution` return type is documented as `Object` but the framework expects a structured Hash `{:status, :result}`, leading to potential runtime errors for new tool developers.
-**Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
-**Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
-
+**Gap:** The `ADK::Agent#run_task` method, which is the core entry point for agent execution, lacked documentation explaining its lifecycle and parameters. This made it difficult for users to understand the flow of events (validation -> callbacks -> planning -> execution -> callbacks -> storage).
+**Learning:** Documenting the orchestration logic (the "why" and "how" of the sequence) is crucial for users who might want to intervene with callbacks or understand how state is managed.
+**Action:** Always document the lifecycle of complex orchestration methods, explicitly mentioning hooks like callbacks and side effects like state storage.

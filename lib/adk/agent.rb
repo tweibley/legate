@@ -524,7 +524,21 @@ module ADK
       @tool_registry.find_class(tool_name.to_sym)
     end
 
-    # @return [ADK::Event] The final agent event.
+    # Executes the main agent task loop.
+    #
+    # This method orchestrates the agent's workflow:
+    # 1. Validates the agent state and session.
+    # 2. Executes the `before_agent_callback` (if defined).
+    # 3. Uses the {ADK::Planner} to generate a plan based on user input.
+    # 4. Executes the generated plan (calling tools as needed).
+    # 5. Executes the `after_agent_callback` (if defined).
+    # 6. Stores the final output in the session state (if `output_key` is configured).
+    #
+    # @param session_id [String] The unique identifier for the session.
+    # @param user_input [String] The user's request or command.
+    # @param session_service [ADK::SessionService::Base] The service for managing session state and events.
+    #
+    # @return [ADK::Event] The final event produced by the agent (usually a `:agent` role event containing the result).
     def run_task(session_id:, user_input:, session_service:)
       # --- Pre-execution Checks --- #
       unless running?
