@@ -832,29 +832,33 @@ module ADK
     def get_tool_name_from_class(tool_class)
       return nil unless tool_class.is_a?(Class) && tool_class < ADK::Tool
 
-      begin
-        metadata = tool_class.tool_metadata
-      rescue StandardError => e
-        ADK.logger.error("Error calling tool_metadata on #{tool_class}: #{e.class} - #{e.message} - Backtrace: #{e.backtrace.first(3).join(' | ')}")
-        metadata = {} # Default to empty hash if metadata call fails, for diagnosis
-      end
-      name = metadata[:name]&.to_sym
+      name = _fetch_tool_name_from_metadata(tool_class)
+      name = _fetch_tool_name_from_legacy(tool_class) if _name_blank?(name)
+      name = _fetch_tool_name_from_inferred(tool_class) if _name_blank?(name)
 
-      if name.nil? || name == :''
-        # Check deprecated @tool_name (instance variable on the class itself)
-        if tool_class.instance_variable_defined?(:@tool_name)
-          name = tool_class.instance_variable_get(:@tool_name)&.to_sym
-          # ADK.logger.debug { "get_tool_name_from_class: Using name from deprecated @tool_name for #{tool_class}: #{name.inspect}" } if name
-        end
+      _name_blank?(name) ? nil : name.to_sym
+    end
 
-        # If still no name, try inferred_name as a primary fallback if metadata[:name] is missing
-        if (name.nil? || name == '') && tool_class.respond_to?(:inferred_name)
-          name = tool_class.inferred_name
-          # ADK.logger.debug { "get_tool_name_from_class: Using inferred_name for #{tool_class}: #{name.inspect}" } if name
-        end
-      end
+    def _name_blank?(name)
+      name.nil? || name.to_s.empty?
+    end
 
-      (name && name != :'') ? name : nil
+    def _fetch_tool_name_from_metadata(tool_class)
+      metadata = tool_class.tool_metadata
+      metadata[:name] if metadata.is_a?(Hash)
+    rescue StandardError => e
+      ADK.logger.error("Error calling tool_metadata on #{tool_class}: #{e.class} - #{e.message} - Backtrace: #{e.backtrace.first(3).join(' | ')}")
+      nil
+    end
+
+    def _fetch_tool_name_from_legacy(tool_class)
+      return unless tool_class.instance_variable_defined?(:@tool_name)
+
+      tool_class.instance_variable_get(:@tool_name)
+    end
+
+    def _fetch_tool_name_from_inferred(tool_class)
+      tool_class.inferred_name if tool_class.respond_to?(:inferred_name)
     end
 
 
