@@ -10,3 +10,8 @@
 **Learning:** The method signature `def execute(params = {}, context = nil)` only handles missing arguments, not explicit `nil`.
 **Action:** Future reliability improvements should guard against `nil` input in `execute` to prevent crashes.
 
+## 2025-12-25 - Tool Metadata Name Inference and Caching
+
+**Gap:** `ADK::Tool::MetadataDsl` uses `Module.instance_method(:name).bind(self).call` to infer tool names, which bypasses RSpec mocks on `.name`. This makes testing name inference with anonymous classes or doubles tricky without `stub_const`. Additionally, legacy and DSL-based parameter definitions share the same storage variable, leading to silent merging of parameters rather than strict overriding.
+**Learning:** When testing metaprogramming that relies on class names, `stub_const` is essential to provide a "real" name to the class. Also, the legacy and DSL implementations for tool metadata are not fully isolated, which can lead to unexpected merging behavior if both are used.
+**Action:** Created `spec/adk/tool/metadata_dsl_spec.rb` using `stub_const` to correctly test inference and document the merging behavior.
