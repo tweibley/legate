@@ -127,11 +127,20 @@ RSpec.describe ADK::CLI::AgentCommands do
       it 'lists the defined agents with details' do
         # Mock .all to return only the agents set up in the before block
         allow(ADK::AgentDefinitionStore).to receive(:all).and_return({ agent_one: agent1_def, agent_two: agent2_def })
+
         invoke_command(:list)
+
         expect(output.string).to include('Defined Agents:')
-        expect(output.string).to include('- agent_one: First agent (Model: gemini-1.5-pro, Tools: mock_cli_tool)')
-        expect(output.string).to include("- agent_two: Second agent (Model: #{ADK::Agent::DEFAULT_MODEL}, Tools: None)")
-        expect(output.string).not_to include('agent_three') # Ensure it doesn't list agent 3 here
+        expect(output.string).to include('agent_one')
+        expect(output.string).to include('Description: First agent')
+        expect(output.string).to include('Model: gemini-1.5-pro')
+        expect(output.string).to include('Tools: mock_cli_tool')
+
+        expect(output.string).to include('agent_two')
+        expect(output.string).to include("Model: #{ADK::Agent::DEFAULT_MODEL}")
+        expect(output.string).to include('Tools: None')
+
+        expect(output.string).not_to include('agent_three')
       end
 
       it 'handles definitions with no description' do
@@ -140,11 +149,14 @@ RSpec.describe ADK::CLI::AgentCommands do
         # FIX: Mock .all directly to return the specific set needed for this test
         allow(ADK::AgentDefinitionStore).to receive(:all).and_return({ agent_one: agent1_def, agent_two: agent2_def,
                                                                        agent_three: agent3_def })
+
         invoke_command(:list)
+
         expect(output.string).to include('Defined Agents:')
-        expect(output.string).to include('- agent_three: [No description] (Model: gemini-1.5-pro, Tools: mock_cli_tool)')
-        expect(output.string).to include('- agent_one: First agent')
-        expect(output.string).to include('- agent_two: Second agent')
+        expect(output.string).to include('agent_three')
+        expect(output.string).to include('[No description]')
+        expect(output.string).to include('agent_one')
+        expect(output.string).to include('agent_two')
       end
     end
   end

@@ -239,10 +239,15 @@ module ADK
           say 'Defined Agents:', :bold
           definitions.sort_by { |name, _| name.to_s }.each do |name, data|
             description = data[:description] || '[No description]'
-            tools = data[:tools]
+            tools = data[:tools] || []
             model = data[:model] || "#{ADK::Agent::DEFAULT_MODEL} (Default)"
             tools_str = tools.empty? ? 'None' : tools.join(', ')
-            say "- #{name}: #{description} (Model: #{model}, Tools: #{tools_str})"
+
+            say "🤖 #{name}", :cyan
+            say "   Description: #{description}"
+            say "   Model: #{model}"
+            say "   Tools: #{tools_str}"
+            say ''
           end
         end
       end
