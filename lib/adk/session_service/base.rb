@@ -37,6 +37,13 @@ module ADK
         raise NotImplementedError, "#{self.class} must implement #clear_scoped_state"
       end
 
+      # Appends an event to the session history and updates the session state.
+      # This method is responsible for persisting the event and any associated state changes.
+      #
+      # @param session_id [String] The unique ID of the session.
+      # @param event [ADK::Event] The event object to append.
+      # @return [Boolean] true if the event was successfully appended, false otherwise.
+      # @raise [NotImplementedError] Must be implemented by subclasses.
       def append_event(session_id:, event:)
         raise NotImplementedError, "#{self.class.name} must implement #append_event."
       end
