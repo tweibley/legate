@@ -95,6 +95,12 @@ module ADK
         session[:web_user_id] ||= SecureRandom.uuid
         # Optional: Log the web_user_id for debugging purposes during development
         # logger.debug "Current web_user_id: #{session[:web_user_id]}"
+
+        # --- Security Headers ---
+        headers 'X-Frame-Options' => 'SAMEORIGIN',
+                'X-Content-Type-Options' => 'nosniff',
+                'X-XSS-Protection' => '1; mode=block',
+                'Referrer-Policy' => 'strict-origin-when-cross-origin'
       end
       # --- END NEW ---
 
