@@ -1,14 +1,11 @@
-## 2025-12-18 - Separation of Definition and Runtime
+## 2024-12-26 - Extracted MCP Connection Logic
 
-**Issue:** `ADK::Agent` class in `lib/adk/agent.rb` contained both the runtime agent logic and the `AgentDefinition` class (plus its DSL), resulting in a file over 1000 lines long and mixed concerns.
-**Learning:** Keeping static configuration (definition) tightly coupled with runtime behavior makes the code harder to navigate and test in isolation.
-**Action:** Extracted `ADK::AgentDefinition` into a dedicated file `lib/adk/agent_definition.rb`. This separates the "blueprint" from the "machine", following the Single Responsibility Principle.
+**Issue:** `ADK::Agent` (800+ lines) was acting as a God Class, directly managing low-level MCP connection lifecycles, tool discovery, and error handling, in addition to its core responsibilities of planning and execution.
 
-## 2025-12-17 - Extract Tool Loading Logic
+**Learning:** This coupling made it impossible to test MCP logic in isolation and violated the Single Responsibility Principle. Infrastructure concerns (connections) were mixed with domain concerns (agent behavior).
 
-**Issue:** `ADK::Agent` contained private logic (`_discover_and_load_tools`) to traverse the filesystem and require ruby files for tool discovery. This coupled the Agent's core domain logic (planning, execution) with infrastructure concerns (file I/O, loading).
-
-**Learning:** Separating infrastructure concerns from domain logic improves testability and clarity. The Agent should not care *how* tools are loaded, only that they are available. By moving this logic to a dedicated `ADK::ToolLoader`, we create a reusable component that could be used by other parts of the system (e.g., CLI) and simplify the Agent class.
-
-**Action:** Created `lib/adk/tool_loader.rb` to encapsulate file traversal and loading. Refactored `ADK::Agent` to delegate to this new module. This maintains the same behavior but enforces better module boundaries.
-
+**Action:** Extracted `ADK::Mcp::ConnectionManager` to handle:
+1. Connecting to multiple MCP servers.
+2. Managing the lifecycle of `ADK::Mcp::Client` instances.
+3. Registering discovered tools into a registry.
+This reduces `ADK::Agent` complexity and allows the connection logic to be reused or tested independently.
