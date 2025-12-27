@@ -25,7 +25,6 @@ module ADK
     logger_instance.level = level
     logger_instance.formatter = proc { |severity, _, _, msg| "#{severity}: #{msg}\n" }
 
-    announce_logger(level_str, log_target)
     logger_instance
   end
 
@@ -55,13 +54,6 @@ module ADK
       when 'FATAL' then Logger::FATAL
       else Logger::WARN
       end
-    end
-
-    def announce_logger(level_str, log_target)
-      return if SILENT_LOG_LEVELS.include?(level_str)
-
-      target_name = log_target == IO::NULL ? 'NULL' : 'STDOUT'
-      puts "--> ADK Logger initialized with level: #{level_str}, target: #{target_name}"
     end
   end
 
@@ -135,7 +127,7 @@ module ADK
     current_logger = ADK.logger
     Sidekiq.configure_client do |config|
       config.redis = @redis_options.dup
-      current_logger&.info("Sidekiq client configured with Redis: #{@redis_options[:url]}")
+      current_logger&.debug("Sidekiq client configured with Redis: #{@redis_options[:url]}")
     end
   rescue Redis::CannotConnectError => e
     current_logger&.error("Sidekiq failed to configure Redis client: #{e.message}")
@@ -217,7 +209,7 @@ module ADK
   module SessionService; end
 end
 
-ADK.logger.info 'Explicitly registering built-in ADK tools...'
+ADK.logger.debug 'Explicitly registering built-in ADK tools...'
 [
   ADK::Tools::Echo,
   ADK::Tools::Calculator,
@@ -235,4 +227,4 @@ ADK.logger.info 'Explicitly registering built-in ADK tools...'
     ADK::GlobalToolManager.register_tool(tool_klass)
   end
 end
-ADK.logger.info "Explicit tool registration complete. Current global tools: #{ADK::GlobalToolManager.registered_tool_names.inspect}"
+ADK.logger.debug "Explicit tool registration complete. Current global tools: #{ADK::GlobalToolManager.registered_tool_names.inspect}"

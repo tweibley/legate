@@ -18,6 +18,6 @@ module ADK
       ADK.logger
     end
 
-    logger.info('ADK::Mcp module loaded.')
+    logger.debug('ADK::Mcp module loaded.')
   end
 end

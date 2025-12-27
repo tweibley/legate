@@ -273,7 +273,7 @@ RSpec.describe ADK do
     end
 
     it 'logs configuration info' do
-      expect(ADK.logger).to receive(:info).with(/Sidekiq client configured/)
+      expect(ADK.logger).to receive(:debug).with(/Sidekiq client configured/)
       ADK.configure_sidekiq
     end
 

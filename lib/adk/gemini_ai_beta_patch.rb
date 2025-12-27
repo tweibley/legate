@@ -23,11 +23,11 @@ module Gemini
           # Rebuild the base address with v1beta
           @base_address = "https://generativelanguage.googleapis.com/#{@service_version}"
           
-          ADK.logger&.info("Gemini AI Client patched to use v1beta API endpoint") if defined?(ADK)
+          ADK.logger&.debug("Gemini AI Client patched to use v1beta API endpoint") if defined?(ADK)
         end
       end
     end
   end
 end
 
-ADK.logger&.info("Gemini AI Beta patch loaded - API will use v1beta endpoint") if defined?(ADK) && ADK.respond_to?(:logger) 
+ADK.logger&.debug("Gemini AI Beta patch loaded - API will use v1beta API endpoint") if defined?(ADK) && ADK.respond_to?(:logger)

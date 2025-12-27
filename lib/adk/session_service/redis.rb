@@ -77,14 +77,14 @@ module ADK
           # Check if encryption is possible
           begin
             ADK::Auth::Encryption.encrypt('test')
-            ADK.logger.info("RedisSessionService initialized with encryption. Session TTL: #{session_ttl || 'None'}")
+            ADK.logger.debug("RedisSessionService initialized with encryption. Session TTL: #{session_ttl || 'None'}")
           rescue StandardError => e
             ADK.logger.warn("Encryption requested but unavailable: #{e.message}. Falling back to unencrypted mode.")
             @encryption_enabled = false
           end
         end
 
-        ADK.logger.info("RedisSessionService initialized. Encryption: #{@encryption_enabled}, Session TTL: #{session_ttl || 'None'}")
+        ADK.logger.debug("RedisSessionService initialized. Encryption: #{@encryption_enabled}, Session TTL: #{session_ttl || 'None'}")
       end
 
       # Creates a new session and stores it in Redis.

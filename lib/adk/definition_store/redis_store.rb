@@ -30,7 +30,7 @@ module ADK
       def initialize(redis_client:)
         @redis = redis_client
         @logger = ADK.logger
-        @logger.info('ADK::DefinitionStore::RedisStore initialized.')
+        @logger.debug('ADK::DefinitionStore::RedisStore initialized.')
       rescue => e
         # Log initialization error but allow potential recovery if client is provided later or fixed
         ADK.logger&.error("Failed to initialize RedisStore: #{e.message}")

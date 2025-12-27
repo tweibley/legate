@@ -16,7 +16,7 @@ module ADK
       def initialize
         @sessions = Concurrent::Map.new
         @scoped_states = Concurrent::Map.new
-        ADK.logger.info('InMemorySessionService initialized.')
+        ADK.logger.debug('InMemorySessionService initialized.')
       end
 
       def persistent?

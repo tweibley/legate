@@ -185,7 +185,7 @@ module ADK
           ADK.logger.warn("AgentDefinitionStore: Found name '#{name}' in set but definition missing/incomplete in Redis during load_all.")
         end
       end
-      ADK.logger.info("AgentDefinitionStore: Loaded #{loaded_count} agent definitions from Redis into memory.")
+      ADK.logger.debug("AgentDefinitionStore: Loaded #{loaded_count} agent definitions from Redis into memory.")
       loaded_count
     rescue Redis::BaseError => e
       ADK.logger.error("AgentDefinitionStore: Failed to load all definitions from Redis: #{e.message}")

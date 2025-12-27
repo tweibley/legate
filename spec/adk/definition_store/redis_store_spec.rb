@@ -41,15 +41,15 @@ RSpec.describe ADK::DefinitionStore::RedisStore do
   end
 
   describe '#initialize' do
-    it 'initializes with a Redis client and logs info' do
-      expect(ADK.logger).to receive(:info).with('ADK::DefinitionStore::RedisStore initialized.')
+    it 'initializes with a Redis client and logs debug' do
+      expect(ADK.logger).to receive(:debug).with('ADK::DefinitionStore::RedisStore initialized.')
       described_class.new(redis_client: mock_redis)
     end
 
-    it 'logs error and sets @redis to nil if logger.info fails during initialization' do
+    it 'logs error and sets @redis to nil if logger.debug fails during initialization' do
       init_error = StandardError.new('Initial logger setup failed')
       allow(ADK).to receive(:logger).and_return(logger_double)
-      allow(logger_double).to receive(:info).with('ADK::DefinitionStore::RedisStore initialized.').and_raise(init_error)
+      allow(logger_double).to receive(:debug).with('ADK::DefinitionStore::RedisStore initialized.').and_raise(init_error)
 
       expect(logger_double).to receive(:error).with(/Failed to initialize RedisStore: #{init_error.message}/)
 
