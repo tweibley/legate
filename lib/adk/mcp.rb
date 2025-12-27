@@ -9,6 +9,7 @@ require_relative 'mcp/client'
 require_relative 'mcp/tool_wrapper'
 require_relative 'mcp/server/adk_tool_adapter'
 require_relative 'mcp/server/adk_agent_adapter'
+require_relative 'mcp/connection_manager'
 
 module ADK
   # Module for Model Context Protocol (MCP) integration.
