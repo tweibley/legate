@@ -1,5 +1,5 @@
-## 2025-12-17 - Refactoring Complex Initialization
+## 2025-02-23 - Complexity in ADK::Agent#transfer_to
 
-**Issue:** `ADK.initialize_logger` had high Cyclomatic Complexity and ABC Size due to mixing environment variable parsing, logger configuration, and side effects (puts).
-**Learning:** Initialization logic tends to grow organically and become a dump for configuration rules.
-**Action:** Split into `determine_log_level_str`, `configure_log_settings`, and `announce_logger` to separate concerns and improve readability.
+**Issue:** The `transfer_to` method in `ADK::Agent` contained a massive logic block (50+ lines) inside an `else` branch, responsible for validating targets, finding/loading agents, starting them, and executing tasks. This made the method hard to read and test.
+**Learning:** The method was trying to do too much: orchestration, resource loading, validation, and execution. The "private method override" pattern (checking `private_methods.include?`) added cognitive load but encouraged a monolithic fallback block.
+**Action:** Extracted distinct responsibilities into `load_delegation_target` and `execute_delegated_task`. This separates the "preparation" phase from the "execution" phase, making the flow linear and easier to reason about.
