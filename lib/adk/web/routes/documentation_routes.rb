@@ -9,59 +9,57 @@ module ADK
   module Web
     module DocumentationRoutes
       module Helpers
+        # Robustly checks if a given file path is safe and contained within the docs root
+        # @param file_path [String] The path to check
+        # @return [Pathname, nil] The valid Pathname object if safe, nil otherwise
+        def resolve_safe_doc_path(file_path)
+          public_docs_pathname = Pathname.new(File.join(settings.root, 'public', 'docs')).cleanpath
+          target_file_pathname = Pathname.new(File.expand_path(file_path)).cleanpath
+
+          # Ensure the target path starts with the docs root path
+          return nil unless target_file_pathname.to_s.start_with?(public_docs_pathname.to_s)
+
+          # Ensure the file actually exists and is a file
+          return nil unless target_file_pathname.exist? && target_file_pathname.file?
+
+          target_file_pathname
+        end
+
         def render_markdown(file_path)
-          begin
-            public_docs_pathname = Pathname.new(File.expand_path(File.join(settings.root, 'public', 'docs')))
-            target_file_pathname = Pathname.new(File.expand_path(file_path))
+          target_file_pathname = resolve_safe_doc_path(file_path)
 
-            # Check if the target file is within the public_docs_pathname directory
-            # and is an actual file that exists.
-            # The `ascend` method iterates upwards from the file to its parent directories.
-            # We check if any of these parent paths match our intended docs root.
-            is_within_docs_dir = false
-            target_file_pathname.ascend do |p|
-              if p == public_docs_pathname
-                is_within_docs_dir = true
-                break
-              end
-              break if p.root? # Stop if we reach the filesystem root
-            end
-
-            unless is_within_docs_dir && target_file_pathname.file? && target_file_pathname.exist?
-              logger.warn "Markdown render: Path not valid or file does not exist. Target: '#{target_file_pathname}', Expected base: '#{public_docs_pathname}'"
-              return nil
-            end
-
-            markdown_content = File.read(target_file_pathname.to_s, encoding: 'UTF-8')
-
-            # Configure Kramdown with enhanced rendering options - now using GFM
-            html = Kramdown::Document.new(
-              markdown_content,
-              input: 'GFM',               # GitHub Flavored Markdown
-              syntax_highlighter: nil,    # We'll apply our custom highlighting via CSS
-              hard_wrap: false            # Don't convert newlines to <br>
-            ).to_html
-
-            # Post-process HTML to add language tags to code blocks
-            html = process_code_blocks(html)
-
-            return html
-          rescue Errno::ENOENT # Should be caught by File.exist? check now, but good fallback
-            logger.warn "Markdown file not found (render_markdown): #{target_file_pathname}"
-            nil
-          rescue => e
-            logger.error "Error rendering markdown for #{target_file_pathname}: #{e.message}"
-            logger.error e.backtrace.join("\n") # Add backtrace to help debugging
-            nil
+          unless target_file_pathname
+            logger.warn "Markdown render: Path not valid or safe. Target: '#{file_path}'"
+            return nil
           end
+
+          markdown_content = File.read(target_file_pathname.to_s, encoding: 'UTF-8')
+
+          # Configure Kramdown with enhanced rendering options - now using GFM
+          html = Kramdown::Document.new(
+            markdown_content,
+            input: 'GFM',               # GitHub Flavored Markdown
+            syntax_highlighter: nil,    # We'll apply our custom highlighting via CSS
+            hard_wrap: false            # Don't convert newlines to <br>
+          ).to_html
+
+          # Post-process HTML to add language tags to code blocks
+          process_code_blocks(html)
+        rescue Errno::ENOENT
+          logger.warn "Markdown file not found (render_markdown): #{file_path}"
+          nil
+        rescue StandardError => e
+          logger.error "Error rendering markdown for #{file_path}: #{e.message}"
+          logger.error e.backtrace.join("\n") # Add backtrace to help debugging
+          nil
         end
 
         # Process code blocks to add language classes and data attributes
         def process_code_blocks(html)
           # Find fenced code blocks with language specifications
           html.gsub(%r{<pre><code\s+class="language-(\w+)">(.*?)</code></pre>}m) do |match|
-            language = $1
-            code_content = $2
+            language = ::Regexp.last_match(1)
+            code_content = ::Regexp.last_match(2)
             # Replace with our enhanced version that adds data-lang attribute
             %(<pre data-lang="#{language}"><code class="language-#{language}">#{code_content}</code></pre>)
           end
@@ -87,7 +85,7 @@ module ADK
           end
           summary_lines.join(' ').gsub(/\*\*|\*|_|`/, '') # Basic stripping of markdown
         end
-      end # module Helpers
+      end
 
       def self.registered(app)
         app.helpers Helpers # Register the helpers for use in routes
@@ -150,15 +148,13 @@ module ADK
               categorized_documents[category_name] = category_docs if category_docs.any?
             end
 
-            if categorized_documents.empty?
-              logger.warn("No markdown files or categories found in #{docs_root_path}")
-            end
-          rescue => e
+            logger.warn("No markdown files or categories found in #{docs_root_path}") if categorized_documents.empty?
+          rescue StandardError => e
             logger.error("Error scanning documentation directory: #{e.message}")
             logger.error(e.backtrace.first(5).join("\n"))
           end
 
-          self.instance_variable_set(:@categorized_documents, categorized_documents)
+          instance_variable_set(:@categorized_documents, categorized_documents)
           logger.debug("Setting @categorized_documents with #{categorized_documents.keys.count} categories.")
           logger.debug("Content of @categorized_documents: #{@categorized_documents.inspect}")
 
@@ -170,51 +166,54 @@ module ADK
         app.get '/docs/*' do |path_splat|
           logger.debug("GET /docs/#{path_splat} - Entered (from DocumentationRoutes)")
 
-          # Sanitize path_splat: allow alphanumeric, underscore, hyphen, and forward slash for path
-          # Remove leading/trailing slashes and protect against directory traversal
-          sane_path = path_splat.gsub(%r{^/+|/+$}, '').gsub(%r{\.{2}/}, '')
-          sane_path.gsub!(%r{[^0-9a-zA-Z_\-/]}, '') # Allow alphanumeric, _, -, /
+          # Basic input sanitization (defense in depth), but real security is in resolve_safe_doc_path
+          sane_path = path_splat.gsub(%r{^/+|/+$}, '')
 
-          if sane_path.empty?
-            logger.warn("Attempt to access doc with invalid path: '#{path_splat}'")
-            halt 404, slim(:error_404, locals: { title: 'Document Not Found', message: 'Invalid document path.' })
-          end
+          halt 404, slim(:error_404, locals: { title: 'Document Not Found', message: 'Invalid document path.' }) if sane_path.empty?
 
-          # Construct the full file path
-          # Ensure it's .md, even if not explicitly in splat, for direct access attempts
+          # Ensure it's .md, even if not explicitly in splat
           file_path_to_check = sane_path.end_with?('.md') ? sane_path : "#{sane_path}.md"
           full_file_path = File.join(settings.root, 'public', 'docs', file_path_to_check)
-          logger.debug("Attempting to access document at: #{full_file_path}")
 
-          # The render_markdown helper already performs security checks to ensure the file is within 'public/docs'
-          # and is a .md file.
+          # --- SECURITY CHECK ---
+          # Use the centralized helper to strictly validate the path containment
+          safe_pathname = resolve_safe_doc_path(full_file_path)
+
+          unless safe_pathname
+            logger.warn("Access attempt to unsafe or missing path: #{full_file_path}")
+            halt 404,
+                 slim(:error_404,
+                      locals: { title: 'Document Not Found',
+                                message: "Document '#{sane_path}' not found." })
+          end
+          # --- END SECURITY CHECK ---
+
+          logger.debug("Attempting to access document at: #{safe_pathname}")
 
           begin
-            markdown_html = render_markdown(full_file_path) # render_markdown expects absolute path
+            markdown_html = render_markdown(safe_pathname.to_s)
 
             if markdown_html.nil?
-              logger.warn("Documentation file not found or rendering failed: #{full_file_path}")
               halt 404,
                    slim(:error_404,
                         locals: { title: 'Document Not Found',
                                   message: "Document '#{sane_path}' not found or could not be rendered." })
             end
 
-            self.instance_variable_set(:@doc_html_content, markdown_html)
+            instance_variable_set(:@doc_html_content, markdown_html)
 
             # Try to extract title from H1 in markdown content
-            # This requires reading the file again, or passing content from render_markdown if it returned it
-            # For now, let's re-read for title extraction consistency.
-            doc_title_for_view = sane_path.split('/').last.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ') # Default title
-            if File.exist?(full_file_path)
-              markdown_content_for_title = File.read(full_file_path, encoding: 'UTF-8')
-              first_h1_match = markdown_content_for_title.match(/^#\s+(.+)$/)
-              doc_title_for_view = first_h1_match[1].strip if first_h1_match
-            end
-            self.instance_variable_set(:@doc_title, doc_title_for_view)
+            # Safe to read because we verified it with resolve_safe_doc_path
+            doc_title_for_view = sane_path.split('/').last.gsub(/[-_]/, ' ').split.map(&:capitalize).join(' ') # Default
+
+            markdown_content_for_title = File.read(safe_pathname.to_s, encoding: 'UTF-8')
+            first_h1_match = markdown_content_for_title.match(/^#\s+(.+)$/)
+            doc_title_for_view = first_h1_match[1].strip if first_h1_match
+
+            instance_variable_set(:@doc_title, doc_title_for_view)
 
             slim :docs_show
-          rescue => e
+          rescue StandardError => e
             logger.error("Error processing document #{sane_path}: #{e.message}")
             logger.error(e.backtrace.join("\n"))
             halt 500, 'Error displaying document.'
