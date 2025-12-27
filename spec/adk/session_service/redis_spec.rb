@@ -154,14 +154,14 @@ RSpec.describe ADK::SessionService::Redis do
         initial_state: anything,
         session_service: service
       ).and_return(new_session)
-      
+
       # Setup the multi/exec mock for Redis
       allow(mock_redis).to receive(:multi).and_yield(mock_redis).and_return([
-        true,  # hset result
-        true,  # sadd result
-        true,  # expire session
-        true   # expire events
-      ])
+                                                                              true, # hset result
+                                                                              true,  # sadd result
+                                                                              true,  # expire session
+                                                                              true   # expire events
+                                                                            ])
       allow(mock_redis).to receive(:hset).and_return(true)
       allow(mock_redis).to receive(:sadd).and_return(true)
       allow(mock_redis).to receive(:expire).and_return(true)
@@ -175,7 +175,7 @@ RSpec.describe ADK::SessionService::Redis do
         initial_state: hash_including(auth_token_cache: {}),
         session_service: service
       ).and_return(new_session)
-      
+
       session = service.create_session(app_name: app_name, user_id: user_id, initial_state: initial_state)
       expect(session).to eq(new_session)
     end
@@ -218,7 +218,7 @@ RSpec.describe ADK::SessionService::Redis do
     context 'when state serialization fails' do
       let(:bad_state) { { bad_key: Object.new } } # Object that can't be serialized
       let(:bad_state_with_cache) { bad_state.merge(auth_token_cache: {}) } # With auth_token_cache
-      
+
       before do
         # Allow Session.new, but mock state_to_h
         allow(ADK::Session).to receive(:new).with(
@@ -484,7 +484,6 @@ RSpec.describe ADK::SessionService::Redis do
         expect(call_count).to eq(3)
       end
     end
-
   end
 
   describe '#delete_session' do
@@ -514,7 +513,6 @@ RSpec.describe ADK::SessionService::Redis do
     it 'returns true on success' do
       expect(service.delete_session(session_id: session_id)).to be true
     end
-
 
     context 'when Redis error occurs' do
       before { allow(mock_redis).to receive(:multi).and_raise(::Redis::BaseError.new('Deletion failed')) }
@@ -651,6 +649,37 @@ RSpec.describe ADK::SessionService::Redis do
     it 'does not set expiry on session or events keys' do
       service_no_ttl = described_class.new(redis_client: mock_redis, session_ttl: nil, enable_encryption: false)
       # ... existing code ...
+    end
+  end
+
+  describe '#store_auth_token' do
+    let(:token_data) { { access_token: 'abc' } }
+    let(:token) { double('Token', to_h: token_data) }
+    let(:cache_key) { 'test_token' }
+    let(:session_state) { {} }
+    let(:session) { instance_double(ADK::Session, id: session_id, state: session_state) }
+
+    before do
+      allow(service).to receive(:append_event).and_return(true)
+    end
+
+    it 'stores the token and appends a system event' do
+      # Expect append_event to be called with a valid system event
+      expect(service).to receive(:append_event).with(
+        session_id: session_id,
+        event: an_instance_of(ADK::Event)
+      ) do |args|
+        event = args[:event]
+        expect(event.role).to eq(:system)
+        expect(event.content).to eq('Auth token updated')
+        expect(event.state_delta).to have_key(:auth_token_cache)
+      end
+
+      service.store_auth_token(session, cache_key, token)
+
+      # Verify state update
+      expect(session_state[:auth_token_cache][cache_key.to_sym]).to be_a(String)
+      expect(session_state[:auth_token_cache][cache_key.to_sym]).to include('access_token')
     end
   end
 end

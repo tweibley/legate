@@ -30,8 +30,8 @@ module ADK
     # @param event_id [String, nil] Unique event ID (defaults to SecureRandom.uuid).
     def initialize(role:, content:, timestamp: nil, tool_name: nil, state_delta: nil, event_id: nil)
       # Basic validation
-      unless %i[user agent tool_request tool_result].include?(role)
-        raise ArgumentError, "Invalid role: #{role}. Must be :user, :agent, :tool_request, or :tool_result."
+      unless %i[user agent tool_request tool_result system].include?(role)
+        raise ArgumentError, "Invalid role: #{role}. Must be :user, :agent, :tool_request, :tool_result, or :system."
       end
 
       if %i[tool_request tool_result].include?(role) && (tool_name.nil? || !tool_name.is_a?(Symbol))

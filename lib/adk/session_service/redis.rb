@@ -620,7 +620,7 @@ module ADK
 
         # Append an event to update the session state in Redis
         event = ADK::Event.new(
-          role: 'system',
+          role: :system,
           content: 'Auth token updated',
           state_delta: { AUTH_TOKEN_CACHE_KEY => session.state[AUTH_TOKEN_CACHE_KEY] }
         )
