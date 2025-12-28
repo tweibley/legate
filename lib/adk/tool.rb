@@ -7,6 +7,7 @@ require_relative 'tool_context'
 require_relative 'global_tool_manager'
 require_relative 'tool/metadata_dsl'
 require 'json'
+require 'did_you_mean'
 
 module ADK
   # Base class for all tools that can be used by Agents.
@@ -152,6 +153,16 @@ module ADK
       unless missing_params.empty?
         msg = "Missing required parameters for tool '#{@name}': #{missing_params.join(', ')}."
         msg += " Provided: [#{present_keys.empty? ? 'None' : present_keys.join(', ')}]."
+
+        # Suggest corrections if provided keys are close to missing required keys
+        if defined?(DidYouMean::SpellChecker)
+          checker = DidYouMean::SpellChecker.new(dictionary: missing_params)
+          suggestions = present_keys.map { |key| [key, checker.correct(key)] }
+                                    .select { |_, cor| cor.any? }
+                                    .map { |key, cor| "'#{key}' -> #{cor.join(', ')}" }
+
+          msg += " Did you mean? #{suggestions.join('; ')}" if suggestions.any?
+        end
 
         ADK.logger.error("Validation failed: #{msg} Params: #{params.inspect}")
         raise ADK::ToolArgumentError, msg
