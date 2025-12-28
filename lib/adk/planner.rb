@@ -516,47 +516,7 @@ module ADK
     # @return [Hash] A hash containing :thought_process and :formatted_steps, or :error.
     def validate_and_format_multi_step_plan(llm_response)
       # Try multiple methods to extract JSON from the response
-      parsed_json = nil
-
-      # Method 1: Try to extract from markdown code block (```json ... ```)
-      json_code_block_match = llm_response.match(/```(?:json)?\s*(\{.*?\})\s*```/m)
-      if json_code_block_match
-        begin
-          parsed_json = JSON.parse(json_code_block_match[1])
-          logger.debug('Successfully extracted JSON from markdown code block')
-        rescue JSON::ParserError => e
-          logger.debug("Failed to parse JSON from code block: #{e.message}")
-        end
-      end
-
-      # Method 2: Try direct JSON object extraction (greedy match from first { to last })
-      unless parsed_json
-        # Use a non-greedy inner match but capture the full object structure
-        json_pattern = /(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})/m
-        json_match = llm_response.match(json_pattern)
-        if json_match
-          begin
-            parsed_json = JSON.parse(json_match[1])
-            logger.debug('Successfully extracted JSON via regex pattern')
-          rescue JSON::ParserError => e
-            logger.debug("Failed to parse extracted JSON: #{e.message}")
-          end
-        end
-      end
-
-      # Method 3: Try the simple greedy pattern as fallback
-      unless parsed_json
-        simple_pattern = /\{.*\}/m
-        simple_match = llm_response.match(simple_pattern)
-        if simple_match
-          begin
-            parsed_json = JSON.parse(simple_match[0])
-            logger.debug('Successfully extracted JSON via simple pattern')
-          rescue JSON::ParserError => e
-            logger.debug("Failed to parse JSON from simple pattern: #{e.message}")
-          end
-        end
-      end
+      parsed_json = extract_json_from_response(llm_response)
 
       # If we still don't have valid JSON, log and return error
       if parsed_json.nil?
@@ -662,6 +622,53 @@ module ADK
         logger.error('Fallback failed: Echo tool not available to the agent.')
         []
       end
+    end
+
+    # Attempts to extract JSON from the LLM response using multiple methods.
+    #
+    # @param response_text [String] The raw response text from the LLM.
+    # @return [Hash, nil] The parsed JSON object or nil if extraction failed.
+    def extract_json_from_response(response_text)
+      # Method 1: Try to extract from markdown code block (```json ... ```)
+      json_code_block_match = response_text.match(/```(?:json)?\s*(\{.*?\})\s*```/m)
+      if json_code_block_match
+        begin
+          json = JSON.parse(json_code_block_match[1])
+          logger.debug('Successfully extracted JSON from markdown code block')
+          return json
+        rescue JSON::ParserError => e
+          logger.debug("Failed to parse JSON from code block: #{e.message}")
+        end
+      end
+
+      # Method 2: Try direct JSON object extraction (greedy match from first { to last })
+      # Use a non-greedy inner match but capture the full object structure
+      json_pattern = /(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})/m
+      json_match = response_text.match(json_pattern)
+      if json_match
+        begin
+          json = JSON.parse(json_match[1])
+          logger.debug('Successfully extracted JSON via regex pattern')
+          return json
+        rescue JSON::ParserError => e
+          logger.debug("Failed to parse extracted JSON: #{e.message}")
+        end
+      end
+
+      # Method 3: Try the simple greedy pattern as fallback
+      simple_pattern = /\{.*\}/m
+      simple_match = response_text.match(simple_pattern)
+      if simple_match
+        begin
+          json = JSON.parse(simple_match[0])
+          logger.debug('Successfully extracted JSON via simple pattern')
+          return json
+        rescue JSON::ParserError => e
+          logger.debug("Failed to parse JSON from simple pattern: #{e.message}")
+        end
+      end
+
+      nil
     end
 
     # Fallback plan remains the same (single echo step)
