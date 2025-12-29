@@ -15,6 +15,7 @@ require_relative '../session_service/in_memory'
 require_relative '../session_service/redis'
 require_relative '../agent_definition_store'
 require_relative '../global_tool_manager'
+require_relative 'suggestion_helper'
 require_relative '../../adk' # For ADK.config, ADK.logger
 
 module ADK
@@ -22,6 +23,7 @@ module ADK
     # CLI commands for agent definition management AND temporary execution
     class AgentCommands < Thor
       include OutputHelper
+      include SuggestionHelper
 
       # Default session service can be overridden in tests or specific command options
       @@session_service = ADK::SessionService::InMemory.new
@@ -315,7 +317,9 @@ module ADK
         end
 
         unless definition_exists
-          say "Error: Agent definition '#{name}' not found.", :red
+          msg = "Error: Agent definition '#{name}' not found."
+          msg += suggest_agent_name(name).to_s
+          say msg, :red
           exit(1)
         end
 
@@ -535,7 +539,9 @@ module ADK
           definition_hash = ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
           unless definition_hash
-            output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+            msg = "Agent definition '#{name}' not found."
+            msg += suggest_agent_name(name).to_s
+            output_error(msg, metadata: { agent: name })
             exit(1)
           end
 
@@ -627,7 +633,9 @@ module ADK
         end
 
         unless definition
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          msg = "Agent definition '#{name}' not found."
+          msg += suggest_agent_name(name).to_s
+          output_error(msg, metadata: { agent: name })
           exit(1)
         end
 
@@ -747,7 +755,9 @@ module ADK
         end
 
         unless definition
-          say "Error: Agent definition '#{name}' not found.", :red
+          msg = "Error: Agent definition '#{name}' not found."
+          msg += suggest_agent_name(name).to_s
+          say msg, :red
           exit(1)
         end
 
@@ -812,7 +822,9 @@ module ADK
         definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
         unless definition_hash
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          msg = "Agent definition '#{name}' not found."
+          msg += suggest_agent_name(name).to_s
+          output_error(msg, metadata: { agent: name })
           exit(1)
         end
 
@@ -913,7 +925,9 @@ module ADK
 
         definition = ADK::AgentDefinitionStore.load_from_redis(agent_name_sym)
         unless definition
-          ::CLI::UI.puts "{{red:Error: Agent definition '#{agent_name_str}' not found in Redis.}}"
+          msg = "Error: Agent definition '#{agent_name_str}' not found in Redis."
+          msg += suggest_agent_name(agent_name_str).to_s
+          ::CLI::UI.puts "{{red:#{msg}}}"
           exit(1)
         end
 
