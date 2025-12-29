@@ -524,7 +524,28 @@ module ADK
       @tool_registry.find_class(tool_name.to_sym)
     end
 
-    # @return [ADK::Event] The final agent event.
+    # Executes a task within a session context.
+    #
+    # This is the main entry point for running an agent. It orchestrates the
+    # planning, execution of tools, and handling of results. It also manages
+    # callbacks and state updates.
+    #
+    # @param session_id [String] The unique identifier for the session.
+    # @param user_input [String] The user's input or task description.
+    # @param session_service [ADK::SessionService::Base] The service for managing session state.
+    #
+    # @return [ADK::Event] The final event produced by the agent (usually role: :agent).
+    #   The content of the event is a Hash containing the execution result (e.g., `{ status: :success, result: ... }`).
+    #
+    # @example Running a task
+    #   agent = ADK::Agent.new(definition: my_def)
+    #   event = agent.run_task(
+    #     session_id: 'sess_123',
+    #     user_input: 'What is the weather in Tokyo?',
+    #     session_service: session_service
+    #   )
+    #   puts event.content[:result] #=> "The weather in Tokyo is..."
+    #
     def run_task(session_id:, user_input:, session_service:)
       # --- Pre-execution Checks --- #
       unless running?
