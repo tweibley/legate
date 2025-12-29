@@ -27,6 +27,13 @@ module ADK
         ADK.logger.warn("AgentDefinitionStore: Invalid definition hash provided for '#{name_sym}'. Skipping registration.")
         return false
       end
+
+      @@definitions[name_sym] = normalize_definition(definition_hash)
+      ADK.logger.debug("AgentDefinitionStore: Registered/updated definition for '#{name_sym}' in memory.")
+      true
+    end
+
+    def self.normalize_definition(definition_hash)
       # Ensure tools is an array of strings/symbols
       definition_hash[:tools] = Array(definition_hash[:tools]).map(&:to_s)
       definition_hash[:fallback_mode] = definition_hash[:fallback_mode].to_sym if definition_hash[:fallback_mode].is_a?(String)
@@ -34,10 +41,9 @@ module ADK
       if ['true', 'false'].include?(definition_hash[:webhook_enabled].to_s.downcase)
         definition_hash[:webhook_enabled] = definition_hash[:webhook_enabled].to_s.downcase == 'true'
       end
-      @@definitions[name_sym] = definition_hash
-      ADK.logger.debug("AgentDefinitionStore: Registered/updated definition for '#{name_sym}' in memory.")
-      true
+      definition_hash
     end
+    private_class_method :normalize_definition
 
     # Find a definition in the in-memory store.
     # @param name [Symbol, String] Agent name.
