@@ -5,6 +5,7 @@ require_relative 'mcp/error'
 # We will require other mcp components here as they are built.
 require_relative 'mcp/util/schema_converter'
 require_relative 'mcp/connection/stdio'
+require_relative 'mcp/connection_manager'
 require_relative 'mcp/client'
 require_relative 'mcp/tool_wrapper'
 require_relative 'mcp/server/adk_tool_adapter'
