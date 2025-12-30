@@ -1,4 +1,3 @@
-# File: lib/adk/tools/base/http_client.rb
 # frozen_string_literal: true
 
 require 'excon'
@@ -129,6 +128,91 @@ module ADK
           raise ADK::ToolError, "Invalid URL or path provided: #{path} - #{e.message}", cause: e
         end
 
+        def prepare_request_body(request_params, body, method, custom_content_type_provided)
+          return unless body
+
+          if body.is_a?(Hash) && %i[post put patch].include?(method)
+            handle_hash_body(request_params, body, custom_content_type_provided)
+          else
+            request_params[:body] = body
+            # If body is string AND Content-Type wasn't explicitly passed, remove the default one.
+            unless custom_content_type_provided
+              key_to_delete = request_params[:headers].keys.find { |k| k.to_s.casecmp('Content-Type').zero? }
+              request_params[:headers].delete(key_to_delete) if key_to_delete
+            end
+          end
+        end
+
+        def handle_hash_body(request_params, body, custom_content_type_provided)
+          content_type_key = request_params[:headers].keys.find { |k|
+            k.to_s.casecmp('Content-Type').zero?
+          } || 'Content-Type'
+
+          # Only default to application/json if Content-Type was not explicitly provided
+          request_params[:headers][content_type_key] = 'application/json; charset=utf-8' unless custom_content_type_provided
+          # Get the final effective content type for encoding check
+          final_content_type = request_params[:headers].find { |k, _| k.to_s.casecmp('Content-Type').zero? }&.last
+
+          if final_content_type&.start_with?('application/json')
+            begin
+              request_params[:body] = JSON.generate(body)
+            rescue JSON::GeneratorError => e
+              raise ADK::ToolError, "Failed to encode request body as JSON: #{e.message}", cause: e
+            end
+          else
+            ADK.logger.warn "Sending Hash body with non-JSON Content-Type (#{final_content_type}) for request"
+            request_params[:body] = body
+          end
+        end
+
+        def execute_request(method, target_uri, is_absolute, request_params)
+          ADK.logger.info "Executing HTTP #{method.to_s.upcase} request to #{target_uri}"
+
+          if is_absolute
+            execute_absolute_request(target_uri, request_params)
+          else
+            execute_relative_request(target_uri, request_params)
+          end
+        end
+
+        def execute_absolute_request(target_uri, request_params)
+          ADK.logger.debug "Using temporary Excon client for absolute URL: #{target_uri}"
+
+          # Prepare options for the temporary Excon client instance
+          temp_client_options = @http_connection_options.reject { |k, _| k == :headers }
+          # Deep duplicate headers hash to avoid modifying the original
+          final_headers_for_new = Marshal.load(Marshal.dump(@http_connection_options[:headers] || {}))
+          # Merge the fully processed request_params[:headers] (which includes defaults and customs)
+          final_headers_for_new.merge!(request_params[:headers].transform_keys(&:to_s))
+          temp_client_options[:headers] = final_headers_for_new
+
+          temp_client = Excon.new(target_uri.to_s, temp_client_options)
+
+          # Prepare the params for the .request call (method, body, query, etc., NO headers)
+          request_params_for_absolute = request_params.reject { |k, _| k == :headers }
+
+          ADK.logger.debug "Excon Temp Request Params (for .request call): #{request_params_for_absolute.inspect}"
+          ADK.logger.debug "Excon Temp Client Options (for .new call): #{temp_client_options.inspect}"
+          temp_client.request(request_params_for_absolute)
+        end
+
+        def execute_relative_request(target_uri, request_params)
+          ADK.logger.debug "Using persistent Excon client for relative path: #{target_uri}"
+          # Use the persistent client setup with the base URL
+          raise ADK::ToolError, 'Persistent HTTP client not initialized.' unless @http_client
+
+          ADK.logger.debug "Excon Persistent Request Params: #{request_params.inspect}"
+          @http_client.request(request_params)
+        end
+
+        def validate_response!(response, method, target_uri)
+          return if (200..299).cover?(response.status)
+
+          err_msg = "HTTP Error: Received status #{response.status} for #{method.to_s.upcase} #{target_uri}"
+          ADK.logger.error(err_msg)
+          raise Excon::Error::HTTPStatus.new(err_msg, nil, response)
+        end
+
         # Centralized method for making HTTP requests and handling common errors/wrapping.
         def make_request(method, path, body: nil, query: {}, headers: {}, options: {})
           # Ensure setup was called, but @http_client might not be used if path is absolute
@@ -143,14 +227,6 @@ module ADK
 
           target_uri, is_absolute = resolve_target_uri(path)
 
-          # Path/Query setup differs slightly for absolute vs relative
-          if is_absolute
-          # For absolute URLs, the full path/query is part of target_uri
-          # We don't need to set host/scheme/port in request_params
-          # as Excon.new will use the full target_uri.to_s
-          else
-            # For relative URLs, use the persistent client and set path/query
-          end
           request_params[:path] = target_uri.request_uri
 
           # Merge explicit query params with any existing in the URI
@@ -165,80 +241,17 @@ module ADK
 
           # Determine if Content-Type was explicitly passed
           custom_content_type_provided = headers.keys.any? { |k| k.to_s.casecmp('Content-Type').zero? }
-          content_type_key = request_params[:headers].keys.find { |k|
-            k.to_s.casecmp('Content-Type').zero?
-          } || 'Content-Type'
 
           # 4. Handle Request Body and Content-Type logic
-          if body.is_a?(Hash) && %i[post put patch].include?(method)
-            # Only default to application/json if Content-Type was not explicitly provided
-            request_params[:headers][content_type_key] = 'application/json; charset=utf-8' unless custom_content_type_provided
-            # Get the final effective content type for encoding check
-            final_content_type = request_params[:headers].find { |k, _| k.to_s.casecmp('Content-Type').zero? }&.last
-
-            if final_content_type&.start_with?('application/json')
-              # ... JSON encode body ...
-              begin
-                request_params[:body] = JSON.generate(body)
-              rescue JSON::GeneratorError => e
-                # raise ADK::ToolError, "Failed to encode request body as JSON: #{e.message}" # No cause
-                # Add cause for better debugging
-                raise ADK::ToolError, "Failed to encode request body as JSON: #{e.message}", cause: e
-              end
-            else
-              # ... Handle Hash body with non-JSON CT ...
-              ADK.logger.warn "Sending Hash body with non-JSON Content-Type (#{final_content_type}) for #{target_uri}"
-              request_params[:body] = body
-            end
-          elsif body # Body is not a Hash (likely a String)
-            request_params[:body] = body
-            # If body is string AND Content-Type wasn't explicitly passed, remove the default one.
-            unless custom_content_type_provided
-              key_to_delete = request_params[:headers].keys.find { |k| k.to_s.casecmp('Content-Type').zero? }
-              request_params[:headers].delete(key_to_delete) if key_to_delete
-            end
-          end
+          prepare_request_body(request_params, body, method, custom_content_type_provided)
 
           # 5. Execute Request: Choose client based on absolute vs relative path
-          ADK.logger.info "Executing HTTP #{method.to_s.upcase} request to #{target_uri}"
-
-          response = nil
-          if is_absolute
-            ADK.logger.debug "Using temporary Excon client for absolute URL: #{target_uri}"
-
-            # Prepare options for the temporary Excon client instance
-            temp_client_options = @http_connection_options.reject { |k, _| k == :headers }
-            # Deep duplicate headers hash to avoid modifying the original
-            final_headers_for_new = Marshal.load(Marshal.dump(@http_connection_options[:headers] || {}))
-            # Merge the fully processed request_params[:headers] (which includes defaults and customs)
-            final_headers_for_new.merge!(request_params[:headers].transform_keys(&:to_s))
-            temp_client_options[:headers] = final_headers_for_new
-
-            temp_client = Excon.new(target_uri.to_s, temp_client_options)
-
-            # Prepare the params for the .request call (method, body, query, etc., NO headers)
-            request_params_for_absolute = request_params.reject { |k, _| k == :headers }
-
-            ADK.logger.debug "Excon Temp Request Params (for .request call): #{request_params_for_absolute.inspect}"
-            ADK.logger.debug "Excon Temp Client Options (for .new call): #{temp_client_options.inspect}"
-            response = temp_client.request(request_params_for_absolute)
-          else
-            ADK.logger.debug "Using persistent Excon client for relative path: #{target_uri}"
-            # Use the persistent client setup with the base URL
-            raise ADK::ToolError, 'Persistent HTTP client not initialized.' unless @http_client
-
-            ADK.logger.debug "Excon Persistent Request Params: #{request_params.inspect}"
-            response = @http_client.request(request_params)
-          end
+          response = execute_request(method, target_uri, is_absolute, request_params)
 
           ADK.logger.info "Received HTTP response: Status #{response.status}"
           ADK.logger.debug "Response Body: #{response.body[0..500]}..."
 
-          unless (200..299).cover?(response.status)
-            err_msg = "HTTP Error: Received status #{response.status} for #{method.to_s.upcase} #{target_uri}"
-            ADK.logger.error(err_msg)
-            raise Excon::Error::HTTPStatus.new(err_msg, nil, response)
-          end
+          validate_response!(response, method, target_uri)
 
           response
 
