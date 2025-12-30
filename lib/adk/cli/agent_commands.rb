@@ -141,6 +141,14 @@ module ADK
           val
         end
 
+        def suggest_agent_name(name)
+          require 'did_you_mean'
+          suggestions = ADK::AgentDefinitionStore.all_names
+          checker = DidYouMean::SpellChecker.new(dictionary: suggestions)
+          corrections = checker.correct(name.to_s)
+          corrections.any? ? corrections : nil
+        end
+
         # --- formatting helper for CLI UI Chat ---
         def _format_chat_turn_output_cli_ui(event_or_hash, role_override = nil, timestamp = nil)
           event_obj = event_or_hash.is_a?(ADK::Event) ? event_or_hash : nil
@@ -315,7 +323,10 @@ module ADK
         end
 
         unless definition_exists
-          say "Error: Agent definition '#{name}' not found.", :red
+          suggestions = suggest_agent_name(name)
+          msg = "Error: Agent definition '#{name}' not found."
+          msg += " Did you mean? #{suggestions.join(', ')}" if suggestions
+          say msg, :red
           exit(1)
         end
 
@@ -535,7 +546,10 @@ module ADK
           definition_hash = ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
           unless definition_hash
-            output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+            suggestions = suggest_agent_name(name)
+            msg = "Agent definition '#{name}' not found."
+            msg += " Did you mean? #{suggestions.join(', ')}" if suggestions
+            output_error(msg, metadata: { agent: name })
             exit(1)
           end
 
@@ -627,7 +641,14 @@ module ADK
         end
 
         unless definition
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          suggestions = suggest_agent_name(name)
+          msg = "Agent definition '#{name}' not found."
+          msg += " Did you mean? #{suggestions.join(', ')}" if suggestions
+          output_error(msg, metadata: { agent: name })
+          suggestions = suggest_agent_name(name)
+          msg = "Agent definition '#{name}' not found."
+          msg += " Did you mean? #{suggestions.join(', ')}" if suggestions
+          output_error(msg, metadata: { agent: name })
           exit(1)
         end
 
@@ -747,7 +768,10 @@ module ADK
         end
 
         unless definition
-          say "Error: Agent definition '#{name}' not found.", :red
+          suggestions = suggest_agent_name(name)
+          msg = "Error: Agent definition '#{name}' not found."
+          msg += " Did you mean? #{suggestions.join(', ')}" if suggestions
+          say msg, :red
           exit(1)
         end
 
@@ -812,7 +836,10 @@ module ADK
         definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
         unless definition_hash
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          suggestions = suggest_agent_name(name)
+          msg = "Agent definition '#{name}' not found."
+          msg += " Did you mean? #{suggestions.join(', ')}" if suggestions
+          output_error(msg, metadata: { agent: name })
           exit(1)
         end
 
@@ -913,7 +940,10 @@ module ADK
 
         definition = ADK::AgentDefinitionStore.load_from_redis(agent_name_sym)
         unless definition
-          ::CLI::UI.puts "{{red:Error: Agent definition '#{agent_name_str}' not found in Redis.}}"
+          suggestions = suggest_agent_name(agent_name_str)
+          msg = "{{red:Error: Agent definition '#{agent_name_str}' not found.}}"
+          msg += "\n{{yellow:Did you mean? #{suggestions.join(', ')}}}" if suggestions
+          ::CLI::UI.puts msg
           exit(1)
         end
 
