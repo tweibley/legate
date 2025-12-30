@@ -184,6 +184,7 @@ require_relative 'adk/session_service/base'
 require_relative 'adk/session_service/in_memory'
 require_relative 'adk/session_service/redis'
 require_relative 'adk/mcp'
+require_relative 'adk/mcp/connection_manager'
 require_relative 'adk/agent'
 require_relative 'adk/agents' # Load specialized workflow agents
 require_relative 'adk/cli'
