@@ -11,9 +11,15 @@ require 'json'
 module ADK
   # Base class for all tools that can be used by Agents.
   #
-  # Tools are the way agents interact with the outside world. To create a new tool,
-  # inherit from this class, use the DSL to define metadata, and implement
-  # the {#perform_execution} method.
+  # Tools are the primary mechanism for agents to interact with the outside world,
+  # perform calculations, or retrieve information. To create a new tool:
+  #
+  # 1. Inherit from {ADK::Tool}
+  # 2. Use the DSL methods (`tool_description`, `parameter`) to define metadata
+  # 3. Implement the {#perform_execution} method to define the tool's behavior
+  #
+  # @note Tool names are automatically inferred from the class name (e.g., `MyWeatherTool` -> `:my_weather_tool`).
+  #   You can override this by setting `self.explicit_tool_name = :custom_name`.
   #
   # @example Creating a custom weather tool
   #   class WeatherTool < ADK::Tool
@@ -27,6 +33,8 @@ module ADK
   #
   #     private
   #
+  #     # @param params [Hash] Validated and coerced parameters
+  #     # @param context [ADK::ToolContext] Session context
   #     def perform_execution(params, context)
   #       location = params[:location]
   #       # ... fetch weather logic ...
@@ -71,7 +79,7 @@ module ADK
       #   ...
       # end
       # --- End Fallback Metadata Method ---
-    end # End Class-level
+    end
     # --- End Class-level ---
 
     # --- Self-Registration Hook ---
@@ -115,10 +123,22 @@ module ADK
       @description ||= ''
     end
 
-    # Execute the tool
-    # @param params [Hash] Input parameters for the tool.
-    # @param context [ADK::ToolContext, nil] Contextual information (session details).
-    # @return [Hash] A hash with :status (:success, :error, :pending) and :result/:error_message/:workflow_id.
+    # Executes the tool with the given parameters and context.
+    #
+    # This method handles parameter validation and coercion before delegating
+    # to the concrete implementation in {#perform_execution}.
+    #
+    # @param params [Hash] Input parameters for the tool. Keys should match the defined parameters.
+    # @param context [ADK::ToolContext, nil] Contextual information (session, user, auth).
+    #
+    # @return [Hash] The execution result.
+    #   * :status [Symbol] :success, :error, or :pending
+    #   * :result [Object] The output data (on success)
+    #   * :error_message [String] Error description (on error)
+    #   * :job_id [String] Job ID (for async tools)
+    #
+    # @raise [ADK::ToolArgumentError] if parameters are invalid or missing.
+    # @see #perform_execution
     def execute(params = {}, context = nil)
       coerced_params = validate_and_coerce_params(params)
       ADK.logger.debug("Executing tool '#{@name}' with validated params: #{coerced_params.inspect} and context: #{context&.to_h.inspect}")
@@ -133,10 +153,14 @@ module ADK
       nil
     end
 
-    # Validate and coerce parameters based on metadata types
-    # @param params [Hash] Input parameters
-    # @return [Hash] New hash with symbol keys and coerced values
-    # @raise [ADK::ToolArgumentError] if validation fails
+    # Validates and coerces parameters based on the tool's defined metadata.
+    #
+    # 1. Checks for missing required parameters.
+    # 2. Coerces values to their defined types (e.g., "123" -> 123 for :integer).
+    #
+    # @param params [Hash] Raw input parameters (string or symbol keys).
+    # @return [Hash] A new hash with symbol keys and coerced values.
+    # @raise [ADK::ToolArgumentError] if a required parameter is missing or type coercion fails.
     def validate_and_coerce_params(params)
       # 1. Normalize keys to symbols
       normalized_params = params.transform_keys(&:to_sym)
@@ -251,18 +275,18 @@ module ADK
       end
     end
 
-    # Perform the actual execution of the tool.
+    # Performs the actual execution logic of the tool.
     #
-    # This method must be implemented by subclasses to define the tool's behavior.
+    # @abstract Subclasses must implement this method.
     #
-    # @param params [Hash] The validated parameters to execute with. Keys are symbols.
+    # @param params [Hash] The validated and coerced parameters. Keys are symbols.
     # @param context [ADK::ToolContext] Contextual information (session, user, state).
     #
-    # @return [Hash] The result hash containing:
+    # @return [Hash] The result hash. Must contain at least `:status`.
     #   * :status [Symbol] :success, :error, or :pending
-    #   * :result [Object] The output data (if success)
-    #   * :error_message [String] Error description (if error)
-    #   * :job_id [String] Job ID (if pending/async)
+    #   * :result [Object] The output data (if status is :success)
+    #   * :error_message [String] Error description (if status is :error)
+    #   * :job_id [String] Job ID (if status is :pending)
     #
     # @raise [NotImplementedError] if the subclass does not implement this method.
     def perform_execution(params, context)
