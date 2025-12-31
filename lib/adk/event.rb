@@ -22,6 +22,13 @@ module ADK
   # @!attribute [r] event_id
   #   @return [String] A unique ID for this specific event instance.
   Event = Struct.new(:role, :content, :timestamp, :tool_name, :state_delta, :event_id, keyword_init: true) do
+    # Valid roles for an event
+    VALID_ROLES = %i[user agent tool_request tool_result].freeze
+    # Roles that require a tool name
+    TOOL_ROLES = %i[tool_request tool_result].freeze
+    # Valid content types (for basic validation)
+    VALID_CONTENT_TYPES = [String, Hash, Array, NilClass, Numeric, TrueClass, FalseClass].freeze
+
     # @param role [Symbol] :user, :agent, :tool_request, :tool_result
     # @param content [String, Hash] Event payload. Should be JSON-serializable.
     # @param timestamp [Time, nil] Timestamp (defaults to Time.now.utc).
@@ -30,11 +37,11 @@ module ADK
     # @param event_id [String, nil] Unique event ID (defaults to SecureRandom.uuid).
     def initialize(role:, content:, timestamp: nil, tool_name: nil, state_delta: nil, event_id: nil)
       # Basic validation
-      unless %i[user agent tool_request tool_result].include?(role)
+      unless VALID_ROLES.include?(role)
         raise ArgumentError, "Invalid role: #{role}. Must be :user, :agent, :tool_request, or :tool_result."
       end
 
-      if %i[tool_request tool_result].include?(role) && (tool_name.nil? || !tool_name.is_a?(Symbol))
+      if TOOL_ROLES.include?(role) && (tool_name.nil? || !tool_name.is_a?(Symbol))
         ADK.logger.warn("Event: :#{role} event created without a valid :tool_name symbol.")
       end
 
@@ -45,7 +52,7 @@ module ADK
       end
 
       # Ensure content is somewhat reasonable (avoids deep inspection for performance)
-      unless content.is_a?(String) || content.is_a?(Hash) || content.is_a?(Array) || content.is_a?(NilClass) || content.is_a?(Numeric) || content.is_a?(TrueClass) || content.is_a?(FalseClass)
+      unless VALID_CONTENT_TYPES.any? { |type| content.is_a?(type) }
         ADK.logger.warn("Event: Content is of unusual type (#{content.class}): #{content.inspect}")
       end
 
