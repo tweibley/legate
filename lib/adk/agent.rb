@@ -181,112 +181,32 @@ module ADK
 
       @definition = definition
       @name = definition.name
-
-      # --- Initialize Callbacks from Definition ---
-      @before_agent_callback = definition.before_agent_callback
-      @after_agent_callback = definition.after_agent_callback
-      @before_model_callback = definition.before_model_callback
-      @after_model_callback = definition.after_model_callback
-      @before_tool_callback = definition.before_tool_callback
-      @after_tool_callback = definition.after_tool_callback
-      # --- End Initialize Callbacks ---
-
-      # --- Initialize Authentication Config from Definition ---
-      @auth_credential_names = definition.auth_credential_names || Set.new
-      @auth_url_mappings = definition.auth_url_mappings || []
-      @auth_scheme_assignments = definition.auth_scheme_assignments || {}
-      @auth_credential_assignments = definition.auth_credential_assignments || {}
-      # --- End Initialize Authentication Config ---
-
-      # Check for direct self-references in the definition's sub_agent_names
-      if definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
-        if definition.sub_agent_names.include?(@name)
-          raise ADK::ConfigurationError, "Circular dependency detected: Agent '#{@name}' cannot include itself as a sub-agent"
-        end
-      end
-
       @description = definition.description
       @instruction = definition.instruction
       @model_name = definition.model_name || DEFAULT_MODEL
       @fallback_mode = definition.fallback_mode # Assumes :error is default in AgentDefinition
       @selected_tool_names = definition.tool_names.to_a # Tool names are directly from definition
 
+      # Initialize basic configurations
+      initialize_callbacks(definition)
+      initialize_auth_config(definition)
+
       # MAS Attributes Initialization
       @parent_agent = nil # Will be set by parent if this is a sub-agent
       @sub_agents = []    # Will be populated if this agent has sub-agents defined
 
-      # Tool paths are NOT loaded when initializing from definition; tools are expected to be globally registered.
-      tool_paths_to_load = []
-      # Tool classes are resolved via GlobalToolManager using names from definition
-      tool_classes_to_load = definition.tool_names.map { |tn| ADK::GlobalToolManager.find_class(tn) }.compact
-
-      if tool_classes_to_load.length != definition.tool_names.length
-        found_tool_names = tool_classes_to_load.map { |tc| tc.tool_metadata[:name].to_sym rescue nil }.compact.to_set
-        missing_tool_names = definition.tool_names.to_set - found_tool_names
-        ADK.logger.warn("Agent '#{@name}': Could not find globally registered classes for tools: #{missing_tool_names.to_a.join(', ')}. These tools will be unavailable.")
-      end
-
       @session_service = session_service || ADK.config.session_service # Simplified session service init
-
-      # MCP servers are taken directly from the definition
-      mcp_servers_config_str = definition.mcp_servers || []
 
       ADK.logger.info("Initializing agent '#{@name}' from provided definition object...")
       # -----------------------------------------
       @state = :idle # Initial state
-
       @tool_registry = ADK::ToolRegistry.new
       ADK.logger.debug("Agent '#{@name}' created its ToolRegistry instance: #{@tool_registry.object_id}")
 
-      # 1. Discover tools from paths (if any) and update GlobalToolManager
-      newly_discovered_tool_names = Set.new
-      unless tool_paths_to_load.empty?
-        initial_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
-        ADK::ToolLoader.load_from_paths(tool_paths_to_load)
-        current_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
-        newly_discovered_tool_names = current_global_tools - initial_global_tools
-        ADK.logger.debug("[Agent Init '#{@name}'] Newly discovered tool names: #{newly_discovered_tool_names.to_a.inspect}")
-      end
+      initialize_tools(definition)
 
-      # 2. Register tool *classes* passed directly (via add_tool_classes or from definition)
-      ADK.logger.debug("[Agent Init '#{@name}'] Registering explicitly provided tool classes: #{tool_classes_to_load.inspect}")
-      tool_classes_to_load.each do |tool_class|
-        ADK.logger.debug("[Agent Init '#{@name}'] Processing class from builder: #{tool_class.inspect} (Object ID: #{tool_class.object_id})")
-        register_tool_class(tool_class) # Use the agent's specific register method
-      end
-
-      # 3. Register newly *discovered* tool classes (from paths) that weren't explicitly passed
-      ADK.logger.debug("[Agent Init '#{@name}'] Registering newly discovered tool classes (from paths): #{newly_discovered_tool_names.to_a.inspect}")
-      newly_discovered_tool_names.each do |tool_name|
-        tool_class = ADK::GlobalToolManager.find_class(tool_name)
-        if tool_class
-          # Check if already registered from step 2 before registering again
-          unless @tool_registry.find_class(tool_name)
-            ADK.logger.debug("[Agent Init '#{@name}'] Registering discovered tool #{tool_name.inspect} (class: #{tool_class})...")
-            register_tool_class(tool_class) # Use the agent's specific register method
-          else
-            ADK.logger.debug("[Agent Init '#{@name}'] Skipping registration of discovered tool #{tool_name.inspect}, already registered via explicit classes.")
-          end
-        else
-          # This case should be rare now due to _discover_and_load_tools logic
-          ADK.logger.error("[Agent Init '#{@name}'] Failed to find class for discovered tool '#{tool_name}' in GlobalToolManager during agent init.")
-        end
-      end
-
-      # 4. Register mandatory tools like CheckJobStatusTool if needed
-      if defined?(Sidekiq)
-        unless @tool_registry.find_class(:check_job_status)
-          begin
-            require_relative 'tools/check_job_status_tool' # Ensure loaded
-            register_tool_class(ADK::Tools::CheckJobStatusTool)
-            ADK.logger.info("Automatically registered CheckJobStatusTool for agent '#{@name}'.")
-          rescue LoadError => e
-            ADK.logger.error("Failed to load CheckJobStatusTool: #{e.message}")
-          end
-        end
-      else
-        ADK.logger.warn("Sidekiq not defined. Skipping automatic registration of CheckJobStatusTool for agent '#{@name}'.")
-      end
+      # MCP servers are taken directly from the definition
+      mcp_servers_config_str = definition.mcp_servers || []
 
       # --- Parse MCP Server Config (uses mcp_servers_config_str) ---
       if mcp_servers_config_str.is_a?(String) && !mcp_servers_config_str.strip.empty?
@@ -316,77 +236,7 @@ module ADK
         "Agent '#{@name}' initialized with #{@tool_registry.tools.count} tools: [#{@tool_registry.tools.keys.join(', ')}]"
       }
 
-      # MAS: Instantiate Sub-Agents or use provided ones
-      if sub_agents && !sub_agents.empty?
-        ADK.logger.info("Agent '#{@name}': Initializing with programmatically provided sub-agents (#{sub_agents.length} agents).")
-        sub_agents.each do |sub_agent|
-          unless sub_agent.is_a?(ADK::Agent)
-            ADK.logger.warn("Agent '#{@name}': Item in provided sub_agents list is not an ADK::Agent. Skipping: #{sub_agent.inspect}")
-            next
-          end
-
-          # Check for circular dependencies
-          begin
-            _check_circular_dependency(sub_agent.name)
-          rescue ADK::ConfigurationError => e
-            ADK.logger.error("Agent '#{@name}': #{e.message}")
-            next # Skip this sub-agent
-          end
-
-          # Enforce single parent rule
-          if sub_agent.parent_agent.nil?
-            sub_agent.instance_variable_set(:@parent_agent, self)
-          elsif sub_agent.parent_agent != self
-            ADK.logger.error("Agent '#{@name}': Cannot adopt sub-agent '#{sub_agent.name}'. It already has a different parent: '#{sub_agent.parent_agent.name}'. Skipping this sub-agent.")
-            next # Skip this sub-agent
-          end
-          # (If sub_agent.parent_agent == self, it's already correctly parented, do nothing extra here)
-
-          # Verify session service consistency and assign if missing
-          if sub_agent.instance_variable_get(:@session_service).nil? && @session_service
-            ADK.logger.debug("Agent '#{@name}': Setting session_service for programmatic sub-agent '#{sub_agent.name}' to match parent.")
-            sub_agent.instance_variable_set(:@session_service, @session_service)
-          elsif sub_agent.instance_variable_get(:@session_service) != @session_service && @session_service # Warn if different and parent has one
-            ADK.logger.warn("Agent '#{@name}': Programmatic sub-agent '#{sub_agent.name}' has a different session_service than parent.")
-          end
-          @sub_agents << sub_agent
-          ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent.name}'.")
-        end
-        ADK.logger.info("Agent '#{@name}' finished linking programmatic sub-agents. Total sub-agents: #{@sub_agents.length}")
-      elsif definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
-        ADK.logger.info("Agent '#{@name}' attempting to instantiate sub-agents from definition: #{definition.sub_agent_names.to_a.inspect}")
-        definition.sub_agent_names.each do |sub_agent_name|
-          begin
-            # Check for circular dependencies before instantiation
-            _check_circular_dependency(sub_agent_name)
-
-            sub_agent_definition = ADK::GlobalDefinitionRegistry.get(sub_agent_name)
-            unless sub_agent_definition
-              ADK.logger.error("Agent '#{@name}': Could not find definition for sub-agent '#{sub_agent_name}' in GlobalDefinitionRegistry. Skipping.")
-              next
-            end
-
-            ADK.logger.debug("Agent '#{@name}': Instantiating sub-agent '#{sub_agent_name}'...")
-            sub_agent = ADK::Agent.new(definition: sub_agent_definition, session_service: @session_service)
-            # Set parent link - enforce single parent rule
-            if sub_agent.parent_agent.nil?
-              sub_agent.instance_variable_set(:@parent_agent, self)
-            elsif sub_agent.parent_agent != self # Should not happen if instantiated fresh, but defensive check
-              ADK.logger.error("Agent '#{@name}': Newly instantiated sub-agent '#{sub_agent.name}' unexpectedly already has a different parent: '#{sub_agent.parent_agent.name}'. Skipping.")
-              next # Skip this sub-agent
-            end
-            # (If sub_agent.parent_agent == self, it's already fine)
-
-            @sub_agents << sub_agent
-            ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent.name}'.")
-          rescue ArgumentError => e # Catch errors from ADK::Agent.new (e.g. definition issues)
-            ADK.logger.error("Agent '#{@name}': ArgumentError instantiating sub-agent '#{sub_agent_name}': #{e.message}")
-          rescue StandardError => e
-            ADK.logger.error("Agent '#{@name}': Unexpected error instantiating sub-agent '#{sub_agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
-          end
-        end
-        ADK.logger.info("Agent '#{@name}' finished sub-agent instantiation. Total sub-agents: #{@sub_agents.length}")
-      end
+      initialize_sub_agents(definition, sub_agents)
     end
 
     # Adds a tool instance OR class to the agent's registry
@@ -1322,6 +1172,168 @@ module ADK
         ancestry_path.unshift(parent.name)
         current_agent = parent
       end
+    end
+
+    # --- Helper methods for initialization ---
+
+    def initialize_callbacks(definition)
+      @before_agent_callback = definition.before_agent_callback
+      @after_agent_callback = definition.after_agent_callback
+      @before_model_callback = definition.before_model_callback
+      @after_model_callback = definition.after_model_callback
+      @before_tool_callback = definition.before_tool_callback
+      @after_tool_callback = definition.after_tool_callback
+    end
+
+    def initialize_auth_config(definition)
+      @auth_credential_names = definition.auth_credential_names || Set.new
+      @auth_url_mappings = definition.auth_url_mappings || []
+      @auth_scheme_assignments = definition.auth_scheme_assignments || {}
+      @auth_credential_assignments = definition.auth_credential_assignments || {}
+    end
+
+    def initialize_tools(definition)
+      # Tool paths are NOT loaded when initializing from definition; tools are expected to be globally registered.
+      tool_paths_to_load = []
+      # Tool classes are resolved via GlobalToolManager using names from definition
+      tool_classes_to_load = definition.tool_names.map { |tn| ADK::GlobalToolManager.find_class(tn) }.compact
+
+      if tool_classes_to_load.length != definition.tool_names.length
+        found_tool_names = tool_classes_to_load.map { |tc| tc.tool_metadata[:name].to_sym rescue nil }.compact.to_set
+        missing_tool_names = definition.tool_names.to_set - found_tool_names
+        ADK.logger.warn("Agent '#{@name}': Could not find globally registered classes for tools: #{missing_tool_names.to_a.join(', ')}. These tools will be unavailable.")
+      end
+
+      # 1. Discover tools from paths (if any) and update GlobalToolManager
+      newly_discovered_tool_names = Set.new
+      unless tool_paths_to_load.empty?
+        initial_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
+        ADK::ToolLoader.load_from_paths(tool_paths_to_load)
+        current_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
+        newly_discovered_tool_names = current_global_tools - initial_global_tools
+        ADK.logger.debug("[Agent Init '#{@name}'] Newly discovered tool names: #{newly_discovered_tool_names.to_a.inspect}")
+      end
+
+      # 2. Register tool *classes* passed directly
+      ADK.logger.debug("[Agent Init '#{@name}'] Registering explicitly provided tool classes: #{tool_classes_to_load.inspect}")
+      tool_classes_to_load.each do |tool_class|
+        ADK.logger.debug("[Agent Init '#{@name}'] Processing class from builder: #{tool_class.inspect} (Object ID: #{tool_class.object_id})")
+        register_tool_class(tool_class)
+      end
+
+      # 3. Register newly *discovered* tool classes (from paths)
+      ADK.logger.debug("[Agent Init '#{@name}'] Registering newly discovered tool classes (from paths): #{newly_discovered_tool_names.to_a.inspect}")
+      newly_discovered_tool_names.each do |tool_name|
+        tool_class = ADK::GlobalToolManager.find_class(tool_name)
+        if tool_class
+          unless @tool_registry.find_class(tool_name)
+            ADK.logger.debug("[Agent Init '#{@name}'] Registering discovered tool #{tool_name.inspect} (class: #{tool_class})...")
+            register_tool_class(tool_class)
+          else
+            ADK.logger.debug("[Agent Init '#{@name}'] Skipping registration of discovered tool #{tool_name.inspect}, already registered via explicit classes.")
+          end
+        else
+          ADK.logger.error("[Agent Init '#{@name}'] Failed to find class for discovered tool '#{tool_name}' in GlobalToolManager during agent init.")
+        end
+      end
+
+      # 4. Register mandatory tools like CheckJobStatusTool if needed
+      if defined?(Sidekiq)
+        unless @tool_registry.find_class(:check_job_status)
+          begin
+            require_relative 'tools/check_job_status_tool' # Ensure loaded
+            register_tool_class(ADK::Tools::CheckJobStatusTool)
+            ADK.logger.info("Automatically registered CheckJobStatusTool for agent '#{@name}'.")
+          rescue LoadError => e
+            ADK.logger.error("Failed to load CheckJobStatusTool: #{e.message}")
+          end
+        end
+      else
+        ADK.logger.warn("Sidekiq not defined. Skipping automatic registration of CheckJobStatusTool for agent '#{@name}'.")
+      end
+    end
+
+    def initialize_sub_agents(definition, sub_agents)
+      # Check for direct self-references in the definition's sub_agent_names
+      if definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
+        if definition.sub_agent_names.include?(@name)
+          raise ADK::ConfigurationError, "Circular dependency detected: Agent '#{@name}' cannot include itself as a sub-agent"
+        end
+      end
+
+      # MAS: Instantiate Sub-Agents or use provided ones
+      if sub_agents && !sub_agents.empty?
+        initialize_programmatic_sub_agents(sub_agents)
+      elsif definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
+        initialize_declarative_sub_agents(definition.sub_agent_names)
+      end
+    end
+
+    def initialize_programmatic_sub_agents(sub_agents)
+      ADK.logger.info("Agent '#{@name}': Initializing with programmatically provided sub-agents (#{sub_agents.length} agents).")
+      sub_agents.each do |sub_agent|
+        unless sub_agent.is_a?(ADK::Agent)
+          ADK.logger.warn("Agent '#{@name}': Item in provided sub_agents list is not an ADK::Agent. Skipping: #{sub_agent.inspect}")
+          next
+        end
+
+        begin
+          _check_circular_dependency(sub_agent.name)
+        rescue ADK::ConfigurationError => e
+          ADK.logger.error("Agent '#{@name}': #{e.message}")
+          next # Skip this sub-agent
+        end
+
+        if sub_agent.parent_agent.nil?
+          sub_agent.instance_variable_set(:@parent_agent, self)
+        elsif sub_agent.parent_agent != self
+          ADK.logger.error("Agent '#{@name}': Cannot adopt sub-agent '#{sub_agent.name}'. It already has a different parent: '#{sub_agent.parent_agent.name}'. Skipping this sub-agent.")
+          next # Skip this sub-agent
+        end
+
+        if sub_agent.instance_variable_get(:@session_service).nil? && @session_service
+          ADK.logger.debug("Agent '#{@name}': Setting session_service for programmatic sub-agent '#{sub_agent.name}' to match parent.")
+          sub_agent.instance_variable_set(:@session_service, @session_service)
+        elsif sub_agent.instance_variable_get(:@session_service) != @session_service && @session_service
+          ADK.logger.warn("Agent '#{@name}': Programmatic sub-agent '#{sub_agent.name}' has a different session_service than parent.")
+        end
+        @sub_agents << sub_agent
+        ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent.name}'.")
+      end
+      ADK.logger.info("Agent '#{@name}' finished linking programmatic sub-agents. Total sub-agents: #{@sub_agents.length}")
+    end
+
+    def initialize_declarative_sub_agents(sub_agent_names)
+      ADK.logger.info("Agent '#{@name}' attempting to instantiate sub-agents from definition: #{sub_agent_names.to_a.inspect}")
+      sub_agent_names.each do |sub_agent_name|
+        begin
+          _check_circular_dependency(sub_agent_name)
+
+          sub_agent_definition = ADK::GlobalDefinitionRegistry.get(sub_agent_name)
+          unless sub_agent_definition
+            ADK.logger.error("Agent '#{@name}': Could not find definition for sub-agent '#{sub_agent_name}' in GlobalDefinitionRegistry. Skipping.")
+            next
+          end
+
+          ADK.logger.debug("Agent '#{@name}': Instantiating sub-agent '#{sub_agent_name}'...")
+          sub_agent = ADK::Agent.new(definition: sub_agent_definition, session_service: @session_service)
+
+          if sub_agent.parent_agent.nil?
+            sub_agent.instance_variable_set(:@parent_agent, self)
+          elsif sub_agent.parent_agent != self
+            ADK.logger.error("Agent '#{@name}': Newly instantiated sub-agent '#{sub_agent.name}' unexpectedly already has a different parent: '#{sub_agent.parent_agent.name}'. Skipping.")
+            next # Skip this sub-agent
+          end
+
+          @sub_agents << sub_agent
+          ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent.name}'.")
+        rescue ArgumentError => e
+          ADK.logger.error("Agent '#{@name}': ArgumentError instantiating sub-agent '#{sub_agent_name}': #{e.message}")
+        rescue StandardError => e
+          ADK.logger.error("Agent '#{@name}': Unexpected error instantiating sub-agent '#{sub_agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+        end
+      end
+      ADK.logger.info("Agent '#{@name}' finished sub-agent instantiation. Total sub-agents: #{@sub_agents.length}")
     end
 
     # --- MAS: Store result in session state if output_key is defined --- #
