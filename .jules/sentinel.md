@@ -1,12 +1,5 @@
-## 2025-12-18 - Script Generation Injection
+## 2024-02-14 - Fix Command Injection in GCloud Deployment
 
-**Vulnerability:** User input was interpolated into a generated Bash script inside double quotes (`VAR="#{input}"`). Malicious input containing quotes could break out and execute arbitrary commands when the user runs the script.
-**Learning:** `Shellwords.escape` is essential not just for `system()` calls but also when generating shell scripts programmatically.
-**Prevention:** Use `Shellwords.escape(input)` and remove surrounding quotes in the target script template (e.g., `VAR=#{escaped_input}`).
-
-## 2025-12-17 - [SSRF in WebhookTool]
-
-**Vulnerability:** `ADK::Tools::WebhookTool` allowed agents to send HTTP requests to any URL, including `localhost` and private IPs.
-**Learning:** Tools that accept URLs as input must explicitly validate the destination to prevent Server-Side Request Forgery (SSRF), especially given the agent's ability to explore networks.
-**Prevention:** Implemented `validate_url_security` using `Resolv` and `IPAddr` to block access to private, loopback, and link-local addresses. This pattern should be applied to any future tools making outbound HTTP requests.
-
+**Vulnerability:** Command injection in `ADK::CLI::DeploymentCommands#run_gcloud_command`. User input (project ID) was interpolated directly into a backtick execution string (`gcloud #{command}`), allowing execution of arbitrary commands if malicious input was provided.
+**Learning:** `system` with an array of arguments bypasses the shell, which prevents injection but also breaks shell builtins like `command -v`. When checking for command existence, a static string passed to `system` is safe and necessary to invoke the shell for builtins.
+**Prevention:** Use `Open3.capture2e` with an array of arguments for all command executions that involve variable input. Avoid string interpolation in system calls or backticks.
