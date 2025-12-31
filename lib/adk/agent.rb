@@ -18,6 +18,7 @@ require 'json'
 require_relative 'global_definition_registry'
 require_relative 'global_tool_manager' # Added
 require_relative 'tool_loader'
+require_relative 'parameter_injector' # Added
 require 'socket'
 require 'set' # Required for the Set class in _check_circular_dependency
 require 'securerandom' # Added for SecureRandom
@@ -302,6 +303,7 @@ module ADK
       @mcp_clients = [] # Store active MCP client instances
 
       @planner = planner_override || ADK::Planner.new(agent: self, model_name: @model_name)
+      @parameter_injector = ADK::ParameterInjector.new(logger: ADK.logger)
 
       # Validate essential components using respond_to? for duck typing
       unless @session_service&.respond_to?(:get_session) && @session_service&.respond_to?(:append_event)
@@ -935,40 +937,7 @@ module ADK
         ADK.logger.debug("  Input (result hash from previous step): #{previous_step_result_hash.inspect}")
 
         # --- Input Injection Logic (Updated for job_id) ---
-        current_params = step[:params].dup
-        current_params.transform_values! do |value|
-          injection_value = nil
-          if value.is_a?(String) && value.match?(/\[Result from step \d+\]|\[Result from previous step\]/i)
-            if previous_step_result_hash && %i[success pending].include?(previous_step_result_hash[:status])
-              # Prioritize :result, then :job_id (was workflow_id), then :message
-              if previous_step_result_hash.key?(:result)
-                prev_result = previous_step_result_hash[:result]
-                if prev_result.is_a?(Hash) && prev_result.key?(:status) && prev_result.key?(:result) # AgentTool nested result
-                  injection_value = prev_result[:result]
-                  ADK.logger.debug('Injecting nested result...')
-                else
-                  injection_value = prev_result
-                  ADK.logger.debug('Injecting direct result...')
-                end
-              elsif previous_step_result_hash.key?(:job_id) # <-- CHANGED from workflow_id
-                injection_value = previous_step_result_hash[:job_id]
-                ADK.logger.debug('Injecting job_id from previous step...')
-              elsif previous_step_result_hash.key?(:message)
-                injection_value = previous_step_result_hash[:message]
-                ADK.logger.debug('Injecting message from previous step...')
-              else
-                ADK.logger.warn("Cannot inject: Previous successful/pending step missing usable key (:result, :job_id, :message). Prev Hash: #{previous_step_result_hash.inspect}")
-                value
-              end
-            else
-              ADK.logger.warn("Cannot inject: Previous step failed or absent. Prev Hash: #{previous_step_result_hash.inspect}")
-              value
-            end
-            injection_value || value # Use injection if found, otherwise keep original
-          else
-            value # Not a placeholder string, keep original value
-          end
-        end
+        current_params = @parameter_injector.inject(step[:params], previous_step_result_hash)
         step_with_injected_params = step.merge(params: current_params)
         ADK.logger.debug("  Params after potential injection: #{current_params.inspect}")
         # --- End Input Injection Logic ---
