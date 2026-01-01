@@ -384,7 +384,7 @@ RSpec.describe ADK::Mcp::Server::AdkAgentAdapter do
         result = adapter_instance.call(prompt: prompt)
 
         expect(result).to eq({ status: 'pending', job_id: 'job_567', message: 'Processing...' })
-        expect(logger_spy).to have_received(:warn).with(/Agent '#{agent_name}' execution ended with pending status/)
+        expect(logger_spy).to have_received(:warn).with(/Agent '#{agent_name}' pending/)
         # Ensure cleanup still happens
         expect(agent_instance_double).to have_received(:stop)
         expect(session_service_instance).to have_received(:delete_session)
