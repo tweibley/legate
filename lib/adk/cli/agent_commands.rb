@@ -7,6 +7,7 @@ require 'json'
 require 'yaml'
 require 'fileutils' # For creating directories
 require 'cli/ui'    # Correct require
+require 'did_you_mean' # Added for suggestions
 require_relative '../tool_registry'
 require_relative '../agent'
 require_relative '../event'
@@ -27,12 +28,40 @@ module ADK
       @@session_service = ADK::SessionService::InMemory.new
 
       # Keep existing @@session_service_for_execute for 'execute' command's default in-memory usage
-      # This seems to be an older or differently purposed variable. Let's ensure it's distinct.
-      # If it's truly redundant after initializing @@session_service, it might be removable later,
-      # but for now, we will keep it to avoid breaking other logic that might rely on it.
       @@session_service_for_execute = ADK::SessionService::InMemory.new
 
       no_commands do
+        # --- Suggestion Helper ---
+        def suggest_agent(name)
+          return nil unless name
+
+          # Fetch all available names. Try Redis set first if possible, else rely on loaded definitions.
+          # Note: ADK::AgentDefinitionStore.all returns loaded definitions.
+          # If we want ALL persisted names without loading all details, we need a way to get keys.
+          # We'll use a direct Redis call pattern similar to 'list' command if possible, or fall back.
+
+          all_names = []
+          begin
+            # Try to get names from Redis directly if available/configured
+            if ADK.redis_options && defined?(ADK::AgentDefinitionStore::REDIS_AGENTS_SET_KEY)
+              redis = Redis.new(ADK.redis_options)
+              all_names = redis.smembers(ADK::AgentDefinitionStore::REDIS_AGENTS_SET_KEY)
+              redis.close
+            end
+          rescue StandardError
+            # If Redis fails, use in-memory loaded ones (better than nothing)
+            all_names = ADK::AgentDefinitionStore.all.keys.map(&:to_s)
+          end
+
+          # If we still have nothing (e.g. no Redis conn and no loaded agents), just return nil
+          return nil if all_names.empty?
+
+          checker = DidYouMean::SpellChecker.new(dictionary: all_names)
+          suggestions = checker.correct(name.to_s)
+          suggestions.any? ? "Did you mean #{suggestions.first.inspect}?" : nil
+        end
+        # --- End Suggestion Helper ---
+
         # --- Existing format_cli_result (for 'execute' command) ---
         def format_cli_result(result_data)
           content_to_display = nil
@@ -184,28 +213,22 @@ module ADK
             title_color = :red
             title_prefix = 'Agent Error'
             message_body_content = data_to_format[:error_message]
-            ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
-              ::CLI::UI.puts message_body_content
-            end
           when :pending
             title_color = :yellow
             title_prefix = 'Agent Pending'
             message_body_content = "Job ID [#{data_to_format[:job_id]}] - #{data_to_format[:message]}"
-            ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
-              ::CLI::UI.puts message_body_content
-            end
           else
             title_color = :magenta
             title_prefix = "Agent (Status: #{data_to_format[:status]})"
             message_body_content = data_to_format.inspect
-            ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
-              ::CLI::UI.puts message_body_content
-            end
+          end
+          ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
+            ::CLI::UI.puts message_body_content
           end
           ::CLI::UI.puts '' # Add extra line break after any response
         end
         # --- END _format_chat_turn_output_cli_ui ---
-      end # end no_commands
+      end
 
       # --- Definition Management Commands (Existing - no changes shown for brevity) ---
       desc 'list', 'List all defined agents'
@@ -315,7 +338,10 @@ module ADK
         end
 
         unless definition_exists
-          say "Error: Agent definition '#{name}' not found.", :red
+          msg = "Error: Agent definition '#{name}' not found."
+          suggestion = suggest_agent(name)
+          msg += "\n#{suggestion}" if suggestion
+          say msg, :red
           exit(1)
         end
 
@@ -535,7 +561,10 @@ module ADK
           definition_hash = ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
           unless definition_hash
-            output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+            msg = "Agent definition '#{name}' not found."
+            suggestion = suggest_agent(name)
+            msg += "\n#{suggestion}" if suggestion
+            output_error(msg, metadata: { agent: name })
             exit(1)
           end
 
@@ -627,7 +656,10 @@ module ADK
         end
 
         unless definition
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          msg = "Agent definition '#{name}' not found."
+          suggestion = suggest_agent(name)
+          msg += "\n#{suggestion}" if suggestion
+          output_error(msg, metadata: { agent: name })
           exit(1)
         end
 
@@ -747,7 +779,10 @@ module ADK
         end
 
         unless definition
-          say "Error: Agent definition '#{name}' not found.", :red
+          msg = "Error: Agent definition '#{name}' not found."
+          suggestion = suggest_agent(name)
+          msg += "\n#{suggestion}" if suggestion
+          say msg, :red
           exit(1)
         end
 
@@ -812,7 +847,10 @@ module ADK
         definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
         unless definition_hash
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          msg = "Agent definition '#{name}' not found."
+          suggestion = suggest_agent(name)
+          msg += "\n#{suggestion}" if suggestion
+          output_error(msg, metadata: { agent: name })
           exit(1)
         end
 
@@ -887,7 +925,7 @@ module ADK
           end
           exit(1) if e_outer
         end
-      end # End 'execute' command
+      end
 
       # --- CHAT COMMAND ---
       desc 'chat AGENT_NAME', 'Interactively chat with an agent definition'
@@ -913,7 +951,10 @@ module ADK
 
         definition = ADK::AgentDefinitionStore.load_from_redis(agent_name_sym)
         unless definition
-          ::CLI::UI.puts "{{red:Error: Agent definition '#{agent_name_str}' not found in Redis.}}"
+          msg = "Error: Agent definition '#{agent_name_str}' not found in Redis."
+          suggestion = suggest_agent(agent_name_str)
+          msg += "\n#{suggestion}" if suggestion
+          ::CLI::UI.puts "{{red:#{msg}}}"
           exit(1)
         end
 
@@ -1047,6 +1088,6 @@ module ADK
       def self.exit_on_failure?
         true
       end
-    end # End AgentCommands class
-  end # End CLI module
-end # End ADK module
+    end
+  end
+end
