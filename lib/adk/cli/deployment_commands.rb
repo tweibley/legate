@@ -8,6 +8,7 @@ require 'yaml'
 require 'logger' # Needed for sample entrypoint
 require 'securerandom' # Needed for suggested project ID
 require 'shellwords'
+require 'open3'
 
 module ADK
   module CLI
@@ -585,10 +586,11 @@ module ADK
       end
 
       # Helper to execute shell commands and check status
-      def run_gcloud_command(command, error_message)
-        say "Executing: gcloud #{command}"
-        output = `gcloud #{command} 2>&1` # Capture stderr too
-        unless $?.success?
+      def run_gcloud_command(args, error_message:)
+        command_str = "gcloud #{args.join(' ')}"
+        say "Executing: #{command_str}"
+        output, status = Open3.capture2e('gcloud', *args)
+        unless status.success?
           say "Error: #{error_message}", :red
           say "gcloud output:\n#{output}", :red
           # Decide if we should exit or just warn
@@ -616,13 +618,12 @@ module ADK
 
         # 1. Create or check configuration
         # Use describe to check existence non-destructively
-        `gcloud config configurations describe #{config_name} > /dev/null 2>&1`
-        if $?.success?
+        if system('gcloud', 'config', 'configurations', 'describe', config_name, %i[out err] => File::NULL)
           say "Configuration '#{config_name}' already exists. Settings will be updated.", :yellow
         else
           # Try to create (use --no-activate)
-          unless run_gcloud_command("config configurations create #{config_name} --no-activate",
-                                    "Failed to create gcloud configuration '#{config_name}'.")
+          unless run_gcloud_command(['config', 'configurations', 'create', config_name, '--no-activate'],
+                                    error_message: "Failed to create gcloud configuration '#{config_name}'.")
             return nil # Failed, can't set properties
           end
 
@@ -630,12 +631,12 @@ module ADK
         end
 
         # 2. Set properties
-        run_gcloud_command("config set project #{project_id} --configuration=#{config_name}",
-                           'Failed to set project in gcloud config.')
-        run_gcloud_command("config set compute/region #{region} --configuration=#{config_name}",
-                           'Failed to set region in gcloud config.')
+        run_gcloud_command(['config', 'set', 'project', project_id, "--configuration=#{config_name}"],
+                           error_message: 'Failed to set project in gcloud config.')
+        run_gcloud_command(['config', 'set', 'compute/region', region, "--configuration=#{config_name}"],
+                           error_message: 'Failed to set region in gcloud config.')
         # Add other relevant defaults? e.g., run/region?
-        # run_gcloud_command("config set run/region #{region} --configuration=#{config_name}", "Failed to set run/region in gcloud config.")
+        # run_gcloud_command(['config', 'set', 'run/region', region, "--configuration=#{config_name}"], error_message: "Failed to set run/region in gcloud config.")
 
         config_name # Return the name used
       end
