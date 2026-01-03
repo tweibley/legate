@@ -46,7 +46,7 @@ module ADK
         # @param client_secret [String, nil] The client secret
         # @param redirect_uri [String, nil] The redirect URI
         # @param kwargs [Hash] Additional options to pass to the OAuth2 parent class
-        # @param config [Hash] A config hash containing all options (alternative to individual parameters)
+        # @param first_arg [Hash] A config hash containing all options (alternative to individual parameters)
         def initialize(first_arg = nil, authorization_url: nil, token_url: nil, discovery_url: nil,
                        jwks_url: nil, userinfo_url: nil, scopes: nil, use_pkce: true,
                        additional_params: nil, revocation_url: nil, client_id: nil,

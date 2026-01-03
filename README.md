@@ -23,7 +23,7 @@ ADK (Agent Development Kit) for Ruby is a framework for building AI agents with 
 - **Tool Parameter Injection**: Automatically injects results from previous steps into subsequent tool parameters (using `[Result from step N]` placeholders)
 - **Agent Delegation**: Agents can delegate tasks to other agents using the built-in `:delegate_task` tool
 - **Metrics**: Basic Prometheus metrics endpoint (`/metrics`) via `prometheus-client`
-- **Asynchronous Job Handling**: Support for long-running tasks via background jobs (using Sidekiq). See [Async Jobs with Sidekiq](docs/async_jobs_sidekiq.md)
+- **Asynchronous Job Handling**: Support for long-running tasks via background jobs (using Sidekiq). See [Async Jobs with Sidekiq](docs/Completed/async_jobs_sidekiq.md)
 - **Dynamic Agent Delegation**: Enables agent coordination through direct delegation, allowing complex workflows where agents can transfer control to specialized agents while maintaining session state.
 - **Agent Hierarchy**: Organize agents in parent-child relationships, creating sophisticated agent structures.
 - **Workflow Agents**: Support for sequential, parallel, and loop agent patterns.
@@ -596,7 +596,7 @@ ADK supports offloading long-running tasks to Sidekiq background jobs, preventin
 *   Use the built-in `:check_job_status` tool to poll for results using the `job_id` returned by the starting tool.
 *   Requires a running Redis instance and a separate Sidekiq worker process for your jobs.
 
-See the detailed documentation: [docs/async_jobs_sidekiq.md](docs/async_jobs_sidekiq.md)
+See the detailed documentation: [docs/Completed/async_jobs_sidekiq.md](docs/Completed/async_jobs_sidekiq.md)
 
 ## Creating Custom Tools
 
@@ -781,4 +781,4 @@ Key features include:
 *   **Asynchronous Processing:** Webhooks are quickly acknowledged (`202 Accepted`), and the corresponding agent task is queued for background processing using Sidekiq.
 *   **Security:** Supports request validation using shared secrets (e.g., HMAC) or custom logic.
 
-For detailed configuration and usage, please refer to the [Webhook Implementation Plan](docs/inbound-webhook-to-agent.md).
+For detailed configuration and usage, please refer to the [Webhook Implementation Plan](docs/Completed/inbound-webhook-to-agent.md).

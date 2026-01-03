@@ -225,7 +225,7 @@ module ADK
 
       # Registers a tool for the agent to use.
       # @param tool_name [Symbol] The registered name of the tool.
-      # @param options [Hash] Tool-specific options (currently unused).
+      # @param _options [Hash] Tool-specific options (currently unused).
       def use_tool(tool_name, _options = {})
         raise ArgumentError, 'Tool name must be a Symbol.' unless tool_name.is_a?(Symbol)
 

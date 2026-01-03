@@ -44,7 +44,6 @@ module ADK
       end
       
       # Run a block with authentication support
-      # @param handler [Proc, nil] Optional handler for authentication requests
       # @yield The block to run
       # @return [Object] The result of the block
       def with_authentication(&block)
