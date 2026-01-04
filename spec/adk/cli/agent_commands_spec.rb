@@ -2,6 +2,7 @@
 
 require 'spec_helper'
 require 'adk/cli/agent_commands'
+require 'adk/generators' # Needed for ai_generate tests
 require 'adk/agent_definition_store'
 require 'adk/global_tool_manager'
 require 'adk/tool'
@@ -927,5 +928,53 @@ RSpec.describe ADK::CLI::AgentCommands do
   before do
     allow(ADK::AgentDefinitionStore).to receive(:find).with(:executor_agent)
                                                       .and_return(agent_def_missing_tool_hash)
+  end
+
+  describe '#ai_generate' do
+    let(:description) { 'A test agent' }
+    let(:generated_code) { '# Generated Code' }
+    let(:result) { { code: generated_code, suggested_name: 'test_agent' } }
+
+    before do
+      allow(ADK::Generators::AgentGenerator).to receive(:generate).and_return(result)
+      allow(File).to receive(:write)
+      allow(File).to receive(:exist?).and_return(false)
+
+      # Stub CLI::UI methods
+      allow(::CLI::UI::StdoutRouter).to receive(:enable)
+      allow(::CLI::UI::Spinner).to receive(:spin).and_yield(double('spinner'))
+    end
+
+    context 'when outputting to file (default/interactive)' do
+      it 'uses a spinner and enables CLI::UI' do
+        expect(::CLI::UI::StdoutRouter).to receive(:enable)
+        expect(::CLI::UI::Spinner).to receive(:spin).with('Generating agent code via AI...')
+
+        invoke_command(:ai_generate, description: description)
+
+        expect(output.string).not_to include('Generating agent code via AI...') # Should be handled by spinner
+        expect(output.string).to include("Agent definition generated and saved to './test_agent_agent.rb'")
+      end
+    end
+
+    context 'when outputting to stdout' do
+      it 'does NOT use a spinner and prints code to stdout' do
+        expect(::CLI::UI::StdoutRouter).not_to receive(:enable)
+        expect(::CLI::UI::Spinner).not_to receive(:spin)
+
+        # Capture stdout since 'puts' writes to Kernel.stdout, not Thor shell
+        original_stdout = $stdout
+        captured_stdout = StringIO.new
+        $stdout = captured_stdout
+
+        begin
+          invoke_command(:ai_generate, description: description, stdout: true)
+        ensure
+          $stdout = original_stdout
+        end
+
+        expect(captured_stdout.string).to include(generated_code)
+      end
+    end
   end
 end

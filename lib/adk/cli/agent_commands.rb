@@ -472,10 +472,22 @@ module ADK
         # Determine output mode
         output_to_stdout = options[:stdout] || from_stdin
 
-        say 'Generating agent code via AI...', :cyan unless output_to_stdout
+        # Enable CLI::UI only if we are interactive (not outputting code to stdout)
+        # This allows spinners and nice formatting.
+        ::CLI::UI::StdoutRouter.enable unless output_to_stdout
 
         begin
-          result = ADK::Generators::AgentGenerator.generate(description: description)
+          result = nil
+          if output_to_stdout
+            # No spinner if we are piping output
+            result = ADK::Generators::AgentGenerator.generate(description: description)
+          else
+            # Interactive mode: use spinner
+            ::CLI::UI::Spinner.spin('Generating agent code via AI...') do |_spinner|
+              result = ADK::Generators::AgentGenerator.generate(description: description)
+            end
+          end
+
           code = result[:code]
           suggested_name = result[:suggested_name]
 
