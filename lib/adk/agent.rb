@@ -25,11 +25,29 @@ require 'securerandom' # Added for SecureRandom
 module ADK
   class Error < StandardError; end unless defined?(ADK::Error)
 
-  # Represents the static definition of an Agent, including its name,
-  # description, instructions, tools, and model configuration.
-
-  # Agent class represents an AI agent that can perform tasks using tools and a planner.
-  # It operates within the context of a session managed by a SessionService.
+  # Orchestrates AI agent execution by coordinating the Planner, Tools, and Session.
+  #
+  # The Agent class is the runtime counterpart to {ADK::AgentDefinition}. While the definition
+  # stores static configuration (name, instructions, tools), the Agent instance manages
+  # the active execution loop, including:
+  # * Processing user input via the Planner (LLM)
+  # * Executing selected Tools
+  # * Managing session state and history
+  # * Handling callbacks and sub-agent delegation
+  #
+  # @example Defining and running an agent
+  #   # 1. Define the agent
+  #   ADK::Agent.define do |a|
+  #     a.name :researcher
+  #     a.description "Researches topics"
+  #     a.instruction "You are a helpful researcher."
+  #     a.use_tool :web_search
+  #   end
+  #
+  #   # 2. Run the agent (typically handled by the framework/CLI)
+  #   # agent = ADK::Agent.new(definition: my_definition)
+  #   # agent.run_task(session_id: '123', user_input: 'Research ruby', session_service: service)
+  #
   class Agent
     DEFAULT_MODEL = 'gemini-2.5-flash' # Updated default model
 
