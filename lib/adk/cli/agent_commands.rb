@@ -7,6 +7,7 @@ require 'json'
 require 'yaml'
 require 'fileutils' # For creating directories
 require 'cli/ui'    # Correct require
+require 'did_you_mean' # For suggestions
 require_relative '../tool_registry'
 require_relative '../agent'
 require_relative '../event'
@@ -270,7 +271,10 @@ module ADK
             if valid_tools.include?(tool_name)
               selected_tools << tool_name unless selected_tools.include?(tool_name)
             else
-              say "Warning: Unknown globally registered tool '#{tool_name}', ignoring.", :yellow
+              msg = "Warning: Unknown globally registered tool '#{tool_name}', ignoring."
+              suggestion = DidYouMean::SpellChecker.new(dictionary: valid_tools).correct(tool_name).first
+              msg += " Did you mean '#{suggestion}'?" if suggestion
+              say msg, :yellow
             end
           end
         end
