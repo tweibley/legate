@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'bundler/setup'
+require_relative '../lib/adk'
+require 'irb'
+
+# Configure IRB
+IRB.conf[:PROMPT_MODE] = :SIMPLE
+IRB.conf[:IRB_NAME] = 'adk'
+
+puts "Loaded ADK #{ADK::VERSION} environment."
+puts 'Commands available: ADK::Agent, ADK::Tool, etc.'
+
+IRB.start(__FILE__)
