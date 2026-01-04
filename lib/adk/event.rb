@@ -28,15 +28,14 @@ module ADK
     # @param tool_name [Symbol, nil] Name of the tool if role is tool related.
     # @param state_delta [Hash, nil] State changes to apply with this event.
     # @param event_id [String, nil] Unique event ID (defaults to SecureRandom.uuid).
+    VALID_ROLES = %i[user agent tool_request tool_result].freeze
+    TOOL_ROLES = %i[tool_request tool_result].freeze
+
     def initialize(role:, content:, timestamp: nil, tool_name: nil, state_delta: nil, event_id: nil)
       # Basic validation
-      unless %i[user agent tool_request tool_result].include?(role)
-        raise ArgumentError, "Invalid role: #{role}. Must be :user, :agent, :tool_request, or :tool_result."
-      end
+      raise ArgumentError, "Invalid role: #{role}. Must be :user, :agent, :tool_request, or :tool_result." unless VALID_ROLES.include?(role)
 
-      if %i[tool_request tool_result].include?(role) && (tool_name.nil? || !tool_name.is_a?(Symbol))
-        ADK.logger.warn("Event: :#{role} event created without a valid :tool_name symbol.")
-      end
+      ADK.logger.warn("Event: :#{role} event created without a valid :tool_name symbol.") if TOOL_ROLES.include?(role) && (tool_name.nil? || !tool_name.is_a?(Symbol))
 
       # Validate state_delta is a Hash or nil
       unless state_delta.nil? || state_delta.is_a?(Hash)
@@ -45,7 +44,9 @@ module ADK
       end
 
       # Ensure content is somewhat reasonable (avoids deep inspection for performance)
-      unless content.is_a?(String) || content.is_a?(Hash) || content.is_a?(Array) || content.is_a?(NilClass) || content.is_a?(Numeric) || content.is_a?(TrueClass) || content.is_a?(FalseClass)
+      unless content.is_a?(String) || content.is_a?(Hash) || content.is_a?(Array) ||
+             content.is_a?(NilClass) || content.is_a?(Numeric) ||
+             content.is_a?(TrueClass) || content.is_a?(FalseClass)
         ADK.logger.warn("Event: Content is of unusual type (#{content.class}): #{content.inspect}")
       end
 
