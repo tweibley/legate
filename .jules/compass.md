@@ -1,5 +1,5 @@
-## 2025-12-17 - Missing Setup Script
+## 2024-02-14 - Missing CONTRIBUTING.md
 
-**Friction:** New contributors have to manually install dependencies and create `.env` file based on prose in README.
-**Learning:** `bin/setup` is a standard convention (Scripts to Rule Them All) that is missing here, leading to friction and potential configuration errors.
-**Action:** Created `bin/setup` and `.env.example` to automate the initial environment configuration.
+**Friction:** New contributors have no clear entry point or guidelines for how to contribute, run tests, or style their code, as `CONTRIBUTING.md` is missing from the root directory.
+**Learning:** `README.md` contains some setup info but mixes user and contributor instructions. A dedicated `CONTRIBUTING.md` is standard practice and essential for a smooth onboarding experience.
+**Action:** Create `CONTRIBUTING.md` with clear, verified steps for setup (`bin/setup`), testing (`bundle exec rspec`), and style (`bundle exec rubocop`).
