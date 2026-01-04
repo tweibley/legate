@@ -10,8 +10,7 @@ require 'sidekiq' # Ensure sidekiq is required if needed here
 require_relative 'planner'
 require_relative 'tool_registry'
 require_relative 'agent_definition'
-require_relative 'mcp/client'
-require_relative 'mcp/tool_wrapper'
+require_relative 'mcp/connection_manager'
 require 'set'
 require 'forwardable'
 require 'json'
@@ -19,7 +18,6 @@ require_relative 'global_definition_registry'
 require_relative 'global_tool_manager' # Added
 require_relative 'tool_loader'
 require 'socket'
-require 'set' # Required for the Set class in _check_circular_dependency
 require 'securerandom' # Added for SecureRandom
 
 module ADK
@@ -33,11 +31,9 @@ module ADK
   class Agent
     DEFAULT_MODEL = 'gemini-2.5-flash' # Updated default model
 
-    attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode,
-                :instruction, :definition, :session_service # Added session_service to attr_reader
+    attr_reader :name, :description, :planner, :logger, :model_name, :state, :tool_registry, :fallback_mode, :instruction, :definition, :session_service, :sub_agents # Added session_service to attr_reader
     # MAS Attributes
-    attr_reader :parent_agent # The parent agent in a hierarchy, if any
-    attr_reader :sub_agents   # A collection of sub-agents
+    attr_reader :parent_agent # The parent agent in a hierarchy, if any   # A collection of sub-agents
 
     # --- Callback Instance Variables ---
     attr_reader :before_agent_callback, :after_agent_callback,
@@ -145,7 +141,7 @@ module ADK
         agent_name_for_log = definition.instance_variable_get(:@name) || 'unknown'
         ADK.logger.error("Failed to save definition '#{agent_name_for_log}' to store: #{e.class} - #{e.message}")
         raise e # Re-raise store/argument errors
-      rescue => e # Catch other unexpected errors
+      rescue StandardError => e # Catch other unexpected errors
         agent_name_for_log = definition.instance_variable_get(:@name) || 'unknown'
         ADK.logger.error("Unexpected error saving definition '#{agent_name_for_log}' to store: #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
         raise ADK::StoreError, "Unexpected error saving definition '#{agent_name_for_log}': #{e.message}"
@@ -199,11 +195,7 @@ module ADK
       # --- End Initialize Authentication Config ---
 
       # Check for direct self-references in the definition's sub_agent_names
-      if definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
-        if definition.sub_agent_names.include?(@name)
-          raise ADK::ConfigurationError, "Circular dependency detected: Agent '#{@name}' cannot include itself as a sub-agent"
-        end
-      end
+      raise ADK::ConfigurationError, "Circular dependency detected: Agent '#{@name}' cannot include itself as a sub-agent" if definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any? && definition.sub_agent_names.include?(@name)
 
       @description = definition.description
       @instruction = definition.instruction
@@ -221,7 +213,13 @@ module ADK
       tool_classes_to_load = definition.tool_names.map { |tn| ADK::GlobalToolManager.find_class(tn) }.compact
 
       if tool_classes_to_load.length != definition.tool_names.length
-        found_tool_names = tool_classes_to_load.map { |tc| tc.tool_metadata[:name].to_sym rescue nil }.compact.to_set
+        found_tool_names = tool_classes_to_load.map { |tc|
+          begin
+            tc.tool_metadata[:name].to_sym
+          rescue StandardError
+            nil
+          end
+        }.compact.to_set
         missing_tool_names = definition.tool_names.to_set - found_tool_names
         ADK.logger.warn("Agent '#{@name}': Could not find globally registered classes for tools: #{missing_tool_names.to_a.join(', ')}. These tools will be unavailable.")
       end
@@ -261,11 +259,11 @@ module ADK
         tool_class = ADK::GlobalToolManager.find_class(tool_name)
         if tool_class
           # Check if already registered from step 2 before registering again
-          unless @tool_registry.find_class(tool_name)
+          if @tool_registry.find_class(tool_name)
+            ADK.logger.debug("[Agent Init '#{@name}'] Skipping registration of discovered tool #{tool_name.inspect}, already registered via explicit classes.")
+          else
             ADK.logger.debug("[Agent Init '#{@name}'] Registering discovered tool #{tool_name.inspect} (class: #{tool_class})...")
             register_tool_class(tool_class) # Use the agent's specific register method
-          else
-            ADK.logger.debug("[Agent Init '#{@name}'] Skipping registration of discovered tool #{tool_name.inspect}, already registered via explicit classes.")
           end
         else
           # This case should be rare now due to _discover_and_load_tools logic
@@ -299,18 +297,19 @@ module ADK
       end
 
       @selected_tool_names = @definition.tool_names.to_a # Ensure this uses the definition
-      @mcp_clients = [] # Store active MCP client instances
+      @mcp_connection_manager = ADK::Mcp::ConnectionManager.new(
+        tool_registry: @tool_registry,
+        allowed_tool_names: @selected_tool_names
+      )
 
       @planner = planner_override || ADK::Planner.new(agent: self, model_name: @model_name)
 
       # Validate essential components using respond_to? for duck typing
-      unless @session_service&.respond_to?(:get_session) && @session_service&.respond_to?(:append_event)
+      unless @session_service.respond_to?(:get_session) && @session_service.respond_to?(:append_event)
         raise ConfigurationError,
               "Agent '#{@name}' requires a valid Session Service (must respond to :get_session, :append_event)."
       end
-      unless @planner&.respond_to?(:plan)
-        raise ConfigurationError, "Agent '#{@name}' requires a valid Planner (must respond to :plan)."
-      end
+      raise ConfigurationError, "Agent '#{@name}' requires a valid Planner (must respond to :plan)." unless @planner.respond_to?(:plan)
 
       ADK.logger.debug {
         "Agent '#{@name}' initialized with #{@tool_registry.tools.count} tools: [#{@tool_registry.tools.keys.join(', ')}]"
@@ -356,34 +355,32 @@ module ADK
       elsif definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
         ADK.logger.info("Agent '#{@name}' attempting to instantiate sub-agents from definition: #{definition.sub_agent_names.to_a.inspect}")
         definition.sub_agent_names.each do |sub_agent_name|
-          begin
-            # Check for circular dependencies before instantiation
-            _check_circular_dependency(sub_agent_name)
+          # Check for circular dependencies before instantiation
+          _check_circular_dependency(sub_agent_name)
 
-            sub_agent_definition = ADK::GlobalDefinitionRegistry.get(sub_agent_name)
-            unless sub_agent_definition
-              ADK.logger.error("Agent '#{@name}': Could not find definition for sub-agent '#{sub_agent_name}' in GlobalDefinitionRegistry. Skipping.")
-              next
-            end
-
-            ADK.logger.debug("Agent '#{@name}': Instantiating sub-agent '#{sub_agent_name}'...")
-            sub_agent = ADK::Agent.new(definition: sub_agent_definition, session_service: @session_service)
-            # Set parent link - enforce single parent rule
-            if sub_agent.parent_agent.nil?
-              sub_agent.instance_variable_set(:@parent_agent, self)
-            elsif sub_agent.parent_agent != self # Should not happen if instantiated fresh, but defensive check
-              ADK.logger.error("Agent '#{@name}': Newly instantiated sub-agent '#{sub_agent.name}' unexpectedly already has a different parent: '#{sub_agent.parent_agent.name}'. Skipping.")
-              next # Skip this sub-agent
-            end
-            # (If sub_agent.parent_agent == self, it's already fine)
-
-            @sub_agents << sub_agent
-            ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent.name}'.")
-          rescue ArgumentError => e # Catch errors from ADK::Agent.new (e.g. definition issues)
-            ADK.logger.error("Agent '#{@name}': ArgumentError instantiating sub-agent '#{sub_agent_name}': #{e.message}")
-          rescue StandardError => e
-            ADK.logger.error("Agent '#{@name}': Unexpected error instantiating sub-agent '#{sub_agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+          sub_agent_definition = ADK::GlobalDefinitionRegistry.get(sub_agent_name)
+          unless sub_agent_definition
+            ADK.logger.error("Agent '#{@name}': Could not find definition for sub-agent '#{sub_agent_name}' in GlobalDefinitionRegistry. Skipping.")
+            next
           end
+
+          ADK.logger.debug("Agent '#{@name}': Instantiating sub-agent '#{sub_agent_name}'...")
+          sub_agent = ADK::Agent.new(definition: sub_agent_definition, session_service: @session_service)
+          # Set parent link - enforce single parent rule
+          if sub_agent.parent_agent.nil?
+            sub_agent.instance_variable_set(:@parent_agent, self)
+          elsif sub_agent.parent_agent != self # Should not happen if instantiated fresh, but defensive check
+            ADK.logger.error("Agent '#{@name}': Newly instantiated sub-agent '#{sub_agent.name}' unexpectedly already has a different parent: '#{sub_agent.parent_agent.name}'. Skipping.")
+            next # Skip this sub-agent
+          end
+          # (If sub_agent.parent_agent == self, it's already fine)
+
+          @sub_agents << sub_agent
+          ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent.name}'.")
+        rescue ArgumentError => e # Catch errors from ADK::Agent.new (e.g. definition issues)
+          ADK.logger.error("Agent '#{@name}': ArgumentError instantiating sub-agent '#{sub_agent_name}': #{e.message}")
+        rescue StandardError => e
+          ADK.logger.error("Agent '#{@name}': Unexpected error instantiating sub-agent '#{sub_agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
         end
         ADK.logger.info("Agent '#{@name}' finished sub-agent instantiation. Total sub-agents: #{@sub_agents.length}")
       end
@@ -416,9 +413,7 @@ module ADK
       end
 
       # Check for overwrite
-      if @tool_registry.find_class(tool_name)
-        ADK.logger.warn("Agent '#{name}': Tool '#{tool_name}' already added. Overwriting with class #{tool_class}.")
-      end
+      ADK.logger.warn("Agent '#{name}': Tool '#{tool_name}' already added. Overwriting with class #{tool_class}.") if @tool_registry.find_class(tool_name)
 
       # Register the class using the determined name
       ADK.logger.debug("Agent '#{name}' add_tool: Registering tool_name=#{tool_name.inspect} with class=#{tool_class.inspect} in registry=#{@tool_registry.object_id}")
@@ -473,9 +468,7 @@ module ADK
         return false
       end
 
-      if @tool_registry.find_class(tool_name)
-        ADK.logger.warn("Agent '#{name}': Tool '#{tool_name}' already registered. Overwriting.")
-      end
+      ADK.logger.warn("Agent '#{name}': Tool '#{tool_name}' already registered. Overwriting.") if @tool_registry.find_class(tool_name)
 
       # Register with the instance registry
       @tool_registry.register(tool_name, tool_class)
@@ -705,14 +698,10 @@ module ADK
       name_sym = name_sym.to_sym if name_sym.is_a?(String)
 
       # Handle the case where @sub_agents is a hash (key: name => value: agent)
-      if @sub_agents.is_a?(Hash)
-        return @sub_agents[name_sym]
-      end
+      return @sub_agents[name_sym] if @sub_agents.is_a?(Hash)
 
       # Handle the case where @sub_agents is an array of Agent objects
-      if @sub_agents.is_a?(Array)
-        return @sub_agents.find { |sub_agent| sub_agent.name.to_sym == name_sym }
-      end
+      return @sub_agents.find { |sub_agent| sub_agent.name.to_sym == name_sym } if @sub_agents.is_a?(Array)
 
       # No sub-agents or invalid type
       ADK.logger.warn("No sub-agents found or invalid sub_agents type: #{@sub_agents.class}")
@@ -729,18 +718,16 @@ module ADK
     # @return [Hash] A standard result hash { status: :success/:error, result/error_message: ... }
     def transfer_to(target_agent_name, task, session_id, session_service)
       # Call the private transfer_to method if it exists
-      if self.private_methods.include?(:transfer_to)
-        self.send(:transfer_to, target_agent_name, task, session_id, session_service)
+      if private_methods.include?(:transfer_to)
+        send(:transfer_to, target_agent_name, task, session_id, session_service)
       else
         # Fallback implementation that manually does what transfer_to would do
 
         # Verify the target agent is in the delegation_targets list if defined
-        if @definition.respond_to?(:delegation_targets) && @definition.delegation_targets&.any?
-          unless @definition.delegation_targets.include?(target_agent_name)
-            error_msg = "Agent '#{target_agent_name}' is not in the delegation targets for '#{@name}'"
-            ADK.logger.error(error_msg)
-            return { status: :error, error_message: error_msg, error_class: 'InvalidDelegationTarget' }
-          end
+        if @definition.respond_to?(:delegation_targets) && @definition.delegation_targets&.any? && !@definition.delegation_targets.include?(target_agent_name)
+          error_msg = "Agent '#{target_agent_name}' is not in the delegation targets for '#{@name}'"
+          ADK.logger.error(error_msg)
+          return { status: :error, error_message: error_msg, error_class: 'InvalidDelegationTarget' }
         end
 
         # Find the target agent in the agent hierarchy, starting from the root
@@ -796,7 +783,7 @@ module ADK
           # Extract and format the result
           result_content = result_event.respond_to?(:content) ? result_event.content : result_event
 
-          return {
+          {
             status: :success,
             target_agent: target_agent_name.to_s,
             result: result_content
@@ -804,12 +791,37 @@ module ADK
         rescue StandardError => e
           error_msg = "Error executing task on target agent '#{target_agent_name}': #{e.message}"
           ADK.logger.error("#{error_msg}\n#{e.backtrace.join("\n")}")
-          return { status: :error, error_message: error_msg, error_class: e.class.name }
+          { status: :error, error_message: error_msg, error_class: e.class.name }
         end
       end
     end
 
     private
+
+    # --- End Session Service Initialization Helpers --- #
+    # Helper method to check for circular dependencies in the agent hierarchy
+    # @param new_sub_agent_name [Symbol] The name of the new sub-agent to check for cycles
+    # @raise [ADK::ConfigurationError] If a circular dependency is detected
+    def _check_circular_dependency(new_sub_agent_name)
+      # Direct self-reference check
+      raise ADK::ConfigurationError, "Circular dependency detected: Agent '#{@name}' cannot include itself as a sub-agent" if new_sub_agent_name == @name
+
+      # Check if the sub-agent would create an indirect circular reference
+      # by traversing up the parent chain (backwards check)
+      current_agent = self
+      ancestry_path = [@name]
+
+      while (parent = current_agent.parent_agent)
+        # If any parent has the same name as the new sub-agent, it's a circular reference
+        if parent.name == new_sub_agent_name
+          circular_path = [new_sub_agent_name] + ancestry_path
+          raise ADK::ConfigurationError, "Circular dependency detected: #{circular_path.join(' → ')}"
+        end
+
+        ancestry_path.unshift(parent.name)
+        current_agent = parent
+      end
+    end
 
     # Build the agent-specific authentication configuration hash for ToolContext
     # @return [Hash, nil] The auth config hash or nil if no auth configured
@@ -854,9 +866,8 @@ module ADK
         end
       end
 
-      (name && name != :'') ? name : nil
+      name && name != :'' ? name : nil
     end
-
 
     # --- REFACTORED: execute_plan now returns hash { details: [...], last_result: original_hash } ---
     # Executes a plan, logging tool request/result events via the session service.
@@ -927,9 +938,11 @@ module ADK
 
       steps.each_with_index do |step, index|
         # Log the step type for clarity
-        step_type_desc = step[:step_type] == :sequential_sub_agent ?
-                        "sequential sub-agent '#{step[:sub_agent_name]}'" :
-                        "tool '#{step[:tool]}'"
+        step_type_desc = if step[:step_type] == :sequential_sub_agent
+                           "sequential sub-agent '#{step[:sub_agent_name]}'"
+                         else
+                           "tool '#{step[:tool]}'"
+                         end
         ADK.logger.debug("Executing step #{index + 1}/#{steps.length}: #{step_type_desc}")
         ADK.logger.debug("  Step details: #{step.inspect}")
         ADK.logger.debug("  Input (result hash from previous step): #{previous_step_result_hash.inspect}")
@@ -1024,7 +1037,7 @@ module ADK
 
       # --- Return BOTH sanitized details AND original last result --- #
       { details: plan_execution_details, last_result: last_successful_or_pending_result }
-    end # end execute_plan
+    end
 
     # --- REFACTORED: execute_step uses session context and passes it to tools ---
     # Executes a single step, logging :tool_request and :tool_result events via session service.
@@ -1038,7 +1051,7 @@ module ADK
 
       # --- Basic validation ---
       unless step.is_a?(Hash) && step[:tool] && step[:params].is_a?(Hash)
-        error_msg = "Invalid step format. Expected { tool: :symbol, params: {...} }"
+        error_msg = 'Invalid step format. Expected { tool: :symbol, params: {...} }'
         ADK.logger.error(error_msg)
         return { status: :error, error_message: error_msg }
       end
@@ -1051,13 +1064,13 @@ module ADK
       if tool_name.to_s.start_with?('agent_transfer_to_')
         target_agent_name = tool_name.to_s.sub('agent_transfer_to_', '')
         ADK.logger.info("Intercepted delegation tool '#{tool_name}'. Mapping to 'delegate_task' for target '#{target_agent_name}'.")
-        
+
         # Remap tool name
         tool_name = :delegate_task
-        
+
         # Remap params: ensure target_agent_name is set
         params[:target_agent_name] = target_agent_name
-        
+
         # Ensure 'task' param exists (model should provide it, but handle aliasing/defaults if needed)
         # The prompt says: - task (string, required)
         unless params.key?(:task)
@@ -1149,9 +1162,7 @@ module ADK
         final_tool_name_to_execute = tool_name
 
         # For delegate_task tool, capture the delegate to show in logs
-        if tool_name == :delegate_task && params[:agent_name]
-          final_tool_name_to_execute = "#{tool_name} -> #{params[:agent_name]}"
-        end
+        final_tool_name_to_execute = "#{tool_name} -> #{params[:agent_name]}" if tool_name == :delegate_task && params[:agent_name]
 
         result = tool.execute(params, tool_context)
 
@@ -1183,7 +1194,7 @@ module ADK
         )
         session_service.append_event(session_id: session_id, event: tool_result_event)
 
-        return result
+        result
       rescue StandardError => e
         ADK.logger.error { "Error executing tool '#{tool_name}': #{e.message}\n#{e.backtrace.join("\n")}" }
 
@@ -1201,88 +1212,18 @@ module ADK
         )
         session_service.append_event(session_id: session_id, event: tool_result_event)
 
-        return error_result
+        error_result
       end
     end
 
     # Connects to all configured MCP servers.
     def connect_mcp_servers
-      # Return early if no MCP servers configured
-      return if @mcp_servers_config.nil? || @mcp_servers_config.empty?
-
-      @mcp_servers_config.each do |config|
-        # Transform keys to symbols for the client
-        symbolized_config = config.transform_keys(&:to_sym)
-        ADK.logger.info("Attempting to connect to MCP server: #{symbolized_config.inspect}")
-        begin
-          # --- FIXED: Check using STRING key 'type' --- >
-          unless %w[stdio sse].include?(symbolized_config[:type])
-            # --- FIXED: Log the actual value found using string key ---\
-            ADK.logger.error("Unsupported MCP server type specified: #{symbolized_config[:type].inspect}. Skipping configuration: #{symbolized_config.inspect}")
-            next # Skip to the next server config
-          end
-          # <-----------------------------
-
-          # --- NEW: Explicitly convert known string type values to symbols ---
-          if symbolized_config[:type] == 'stdio'
-            symbolized_config[:type] = :stdio
-          elsif symbolized_config[:type] == 'sse'
-            symbolized_config[:type] = :sse
-          end
-          # Pass the modified hash
-          client = ADK::Mcp::Client.new(symbolized_config)
-          client.connect # This performs handshake and gets capabilities
-          @mcp_clients << client
-          discover_and_register_mcp_tools(client)
-        rescue ADK::Mcp::ConnectionError, ADK::Mcp::ProtocolError => e # More specific MCP errors
-          ADK.logger.error("Failed to connect or handshake with MCP server #{config.inspect}: #{e.message}")
-        rescue ADK::Mcp::McpError => e # Catch specific MCP errors (typo fix: Error -> McpError)
-          ADK.logger.error("MCP-related error connecting to server #{config.inspect}: #{e.message}")
-        rescue StandardError => e
-          ADK.logger.error("Unexpected error connecting to MCP server #{config.inspect}: #{e.class} - #{e.message}")
-        end
-      end
+      @mcp_connection_manager.connect_all(@mcp_servers_config)
     end
 
     # Disconnects all active MCP clients.
     def disconnect_mcp_servers
-      return if @mcp_clients.nil? || @mcp_clients.empty?
-
-      @mcp_clients.each do |client|
-        begin
-          ADK.logger.info('Disconnecting MCP client...')
-          client.disconnect
-        rescue StandardError => e
-          ADK.logger.error("Error disconnecting MCP client: #{e.message}")
-        end
-      end
-      @mcp_clients.clear
-    end
-
-    # Discovers tools from a connected MCP client and registers them with the agent's registry.
-    # @param client [ADK::Mcp::Client]
-    def discover_and_register_mcp_tools(client)
-      ADK.logger.debug("[Agent E2E Debug] discover_and_register - @tool_registry ID: #{@tool_registry.object_id}")
-      begin
-        mcp_tool_schemas = client.list_tools
-        ADK.logger.debug("[Agent E2E Debug] list_tools returned: #{mcp_tool_schemas.inspect}")
-        ADK.logger.info("Discovered #{mcp_tool_schemas.count} tools from MCP server.")
-        mcp_tool_schemas.each do |schema|
-          # --- ADDED check: Only register if tool was selected ---
-          tool_name_sym = schema[:name].to_sym
-          if @selected_tool_names.include?(tool_name_sym)
-            # Pass the agent's specific registry instance (@tool_registry)
-            ADK::Mcp::ToolWrapper.from_mcp_schema(schema, client, @tool_registry)
-          else
-            ADK.logger.debug("Skipping registration of MCP tool '#{tool_name_sym}' as it was not selected in agent definition.")
-          end
-          # --- END check ---
-        end
-      rescue ADK::Mcp::McpError => e # Corrected typo: Error -> McpError
-        ADK.logger.error("Failed to list tools from MCP server: #{e.message}")
-      rescue StandardError => e
-        ADK.logger.error("Unexpected error discovering MCP tools: #{e.class} - #{e.message}")
-      end
+      @mcp_connection_manager.disconnect_all
     end
 
     # --- Session Service Initialization Helpers --- #
@@ -1295,33 +1236,6 @@ module ADK
     def initialize_session_service_from_args
       # When initialized from args (direct use), rely on ADK global config.
       ADK.config.session_service
-    end
-    # --- End Session Service Initialization Helpers --- #
-
-    # Helper method to check for circular dependencies in the agent hierarchy
-    # @param new_sub_agent_name [Symbol] The name of the new sub-agent to check for cycles
-    # @raise [ADK::ConfigurationError] If a circular dependency is detected
-    private def _check_circular_dependency(new_sub_agent_name)
-      # Direct self-reference check
-      if new_sub_agent_name == @name
-        raise ADK::ConfigurationError, "Circular dependency detected: Agent '#{@name}' cannot include itself as a sub-agent"
-      end
-
-      # Check if the sub-agent would create an indirect circular reference
-      # by traversing up the parent chain (backwards check)
-      current_agent = self
-      ancestry_path = [@name]
-
-      while (parent = current_agent.parent_agent)
-        # If any parent has the same name as the new sub-agent, it's a circular reference
-        if parent.name == new_sub_agent_name
-          circular_path = [new_sub_agent_name] + ancestry_path
-          raise ADK::ConfigurationError, "Circular dependency detected: #{circular_path.join(' → ')}"
-        end
-
-        ancestry_path.unshift(parent.name)
-        current_agent = parent
-      end
     end
 
     # --- MAS: Store result in session state if output_key is defined --- #
@@ -1354,7 +1268,7 @@ module ADK
           # For other values, just pass through
           output_value
         end
-      rescue => e
+      rescue StandardError => e
         # If serialization fails, log and return the original
         ADK.logger.warn("Agent '#{@name}': Failed to serialize output value: #{e.message}. Using original value.")
         output_value
@@ -1374,5 +1288,5 @@ module ADK
       end
     end
     # --- End MAS State Management ---
-  end # End Agent class
-end # End ADK module
+  end
+end
