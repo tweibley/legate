@@ -935,40 +935,7 @@ module ADK
         ADK.logger.debug("  Input (result hash from previous step): #{previous_step_result_hash.inspect}")
 
         # --- Input Injection Logic (Updated for job_id) ---
-        current_params = step[:params].dup
-        current_params.transform_values! do |value|
-          injection_value = nil
-          if value.is_a?(String) && value.match?(/\[Result from step \d+\]|\[Result from previous step\]/i)
-            if previous_step_result_hash && %i[success pending].include?(previous_step_result_hash[:status])
-              # Prioritize :result, then :job_id (was workflow_id), then :message
-              if previous_step_result_hash.key?(:result)
-                prev_result = previous_step_result_hash[:result]
-                if prev_result.is_a?(Hash) && prev_result.key?(:status) && prev_result.key?(:result) # AgentTool nested result
-                  injection_value = prev_result[:result]
-                  ADK.logger.debug('Injecting nested result...')
-                else
-                  injection_value = prev_result
-                  ADK.logger.debug('Injecting direct result...')
-                end
-              elsif previous_step_result_hash.key?(:job_id) # <-- CHANGED from workflow_id
-                injection_value = previous_step_result_hash[:job_id]
-                ADK.logger.debug('Injecting job_id from previous step...')
-              elsif previous_step_result_hash.key?(:message)
-                injection_value = previous_step_result_hash[:message]
-                ADK.logger.debug('Injecting message from previous step...')
-              else
-                ADK.logger.warn("Cannot inject: Previous successful/pending step missing usable key (:result, :job_id, :message). Prev Hash: #{previous_step_result_hash.inspect}")
-                value
-              end
-            else
-              ADK.logger.warn("Cannot inject: Previous step failed or absent. Prev Hash: #{previous_step_result_hash.inspect}")
-              value
-            end
-            injection_value || value # Use injection if found, otherwise keep original
-          else
-            value # Not a placeholder string, keep original value
-          end
-        end
+        current_params = inject_params(step[:params], previous_step_result_hash)
         step_with_injected_params = step.merge(params: current_params)
         ADK.logger.debug("  Params after potential injection: #{current_params.inspect}")
         # --- End Input Injection Logic ---
@@ -1322,6 +1289,48 @@ module ADK
         ancestry_path.unshift(parent.name)
         current_agent = parent
       end
+    end
+
+    # Injects parameters from the previous step's result into the current step's parameters.
+    # @param step_params [Hash] The parameters for the current step.
+    # @param previous_step_result_hash [Hash] The result from the previous step.
+    # @return [Hash] The parameters with injected values.
+    def inject_params(step_params, previous_step_result_hash)
+      current_params = step_params.dup
+      current_params.transform_values! do |value|
+        injection_value = nil
+        if value.is_a?(String) && value.match?(/\[Result from step \d+\]|\[Result from previous step\]/i)
+          if previous_step_result_hash && %i[success pending].include?(previous_step_result_hash[:status])
+            # Prioritize :result, then :job_id (was workflow_id), then :message
+            if previous_step_result_hash.key?(:result)
+              prev_result = previous_step_result_hash[:result]
+              if prev_result.is_a?(Hash) && prev_result.key?(:status) && prev_result.key?(:result) # AgentTool nested result
+                injection_value = prev_result[:result]
+                ADK.logger.debug('Injecting nested result...')
+              else
+                injection_value = prev_result
+                ADK.logger.debug('Injecting direct result...')
+              end
+            elsif previous_step_result_hash.key?(:job_id) # <-- CHANGED from workflow_id
+              injection_value = previous_step_result_hash[:job_id]
+              ADK.logger.debug('Injecting job_id from previous step...')
+            elsif previous_step_result_hash.key?(:message)
+              injection_value = previous_step_result_hash[:message]
+              ADK.logger.debug('Injecting message from previous step...')
+            else
+              ADK.logger.warn("Cannot inject: Previous successful/pending step missing usable key (:result, :job_id, :message). Prev Hash: #{previous_step_result_hash.inspect}")
+              value
+            end
+          else
+            ADK.logger.warn("Cannot inject: Previous step failed or absent. Prev Hash: #{previous_step_result_hash.inspect}")
+            value
+          end
+          injection_value || value # Use injection if found, otherwise keep original
+        else
+          value # Not a placeholder string, keep original value
+        end
+      end
+      current_params
     end
 
     # --- MAS: Store result in session state if output_key is defined --- #
