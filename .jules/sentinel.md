@@ -10,3 +10,8 @@
 **Learning:** Tools that accept URLs as input must explicitly validate the destination to prevent Server-Side Request Forgery (SSRF), especially given the agent's ability to explore networks.
 **Prevention:** Implemented `validate_url_security` using `Resolv` and `IPAddr` to block access to private, loopback, and link-local addresses. This pattern should be applied to any future tools making outbound HTTP requests.
 
+## 2025-02-18 - [Command Injection in Deployment CLI]
+
+**Vulnerability:** The `ADK::CLI::DeploymentCommands#run_gcloud_command` method used backticks with string interpolation (` `gcloud #{command}` `), allowing command injection via `gcp_project_id` or other options.
+**Learning:** Even internal helper methods in CLI tools must treat arguments as potentially tainted. When refactoring legacy methods to be secure (array args), simply using `split(' ')` on legacy strings is insufficient as it breaks quoted arguments; `Shellwords.split` is required.
+**Prevention:** Always use `Open3.capture2e` or `system` with array arguments for subprocess execution. When supporting legacy string interfaces during refactoring, use `Shellwords.split`.
