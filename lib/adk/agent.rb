@@ -12,6 +12,7 @@ require_relative 'tool_registry'
 require_relative 'agent_definition'
 require_relative 'mcp/client'
 require_relative 'mcp/tool_wrapper'
+require_relative 'mcp/connection_manager'
 require 'set'
 require 'forwardable'
 require 'json'
@@ -299,7 +300,12 @@ module ADK
       end
 
       @selected_tool_names = @definition.tool_names.to_a # Ensure this uses the definition
-      @mcp_clients = [] # Store active MCP client instances
+
+      @mcp_connection_manager = ADK::Mcp::ConnectionManager.new(
+        @mcp_servers_config,
+        @tool_registry,
+        @selected_tool_names.map(&:to_sym).to_set
+      )
 
       @planner = planner_override || ADK::Planner.new(agent: self, model_name: @model_name)
 
@@ -1207,82 +1213,12 @@ module ADK
 
     # Connects to all configured MCP servers.
     def connect_mcp_servers
-      # Return early if no MCP servers configured
-      return if @mcp_servers_config.nil? || @mcp_servers_config.empty?
-
-      @mcp_servers_config.each do |config|
-        # Transform keys to symbols for the client
-        symbolized_config = config.transform_keys(&:to_sym)
-        ADK.logger.info("Attempting to connect to MCP server: #{symbolized_config.inspect}")
-        begin
-          # --- FIXED: Check using STRING key 'type' --- >
-          unless %w[stdio sse].include?(symbolized_config[:type])
-            # --- FIXED: Log the actual value found using string key ---\
-            ADK.logger.error("Unsupported MCP server type specified: #{symbolized_config[:type].inspect}. Skipping configuration: #{symbolized_config.inspect}")
-            next # Skip to the next server config
-          end
-          # <-----------------------------
-
-          # --- NEW: Explicitly convert known string type values to symbols ---
-          if symbolized_config[:type] == 'stdio'
-            symbolized_config[:type] = :stdio
-          elsif symbolized_config[:type] == 'sse'
-            symbolized_config[:type] = :sse
-          end
-          # Pass the modified hash
-          client = ADK::Mcp::Client.new(symbolized_config)
-          client.connect # This performs handshake and gets capabilities
-          @mcp_clients << client
-          discover_and_register_mcp_tools(client)
-        rescue ADK::Mcp::ConnectionError, ADK::Mcp::ProtocolError => e # More specific MCP errors
-          ADK.logger.error("Failed to connect or handshake with MCP server #{config.inspect}: #{e.message}")
-        rescue ADK::Mcp::McpError => e # Catch specific MCP errors (typo fix: Error -> McpError)
-          ADK.logger.error("MCP-related error connecting to server #{config.inspect}: #{e.message}")
-        rescue StandardError => e
-          ADK.logger.error("Unexpected error connecting to MCP server #{config.inspect}: #{e.class} - #{e.message}")
-        end
-      end
+      @mcp_connection_manager.connect_all
     end
 
     # Disconnects all active MCP clients.
     def disconnect_mcp_servers
-      return if @mcp_clients.nil? || @mcp_clients.empty?
-
-      @mcp_clients.each do |client|
-        begin
-          ADK.logger.info('Disconnecting MCP client...')
-          client.disconnect
-        rescue StandardError => e
-          ADK.logger.error("Error disconnecting MCP client: #{e.message}")
-        end
-      end
-      @mcp_clients.clear
-    end
-
-    # Discovers tools from a connected MCP client and registers them with the agent's registry.
-    # @param client [ADK::Mcp::Client]
-    def discover_and_register_mcp_tools(client)
-      ADK.logger.debug("[Agent E2E Debug] discover_and_register - @tool_registry ID: #{@tool_registry.object_id}")
-      begin
-        mcp_tool_schemas = client.list_tools
-        ADK.logger.debug("[Agent E2E Debug] list_tools returned: #{mcp_tool_schemas.inspect}")
-        ADK.logger.info("Discovered #{mcp_tool_schemas.count} tools from MCP server.")
-        mcp_tool_schemas.each do |schema|
-          # --- ADDED check: Only register if tool was selected ---
-          tool_name_sym = schema[:name].to_sym
-          if @selected_tool_names.include?(tool_name_sym)
-            # Pass the agent's specific registry instance (@tool_registry)
-            ADK::Mcp::ToolWrapper.from_mcp_schema(schema, client, @tool_registry)
-          else
-            ADK.logger.debug("Skipping registration of MCP tool '#{tool_name_sym}' as it was not selected in agent definition.")
-          end
-          # --- END check ---
-        end
-      rescue ADK::Mcp::McpError => e # Corrected typo: Error -> McpError
-        ADK.logger.error("Failed to list tools from MCP server: #{e.message}")
-      rescue StandardError => e
-        ADK.logger.error("Unexpected error discovering MCP tools: #{e.class} - #{e.message}")
-      end
+      @mcp_connection_manager.disconnect_all
     end
 
     # --- Session Service Initialization Helpers --- #
