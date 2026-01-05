@@ -1,5 +1,5 @@
-## 2025-12-17 - Missing Setup Script
+## 2024-05-23 - Missing Console Script
 
-**Friction:** New contributors have to manually install dependencies and create `.env` file based on prose in README.
-**Learning:** `bin/setup` is a standard convention (Scripts to Rule Them All) that is missing here, leading to friction and potential configuration errors.
-**Action:** Created `bin/setup` and `.env.example` to automate the initial environment configuration.
+**Friction:** The `bin/console` script was missing, despite being referenced in `AGENTS.md` and being a standard Ruby convention. This forced manual `irb` loading which is error-prone.
+**Learning:** Documentation can drift from reality if not automatically verified. `AGENTS.md` stated the script was "available" likely as an intent or outdated fact.
+**Action:** Created `bin/console` to provide a reliable interactive environment for new contributors.
