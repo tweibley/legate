@@ -10,3 +10,9 @@
 **Learning:** The method signature `def execute(params = {}, context = nil)` only handles missing arguments, not explicit `nil`.
 **Action:** Future reliability improvements should guard against `nil` input in `execute` to prevent crashes.
 
+
+## 2024-05-22 - Missing Test for ADK::ToolLoader
+
+**Gap:** ADK::ToolLoader was completely untested, despite being a public module responsible for file system operations and loading external code.
+**Learning:** Utility modules that are not heavily used in the main 'happy path' often get overlooked in testing, but they are critical for extensibility.
+**Action:** Always verify that helper modules have their own isolated unit tests, especially those dealing with I/O or 'require'.
