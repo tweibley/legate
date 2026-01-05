@@ -7,6 +7,7 @@ require_relative 'tool_context'
 require_relative 'global_tool_manager'
 require_relative 'tool/metadata_dsl'
 require 'json'
+require 'did_you_mean'
 
 module ADK
   # Base class for all tools that can be used by Agents.
@@ -71,7 +72,7 @@ module ADK
       #   ...
       # end
       # --- End Fallback Metadata Method ---
-    end # End Class-level
+    end
     # --- End Class-level ---
 
     # --- Self-Registration Hook ---
@@ -152,6 +153,17 @@ module ADK
       unless missing_params.empty?
         msg = "Missing required parameters for tool '#{@name}': #{missing_params.join(', ')}."
         msg += " Provided: [#{present_keys.empty? ? 'None' : present_keys.join(', ')}]."
+
+        # UX: Add "Did you mean?" suggestions
+        suggestions = []
+        spell_checker = DidYouMean::SpellChecker.new(dictionary: missing_params)
+        present_keys.each do |key|
+          corrections = spell_checker.correct(key)
+          corrections.each do |correction|
+            suggestions << "Did you mean '#{correction}' instead of '#{key}'?"
+          end
+        end
+        msg += " #{suggestions.join(' ')}" unless suggestions.empty?
 
         ADK.logger.error("Validation failed: #{msg} Params: #{params.inspect}")
         raise ADK::ToolArgumentError, msg
