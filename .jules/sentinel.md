@@ -10,3 +10,8 @@
 **Learning:** Tools that accept URLs as input must explicitly validate the destination to prevent Server-Side Request Forgery (SSRF), especially given the agent's ability to explore networks.
 **Prevention:** Implemented `validate_url_security` using `Resolv` and `IPAddr` to block access to private, loopback, and link-local addresses. This pattern should be applied to any future tools making outbound HTTP requests.
 
+## 2025-01-28 - [CRITICAL] Fix Command Injection in GCloud Config
+
+**Vulnerability:** Command injection in `ADK::CLI::DeploymentCommands#run_gcloud_command` due to string interpolation in backticks.
+**Learning:** Even helper methods designed for executing shell commands must strictly enforce array arguments to prevent injection when caller inputs are untrusted.
+**Prevention:** Use `Open3.capture2e` with array arguments (never strings) for all system command execution.
