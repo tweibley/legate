@@ -57,7 +57,22 @@ module ADK
           self.description = text.to_s
         end
 
-        # DSL method for defining a parameter
+        # Defines a parameter for the tool using the DSL.
+        #
+        # @param name [Symbol] The name of the parameter.
+        # @param options [Hash] Configuration options for the parameter.
+        # @option options [Symbol] :type The expected type of the parameter.
+        #   Supported types: :string, :integer, :float, :boolean, :array, :hash.
+        # @option options [String] :description A brief description of the parameter's purpose.
+        # @option options [Boolean] :required (false) Whether the parameter is mandatory.
+        #
+        # @raise [ArgumentError] if the parameter name is not a Symbol.
+        #
+        # @example Defining a required string parameter
+        #   parameter :location, type: :string, description: 'City name', required: true
+        #
+        # @example Defining an optional integer parameter
+        #   parameter :limit, type: :integer, description: 'Max results', required: false
         def parameter(name, options = {})
           initialize_dsl_storage # Ensure hash exists
           raise ArgumentError, 'Parameter name must be a Symbol' unless name.is_a?(Symbol)
