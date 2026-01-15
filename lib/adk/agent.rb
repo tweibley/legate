@@ -25,11 +25,17 @@ require 'securerandom' # Added for SecureRandom
 module ADK
   class Error < StandardError; end unless defined?(ADK::Error)
 
-  # Represents the static definition of an Agent, including its name,
-  # description, instructions, tools, and model configuration.
-
-  # Agent class represents an AI agent that can perform tasks using tools and a planner.
-  # It operates within the context of a session managed by a SessionService.
+  # The runtime representation of an AI agent.
+  #
+  # An Agent orchestrates the interaction between a user, a planner (LLM), and tools.
+  # It executes tasks within a session context, managing state and event history.
+  #
+  # To define an agent's static configuration (name, tools, instructions),
+  # use {ADK::AgentDefinition}.
+  #
+  # @see ADK::AgentDefinition For configuring an agent's properties.
+  # @see ADK::Tool For creating custom tools.
+  # @see ADK::Session For session management.
   class Agent
     DEFAULT_MODEL = 'gemini-2.5-flash' # Updated default model
 
@@ -524,7 +530,32 @@ module ADK
       @tool_registry.find_class(tool_name.to_sym)
     end
 
-    # @return [ADK::Event] The final agent event.
+    # Executes the agent's main loop for a single turn of conversation.
+    #
+    # This method handles:
+    # 1. Retrieving the session.
+    # 2. Executing 'before' callbacks.
+    # 3. Planning steps using the LLM.
+    # 4. Executing the plan (tools and sub-agents).
+    # 5. Executing 'after' callbacks.
+    # 6. Returning the final result as an event.
+    #
+    # @param session_id [String] The unique identifier for the session.
+    # @param user_input [String] The user's message or task description.
+    # @param session_service [ADK::SessionService::Base] Service to manage session state.
+    #
+    # @return [ADK::Event] The final event produced by the agent.
+    #   - On success: Content is a Hash with result data.
+    #   - On error: Content is `{ status: :error, error_message: "..." }`.
+    #
+    # @example Running a task
+    #   result_event = agent.run_task(
+    #     session_id: 'sess_123',
+    #     user_input: 'Calculate 5 + 5',
+    #     session_service: my_session_service
+    #   )
+    #   puts result_event.content[:result] #=> 10
+    #
     def run_task(session_id:, user_input:, session_service:)
       # --- Pre-execution Checks --- #
       unless running?
@@ -719,14 +750,26 @@ module ADK
       nil
     end
 
-    # Transfers control to another agent, executing a task with the same session context.
-    # This is a public version of the private transfer_to method
+    # Transfers control to another agent, executing a task within the same session context.
     #
-    # @param target_agent_name [Symbol] The name of the target agent to delegate to
-    # @param task [String] The task to delegate to the target agent
-    # @param session_id [String] The current session ID
-    # @param session_service [ADK::SessionService::Base] The session service instance
-    # @return [Hash] A standard result hash { status: :success/:error, result/error_message: ... }
+    # This enables multi-agent workflows where one agent can delegate a sub-task
+    # to a specialized agent while maintaining shared state.
+    #
+    # @param target_agent_name [Symbol] The name of the target agent (must be a known delegation target).
+    # @param task [String] The specific task instruction for the target agent.
+    # @param session_id [String] The current session ID to maintain context.
+    # @param session_service [ADK::SessionService::Base] The session service instance.
+    #
+    # @return [Hash] The execution result from the target agent.
+    #   - `:status` [Symbol] :success or :error.
+    #   - `:result` [Object] The output of the task (if successful).
+    #   - `:target_agent` [String] Name of the agent that performed the task.
+    #   - `:error_message` [String] Description of failure (if error).
+    #
+    # @example Delegating to a calculator agent
+    #   agent.transfer_to(:calculator_agent, "Multiply 10 by 5", session.id, service)
+    #   #=> { status: :success, result: 50, target_agent: "calculator_agent" }
+    #
     def transfer_to(target_agent_name, task, session_id, session_service)
       # Call the private transfer_to method if it exists
       if self.private_methods.include?(:transfer_to)
@@ -856,7 +899,6 @@ module ADK
 
       (name && name != :'') ? name : nil
     end
-
 
     # --- REFACTORED: execute_plan now returns hash { details: [...], last_result: original_hash } ---
     # Executes a plan, logging tool request/result events via the session service.
@@ -1051,13 +1093,13 @@ module ADK
       if tool_name.to_s.start_with?('agent_transfer_to_')
         target_agent_name = tool_name.to_s.sub('agent_transfer_to_', '')
         ADK.logger.info("Intercepted delegation tool '#{tool_name}'. Mapping to 'delegate_task' for target '#{target_agent_name}'.")
-        
+
         # Remap tool name
         tool_name = :delegate_task
-        
+
         # Remap params: ensure target_agent_name is set
         params[:target_agent_name] = target_agent_name
-        
+
         # Ensure 'task' param exists (model should provide it, but handle aliasing/defaults if needed)
         # The prompt says: - task (string, required)
         unless params.key?(:task)

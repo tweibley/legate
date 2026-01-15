@@ -10,3 +10,8 @@
 **Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
 **Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
 
+## 2025-05-23 - ADK::Agent Runtime Documentation
+
+**Gap:** `ADK::Agent#run_task`, the primary entry point for executing agents, lacked documentation on parameters and return event structure.
+**Learning:** Runtime methods that orchestrate complex flows (callbacks, planning, execution) need detailed docs to explain *what* happens during execution, not just signatures.
+**Action:** Prioritize documenting the "main loop" or primary execution method of orchestrator classes.
