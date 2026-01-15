@@ -8,6 +8,7 @@ require 'yaml'
 require 'logger' # Needed for sample entrypoint
 require 'securerandom' # Needed for suggested project ID
 require 'shellwords'
+require 'open3'
 
 module ADK
   module CLI
@@ -46,7 +47,7 @@ module ADK
       class_option :gcp_cpu, type: :string, default: '1', group: 'GCP', desc: 'GCP Cloud Run CPU allocation'
       # We might add options for agent service names, memory, cpu later.
 
-      def generate(directory = '.')
+      def generate(_directory = '.')
         # Determine the effective entry point
         effective_entry_point = if options[:generate_sample_entrypoint]
                                   options[:entry_point] || DEFAULT_SAMPLE_ENTRYPOINT_PATH
@@ -68,9 +69,7 @@ module ADK
         say "Generating deployment assets in #{deployment_dir}...", :green
 
         # 0. Generate sample entrypoint if requested (BEFORE generating Dockerfiles)
-        if options[:generate_sample_entrypoint]
-          generate_sample_entrypoint_script(effective_entry_point)
-        end
+        generate_sample_entrypoint_script(effective_entry_point) if options[:generate_sample_entrypoint]
 
         # 1. Generate Generic Assets (Dockerfile(s), .dockerignore, config.ru)
         generate_dockerfiles(deployment_dir, effective_entry_point, deployment_dir_basename)
@@ -94,19 +93,17 @@ module ADK
         end
 
         say 'Deployment asset generation complete!', :green
-        if options[:generate_sample_entrypoint]
-          say "NOTE: Sample entrypoint generated at '#{effective_entry_point}'.", :yellow
-        end
+        say "NOTE: Sample entrypoint generated at '#{effective_entry_point}'.", :yellow if options[:generate_sample_entrypoint]
         if gcp_config_name
           say "NOTE: A gcloud configuration named '#{gcp_config_name}' was created/updated.", :yellow
           say '      Activate it using:', :yellow
           say "        gcloud config configurations activate #{gcp_config_name}", :cyan
           say '      Before running the deployment script.', :yellow
         end
-        if options[:cloud] == 'gcp'
-          say "Review the generated files in #{deployment_dir} and the deployment guide:"
-          say "  #{File.join(deployment_dir, 'README-GCP-DEPLOYMENT.md')}", :cyan
-        end
+        return unless options[:cloud] == 'gcp'
+
+        say "Review the generated files in #{deployment_dir} and the deployment guide:"
+        say "  #{File.join(deployment_dir, 'README-GCP-DEPLOYMENT.md')}", :cyan
       end
 
       private
@@ -129,9 +126,7 @@ module ADK
 
       def generate_dockerfile_content(path, entry_point, base_image, deployment_dir_basename)
         # Basic validation for entry point format (crude check)
-        unless entry_point&.include?('/') || entry_point.start_with?('bin/')
-          say "Warning: Entry point '#{entry_point}' does not look like a path. Ensure it's correct.", :yellow
-        end
+        say "Warning: Entry point '#{entry_point}' does not look like a path. Ensure it's correct.", :yellow unless entry_point&.include?('/') || entry_point&.start_with?('bin/')
 
         # Determine the path to config.ru relative to the build context (project root)
         # config.ru is generated inside the deployment directory
@@ -532,7 +527,7 @@ module ADK
 
         File.write(sample_path, content)
         # Make the script executable
-        FileUtils.chmod(0755, sample_path)
+        FileUtils.chmod(0o755, sample_path)
       end
 
       # --- GCP Asset Generation (Only called if --cloud gcp) ---
@@ -581,14 +576,29 @@ module ADK
         # 5. Generate/Copy GCP docs
         generate_gcp_deployment_docs(directory)
 
-        return gcp_config_name # Return the generated name for the final message
+        gcp_config_name # Return the generated name for the final message
       end
 
       # Helper to execute shell commands and check status
       def run_gcloud_command(command, error_message)
-        say "Executing: gcloud #{command}"
-        output = `gcloud #{command} 2>&1` # Capture stderr too
-        unless $?.success?
+        say "Executing: gcloud #{command.is_a?(Array) ? command.join(' ') : command}"
+
+        output = nil
+        success = false
+
+        if command.is_a?(Array)
+          # Secure execution using array arguments
+          output, status = Open3.capture2e('gcloud', *command)
+          success = status.success?
+        else
+          # Fallback for string command - split it safely
+          # Using Shellwords to respect quotes
+          cmd_args = Shellwords.split(command)
+          output, status = Open3.capture2e('gcloud', *cmd_args)
+          success = status.success?
+        end
+
+        unless success
           say "Error: #{error_message}", :red
           say "gcloud output:\n#{output}", :red
           # Decide if we should exit or just warn
@@ -608,6 +618,7 @@ module ADK
         say "Attempting to create/update gcloud configuration: #{config_name}"
 
         # Check if gcloud command exists first
+        # We can use Open3 here too, or just system since it's a fixed string
         unless system('command -v gcloud > /dev/null 2>&1')
           say "Error: 'gcloud' command not found in PATH. Cannot create gcloud configuration.", :red
           say 'Please install the Google Cloud SDK.', :yellow
@@ -616,12 +627,13 @@ module ADK
 
         # 1. Create or check configuration
         # Use describe to check existence non-destructively
-        `gcloud config configurations describe #{config_name} > /dev/null 2>&1`
-        if $?.success?
+        # SAFE: config_name is sanitized
+        _out, status = Open3.capture2e('gcloud', 'config', 'configurations', 'describe', config_name)
+        if status.success?
           say "Configuration '#{config_name}' already exists. Settings will be updated.", :yellow
         else
           # Try to create (use --no-activate)
-          unless run_gcloud_command("config configurations create #{config_name} --no-activate",
+          unless run_gcloud_command(['config', 'configurations', 'create', config_name, '--no-activate'],
                                     "Failed to create gcloud configuration '#{config_name}'.")
             return nil # Failed, can't set properties
           end
@@ -630,12 +642,12 @@ module ADK
         end
 
         # 2. Set properties
-        run_gcloud_command("config set project #{project_id} --configuration=#{config_name}",
+        run_gcloud_command(['config', 'set', 'project', project_id, "--configuration=#{config_name}"],
                            'Failed to set project in gcloud config.')
-        run_gcloud_command("config set compute/region #{region} --configuration=#{config_name}",
+        run_gcloud_command(['config', 'set', 'compute/region', region, "--configuration=#{config_name}"],
                            'Failed to set region in gcloud config.')
         # Add other relevant defaults? e.g., run/region?
-        # run_gcloud_command("config set run/region #{region} --configuration=#{config_name}", "Failed to set run/region in gcloud config.")
+        # run_gcloud_command(["config", "set", "run/region", region, "--configuration=#{config_name}"], "Failed to set run/region in gcloud config.")
 
         config_name # Return the name used
       end
@@ -664,7 +676,7 @@ module ADK
         say "Created GCP Redis MemoryStore YAML template at #{redis_config_path}", :cyan
       end
 
-      def generate_gcp_cloud_run_config(directory)
+      def generate_gcp_cloud_run_config(_directory)
         # NOTE: Generating a static YAML is less flexible than the deploy script.
         # The script can dynamically fetch Redis IP etc. Keeping this commented out
         # as generating the script is generally preferred.
@@ -947,7 +959,7 @@ module ADK
         BASH
 
         File.write(deploy_script_path, script_content)
-        FileUtils.chmod(0755, deploy_script_path)
+        FileUtils.chmod(0o755, deploy_script_path)
         say "Created GCP deployment script at #{deploy_script_path}", :cyan
         say 'Please review and customize the script, especially the Configuration section, before running.', :yellow
       end
@@ -993,13 +1005,13 @@ module ADK
       end
 
       # --- AWS Asset Generation (Placeholder) ---
-      def generate_aws_assets(directory)
+      def generate_aws_assets(_directory)
         say 'AWS deployment asset generation is not yet implemented.', :yellow
         # Placeholder for future: generate CloudFormation/CDK/Terraform, deploy scripts etc.
       end
 
       # --- Azure Asset Generation (Placeholder) ---
-      def generate_azure_assets(directory)
+      def generate_azure_assets(_directory)
         say 'Azure deployment asset generation is not yet implemented.', :yellow
         # Placeholder for future: generate ARM templates/Bicep, deploy scripts etc.
       end
