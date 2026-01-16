@@ -235,6 +235,18 @@ RSpec.describe ADK::CLI::AgentCommands do
         expect(output.string).to include("Agent definition 'my_agent' saved")
         expect(output.string).to include('Tools: mock_cli_tool')
       end
+
+      it 'suggests corrections for misspelled tool names' do
+        misspelled_tools = 'mock_cli_tolo' # close to mock_cli_tool
+
+        expect(ADK::AgentDefinitionStore).to receive(:save_to_redis).and_return(true)
+        expect(ADK::AgentDefinitionStore).to receive(:register)
+
+        invoke_command(:save, agent_name, description: description, tools: misspelled_tools)
+
+        expect(output.string).to include("Warning: Unknown globally registered tool 'mock_cli_tolo', ignoring.")
+        expect(output.string).to include('Did you mean "mock_cli_tool"?')
+      end
     end
 
     context 'when Redis save fails' do
