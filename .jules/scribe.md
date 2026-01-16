@@ -1,12 +1,5 @@
-## 2025-12-18 - ADK::Planner Documentation Gap
+## 2026-01-16 - Documenting Tool Metadata DSL
 
-**Gap:** `ADK::Planner` was undocumented despite being the central orchestration component for LLM planning. Its return structure was implicit.
-**Learning:** Core "brain" components must have explicit contracts documented, especially when they return complex structures like plans parsed from LLM output.
-**Action:** Always document return types of service objects that wrap external APIs or perform complex parsing.
-
-## 2025-12-17 - ADK::Tool Contract Clarity
-
-**Gap:** `ADK::Tool#perform_execution` return type is documented as `Object` but the framework expects a structured Hash `{:status, :result}`, leading to potential runtime errors for new tool developers.
-**Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
-**Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
-
+**Gap:** The methods `tool_description` and `parameter` in `ADK::Tool::MetadataDsl` lacked documentation, making it harder for users to know how to define tools.
+**Learning:** Automated refactoring tools like Rubocop can sometimes introduce subtle regressions (e.g., changing `@parameters_definition` to `@initialize_dsl_storage` when auto-correcting `Naming/MemoizedInstanceVariableName`).
+**Action:** Always verify automated refactorings manually, especially when variable names are involved, and avoid mixing functional refactorings with documentation updates if possible to isolate risks.

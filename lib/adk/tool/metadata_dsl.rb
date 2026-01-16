@@ -13,26 +13,16 @@ module ADK
           # Replaced attr_accessor with manual methods to handle cache invalidation
           # attr_accessor :explicit_tool_name, :description, :parameters_definition
 
-          def explicit_tool_name
-            @explicit_tool_name
-          end
+          attr_reader :explicit_tool_name, :description, :parameters_definition
 
           def explicit_tool_name=(value)
             @explicit_tool_name = value
             @_tool_metadata_cache = nil # Invalidate cache
           end
 
-          def description
-            @description
-          end
-
           def description=(value)
             @description = value
             @_tool_metadata_cache = nil # Invalidate cache
-          end
-
-          def parameters_definition
-            @parameters_definition
           end
 
           def parameters_definition=(value)
@@ -50,14 +40,43 @@ module ADK
         end
       end
 
+      # Class methods for the DSL
       module ClassMethods
-        # DSL method for setting description
+        # Sets the description for the tool.
+        #
+        # This description is used by the Planner to understand what the tool does
+        # and when it should be selected to fulfill a user request.
+        #
+        # @param text [String] A clear, concise description of the tool's purpose.
+        #
+        # @example
+        #   tool_description "Calculates the sum of two numbers."
+        #
         def tool_description(text)
           initialize_dsl_storage # Ensure vars exist
           self.description = text.to_s
         end
 
-        # DSL method for defining a parameter
+        # Defines a parameter for the tool.
+        #
+        # Parameters define the inputs that the tool accepts. The ADK framework
+        # validates these parameters before calling `perform_execution`.
+        #
+        # @param name [Symbol] The name of the parameter.
+        # @param options [Hash] Configuration options for the parameter.
+        # @option options [Symbol] :type The data type of the parameter.
+        #   Supported types: `:string`, `:integer`, `:float`, `:boolean`, `:array`, `:hash`.
+        # @option options [String] :description A description of the parameter's purpose.
+        # @option options [Boolean] :required (false) Whether the parameter is mandatory.
+        #
+        # @example Defining a required string parameter
+        #   parameter :query, type: :string, description: "Search query", required: true
+        #
+        # @example Defining an optional integer parameter
+        #   parameter :limit, type: :integer, description: "Max results", required: false
+        #
+        # @raise [ArgumentError] if the parameter name is not a Symbol.
+        #
         def parameter(name, options = {})
           initialize_dsl_storage # Ensure hash exists
           raise ArgumentError, 'Parameter name must be a Symbol' unless name.is_a?(Symbol)
@@ -89,7 +108,7 @@ module ADK
         # 3. Inferred name
         def effective_tool_name
           initialize_dsl_storage # Ensure @explicit_tool_name exists
-          explicit_dsl = self.explicit_tool_name
+          explicit_dsl = explicit_tool_name
           return explicit_dsl if explicit_dsl && explicit_dsl != :''
 
           # Check define_metadata's variable if explicit DSL name wasn't set
@@ -110,14 +129,14 @@ module ADK
             initialize_dsl_storage # Ensure DSL variables exist
 
             # Get description: Prefer DSL, fallback to define_metadata's @description
-            dsl_desc = self.description
+            dsl_desc = description
             old_desc = instance_variable_get(:@description) if instance_variable_defined?(:@description) && dsl_desc.nil?
             final_desc = dsl_desc || old_desc
 
             # Get parameters: Prefer DSL, fallback to define_metadata's @parameters_definition
-            dsl_params = self.parameters_definition
+            dsl_params = parameters_definition
             old_params = instance_variable_get(:@parameters_definition) if instance_variable_defined?(:@parameters_definition) && (dsl_params.nil? || dsl_params.empty?)
-            final_params = (dsl_params && !dsl_params.empty?) ? dsl_params : (old_params || {})
+            final_params = dsl_params && !dsl_params.empty? ? dsl_params : (old_params || {})
 
             {
               name: effective_tool_name,
@@ -126,7 +145,7 @@ module ADK
             }
           end
         end
-      end # End ClassMethods
+      end
     end
   end
 end
