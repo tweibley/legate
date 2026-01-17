@@ -858,12 +858,28 @@ module ADK
     end
 
 
-    # --- REFACTORED: execute_plan now returns hash { details: [...], last_result: original_hash } ---
-    # Executes a plan, logging tool request/result events via the session service.
-    # @param plan [Hash, Array] The plan from the planner, either as a hash with :thought_process and :steps, or as an array of steps.
-    # @param session [ADK::Session] The current session object.
-    # @param session_service [Object] The session service instance.
-    # @return [Hash] { details: Array<Hash>, last_result: Hash } or { details: Hash, last_result: nil } on planning errors.
+    # Executes a generated plan by running each step sequentially.
+    #
+    # This method iterates through the plan's steps, handling parameter injection from previous
+    # steps, executing tools, and collecting results. It stops execution if a step fails.
+    #
+    # @param plan [Hash, Array] The plan structure. Can be a Hash with `:steps` (Array) and
+    #   `:thought_process` (String), or a direct Array of steps for backward compatibility.
+    # @param session [ADK::Session] The current session object containing user ID and context.
+    # @param session_service [ADK::SessionService::Base] Service to manage session state and events.
+    # @param invocation_id [String] Unique ID for this agent invocation, used for tracing.
+    #
+    # @return [Hash] Execution results containing:
+    #   * :details [Array<Hash>] List of executed steps with sanitized inputs/outputs.
+    #   * :last_result [Hash, nil] The full result hash of the last executed step (or error).
+    #
+    # @example Return structure
+    #   {
+    #     details: [
+    #       { tool_name: :weather, params: {...}, result: { status: :success, ... } }
+    #     ],
+    #     last_result: { status: :success, result: "Sunny", ... }
+    #   }
     def execute_plan(plan, session, session_service, invocation_id)
       session_id = session.id
 
