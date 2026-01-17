@@ -7,6 +7,7 @@ require 'json'
 require 'yaml'
 require 'fileutils' # For creating directories
 require 'cli/ui'    # Correct require
+require 'did_you_mean' # For suggestions
 require_relative '../tool_registry'
 require_relative '../agent'
 require_relative '../event'
@@ -27,12 +28,77 @@ module ADK
       @@session_service = ADK::SessionService::InMemory.new
 
       # Keep existing @@session_service_for_execute for 'execute' command's default in-memory usage
-      # This seems to be an older or differently purposed variable. Let's ensure it's distinct.
-      # If it's truly redundant after initializing @@session_service, it might be removable later,
-      # but for now, we will keep it to avoid breaking other logic that might rely on it.
       @@session_service_for_execute = ADK::SessionService::InMemory.new
 
       no_commands do
+        # --- Helper for "Did you mean?" suggestions ---
+        def suggest_agent_name(name)
+          all_names = ADK::AgentDefinitionStore.all_names
+          checker = DidYouMean::SpellChecker.new(dictionary: all_names)
+          corrections = checker.correct(name)
+          return '' if corrections.empty?
+
+          "\nDid you mean? #{corrections.join(', ')}"
+        end
+
+        # --- Helper to load agent definition or exit with suggestion ---
+        def load_agent_definition_or_exit(name, check_redis: true)
+          name_sym = name.to_sym
+          definition = ADK::GlobalDefinitionRegistry.find(name_sym)
+          definition_source = 'memory'
+
+          # Fallback to in-memory store if not found in global registry (e.g. for temporary or test definitions)
+          if definition.nil?
+            definition_hash = ADK::AgentDefinitionStore.find(name_sym)
+            if definition_hash
+              definition = ADK::AgentDefinition.from_hash(definition_hash)
+            end
+          end
+
+          if definition.nil? && check_redis
+            begin
+              definition_hash = ADK::AgentDefinitionStore.load_from_redis(name_sym)
+              if definition_hash
+                definition = ADK::AgentDefinition.from_hash(definition_hash)
+                definition_source = 'redis'
+              end
+            rescue Redis::BaseError => e
+              output_error("Could not connect to Redis. Is it running? (#{e.message})", metadata: { agent: name })
+              exit(1)
+            end
+          end
+
+          unless definition
+            msg = "Agent definition '#{name}' not found."
+            msg += suggest_agent_name(name)
+            output_error(msg, metadata: { agent: name })
+            exit(1)
+          end
+
+          [definition, definition_source]
+        end
+
+        # --- Helper to load agent definition hash (for status/export/stop) ---
+        def load_agent_definition_hash_or_exit(name)
+          name_sym = name.to_sym
+          definition = nil
+          begin
+            definition = ADK::AgentDefinitionStore.load_from_redis(name_sym)
+          rescue Redis::BaseError => e
+            output_error("Could not connect to Redis. Is it running? (#{e.message})", metadata: { agent: name })
+            exit(1)
+          end
+
+          unless definition
+            msg = "Agent definition '#{name}' not found."
+            msg += suggest_agent_name(name)
+            output_error(msg, metadata: { agent: name })
+            exit(1)
+          end
+
+          definition
+        end
+
         # --- Existing format_cli_result (for 'execute' command) ---
         def format_cli_result(result_data)
           content_to_display = nil
@@ -184,28 +250,22 @@ module ADK
             title_color = :red
             title_prefix = 'Agent Error'
             message_body_content = data_to_format[:error_message]
-            ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
-              ::CLI::UI.puts message_body_content
-            end
           when :pending
             title_color = :yellow
             title_prefix = 'Agent Pending'
             message_body_content = "Job ID [#{data_to_format[:job_id]}] - #{data_to_format[:message]}"
-            ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
-              ::CLI::UI.puts message_body_content
-            end
           else
             title_color = :magenta
             title_prefix = "Agent (Status: #{data_to_format[:status]})"
             message_body_content = data_to_format.inspect
-            ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
-              ::CLI::UI.puts message_body_content
-            end
+          end
+          ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
+            ::CLI::UI.puts message_body_content
           end
           ::CLI::UI.puts '' # Add extra line break after any response
         end
         # --- END _format_chat_turn_output_cli_ui ---
-      end # end no_commands
+      end
 
       # --- Definition Management Commands (Existing - no changes shown for brevity) ---
       desc 'list', 'List all defined agents'
@@ -315,7 +375,9 @@ module ADK
         end
 
         unless definition_exists
-          say "Error: Agent definition '#{name}' not found.", :red
+          msg = "Agent definition '#{name}' not found."
+          msg += suggest_agent_name(name)
+          say "Error: #{msg}", :red
           exit(1)
         end
 
@@ -524,33 +586,13 @@ module ADK
         # Suppress all logging in JSON mode for clean output
         ADK.logger.level = Logger::FATAL if json_mode?
 
-        name_sym = name.to_sym
         status_message("Loading agent '#{name}'...")
-
-        # First check the global registry
-        agent_definition_object = ADK::GlobalDefinitionRegistry.find(name_sym)
-
-        # If not found in memory, try loading from Redis
-        if agent_definition_object.nil?
-          definition_hash = ADK::AgentDefinitionStore.load_from_redis(name_sym)
-
-          unless definition_hash
-            output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
-            exit(1)
-          end
-
-          status_message("Creating agent '#{name}' from definition object...")
-          agent_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
-
-          unless agent_definition_object
-            output_error("Could not create a valid AgentDefinition object for '#{name}' from the loaded hash.", metadata: { agent: name })
-            exit(1)
-          end
-        end
+        agent_definition_object, = load_agent_definition_or_exit(name)
 
         agent = nil
         result_data = nil
         begin
+          status_message("Creating agent '#{name}' from definition object...")
           # Pass the definition object directly. Session service will use global default.
           agent = ADK::Agent.new(definition: agent_definition_object)
 
@@ -617,19 +659,7 @@ module ADK
         name_sym = name.to_sym
         status_message("Stopping agent '#{name}'...")
 
-        # Load definition from Redis
-        definition = nil
-        begin
-          definition = ADK::AgentDefinitionStore.load_from_redis(name_sym)
-        rescue Redis::BaseError => e
-          output_error("Could not connect to Redis. Is it running? (#{e.message})", metadata: { agent: name })
-          exit(1)
-        end
-
-        unless definition
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
-          exit(1)
-        end
+        definition = load_agent_definition_hash_or_exit(name)
 
         # Check current status
         current_status = definition[:persistent_status] || 'stopped'
@@ -685,22 +715,8 @@ module ADK
         # Suppress all logging in JSON mode for clean output
         ADK.logger.level = Logger::FATAL if json_mode?
 
-        name_sym = name.to_sym
         status_message("Checking status of agent '#{name}'...")
-
-        # Load definition from Redis
-        definition = nil
-        begin
-          definition = ADK::AgentDefinitionStore.load_from_redis(name_sym)
-        rescue Redis::BaseError => e
-          output_error("Could not connect to Redis. Is it running? (#{e.message})", metadata: { agent: name })
-          exit(1)
-        end
-
-        unless definition
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
-          exit(1)
-        end
+        definition = load_agent_definition_hash_or_exit(name)
 
         persistent_status = definition[:persistent_status] || 'stopped'
         model = definition[:model] || ADK::Agent::DEFAULT_MODEL
@@ -735,21 +751,7 @@ module ADK
       method_option :format, type: :string, default: 'yaml', enum: %w[yaml json], desc: 'Output format (yaml or json)'
       method_option :output, type: :string, aliases: '-o', desc: 'Output file path (default: stdout)'
       def export(name)
-        name_sym = name.to_sym
-
-        # Load definition from Redis
-        definition = nil
-        begin
-          definition = ADK::AgentDefinitionStore.load_from_redis(name_sym)
-        rescue Redis::BaseError => e
-          say "Error: Could not connect to Redis. Is it running? (#{e.message})", :red
-          exit(1)
-        end
-
-        unless definition
-          say "Error: Agent definition '#{name}' not found.", :red
-          exit(1)
-        end
+        definition = load_agent_definition_hash_or_exit(name)
 
         # Clean up internal fields before export
         export_data = definition.dup
@@ -806,23 +808,10 @@ module ADK
         # Suppress all logging in JSON mode for clean output
         ADK.logger.level = Logger::FATAL if json_mode?
 
-        name_sym = name.to_sym
         status_message("Loading agent '#{name}' to execute task: \"#{task}\"...")
-        definition_hash = ADK::AgentDefinitionStore.find(name_sym)
-        definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
-
-        unless definition_hash
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
-          exit(1)
-        end
+        agent_definition_object, = load_agent_definition_or_exit(name)
 
         status_message("Creating agent '#{name}' from definition object...")
-        agent_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
-
-        unless agent_definition_object
-          output_error("Could not create a valid AgentDefinition object for '#{name}' from the loaded hash.", metadata: { agent: name })
-          exit(1)
-        end
 
         session_service_instance = options[:redis] ? ADK::SessionService::Redis.new : @@session_service_for_execute
         session_id_opt = options[:session_id]
@@ -887,7 +876,7 @@ module ADK
           end
           exit(1) if e_outer
         end
-      end # End 'execute' command
+      end
 
       # --- CHAT COMMAND ---
       desc 'chat AGENT_NAME', 'Interactively chat with an agent definition'
@@ -911,9 +900,17 @@ module ADK
         ::CLI::UI::StdoutRouter.enable
         agent_name_sym = agent_name_str.to_sym
 
-        definition = ADK::AgentDefinitionStore.load_from_redis(agent_name_sym)
+        definition = nil
+        begin
+          definition = ADK::AgentDefinitionStore.load_from_redis(agent_name_sym)
+        rescue Redis::BaseError => e
+          # Ignore redis errors here, handled by definition check
+        end
+
         unless definition
-          ::CLI::UI.puts "{{red:Error: Agent definition '#{agent_name_str}' not found in Redis.}}"
+          msg = "Error: Agent definition '#{agent_name_str}' not found in Redis."
+          msg += suggest_agent_name(agent_name_str)
+          ::CLI::UI.puts "{{red:#{msg}}}"
           exit(1)
         end
 
@@ -1047,6 +1044,6 @@ module ADK
       def self.exit_on_failure?
         true
       end
-    end # End AgentCommands class
-  end # End CLI module
-end # End ADK module
+    end
+  end
+end

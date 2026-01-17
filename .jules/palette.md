@@ -1,8 +1,6 @@
-## 2024-05-23 - Enhanced Tool Validation & Coercion
+## 2025-05-26 - Test Doubles and Helper Methods
 
-**Learning:** Developers (and LLMs) often pass tool parameters as strings (e.g., from CLI or JSON) even when the tool expects integers or booleans. Previously, this caused confusing type errors or silent failures deep in execution.
-**Action:** Implemented `validate_and_coerce_params` in `ADK::Tool` to:
-1. Provide rich error messages for missing parameters (listing what was missing AND what was provided).
-2. Automatically coerce string inputs to the expected type (Integer, Float, Boolean, JSON Array/Hash) based on DSL definition.
-3. Validate types strictly if coercion fails.
-This improves CLI ergonomics (no need to manually parse strings in tools) and debugging speed.
+**Learning:** When refactoring CLI commands to use helper methods that rely on external services (like `GlobalDefinitionRegistry`), test setup can become brittle if those helpers are not properly mocked or if the helpers rely on side effects that were previously handled inline.
+In this case, `load_agent_definition_or_exit` calls `GlobalDefinitionRegistry.find`, which wasn't mocked in the `execute` command tests, causing the helper to fail and the command to exit early with "Agent definition not found", even though the tests were setting up `AgentDefinitionStore`.
+
+**Action:** When extracting logic into helpers, ensure that all external dependencies accessed by that helper are identified and mocked in the corresponding tests. If a helper combines multiple checks (memory, redis), the test setup needs to account for the precedence logic in that helper.
