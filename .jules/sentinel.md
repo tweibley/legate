@@ -10,3 +10,9 @@
 **Learning:** Tools that accept URLs as input must explicitly validate the destination to prevent Server-Side Request Forgery (SSRF), especially given the agent's ability to explore networks.
 **Prevention:** Implemented `validate_url_security` using `Resolv` and `IPAddr` to block access to private, loopback, and link-local addresses. This pattern should be applied to any future tools making outbound HTTP requests.
 
+
+## 2026-01-17 - [Command Injection in CLI Helpers]
+
+**Vulnerability:** `run_gcloud_command` interpolated user strings directly into backticks.
+**Learning:** Even helper methods in CLI tools must be hardened against injection, as they might be called with untrusted input from flags or config.
+**Prevention:** Refactor shell helpers to use `Open3.capture2e` (or `system`) with array arguments (`*args`), avoiding shell interpretation entirely.
