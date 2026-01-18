@@ -254,10 +254,10 @@ module ADK
 
             status 200
             chat_message_html + active_session_info_oob_wrapper_html
-          rescue => e
+          rescue StandardError => e
             logger.error("Error processing chat for agent #{name}, session '#{active_adk_session_id}': #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
             view_locals[:agent_result] =
-              { status: :error, error_message: "[Internal Error executing task: #{e.message}]" }
+              { status: :error, error_message: '[Internal Error: An unexpected error occurred. Please check the logs.]' }
             halt 500, slim(:_chat_message, layout: false, locals: view_locals)
           end
         end
@@ -371,9 +371,9 @@ module ADK
               AgentInteractionRoutes.update_agent_last_run(definition_store, name, logger)
               success_handler.call(content_to_show, original_input_for_diagram)
             end
-          rescue => e
+          rescue StandardError => e
             logger.error "Error during agent execution for '#{name}' (AgentInteractionRoutes): #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}"
-            error_handler.call("Error: Internal server error during task execution: #{e.message}", 500)
+            error_handler.call('Error: Internal server error during task execution. Please check the logs.', 500)
           ensure
             session_service.delete_session(session_id: temp_adk_session.id) if temp_adk_session
           end

@@ -87,7 +87,7 @@ module ADK
         logger.error(e.backtrace.join("\n"))
         content_type :json
         status 500
-        json({ status: :error, error_message: "Internal Server Error: #{e.message}" })
+        json({ status: :error, error_message: 'Internal Server Error. Please check the logs.' })
       end
 
       # --- Routing ---
