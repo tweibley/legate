@@ -184,28 +184,22 @@ module ADK
             title_color = :red
             title_prefix = 'Agent Error'
             message_body_content = data_to_format[:error_message]
-            ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
-              ::CLI::UI.puts message_body_content
-            end
           when :pending
             title_color = :yellow
             title_prefix = 'Agent Pending'
             message_body_content = "Job ID [#{data_to_format[:job_id]}] - #{data_to_format[:message]}"
-            ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
-              ::CLI::UI.puts message_body_content
-            end
           else
             title_color = :magenta
             title_prefix = "Agent (Status: #{data_to_format[:status]})"
             message_body_content = data_to_format.inspect
-            ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
-              ::CLI::UI.puts message_body_content
-            end
+          end
+          ::CLI::UI::Frame.open("#{title_prefix} (#{formatted_time})", color: title_color) do
+            ::CLI::UI.puts message_body_content
           end
           ::CLI::UI.puts '' # Add extra line break after any response
         end
         # --- END _format_chat_turn_output_cli_ui ---
-      end # end no_commands
+      end
 
       # --- Definition Management Commands (Existing - no changes shown for brevity) ---
       desc 'list', 'List all defined agents'
@@ -270,7 +264,10 @@ module ADK
             if valid_tools.include?(tool_name)
               selected_tools << tool_name unless selected_tools.include?(tool_name)
             else
-              say "Warning: Unknown globally registered tool '#{tool_name}', ignoring.", :yellow
+              msg = "Warning: Unknown globally registered tool '#{tool_name}', ignoring."
+              suggestion = DidYouMean::SpellChecker.new(dictionary: valid_tools).correct(tool_name).first
+              msg += " Did you mean '#{suggestion}'?" if suggestion
+              say msg, :yellow
             end
           end
         end
@@ -887,7 +884,7 @@ module ADK
           end
           exit(1) if e_outer
         end
-      end # End 'execute' command
+      end
 
       # --- CHAT COMMAND ---
       desc 'chat AGENT_NAME', 'Interactively chat with an agent definition'
@@ -1047,6 +1044,6 @@ module ADK
       def self.exit_on_failure?
         true
       end
-    end # End AgentCommands class
-  end # End CLI module
-end # End ADK module
+    end
+  end
+end

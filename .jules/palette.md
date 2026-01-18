@@ -1,8 +1,4 @@
-## 2024-05-23 - Enhanced Tool Validation & Coercion
+## 2025-10-26 - [CLI Typo Suggestions]
 
-**Learning:** Developers (and LLMs) often pass tool parameters as strings (e.g., from CLI or JSON) even when the tool expects integers or booleans. Previously, this caused confusing type errors or silent failures deep in execution.
-**Action:** Implemented `validate_and_coerce_params` in `ADK::Tool` to:
-1. Provide rich error messages for missing parameters (listing what was missing AND what was provided).
-2. Automatically coerce string inputs to the expected type (Integer, Float, Boolean, JSON Array/Hash) based on DSL definition.
-3. Validate types strictly if coercion fails.
-This improves CLI ergonomics (no need to manually parse strings in tools) and debugging speed.
+**Learning:** Users often make typos in CLI arguments (like `operashun` instead of `operation`). Providing a "did you mean?" suggestion significantly improves the experience by saving them a trip to the documentation.
+**Action:** When validating a set of known keys/names in CLI commands, always use `DidYouMean::SpellChecker` to offer corrections for unknown inputs.

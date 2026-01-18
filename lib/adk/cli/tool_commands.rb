@@ -94,7 +94,10 @@ module ADK
             value = parts[1]
 
             unless valid_param_names.include?(key)
-              status_message("Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring.", :yellow)
+              msg = "Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring."
+              suggestion = DidYouMean::SpellChecker.new(dictionary: valid_param_names).correct(key).first
+              msg += " Did you mean '#{suggestion}'?" if suggestion
+              status_message(msg, :yellow)
               next
             end
 
@@ -129,7 +132,7 @@ module ADK
           puts e.backtrace.first(5).join("\n") unless json_mode?
           exit(1)
         end
-      end # end execute
+      end
 
       no_commands do
         # Format tool result in human-readable format
