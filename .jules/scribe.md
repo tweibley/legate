@@ -10,3 +10,9 @@
 **Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
 **Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
 
+
+## 2024-05-22 - Undocumented DSL Methods
+
+**Gap:** `ADK::Tool::MetadataDsl` methods (`tool_description`, `parameter`) were completely undocumented, forcing developers to read source code to understand how to define tools.
+**Learning:** DSL modules are the primary interface for users but often get overlooked in documentation passes because they are "internal" modules mixed into classes. Also, RuboCop's autocorrect for `Naming/MemoizedInstanceVariableName` can break logic if applied to initialization methods (like `initialize_dsl_storage`), renaming variables that are not actually memoized accessors.
+**Action:** Prioritize documenting DSL modules as they are the user-facing API. Always review RuboCop autocorrect changes for logic regressions, especially variable renames.
