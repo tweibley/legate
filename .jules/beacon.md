@@ -10,3 +10,9 @@
 **Learning:** The method signature `def execute(params = {}, context = nil)` only handles missing arguments, not explicit `nil`.
 **Action:** Future reliability improvements should guard against `nil` input in `execute` to prevent crashes.
 
+
+## 2025-02-18 - [Beacon] Test Code Size Constraints
+
+**Gap:** Initial test implementation was rejected for being over 50 lines.
+**Learning:** The 'Beacon' persona has a strict constraint to keep test changes under 50 lines. Verbose error handling tests (separate tests for each error type) inflate line count quickly.
+**Action:** When testing multiple error conditions or similar scenarios, use iteration or shared examples to keep the test file compact.
