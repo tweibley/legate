@@ -142,6 +142,12 @@ RSpec.describe ADK::CLI::ToolCommands do
         expect(output.string).to include("Parsed: param1 = 'value1'")
       end
 
+      it 'suggests correct parameter name when misspelled' do
+        invoke_command(:execute, 'mock_tool', 'param1=value1', 'paran1=foo')
+        expect(output.string).to include("Warning: Provided parameter 'paran1' is not defined")
+        expect(output.string).to include("Did you mean 'param1'?")
+      end
+
       it 'handles single argument as required parameter if applicable' do
         # MockCliTestTool has param1 as required, but it also has param2
         # The logic in ToolCommands:
