@@ -865,110 +865,38 @@ module ADK
     # @param session_service [Object] The session service instance.
     # @return [Hash] { details: Array<Hash>, last_result: Hash } or { details: Hash, last_result: nil } on planning errors.
     def execute_plan(plan, session, session_service, invocation_id)
-      session_id = session.id
+      steps, thought_process = extract_plan_steps(plan)
+      ADK.logger.info("Plan thought process: #{thought_process}") if thought_process
 
-      # Extract steps based on the plan format
-      steps = nil
-      thought_process = nil
-
-      # Handle new plan structure with thought_process and steps
-      if plan.is_a?(Hash) && plan[:steps].is_a?(Array)
-        steps = plan[:steps]
-        thought_process = plan[:thought_process]
-        ADK.logger.info("Plan thought process: #{thought_process}") if thought_process
-      elsif plan.is_a?(Array)
-        # For backward compatibility with old format
-        steps = plan
-      else
+      unless steps.is_a?(Array)
         msg = 'Invalid plan received from planner (not an Array or properly structured Hash).'
         ADK.logger.error("#{msg} Plan: #{plan.inspect}")
         return { details: { status: :error, error_message: msg }, last_result: nil }
       end
 
-      # --- Continue with original logic, using 'steps' variable ---
-      unless steps.is_a?(Array)
-        msg = 'Invalid steps structure in plan (not an Array).'
-        ADK.logger.error("#{msg} Steps: #{steps.inspect}")
-        return { details: { status: :error, error_message: msg }, last_result: nil }
-      end
-
       # --- Handle Empty Plan based on Fallback Mode ---
-      if steps.empty?
-        if @fallback_mode == :echo
-          if @tool_registry.find_class(:echo)
-            ADK.logger.warn("Plan is empty. Falling back to echo mode for session '#{session_id}'.")
-            # Reconstruct the plan to be a single echo step
-            # We need the original user input for this - fetch it from the session
-            # Find the *last* user event in case of corrections/multiple turns
-            original_user_input = session.events.reverse.find { |e|
-              e.role == :user
-            }&.content || '[Original input not found]'
-            steps = [{ tool: :echo, params: { message: original_user_input } }]
-            ADK.logger.debug("Reconstructed plan for echo fallback: #{steps.inspect}")
-            # Now continue execution with the modified plan
-          else
-            # Echo tool not available, default to error mode
-            msg = 'Planning failed and Echo fallback tool is not available to this agent.'
-            ADK.logger.warn(msg)
-            return { details: { status: :error, error_message: msg }, last_result: nil }
-          end
-        else # Default or :error mode
-          msg = 'I cannot fulfill this request with the available tools (empty plan).'
-          ADK.logger.warn(msg)
-          return { details: { status: :error, error_message: msg }, last_result: nil }
-        end
+      empty_plan_result = process_empty_plan(steps, session)
+      if empty_plan_result
+        return empty_plan_result[:result] if empty_plan_result[:status] == :error
+
+        steps = empty_plan_result[:steps] if empty_plan_result[:status] == :fallback
       end
       # --- End Handle Empty Plan ---
 
-      ADK.logger.debug("Executing plan with #{steps.length} step(s) for session '#{session_id}': #{steps.inspect}")
+      ADK.logger.debug("Executing plan with #{steps.length} step(s) for session '#{session.id}': #{steps.inspect}")
       previous_step_result_hash = nil
       plan_execution_details = []
       last_successful_or_pending_result = nil # <-- Store the original last hash
 
       steps.each_with_index do |step, index|
         # Log the step type for clarity
-        step_type_desc = step[:step_type] == :sequential_sub_agent ?
-                        "sequential sub-agent '#{step[:sub_agent_name]}'" :
-                        "tool '#{step[:tool]}'"
+        step_type_desc = step[:step_type] == :sequential_sub_agent ? "sequential sub-agent '#{step[:sub_agent_name]}'" : "tool '#{step[:tool]}'"
         ADK.logger.debug("Executing step #{index + 1}/#{steps.length}: #{step_type_desc}")
         ADK.logger.debug("  Step details: #{step.inspect}")
         ADK.logger.debug("  Input (result hash from previous step): #{previous_step_result_hash.inspect}")
 
         # --- Input Injection Logic (Updated for job_id) ---
-        current_params = step[:params].dup
-        current_params.transform_values! do |value|
-          injection_value = nil
-          if value.is_a?(String) && value.match?(/\[Result from step \d+\]|\[Result from previous step\]/i)
-            if previous_step_result_hash && %i[success pending].include?(previous_step_result_hash[:status])
-              # Prioritize :result, then :job_id (was workflow_id), then :message
-              if previous_step_result_hash.key?(:result)
-                prev_result = previous_step_result_hash[:result]
-                if prev_result.is_a?(Hash) && prev_result.key?(:status) && prev_result.key?(:result) # AgentTool nested result
-                  injection_value = prev_result[:result]
-                  ADK.logger.debug('Injecting nested result...')
-                else
-                  injection_value = prev_result
-                  ADK.logger.debug('Injecting direct result...')
-                end
-              elsif previous_step_result_hash.key?(:job_id) # <-- CHANGED from workflow_id
-                injection_value = previous_step_result_hash[:job_id]
-                ADK.logger.debug('Injecting job_id from previous step...')
-              elsif previous_step_result_hash.key?(:message)
-                injection_value = previous_step_result_hash[:message]
-                ADK.logger.debug('Injecting message from previous step...')
-              else
-                ADK.logger.warn("Cannot inject: Previous successful/pending step missing usable key (:result, :job_id, :message). Prev Hash: #{previous_step_result_hash.inspect}")
-                value
-              end
-            else
-              ADK.logger.warn("Cannot inject: Previous step failed or absent. Prev Hash: #{previous_step_result_hash.inspect}")
-              value
-            end
-            injection_value || value # Use injection if found, otherwise keep original
-          else
-            value # Not a placeholder string, keep original value
-          end
-        end
+        current_params = resolve_step_params(step, previous_step_result_hash)
         step_with_injected_params = step.merge(params: current_params)
         ADK.logger.debug("  Params after potential injection: #{current_params.inspect}")
         # --- End Input Injection Logic ---
@@ -977,26 +905,7 @@ module ADK
         current_result_hash = execute_step(step_with_injected_params, session, session_service, invocation_id)
 
         # --- Sanitize for plan_details --- #
-        sanitized_result_for_plan = {}
-        if current_result_hash.is_a?(Hash)
-          sanitized_result_for_plan[:status] = current_result_hash[:status]
-          # Always include error keys, defaulting to nil if not present
-          sanitized_result_for_plan[:error_message] = current_result_hash[:error_message] # Defaults to nil if key missing
-          sanitized_result_for_plan[:error_class] = current_result_hash[:error_class] # Defaults to nil if key missing
-          # Include other relevant keys if present
-          sanitized_result_for_plan[:job_id] = current_result_hash[:job_id] if current_result_hash.key?(:job_id)
-          sanitized_result_for_plan[:message] = current_result_hash[:message] if current_result_hash.key?(:message)
-          # Only include :result value if it's simple
-          result_val = current_result_hash[:result]
-          if result_val.is_a?(String) || result_val.is_a?(Numeric) || [true, false, nil].include?(result_val)
-            sanitized_result_for_plan[:result] = result_val
-          elsif current_result_hash.key?(:result) # It exists but is complex
-            sanitized_result_for_plan[:result] = '[Complex Result Structure]'
-          end
-        else # Should not happen based on execute_step validation, but handle defensively
-          sanitized_result_for_plan[:status] = :error
-          sanitized_result_for_plan[:error_message] = "Invalid format from execute_step: #{current_result_hash.inspect}"
-        end
+        sanitized_result_for_plan = sanitize_result_for_plan(current_result_hash)
         # --- END Sanitization ---
 
         # --- Store SANITIZED step detail --- #
@@ -1025,6 +934,101 @@ module ADK
       # --- Return BOTH sanitized details AND original last result --- #
       { details: plan_execution_details, last_result: last_successful_or_pending_result }
     end # end execute_plan
+
+    private
+
+    def extract_plan_steps(plan)
+      if plan.is_a?(Hash) && plan[:steps].is_a?(Array)
+        [plan[:steps], plan[:thought_process]]
+      elsif plan.is_a?(Array)
+        [plan, nil]
+      else
+        [nil, nil]
+      end
+    end
+
+    def process_empty_plan(steps, session)
+      return nil unless steps.empty?
+
+      if @fallback_mode == :echo && @tool_registry.find_class(:echo)
+        ADK.logger.warn("Plan is empty. Falling back to echo mode for session '#{session.id}'.")
+        original_user_input = session.events.reverse.find { |e| e.role == :user }&.content || '[Original input not found]'
+        steps_fallback = [{ tool: :echo, params: { message: original_user_input } }]
+        ADK.logger.debug("Reconstructed plan for echo fallback: #{steps_fallback.inspect}")
+        return { status: :fallback, steps: steps_fallback }
+      end
+
+      msg = if @fallback_mode == :echo
+              'Planning failed and Echo fallback tool is not available to this agent.'
+            else
+              'I cannot fulfill this request with the available tools (empty plan).'
+            end
+      ADK.logger.warn(msg)
+      { status: :error, result: { details: { status: :error, error_message: msg }, last_result: nil } }
+    end
+
+    # Resolves parameter injection (references to previous step results)
+    def resolve_step_params(step, previous_step_result_hash)
+      current_params = step[:params].dup
+      current_params.transform_values! do |value|
+        injection_value = nil
+        if value.is_a?(String) && value.match?(/\[Result from step \d+\]|\[Result from previous step\]/i)
+          if previous_step_result_hash && %i[success pending].include?(previous_step_result_hash[:status])
+            # Prioritize :result, then :job_id (was workflow_id), then :message
+            if previous_step_result_hash.key?(:result)
+              prev_result = previous_step_result_hash[:result]
+              if prev_result.is_a?(Hash) && prev_result.key?(:status) && prev_result.key?(:result) # AgentTool nested result
+                injection_value = prev_result[:result]
+                ADK.logger.debug('Injecting nested result...')
+              else
+                injection_value = prev_result
+                ADK.logger.debug('Injecting direct result...')
+              end
+            elsif previous_step_result_hash.key?(:job_id) # <-- CHANGED from workflow_id
+              injection_value = previous_step_result_hash[:job_id]
+              ADK.logger.debug('Injecting job_id from previous step...')
+            elsif previous_step_result_hash.key?(:message)
+              injection_value = previous_step_result_hash[:message]
+              ADK.logger.debug('Injecting message from previous step...')
+            else
+              ADK.logger.warn("Cannot inject: Previous successful/pending step missing usable key (:result, :job_id, :message). Prev Hash: #{previous_step_result_hash.inspect}")
+              value
+            end
+          else
+            ADK.logger.warn("Cannot inject: Previous step failed or absent. Prev Hash: #{previous_step_result_hash.inspect}")
+            value
+          end
+          injection_value || value # Use injection if found, otherwise keep original
+        else
+          value # Not a placeholder string, keep original value
+        end
+      end
+      current_params
+    end
+
+    def sanitize_result_for_plan(current_result_hash)
+      sanitized_result_for_plan = {}
+      if current_result_hash.is_a?(Hash)
+        sanitized_result_for_plan[:status] = current_result_hash[:status]
+        # Always include error keys, defaulting to nil if not present
+        sanitized_result_for_plan[:error_message] = current_result_hash[:error_message] # Defaults to nil if key missing
+        sanitized_result_for_plan[:error_class] = current_result_hash[:error_class] # Defaults to nil if key missing
+        # Include other relevant keys if present
+        sanitized_result_for_plan[:job_id] = current_result_hash[:job_id] if current_result_hash.key?(:job_id)
+        sanitized_result_for_plan[:message] = current_result_hash[:message] if current_result_hash.key?(:message)
+        # Only include :result value if it's simple
+        result_val = current_result_hash[:result]
+        if result_val.is_a?(String) || result_val.is_a?(Numeric) || [true, false, nil].include?(result_val)
+          sanitized_result_for_plan[:result] = result_val
+        elsif current_result_hash.key?(:result) # It exists but is complex
+          sanitized_result_for_plan[:result] = '[Complex Result Structure]'
+        end
+      else # Should not happen based on execute_step validation, but handle defensively
+        sanitized_result_for_plan[:status] = :error
+        sanitized_result_for_plan[:error_message] = "Invalid format from execute_step: #{current_result_hash.inspect}"
+      end
+      sanitized_result_for_plan
+    end
 
     # --- REFACTORED: execute_step uses session context and passes it to tools ---
     # Executes a single step, logging :tool_request and :tool_result events via session service.
