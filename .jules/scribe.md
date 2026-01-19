@@ -10,3 +10,9 @@
 **Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
 **Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
 
+
+## 2026-01-19 - ADK::Tool::MetadataDsl Documentation Gap
+
+**Gap:** The DSL for defining tools (`parameter`, `tool_description`) was undocumented in the code, forcing developers to rely on external guides or examples.
+**Learning:** DSL modules are the primary user interface for defining behavior; documenting them inline makes the API discoverable via IDEs and generated docs.
+**Action:** Prioritize documenting DSL methods (`ClassMethods`) when they are the main way users interact with a framework component.

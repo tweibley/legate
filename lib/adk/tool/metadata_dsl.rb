@@ -3,6 +3,22 @@
 module ADK
   class Tool
     # Module to provide a more concise DSL for defining tool metadata.
+    #
+    # This module is included in {ADK::Tool} and provides the class-level methods
+    # {ClassMethods#tool_description} and {ClassMethods#parameter} to define
+    # the tool's behavior and interface.
+    #
+    # @example Defining a tool using the DSL
+    #   class MyTool < ADK::Tool
+    #     tool_description "Calculates the sum of two numbers"
+    #
+    #     parameter :a, type: :integer, required: true, description: "First number"
+    #     parameter :b, type: :integer, required: true, description: "Second number"
+    #
+    #     def perform_execution(params, context)
+    #       # ... implementation ...
+    #     end
+    #   end
     module MetadataDsl
       def self.included(base)
         base.extend ClassMethods
@@ -50,14 +66,28 @@ module ADK
         end
       end
 
+      # Class methods mixed into the Tool class to provide the DSL.
       module ClassMethods
-        # DSL method for setting description
+        # Sets the description of what the tool does.
+        # This description is used by the planner (LLM) to decide when to use this tool.
+        #
+        # @param text [String] The description of the tool.
+        # @return [void]
         def tool_description(text)
           initialize_dsl_storage # Ensure vars exist
           self.description = text.to_s
         end
 
-        # DSL method for defining a parameter
+        # Defines a parameter that the tool accepts.
+        #
+        # @param name [Symbol] The name of the parameter.
+        # @param options [Hash] Configuration options for the parameter.
+        # @option options [Symbol] :type The data type of the parameter.
+        #   Supported types: :string, :integer, :float, :boolean, :array, :hash.
+        # @option options [Boolean] :required (false) Whether the parameter is mandatory.
+        # @option options [String] :description A description of the parameter's purpose.
+        # @return [void]
+        # @raise [ArgumentError] if the name is not a Symbol.
         def parameter(name, options = {})
           initialize_dsl_storage # Ensure hash exists
           raise ArgumentError, 'Parameter name must be a Symbol' unless name.is_a?(Symbol)
@@ -126,7 +156,8 @@ module ADK
             }
           end
         end
-      end # End ClassMethods
+      end
+      # End ClassMethods
     end
   end
 end
