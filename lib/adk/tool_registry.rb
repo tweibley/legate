@@ -42,7 +42,7 @@ module ADK
     # @return [Class, nil] The tool class or nil if not found.
     def find_class(name_symbol)
       found_class = @tools[name_symbol.to_sym]
-      ADK.logger.debug("[ToolRegistry #{@object_id}] find_class(#{name_symbol.inspect}): Found class in @tools: #{found_class.inspect}")
+      ADK.logger.debug { "[ToolRegistry #{@object_id}] find_class(#{name_symbol.inspect}): Found class in @tools: #{found_class.inspect}" }
       found_class
     end
 
@@ -51,7 +51,7 @@ module ADK
     # @return [ADK::Tool, nil] An instance of the tool or nil if instantiation fails or class not found.
     def create_instance(name_symbol)
       klass = find_class(name_symbol)
-      ADK.logger.debug("[ToolRegistry #{@object_id}] create_instance(#{name_symbol.inspect}): Found class: #{klass.inspect}")
+      ADK.logger.debug { "[ToolRegistry #{@object_id}] create_instance(#{name_symbol.inspect}): Found class: #{klass.inspect}" }
       klass&.new
     end
 

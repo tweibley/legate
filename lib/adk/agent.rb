@@ -236,7 +236,7 @@ module ADK
       @state = :idle # Initial state
 
       @tool_registry = ADK::ToolRegistry.new
-      ADK.logger.debug("Agent '#{@name}' created its ToolRegistry instance: #{@tool_registry.object_id}")
+      ADK.logger.debug { "Agent '#{@name}' created its ToolRegistry instance: #{@tool_registry.object_id}" }
 
       # 1. Discover tools from paths (if any) and update GlobalToolManager
       newly_discovered_tool_names = Set.new
@@ -245,27 +245,27 @@ module ADK
         ADK::ToolLoader.load_from_paths(tool_paths_to_load)
         current_global_tools = ADK::GlobalToolManager.registered_tool_names.to_set
         newly_discovered_tool_names = current_global_tools - initial_global_tools
-        ADK.logger.debug("[Agent Init '#{@name}'] Newly discovered tool names: #{newly_discovered_tool_names.to_a.inspect}")
+        ADK.logger.debug { "[Agent Init '#{@name}'] Newly discovered tool names: #{newly_discovered_tool_names.to_a.inspect}" }
       end
 
       # 2. Register tool *classes* passed directly (via add_tool_classes or from definition)
-      ADK.logger.debug("[Agent Init '#{@name}'] Registering explicitly provided tool classes: #{tool_classes_to_load.inspect}")
+      ADK.logger.debug { "[Agent Init '#{@name}'] Registering explicitly provided tool classes: #{tool_classes_to_load.inspect}" }
       tool_classes_to_load.each do |tool_class|
-        ADK.logger.debug("[Agent Init '#{@name}'] Processing class from builder: #{tool_class.inspect} (Object ID: #{tool_class.object_id})")
+        ADK.logger.debug { "[Agent Init '#{@name}'] Processing class from builder: #{tool_class.inspect} (Object ID: #{tool_class.object_id})" }
         register_tool_class(tool_class) # Use the agent's specific register method
       end
 
       # 3. Register newly *discovered* tool classes (from paths) that weren't explicitly passed
-      ADK.logger.debug("[Agent Init '#{@name}'] Registering newly discovered tool classes (from paths): #{newly_discovered_tool_names.to_a.inspect}")
+      ADK.logger.debug { "[Agent Init '#{@name}'] Registering newly discovered tool classes (from paths): #{newly_discovered_tool_names.to_a.inspect}" }
       newly_discovered_tool_names.each do |tool_name|
         tool_class = ADK::GlobalToolManager.find_class(tool_name)
         if tool_class
           # Check if already registered from step 2 before registering again
           unless @tool_registry.find_class(tool_name)
-            ADK.logger.debug("[Agent Init '#{@name}'] Registering discovered tool #{tool_name.inspect} (class: #{tool_class})...")
+            ADK.logger.debug { "[Agent Init '#{@name}'] Registering discovered tool #{tool_name.inspect} (class: #{tool_class})..." }
             register_tool_class(tool_class) # Use the agent's specific register method
           else
-            ADK.logger.debug("[Agent Init '#{@name}'] Skipping registration of discovered tool #{tool_name.inspect}, already registered via explicit classes.")
+            ADK.logger.debug { "[Agent Init '#{@name}'] Skipping registration of discovered tool #{tool_name.inspect}, already registered via explicit classes." }
           end
         else
           # This case should be rare now due to _discover_and_load_tools logic
@@ -294,7 +294,7 @@ module ADK
       elsif mcp_servers_config_str.is_a?(Array)
         @mcp_servers_config = mcp_servers_config_str # Already an array
       else
-        ADK.logger.debug("Agent '#{@name}': No valid MCP server config provided. Defaulting to empty array.")
+        ADK.logger.debug { "Agent '#{@name}': No valid MCP server config provided. Defaulting to empty array." }
         @mcp_servers_config = []
       end
 
@@ -421,9 +421,9 @@ module ADK
       end
 
       # Register the class using the determined name
-      ADK.logger.debug("Agent '#{name}' add_tool: Registering tool_name=#{tool_name.inspect} with class=#{tool_class.inspect} in registry=#{@tool_registry.object_id}")
+      ADK.logger.debug { "Agent '#{name}' add_tool: Registering tool_name=#{tool_name.inspect} with class=#{tool_class.inspect} in registry=#{@tool_registry.object_id}" }
       registration_result = @tool_registry.register(tool_name, tool_class)
-      ADK.logger.debug("Agent '#{name}' add_tool: Registry after registration for #{tool_name.inspect}: #{@tool_registry.tools.keys.inspect}")
+      ADK.logger.debug { "Agent '#{name}' add_tool: Registry after registration for #{tool_name.inspect}: #{@tool_registry.tools.keys.inspect}" }
 
       # Explicitly return the boolean result from the registry
       registration_result
@@ -456,7 +456,7 @@ module ADK
     # @param tool_class [Class] The tool class to register (must inherit from ADK::Tool).
     # @return [Boolean] True if registration was successful, false otherwise.
     def register_tool_class(tool_class)
-      ADK.logger.debug("[register_tool_class] Registering class: #{tool_class.inspect} (Object ID: #{tool_class.object_id})")
+      ADK.logger.debug { "[register_tool_class] Registering class: #{tool_class.inspect} (Object ID: #{tool_class.object_id})" }
       # Basic validation
       unless tool_class < ADK::Tool
         ADK.logger.error("Agent '#{name}': Attempted to register invalid object (must inherit from ADK::Tool): #{tool_class.inspect}")
@@ -465,7 +465,7 @@ module ADK
 
       # Get name via metadata method
       tool_name = get_tool_name_from_class(tool_class) # Use the new helper
-      ADK.logger.debug("[register_tool_class] Determined tool name: #{tool_name.inspect} for class #{tool_class.inspect}")
+      ADK.logger.debug { "[register_tool_class] Determined tool name: #{tool_name.inspect} for class #{tool_class.inspect}" }
 
       unless tool_name # Helper returns nil if no valid name
         # Use logger method, not direct access
@@ -920,7 +920,7 @@ module ADK
       end
       # --- End Handle Empty Plan ---
 
-      ADK.logger.debug("Executing plan with #{steps.length} step(s) for session '#{session_id}': #{steps.inspect}")
+      ADK.logger.debug { "Executing plan with #{steps.length} step(s) for session '#{session_id}': #{steps.inspect}" }
       previous_step_result_hash = nil
       plan_execution_details = []
       last_successful_or_pending_result = nil # <-- Store the original last hash
@@ -930,9 +930,9 @@ module ADK
         step_type_desc = step[:step_type] == :sequential_sub_agent ?
                         "sequential sub-agent '#{step[:sub_agent_name]}'" :
                         "tool '#{step[:tool]}'"
-        ADK.logger.debug("Executing step #{index + 1}/#{steps.length}: #{step_type_desc}")
-        ADK.logger.debug("  Step details: #{step.inspect}")
-        ADK.logger.debug("  Input (result hash from previous step): #{previous_step_result_hash.inspect}")
+        ADK.logger.debug { "Executing step #{index + 1}/#{steps.length}: #{step_type_desc}" }
+        ADK.logger.debug { "  Step details: #{step.inspect}" }
+        ADK.logger.debug { "  Input (result hash from previous step): #{previous_step_result_hash.inspect}" }
 
         # --- Input Injection Logic (Updated for job_id) ---
         current_params = step[:params].dup
@@ -970,7 +970,7 @@ module ADK
           end
         end
         step_with_injected_params = step.merge(params: current_params)
-        ADK.logger.debug("  Params after potential injection: #{current_params.inspect}")
+        ADK.logger.debug { "  Params after potential injection: #{current_params.inspect}" }
         # --- End Input Injection Logic ---
 
         # --- Execute Step --- #
@@ -1019,8 +1019,8 @@ module ADK
         # --- End Stop on first error / Store last result --- #
       end
 
-      ADK.logger.debug("Plan execution finished. Structured details collected: #{plan_execution_details.inspect}")
-      ADK.logger.debug("Plan execution finished. Original last result: #{last_successful_or_pending_result.inspect}")
+      ADK.logger.debug { "Plan execution finished. Structured details collected: #{plan_execution_details.inspect}" }
+      ADK.logger.debug { "Plan execution finished. Original last result: #{last_successful_or_pending_result.inspect}" }
 
       # --- Return BOTH sanitized details AND original last result --- #
       { details: plan_execution_details, last_result: last_successful_or_pending_result }
@@ -1262,10 +1262,10 @@ module ADK
     # Discovers tools from a connected MCP client and registers them with the agent's registry.
     # @param client [ADK::Mcp::Client]
     def discover_and_register_mcp_tools(client)
-      ADK.logger.debug("[Agent E2E Debug] discover_and_register - @tool_registry ID: #{@tool_registry.object_id}")
+      ADK.logger.debug { "[Agent E2E Debug] discover_and_register - @tool_registry ID: #{@tool_registry.object_id}" }
       begin
         mcp_tool_schemas = client.list_tools
-        ADK.logger.debug("[Agent E2E Debug] list_tools returned: #{mcp_tool_schemas.inspect}")
+        ADK.logger.debug { "[Agent E2E Debug] list_tools returned: #{mcp_tool_schemas.inspect}" }
         ADK.logger.info("Discovered #{mcp_tool_schemas.count} tools from MCP server.")
         mcp_tool_schemas.each do |schema|
           # --- ADDED check: Only register if tool was selected ---
@@ -1274,7 +1274,7 @@ module ADK
             # Pass the agent's specific registry instance (@tool_registry)
             ADK::Mcp::ToolWrapper.from_mcp_schema(schema, client, @tool_registry)
           else
-            ADK.logger.debug("Skipping registration of MCP tool '#{tool_name_sym}' as it was not selected in agent definition.")
+            ADK.logger.debug { "Skipping registration of MCP tool '#{tool_name_sym}' as it was not selected in agent definition." }
           end
           # --- END check ---
         end
