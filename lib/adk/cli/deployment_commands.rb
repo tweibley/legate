@@ -8,6 +8,7 @@ require 'yaml'
 require 'logger' # Needed for sample entrypoint
 require 'securerandom' # Needed for suggested project ID
 require 'shellwords'
+require 'open3'
 
 module ADK
   module CLI
@@ -585,10 +586,25 @@ module ADK
       end
 
       # Helper to execute shell commands and check status
-      def run_gcloud_command(command, error_message)
-        say "Executing: gcloud #{command}"
-        output = `gcloud #{command} 2>&1` # Capture stderr too
-        unless $?.success?
+      # @param command_args [Array<String>, String] The command arguments (without 'gcloud'). Array is preferred for security.
+      # @param error_message [String] Message to display on failure.
+      def run_gcloud_command(command_args, error_message)
+        # Prepend 'gcloud'
+        full_command = ['gcloud']
+        if command_args.is_a?(Array)
+          full_command.concat(command_args)
+        else
+          # Fallback for string inputs (deprecated/unsafe)
+          # We use Shellwords.split to try and handle it safely, but injection is still possible in the string itself
+          full_command.concat(Shellwords.split(command_args))
+        end
+
+        say "Executing: #{full_command.join(' ')}"
+
+        # Use Open3.capture2e to capture output and exit status securely (execve style)
+        output, status = Open3.capture2e(*full_command)
+
+        unless status.success?
           say "Error: #{error_message}", :red
           say "gcloud output:\n#{output}", :red
           # Decide if we should exit or just warn
@@ -616,12 +632,13 @@ module ADK
 
         # 1. Create or check configuration
         # Use describe to check existence non-destructively
-        `gcloud config configurations describe #{config_name} > /dev/null 2>&1`
-        if $?.success?
+        # Use Open3 to safely check existence
+        _out, status = Open3.capture2e('gcloud', 'config', 'configurations', 'describe', config_name)
+        if status.success?
           say "Configuration '#{config_name}' already exists. Settings will be updated.", :yellow
         else
           # Try to create (use --no-activate)
-          unless run_gcloud_command("config configurations create #{config_name} --no-activate",
+          unless run_gcloud_command(['config', 'configurations', 'create', config_name, '--no-activate'],
                                     "Failed to create gcloud configuration '#{config_name}'.")
             return nil # Failed, can't set properties
           end
@@ -630,12 +647,12 @@ module ADK
         end
 
         # 2. Set properties
-        run_gcloud_command("config set project #{project_id} --configuration=#{config_name}",
+        run_gcloud_command(['config', 'set', 'project', project_id, "--configuration=#{config_name}"],
                            'Failed to set project in gcloud config.')
-        run_gcloud_command("config set compute/region #{region} --configuration=#{config_name}",
+        run_gcloud_command(['config', 'set', 'compute/region', region, "--configuration=#{config_name}"],
                            'Failed to set region in gcloud config.')
         # Add other relevant defaults? e.g., run/region?
-        # run_gcloud_command("config set run/region #{region} --configuration=#{config_name}", "Failed to set run/region in gcloud config.")
+        # run_gcloud_command(['config', 'set', 'run/region', region, "--configuration=#{config_name}"], "Failed to set run/region in gcloud config.")
 
         config_name # Return the name used
       end
