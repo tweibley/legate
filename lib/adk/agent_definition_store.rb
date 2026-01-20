@@ -80,7 +80,7 @@ module ADK
     def self.save_to_redis(name, definition_hash)
       name_str = name.to_s
       key = agent_redis_key(name_str)
-      redis = Redis.new(ADK.redis_options)
+      redis = ADK.redis_client
 
       # Prepare data for Redis (string keys, tools as JSON string)
       redis_data = {
@@ -113,7 +113,7 @@ module ADK
     def self.load_from_redis(name)
       name_str = name.to_s
       key = agent_redis_key(name_str)
-      redis = Redis.new(ADK.redis_options)
+      redis = ADK.redis_client
 
       fields = ['description', 'tools', 'model', 'instruction', 'fallback_mode', 'mcp_servers_json', 'webhook_enabled', 'webhook_secret']
       data = redis.hmget(key, *fields)
@@ -152,7 +152,7 @@ module ADK
     # Load all definitions from Redis into the in-memory store.
     # @return [Integer] Number of definitions loaded.
     def self.load_all_from_redis
-      redis = Redis.new(ADK.redis_options)
+      redis = ADK.redis_client
       agent_names = redis.smembers(REDIS_AGENTS_SET_KEY)
       loaded_count = 0
       reset! # Clear memory before loading
@@ -200,7 +200,7 @@ module ADK
     def self.delete_from_redis(name)
       name_str = name.to_s
       key = agent_redis_key(name_str)
-      redis = Redis.new(ADK.redis_options)
+      redis = ADK.redis_client
 
       deleted_count = redis.multi do |multi|
         multi.del(key)

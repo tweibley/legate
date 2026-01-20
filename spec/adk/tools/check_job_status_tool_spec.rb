@@ -27,7 +27,7 @@ RSpec.describe ADK::Tools::CheckJobStatusTool do
   before do
     # Stub Redis connection used by the tool
     allow(ADK).to receive(:redis_options).and_return(redis_options)
-    allow(Redis).to receive(:new).with(redis_options).and_return(mock_redis)
+    allow(ADK).to receive(:redis_client).and_return(mock_redis)
     allow(mock_redis).to receive(:get).with(result_key).and_return(nil) # Default: no result stored
     allow(mock_redis).to receive(:close)
 
@@ -139,7 +139,7 @@ RSpec.describe ADK::Tools::CheckJobStatusTool do
 
     context 'when Redis connection fails' do
       before {
-        allow(Redis).to receive(:new).with(redis_options).and_raise(Redis::CannotConnectError, 'Connection refused')
+        allow(ADK).to receive(:redis_client).and_raise(Redis::CannotConnectError, 'Connection refused')
       }
       it 'raises ToolError' do
         expect {

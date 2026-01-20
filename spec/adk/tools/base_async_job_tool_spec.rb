@@ -172,13 +172,13 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
     let(:expected_json) { { status: :success, result: result_data }.to_json }
 
     before do
-      allow(Redis).to receive(:new).and_return(mock_redis)
+      allow(ADK).to receive(:redis_client).and_return(mock_redis)
       allow(mock_redis).to receive(:setex).with(expected_key, expected_ttl, expected_json)
       allow(mock_redis).to receive(:close)
     end
 
     it 'connects to Redis with correct options' do
-      expect(Redis).to receive(:new).with(ADK.redis_options).and_return(mock_redis)
+      expect(ADK).to receive(:redis_client).with({}).and_return(mock_redis)
       described_class.store_job_result(jid, result_data)
     end
 
@@ -210,7 +210,7 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
     let(:expected_json) { { status: :error, error_message: "#{error_cls}: #{error_msg}" }.to_json }
 
     before do
-      allow(Redis).to receive(:new).and_return(mock_redis)
+      allow(ADK).to receive(:redis_client).and_return(mock_redis)
       allow(mock_redis).to receive(:setex).with(expected_key, expected_ttl, expected_json)
       allow(mock_redis).to receive(:close)
     end
@@ -241,12 +241,12 @@ RSpec.describe ADK::Tools::BaseAsyncJobTool do
     let(:expected_json) { { status: :pending, message: 'Job processing started.' }.to_json }
 
     before do
-      allow(Redis).to receive(:new).and_return(mock_redis)
+      allow(ADK).to receive(:redis_client).and_return(mock_redis)
       allow(mock_redis).to receive(:setex).with(expected_key, expected_ttl, expected_json)
     end
 
     it 'connects to Redis with correct options' do
-      expect(Redis).to receive(:new).with(ADK.redis_options).and_return(mock_redis)
+      expect(ADK).to receive(:redis_client).with({}).and_return(mock_redis)
       described_class.store_job_pending(jid)
     end
 

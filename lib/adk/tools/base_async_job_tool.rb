@@ -109,7 +109,7 @@ module ADK
       # @param jid [String] The Job ID (available inside the worker).
       # @param redis_options [Hash] Redis connection options (optional, uses ADK defaults if nil).
       def self.store_job_pending(jid, redis_options = nil)
-        redis = Redis.new(redis_options || ADK.redis_options)
+        redis = ADK.redis_client(redis_options || {})
         key = "#{JOB_RESULT_REDIS_PREFIX}#{jid}"
         # Store pending status hash. Use the same TTL as results.
         result_data = { status: :pending, message: 'Job processing started.' }
@@ -127,7 +127,7 @@ module ADK
       # @param result [Object] The result data (must be JSON-serializable).
       # @param redis_options [Hash] Redis connection options (optional, uses ADK defaults if nil).
       def self.store_job_result(jid, result, redis_options = nil)
-        redis = Redis.new(redis_options || ADK.redis_options)
+        redis = ADK.redis_client(redis_options || {})
         key = "#{JOB_RESULT_REDIS_PREFIX}#{jid}"
         # Store result hash including status
         result_data = { status: :success, result: result }
@@ -146,7 +146,7 @@ module ADK
       # @param error_class [String] The class name of the error (optional).
       # @param redis_options [Hash] Redis connection options (optional, uses ADK defaults if nil).
       def self.store_job_error(jid, error_message, error_class = 'StandardError', redis_options = nil)
-        redis = Redis.new(redis_options || ADK.redis_options)
+        redis = ADK.redis_client(redis_options || {})
         key = "#{JOB_RESULT_REDIS_PREFIX}#{jid}"
         # Store error hash including status
         result_data = { status: :error, error_message: "#{error_class}: #{error_message}" }

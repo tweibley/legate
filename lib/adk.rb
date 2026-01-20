@@ -129,6 +129,13 @@ module ADK
     @redis_options
   end
 
+  # Helper method to create a new Redis client with default options
+  def self.redis_client(options = {})
+    # Use accessor to ensure we get current config
+    defaults = redis_options || {}
+    ::Redis.new(defaults.merge(options))
+  end
+
   # --- Sidekiq Configuration ---
   def self.configure_sidekiq
     # Ensure logger is available before trying to use it

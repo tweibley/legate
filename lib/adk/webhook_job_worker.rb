@@ -41,7 +41,7 @@ module ADK
           redis_opts_sym = session_service_config.transform_keys(&:to_sym).reject { |k, _| k == :type }
           # Explicitly create Redis client instance using options from config
           begin
-            redis_client = Redis.new(**redis_opts_sym)
+            redis_client = ADK.redis_client(redis_opts_sym)
             redis_client.ping # Verify connection early
           rescue Redis::BaseError => e
             ADK.logger.error("WebhookJobWorker: Failed to connect to Redis using config [#{redis_opts_sym}]: #{e.message}")

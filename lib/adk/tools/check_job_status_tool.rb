@@ -38,7 +38,7 @@ module ADK
 
         redis = nil # Define outside begin block for ensure
         begin
-          redis = Redis.new(ADK.redis_options)
+          redis = ADK.redis_client
           result_key = "#{ADK::Tools::BaseAsyncJobTool::JOB_RESULT_REDIS_PREFIX}#{job_id}"
 
           # First check Redis for completed results

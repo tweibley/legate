@@ -36,7 +36,7 @@ module ADK
 
           def connect_redis
             # Assumes ADK.redis_options are configured
-            redis = Redis.new(ADK.redis_options)
+            redis = ADK.redis_client
             redis.ping
             redis
           rescue Redis::CannotConnectError => e
