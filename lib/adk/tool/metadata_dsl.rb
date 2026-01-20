@@ -50,14 +50,28 @@ module ADK
         end
       end
 
+      # Class-level methods for the Metadata DSL.
       module ClassMethods
         # DSL method for setting description
+        #
+        # @param text [String] The description of what the tool does.
+        # @example
+        #   tool_description "Fetches the current weather for a given location."
         def tool_description(text)
           initialize_dsl_storage # Ensure vars exist
           self.description = text.to_s
         end
 
         # DSL method for defining a parameter
+        #
+        # @param name [Symbol] The name of the parameter.
+        # @param options [Hash] Options for the parameter.
+        # @option options [Symbol] :type The type of the parameter (e.g., :string, :integer, :boolean).
+        # @option options [String] :description A description of the parameter.
+        # @option options [Boolean] :required Whether the parameter is required (default: false).
+        # @raise [ArgumentError] if the name is not a Symbol.
+        # @example
+        #   parameter :location, type: :string, description: "City name", required: true
         def parameter(name, options = {})
           initialize_dsl_storage # Ensure hash exists
           raise ArgumentError, 'Parameter name must be a Symbol' unless name.is_a?(Symbol)

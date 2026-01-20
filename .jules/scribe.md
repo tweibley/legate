@@ -1,12 +1,5 @@
-## 2025-12-18 - ADK::Planner Documentation Gap
+## 2025-02-18 - Documenting DSL Methods
 
-**Gap:** `ADK::Planner` was undocumented despite being the central orchestration component for LLM planning. Its return structure was implicit.
-**Learning:** Core "brain" components must have explicit contracts documented, especially when they return complex structures like plans parsed from LLM output.
-**Action:** Always document return types of service objects that wrap external APIs or perform complex parsing.
-
-## 2025-12-17 - ADK::Tool Contract Clarity
-
-**Gap:** `ADK::Tool#perform_execution` return type is documented as `Object` but the framework expects a structured Hash `{:status, :result}`, leading to potential runtime errors for new tool developers.
-**Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
-**Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
-
+**Gap:** The `tool_description` and `parameter` DSL methods in `ADK::Tool::MetadataDsl` were undocumented.
+**Learning:** DSL methods often appear "magical" to users. Documenting them with `@example` tags is critical because users interact with them directly when defining classes, often more frequently than standard instance methods.
+**Action:** When surveying for documentation gaps, specifically check modules included/extended into user-facing classes for undocumented DSL methods.
