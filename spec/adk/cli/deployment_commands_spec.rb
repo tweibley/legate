@@ -119,4 +119,43 @@ RSpec.describe ADK::CLI::DeploymentCommands do
       end
     end
   end
+
+  describe '#run_gcloud_command' do
+    let(:args) { %w[config set project my-project] }
+    let(:error_msg) { 'Failed to set project' }
+
+    before do
+      allow(Open3).to receive(:capture2e).and_return(['', instance_double(Process::Status, success?: true)])
+    end
+
+    it 'calls Open3.capture2e with correct arguments' do
+      commands.send(:run_gcloud_command, args, error_msg)
+      expect(Open3).to have_received(:capture2e).with('gcloud', *args)
+    end
+
+    it 'returns true on success' do
+      result = commands.send(:run_gcloud_command, args, error_msg)
+      expect(result).to be true
+    end
+
+    it 'returns false and prints error on failure' do
+      allow(Open3).to receive(:capture2e).and_return(['error output', instance_double(Process::Status, success?: false)])
+
+      result = commands.send(:run_gcloud_command, args, error_msg)
+
+      expect(result).to be false
+      expect(output.string).to include("Error: #{error_msg}")
+      expect(output.string).to include('gcloud output:')
+      expect(output.string).to include('error output')
+    end
+
+    it 'handles missing gcloud executable (ENOENT)' do
+      allow(Open3).to receive(:capture2e).and_raise(Errno::ENOENT)
+
+      result = commands.send(:run_gcloud_command, args, error_msg)
+
+      expect(result).to be false
+      expect(output.string).to include("Error: 'gcloud' command not found")
+    end
+  end
 end

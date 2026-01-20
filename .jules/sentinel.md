@@ -10,3 +10,8 @@
 **Learning:** Tools that accept URLs as input must explicitly validate the destination to prevent Server-Side Request Forgery (SSRF), especially given the agent's ability to explore networks.
 **Prevention:** Implemented `validate_url_security` using `Resolv` and `IPAddr` to block access to private, loopback, and link-local addresses. This pattern should be applied to any future tools making outbound HTTP requests.
 
+## 2025-12-19 - Unsafe Shell Execution in Deployment Tools
+
+**Vulnerability:** Found `run_gcloud_command` using backticks with string interpolation for executing gcloud commands. While seemingly used with sanitized input or commented out, it presented an unsafe API that could lead to command injection if reused or if input sanitization failed.
+**Learning:** Utility methods for shell execution should be secure by default. Providing an API that accepts a raw command string encourages callers to interpolate values, which is risky.
+**Prevention:** Use `Open3.capture2e` (or similar) with array arguments (`*args`) for all subprocess execution. Refactor helper methods to accept argument arrays instead of command strings.
