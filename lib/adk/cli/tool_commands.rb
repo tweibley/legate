@@ -2,9 +2,10 @@
 # frozen_string_literal: true
 
 require 'thor'
+require 'did_you_mean' # For spell checking
 require_relative '../global_tool_manager' # Require the global manager
-require_relative '../tool_context' # <--- ADDED require
-require 'securerandom' # <-- ADDED require for dummy context
+require_relative '../tool_context'
+require 'securerandom'
 
 module ADK
   module CLI
@@ -94,7 +95,13 @@ module ADK
             value = parts[1]
 
             unless valid_param_names.include?(key)
-              status_message("Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring.", :yellow)
+              msg = "Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring."
+
+              # Add DidYouMean suggestion
+              suggestion = DidYouMean::SpellChecker.new(dictionary: valid_param_names).correct(key).first
+              msg += " Did you mean '#{suggestion}'?" if suggestion
+
+              status_message(msg, :yellow)
               next
             end
 
