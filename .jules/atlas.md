@@ -12,3 +12,8 @@
 
 **Action:** Created `lib/adk/tool_loader.rb` to encapsulate file traversal and loading. Refactored `ADK::Agent` to delegate to this new module. This maintains the same behavior but enforces better module boundaries.
 
+## 2025-05-20 - Extract Execution Logic
+
+**Issue:** `ADK::Agent` was a God Class handling configuration, execution, MAS, and tools. The execution logic (`execute_plan`, `execute_step`) was complex and mixed with agent state management.
+**Learning:** Core execution loops (iterating over steps, handling results, error handling) are distinct from the entity (Agent) that holds state and configuration. Separating them allows for better testing and potential future flexibility in execution strategies.
+**Action:** Extracted `ADK::PlanExecutor` in `lib/adk/plan_executor.rb` to encapsulate the plan execution responsibility. `ADK::Agent` now delegates execution to this component.
