@@ -1,14 +1,7 @@
-## 2025-12-18 - Separation of Definition and Runtime
+## 2024-05-22 - ADK Configuration Coupling
 
-**Issue:** `ADK::Agent` class in `lib/adk/agent.rb` contained both the runtime agent logic and the `AgentDefinition` class (plus its DSL), resulting in a file over 1000 lines long and mixed concerns.
-**Learning:** Keeping static configuration (definition) tightly coupled with runtime behavior makes the code harder to navigate and test in isolation.
-**Action:** Extracted `ADK::AgentDefinition` into a dedicated file `lib/adk/agent_definition.rb`. This separates the "blueprint" from the "machine", following the Single Responsibility Principle.
+**Issue:** `ADK::Configuration` eagerly instantiated `RedisStore` and `SessionService` in its `#initialize` method. This forced a dependency on a running Redis server just to load the configuration class or instantiate it for unrelated tests, creating tight coupling between the configuration object and the infrastructure layer.
 
-## 2025-12-17 - Extract Tool Loading Logic
+**Learning:** Eager instantiation of heavy infrastructure dependencies in configuration classes defeats the purpose of "configuration" (which should be metadata) and makes the system brittle and hard to test in isolation.
 
-**Issue:** `ADK::Agent` contained private logic (`_discover_and_load_tools`) to traverse the filesystem and require ruby files for tool discovery. This coupled the Agent's core domain logic (planning, execution) with infrastructure concerns (file I/O, loading).
-
-**Learning:** Separating infrastructure concerns from domain logic improves testability and clarity. The Agent should not care *how* tools are loaded, only that they are available. By moving this logic to a dedicated `ADK::ToolLoader`, we create a reusable component that could be used by other parts of the system (e.g., CLI) and simplify the Agent class.
-
-**Action:** Created `lib/adk/tool_loader.rb` to encapsulate file traversal and loading. Refactored `ADK::Agent` to delegate to this new module. This maintains the same behavior but enforces better module boundaries.
-
+**Action:** Refactored `ADK::Configuration` to use lazy initialization (memoization) for service dependencies. This allows the configuration object to be lightweight and testable, deferring the infrastructure connection until the service is actually requested.
