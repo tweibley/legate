@@ -244,11 +244,21 @@ module ADK
     # Format tools metadata for the prompt
     # Fetches metadata from the agent instance directly.
     def format_tools_for_prompt
+      # Optimization: Memoize the prompt string based on tool registry version
+      # This saves significant time by avoiding string construction on every request
+      current_tool_version = agent.tool_registry.version
+
+      return @cached_tools_description if defined?(@cached_tools_description) && @cached_tool_version == current_tool_version
+
       tools_metadata = agent.available_tools_metadata # Fetch metadata here
       delegation_targets_description = format_delegation_targets
       sequential_sub_agents_description = format_sequential_sub_agents
 
-      return 'No tools or delegable agents available.' if tools_metadata.empty? && delegation_targets_description.empty? && sequential_sub_agents_description.empty?
+      if tools_metadata.empty? && delegation_targets_description.empty? && sequential_sub_agents_description.empty?
+        @cached_tool_version = current_tool_version
+        @cached_tools_description = 'No tools or delegable agents available.'
+        return @cached_tools_description
+      end
 
       tools_description = tools_metadata.map do |metadata|
         # Use metadata hash directly
@@ -274,6 +284,11 @@ module ADK
       combined_description = tools_description
       combined_description += "\n\n" + delegation_targets_description unless delegation_targets_description.empty?
       combined_description += "\n\n" + sequential_sub_agents_description unless sequential_sub_agents_description.empty?
+
+      # Cache the result
+      @cached_tool_version = current_tool_version
+      @cached_tools_description = combined_description
+
       combined_description
     end
 

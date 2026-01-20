@@ -58,6 +58,15 @@ RSpec.describe ADK::Planner do
   }
 
   # Use agent_without_tools as the default agent for most tests
+  # Mock tool registry for agent
+  let(:mock_tool_registry) { instance_double(ADK::ToolRegistry, version: 1) }
+
+  # Update agent definitions to include tool_registry
+  before do
+    allow(agent_with_echo).to receive(:tool_registry).and_return(mock_tool_registry)
+    allow(agent_without_tools).to receive(:tool_registry).and_return(mock_tool_registry)
+  end
+
   let(:agent) { agent_without_tools }
   let(:mock_client) { double('Gemini') }
   let(:mock_logger) { instance_double(Logger, info: nil, warn: nil, error: nil, debug: nil) }
@@ -491,7 +500,8 @@ RSpec.describe ADK::Planner do
                                 available_tools_metadata: [],
                                 name: 'test_agent',
                                 instruction: nil,
-                                definition: agent_definition_with_delegation)
+                                definition: agent_definition_with_delegation,
+                                tool_registry: mock_tool_registry)
         # Configure proper respond_to? behavior for the agent definition
         allow(agent_definition_with_delegation).to receive(:respond_to?).with(:sequential_sub_agent_names).and_return(true)
         allow(agent_definition_with_delegation).to receive(:sequential_sub_agent_names).and_return([])

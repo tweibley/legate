@@ -6,11 +6,12 @@
 module ADK
   # Manages a collection of tool definitions for a specific agent instance.
   class ToolRegistry
-    attr_reader :tools # Make tools readable
+    attr_reader :tools, :version # Make tools and version readable
 
     # Initialize an empty tool registry.
     def initialize
       @tools = {} # Stores { name_symbol => tool_class } for this instance
+      @version = 0
     end
 
     # Register a tool class with this registry instance.
@@ -34,6 +35,7 @@ module ADK
         logger.info("ToolRegistry: Registering tool '#{name_symbol}' with class #{klass} in this registry.")
       end
       @tools[name_symbol] = klass
+      @version += 1
       true # Indicate success
     end
 
@@ -58,10 +60,10 @@ module ADK
     # Get a list of available tools registered in this instance with basic info.
     # @return [Array<Hash>] An array of hashes, each with :name and :description.
     def list_tools
-      @tools.values.map do |klass|
-        metadata = klass.tool_metadata # Get the full { name:, description:, parameters: } hash
-        metadata # Return the full hash
-      end.sort_by { |t| t[:name].to_s }
+      tools_list = @tools.values.map(&:tool_metadata)
+      tools_list.sort_by { |t| t[:name].to_s }
     end
-  end # End ToolRegistry class
-end # End ADK module
+  end
+  # End ToolRegistry class
+end
+# End ADK module
