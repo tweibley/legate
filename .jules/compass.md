@@ -3,3 +3,9 @@
 **Friction:** New contributors have to manually install dependencies and create `.env` file based on prose in README.
 **Learning:** `bin/setup` is a standard convention (Scripts to Rule Them All) that is missing here, leading to friction and potential configuration errors.
 **Action:** Created `bin/setup` and `.env.example` to automate the initial environment configuration.
+
+## 2024-05-24 - Missing Contribution Guide
+
+**Friction:** New contributors lack clear guidelines on how to contribute (PRs, code style, testing).
+**Learning:** Projects without a `CONTRIBUTING.md` often receive inconsistent PRs or scare away potential contributors.
+**Action:** Create a concise `CONTRIBUTING.md` outlining setup, testing, and PR process.
