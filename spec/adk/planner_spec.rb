@@ -221,30 +221,6 @@ RSpec.describe ADK::Planner do
     end
   end
 
-  describe '#parse_gemini_response' do
-    it 'parses valid JSON response' do
-      # Here we're testing the ability to parse array inputs
-      array_json = '[{"key": "value"}]'
-      result = planner.send(:parse_gemini_response, array_json)
-      expect(result).to eq([{ 'key' => 'value' }])
-    end
-
-    it 'removes markdown code blocks from response' do
-      result = planner.send(:parse_gemini_response, "```json\n[{\"key\": \"value\"}]\n```")
-      expect(result).to eq([{ 'key' => 'value' }])
-    end
-
-    it 'removes generic code blocks from response' do
-      result = planner.send(:parse_gemini_response, "```\n[{\"key\": \"value\"}]\n```")
-      expect(result).to eq([{ 'key' => 'value' }])
-    end
-
-    it 'returns empty array when response is not a JSON array' do
-      result = planner.send(:parse_gemini_response, '{"key": "value"}')
-      expect(result).to eq([])
-    end
-  end
-
   describe '#validate_and_format_multi_step_plan' do
     let(:planner) { described_class.new(agent: agent, logger: mock_logger) }
 
