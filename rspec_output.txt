@@ -1,0 +1,2509 @@
+[DEPRECATION] `define_metadata` is deprecated. Use `tool_description`, `parameter`, and rely on class name inference (or `self.explicit_tool_name = :my_name`) instead. Called from <class:DummyTestToolForRegistration>
+--> ADK Logger initialized with level: DEBUG, target: STDOUT
+INFO: Gemini AI Beta patch loaded - API will use v1beta endpoint
+DEBUG: Tool subclass ADK::Mcp::ToolWrapper inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+INFO: ADK::DefinitionStore::RedisStore initialized.
+WARN: Encryption requested but unavailable: Encryption key not found. Set ADK_AUTH_ENCRYPTION_KEY environment variable.. Falling back to unencrypted mode.
+INFO: RedisSessionService initialized. Encryption: false, Session TTL: 604800
+INFO: Sidekiq client configured with Redis: redis://localhost:6379/0
+INFO: ADK::Mcp module loaded.
+INFO: InMemorySessionService initialized.
+INFO: InMemorySessionService initialized.
+DEBUG: Tool subclass ADK::Tools::Echo inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::Calculator inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::CatFacts inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::RandomNumberTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::AgentTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::BaseAsyncJobTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::CheckJobStatusTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::SleepyTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass ADK::Tools::WebhookTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Defining agent :webhook_receiver...
+DEBUG: GlobalDefinitionRegistry: Registered definition for :webhook_receiver
+DEBUG: Agent definition 'webhook_receiver' created and registered globally.
+DEBUG: Note: This script only defines and registers the agent. A separate webhook listener process is needed to use it.
+INFO: Explicitly registering built-in ADK tools...
+DEBUG: GlobalToolManager: Registered tool 'echo' with class ADK::Tools::Echo.
+DEBUG: GlobalToolManager: Registered tool 'calculator' with class ADK::Tools::Calculator.
+DEBUG: GlobalToolManager: Registered tool 'cat_facts' with class ADK::Tools::CatFacts.
+DEBUG: GlobalToolManager: Registered tool 'random_number' with class ADK::Tools::RandomNumberTool.
+DEBUG: GlobalToolManager: Registered tool 'delegate_task' with class ADK::Tools::AgentTool.
+DEBUG: GlobalToolManager: Registered tool 'check_job_status' with class ADK::Tools::CheckJobStatusTool.
+DEBUG: GlobalToolManager: Registered tool 'start_sleepy_job' with class ADK::Tools::SleepyTool.
+DEBUG: GlobalToolManager: Registered tool 'webhook_tool' with class ADK::Tools::WebhookTool.
+INFO: Explicit tool registration complete. Current global tools: [:echo, :calculator, :cat_facts, :random_number, :delegate_task, :check_job_status, :start_sleepy_job, :webhook_tool]
+INFO: InMemorySessionService initialized.
+INFO: Sidekiq client configured with Redis: redis://localhost:6379/0
+DEBUG: Tool subclass MockDefineTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass AnotherMockTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass TestTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockAnotherTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockToolNeedsContext inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockToolNoName inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockToolWithPending inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockToolWithError inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockToolWithArgError inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockToolInvalidResult inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockToolPreparationError inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockCliTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockCliTestTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass GtmMockTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass GtmMockToolNoMeta inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass GtmMockToolOther inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass GtmMockToolWithError inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockAdkTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockAdkAsyncTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockAdkErrorTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass MockAdkExecuteErrorTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass RegistryMockTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass RegistryMockToolNoMeta inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass RegistryErrorTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass DummyTestToolForRegistration inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass DummyDslTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+DEBUG: Tool subclass DummyTestTool inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.
+
+ADK::ActivityLog
+  .instance
+    returns the singleton instance
+  #log
+    adds an event to the log
+    adds a timestamp to the event
+    limits the number of events stored
+    is thread-safe
+  #recent
+    returns the specified number of recent events
+    returns all events if limit is greater than count
+  #clear
+    removes all events
+  Class methods delegation
+    delegates log to instance
+    delegates recent to instance
+    delegates clear to instance
+
+ADK
+  .logger
+    when ADK_LOG_LEVEL is not set
+--> ADK Logger initialized with level: WARN, target: STDOUT
+      defaults to WARN level
+--> ADK Logger initialized with level: DEBUG, target: STDOUT
+      defaults to DEBUG level when RACK_ENV is development
+    when ADK_LOG_LEVEL is set
+      sets the logger level to DEBUG
+      sets the logger level to INFO
+      sets the logger level to WARN
+      sets the logger level to ERROR
+      sets the logger level to FATAL
+--> ADK Logger initialized with level: INVALID, target: STDOUT
+      defaults to WARN for unrecognized levels
+      does not output anything when level is NONE
+      suppresses all output when level is SILENT
+      ensures logger has valid output device for normal log levels
+  .load_environment
+    attempts to require bundler/setup and dotenv/load
+    ignores LoadError when requiring bundler/setup
+    ignores LoadError when requiring dotenv/load
+  .configure
+    yields the configuration instance to the block
+    calls configure_sidekiq after yielding
+  .config
+    returns an instance of ADK::Configuration
+    returns the same instance on subsequent calls
+    initializes configuration if called before .configure
+  .redis_url=
+    updates the redis_options url
+    calls configure_sidekiq
+  .configure_sidekiq
+    configures Sidekiq client with current redis options
+    logs configuration info
+    when Redis connection fails logs an error message
+
+Agent Authentication Integration
+  AgentDefinition auth DSL
+    stores credential names
+    stores URL mappings with string patterns
+    stores URL mappings with regexp patterns
+    stores scheme assignments
+    stores credential assignments
+    argument validation
+      requires credential name to be a Symbol
+      requires auth_mapping pattern to be String or Regexp
+      requires auth_mapping scheme to be a Symbol
+  AgentDefinition#to_h and .from_hash
+    serializes auth config to hash
+    deserializes auth config from hash
+    restores regexp patterns from hash
+  Agent auth config initialization
+    loads auth config from definition
+  ToolContext agent_auth_config
+    stores agent_auth_config
+    includes agent_auth_config in url mapping lookup
+    returns nil when URL does not match any mapping
+    with regexp pattern
+      matches regexp patterns
+
+ADK::Agent Circular Dependency Detection
+  Direct circular dependency detection
+    raises ConfigurationError when an agent includes itself as a sub-agent
+  Indirect circular dependency detection
+    detects circular dependencies via parent chain
+  Valid hierarchical relationships
+    allows valid acyclic hierarchies (A → B, A → C, B → D)
+
+ADK::AgentCodeGenerator
+  .generate
+    with a basic LLM agent
+      generates valid Ruby code
+      generates syntactically valid Ruby
+      omits fallback_mode when set to :error (default)
+    with echo fallback mode
+      includes fallback_mode when not default
+    with multi-line instruction
+      uses heredoc for multi-line instructions
+      generates syntactically valid Ruby
+    with output_key
+      includes output_key
+    with sequential agent type
+      includes agent_type and sub_agent_names
+      generates syntactically valid Ruby
+    with parallel agent type
+      includes agent_type and parallel sub_agent_names
+    with loop agent type
+      includes all loop configuration
+      generates syntactically valid Ruby
+    with delegation targets (LLM agent)
+      includes delegation_targets
+    with MCP servers configured
+      includes MCP server configuration
+      generates syntactically valid Ruby
+    with empty MCP servers
+      does not include MCP configuration
+    with no tools
+      generates valid code without tool declarations
+    with special characters in name
+      sanitizes the agent name for Ruby symbol
+    with escaped characters in strings
+      properly escapes string content
+
+ADK::Agent.define
+  creates an agent instance with the configured attributes
+  uses defaults if optional attributes are not set
+  raises ArgumentError if block is not provided
+  raises ArgumentError if name is not set in the block
+  raises ArgumentError if description is not set in the block
+  handles multiple calls to add_tool_classes
+  when defining a valid agent
+    returns an AgentDefinition instance
+    configures the AgentDefinition instance correctly
+    saves the definition to the configured definition store
+    registers the definition instance with the GlobalDefinitionRegistry
+  when using defaults
+    uses default model name if not specified
+    has an empty tool list if use_tool is not called
+    saves definition with defaults to the store
+    registers the default definition instance
+  with definition errors
+    raises ArgumentError if name is not set
+    raises ArgumentError if description is not set
+    raises ArgumentError if instruction is not set
+    raises ArgumentError if name is not a Symbol
+  with store or registry errors
+ERROR: Failed to save definition 'failing_agent' to store: ADK::StoreError - Redis connection failed
+    raises StoreError if saving to store fails
+
+ADK::AgentDefinition
+  #initialize
+    defaults webhook_enabled to false
+    defaults webhook_validator to nil
+    defaults webhook_secret to nil
+    defaults webhook_transformer to nil
+    defaults webhook_session_extractor to nil
+  DSL methods (via #define)
+WARN: Agent 'test_agent' is webhook_enabled but lacks a valid :webhook_transformer Proc.
+WARN: Agent 'test_agent' is webhook_enabled but lacks a valid :webhook_session_extractor Proc.
+    allows setting webhook_enabled
+    allows setting webhook_validator to a Symbol
+    allows setting webhook_validator to a Proc
+    raises ArgumentError if webhook_validator is not Symbol, a Proc, or nil
+    allows setting webhook_secret
+    allows setting webhook_transformer
+    raises ArgumentError if webhook_transformer is not a Proc or nil
+    allows setting webhook_session_extractor
+    raises ArgumentError if webhook_session_extractor is not a Proc or nil
+    allows setting agent_type to valid values
+    raises ArgumentError for invalid agent_type values
+    defaults agent_type to :llm
+  #validate!
+    passes for a minimal valid definition
+    when webhook_enabled is true
+      passes if transformer and extractor are Procs
+      logs a warning if webhook_transformer is not a Proc
+      logs a warning if webhook_session_extractor is not a Proc
+      logs two warnings if both transformer and extractor are missing
+  #to_h
+    includes basic fields
+    includes webhook_enabled field
+    includes webhook_validator field
+    represents webhook_secret as <present>
+    represents webhook_transformer as <Proc>
+    represents webhook_session_extractor as <Proc>
+    shows nil for webhook_secret if not set
+  .from_hash and #to_h serialization/deserialization
+    when all attributes are set
+      reconstructs the name correctly
+      reconstructs the description correctly
+      reconstructs the instruction correctly
+      reconstructs the tool_names correctly
+      reconstructs the model_name correctly
+      reconstructs the temperature correctly
+      reconstructs webhook_enabled correctly
+      reconstructs webhook_validator (Symbol) correctly
+      reconstructs webhook_secret as the string <present> (due to to_h behavior)
+      reconstructs webhook_transformer as nil (Procs are not serialized by to_h)
+      reconstructs webhook_session_extractor as nil (Procs are not serialized by to_h)
+      reconstructs fallback_mode correctly
+      reconstructs mcp_servers correctly
+      reconstructs sub_agent_names correctly
+      reconstructs output_key correctly
+      reconstructs agent_type correctly
+      reconstructs sequential_sub_agent_names correctly
+      reconstructs parallel_sub_agent_names correctly
+      reconstructs loop_sub_agent_names correctly
+      reconstructs loop_max_iterations correctly
+      reconstructs loop_condition_state_key correctly
+      reconstructs loop_condition_expected_value correctly
+      reconstructs delegation_targets correctly
+    when webhook_validator is a Proc in original definition
+      reconstructs webhook_validator as nil (Procs are not serialized by to_h)
+    when mcp_servers is a JSON string in the input hash to from_hash
+      reconstructs mcp_servers correctly from JSON string
+    when optional fields are not set in the original definition
+      reconstructs with defaults or nil for optional fields
+
+ADK::AgentDefinitionStore
+  .register
+    stores a valid definition in memory
+    converts tool names to strings
+    handles non-array tools gracefully
+    returns false and warns for invalid definition hash
+  .find
+    returns a registered definition
+    returns nil for an unregistered definition
+  .remove
+    removes a definition from the in-memory store
+    does nothing if the definition does not exist
+  .all
+    returns a hash of all registered definitions
+    returns an empty hash when no definitions are registered
+    returns a copy, not the original hash
+  .reset!
+    clears the in-memory store
+  .save_to_redis
+    saves the definition hash and agent name to Redis
+    returns false and logs error on Redis failure
+  .load_from_redis
+    loads and parses a definition from Redis
+    returns nil if agent not found in Redis
+    handles missing model with default
+    handles invalid tools JSON gracefully
+    returns nil and logs error on Redis connection failure
+  .load_all_from_redis
+    loads all definitions from Redis into memory
+    clears existing definitions before loading
+    handles errors during loading gracefully
+  .delete_from_redis
+    removes the definition hash and set member from Redis
+    returns false and logs error on Redis failure
+
+ADK::Agent Hierarchy Methods
+  #root_agent
+    when agent has no parent
+      returns self
+    when agent has a parent
+      returns the parent
+    with deep hierarchy
+      returns the topmost ancestor
+  #find_agent
+    when searching for self
+      returns self when name matches
+      converts string name to symbol
+    with simple hierarchy
+      finds direct sub-agents
+      returns nil when agent not found
+    with complex hierarchy
+      finds deeply nested agents
+      returns the first matching agent in DFS order
+      can find agents via middle nodes
+      cannot find agents in other branches
+  #find_sub_agent
+    finds direct sub-agents
+    converts string names to symbols
+    does not find deeply nested agents
+    returns nil when agent not found
+
+Agent MCP Fix
+  MCP servers handling
+    handles nil mcp_servers gracefully
+    handles empty mcp_servers array gracefully
+
+ADK::Agent
+  #initialize with definition:
+    sets attributes from the definition object
+    uses definition model_name if set, otherwise agent default
+    registers tools specified in the definition
+    uses provided session_service if passed
+    uses default session_service if not passed via definition helper
+    warns if a tool class from definition is not found globally
+    raises ArgumentError if definition is not an ADK::AgentDefinition
+    raises ArgumentError if definition object is missing required methods
+    uses planner_override if provided
+    creates a default planner if no override is provided
+    correctly initializes fallback_mode from definition
+    correctly initializes mcp_servers from definition
+    with sub-agent instantiation
+      when sub_agents parameter is provided (programmatic override)
+        uses the programmatically provided sub-agents
+        sets the parent_agent link on the programmatic sub-agent
+        does not instantiate sub-agents from the definitions sub_agent_names
+        assigns parent session service to programmatic sub-agent if sub-agent lacks one
+        warns if programmatic sub-agent has a different session service
+        single parent rule enforcement for programmatic sub-agents
+          logs an error and does not adopt a sub-agent that already has a different parent
+          handles a sub-agent appearing multiple times in programmatic list (idempotent parenting to self)
+      when sub_agents parameter is NOT provided (declarative instantiation)
+        instantiates sub-agents based on definition.sub_agent_names
+        sets the parent_agent link on declaratively instantiated sub-agents
+        passes its session_service to declaratively instantiated sub-agents
+        logs an error and skips if a declared sub-agent definition is not found in registry
+      when definition has no sub_agent_names and no sub_agents parameter
+        initializes with an empty sub_agents list
+      when definition is loaded from a store hash (simulating persistence)
+        successfully instantiates ParentA
+        instantiates ChildB as a sub-agent
+        sets the parent_agent link on ChildB
+        passes its session_service to ChildB
+  Tool Management
+    #add_tool
+      adds a valid tool class to the agent specific registry
+      adds a valid tool instance
+      warns and overwrites when adding a duplicate tool
+      errors and does not add an invalid object
+      adds a tool using its inferred name if metadata name is missing
+      logs error and does not add tool if name cannot be determined
+    #tools
+      returns an array of tool instances based on its definition
+      returns only auto-registered tools if definition has no tools
+      skips tool instance creation and warns if name cannot be retrieved
+    #find_tool
+      returns the tool instance if found
+      returns nil if the tool is not found
+    #available_tools_metadata
+      returns metadata list from the tool registry
+      returns only auto-registered tools if definition has no tools
+    #find_tool_class
+      returns the tool class if found
+    #register_tool_class (agent specific registry)
+      registers a valid tool class to the agent instance
+  #start/#stop/#running?
+    starts the agent
+    stops the agent
+  #run_task
+    pre-execution checks
+      returns error event if agent is not running
+      returns error event if session not found
+    successful single-step execution
+      records user, tool request, tool result, and agent events
+      returns the final agent event with the tool result
+    successful multi-step execution with injection
+      injects result and returns result of the last step
+    when a step returns a pending status
+      returns final agent event with pending status
+    multi-step execution with job_id injection
+      injects job_id and returns result of check tool
+    multi-step execution with error and plan halting
+      stops execution and returns error status
+    delegation interception
+      maps agent_transfer_to_ tool to delegate_task
+    when plan is empty
+      with fallback_mode :echo
+        falls back to echo tool
+      with fallback_mode :error (default)
+        returns an error event
+    with output_key state management
+      calls session_service.set_state with output_key and result content when output_key is defined
+      does not call session_service.set_state if output_key is not defined
+      logs a warning if session_service does not respond to :set_state
+      handles errors during set_state and logs them
+
+ADK::Agent
+  #transfer_to
+    when delegating to a valid target agent
+      successfully delegates the task to the target agent
+      calls run_task on the target agent with the same session context
+    when target agent is not in delegation_targets
+ERROR: Agent 'unknown_agent' is not in the delegation targets for 'parent_agent'
+      returns an error result
+    when target agent is not found in hierarchy
+      instantiates the agent from the definition
+    when target agent definition is not found
+ERROR: Target agent definition 'non_existent_agent' not found in registry
+      returns an error result
+    when error occurs during execution
+ERROR: Error executing task on target agent 'child_agent': Execution failed
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:188:in 'block in RSpec::Mocks::MessageExpectation#and_raise'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:797:in 'block in RSpec::Mocks::Implementation#call'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:796:in 'Array#map'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:796:in 'RSpec::Mocks::Implementation#call'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:654:in 'RSpec::Mocks::MessageExpectation::ImplementationDetails#invoke_incrementing_actual_calls_by'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:482:in 'RSpec::Mocks::MessageExpectation::ImplementationDetails#invoke'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/proxy.rb:206:in 'RSpec::Mocks::Proxy#message_received'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/proxy.rb:358:in 'RSpec::Mocks::PartialDoubleProxy#message_received'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/method_double.rb:98:in 'RSpec::Mocks::MethodDouble#proxy_method_invoked'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/method_double.rb:74:in 'block (2 levels) in define_proxy_method'
+/app/lib/adk/agent.rb:791:in 'ADK::Agent#transfer_to'
+/app/spec/adk/agent_transfer_spec.rb:189:in 'block (4 levels) in <top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:263:in 'BasicObject#instance_exec'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:263:in 'block in RSpec::Core::Example#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:511:in 'block in RSpec::Core::Example#with_around_and_singleton_context_hooks'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:468:in 'block in RSpec::Core::Example#with_around_example_hooks'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/hooks.rb:486:in 'block in RSpec::Core::Hooks::HookCollections#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/hooks.rb:626:in 'block in RSpec::Core::Hooks::HookCollections#run_around_example_hooks_for'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:352:in 'RSpec::Core::Example::Procsy#call'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/webmock-3.26.1/lib/webmock/rspec.rb:39:in 'block (2 levels) in <top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:457:in 'BasicObject#instance_exec'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:457:in 'RSpec::Core::Example#instance_exec'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/hooks.rb:390:in 'RSpec::Core::Hooks::AroundHook#execute_with'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/hooks.rb:628:in 'block (2 levels) in RSpec::Core::Hooks::HookCollections#run_around_example_hooks_for'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:352:in 'RSpec::Core::Example::Procsy#call'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/hooks.rb:629:in 'RSpec::Core::Hooks::HookCollections#run_around_example_hooks_for'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/hooks.rb:486:in 'RSpec::Core::Hooks::HookCollections#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:468:in 'RSpec::Core::Example#with_around_example_hooks'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:511:in 'RSpec::Core::Example#with_around_and_singleton_context_hooks'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:259:in 'RSpec::Core::Example#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:653:in 'block in RSpec::Core::ExampleGroup.run_examples'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:649:in 'Array#map'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:649:in 'RSpec::Core::ExampleGroup.run_examples'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:614:in 'RSpec::Core::ExampleGroup.run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:615:in 'block in RSpec::Core::ExampleGroup.run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:615:in 'Array#map'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:615:in 'RSpec::Core::ExampleGroup.run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:615:in 'block in RSpec::Core::ExampleGroup.run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:615:in 'Array#map'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:615:in 'RSpec::Core::ExampleGroup.run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:121:in 'block (3 levels) in RSpec::Core::Runner#run_specs'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:121:in 'Array#map'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:121:in 'block (2 levels) in RSpec::Core::Runner#run_specs'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/configuration.rb:2097:in 'RSpec::Core::Configuration#with_suite_hooks'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:116:in 'block in RSpec::Core::Runner#run_specs'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/reporter.rb:74:in 'RSpec::Core::Reporter#report'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:115:in 'RSpec::Core::Runner#run_specs'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:89:in 'RSpec::Core::Runner#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:71:in 'RSpec::Core::Runner.run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:45:in 'RSpec::Core::Runner.invoke'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/exe/rspec:4:in '<top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/bin/rspec:25:in 'Kernel#load'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/bin/rspec:25:in '<top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/cli/exec.rb:61:in 'Kernel.load'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/cli/exec.rb:61:in 'Bundler::CLI::Exec#kernel_load'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/cli/exec.rb:24:in 'Bundler::CLI::Exec#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/cli.rb:500:in 'Bundler::CLI#exec'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/vendor/thor/lib/thor/command.rb:28:in 'Bundler::Thor::Command#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/vendor/thor/lib/thor/invocation.rb:127:in 'Bundler::Thor::Invocation#invoke_command'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/vendor/thor/lib/thor.rb:538:in 'Bundler::Thor.dispatch'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/cli.rb:35:in 'Bundler::CLI.dispatch'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/vendor/thor/lib/thor/base.rb:584:in 'Bundler::Thor::Base::ClassMethods#start'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/cli.rb:29:in 'Bundler::CLI.start'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/exe/bundle:28:in 'block in <top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/friendly_errors.rb:118:in 'Bundler.with_friendly_errors'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/exe/bundle:20:in '<top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/bin/bundle:25:in 'Kernel#load'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/bin/bundle:25:in '<main>'
+      returns an error result with the exception details
+  #public_execute_step with agent_transfer_to tool
+    recognizes agent_transfer_to_ tools and calls transfer_to
+    returns an error when task parameter is missing
+
+ADK::Agents::LoopAgent
+  #run_task
+    with max iterations
+      runs sub-agent repeatedly until max iterations
+    with loop condition
+      stops when condition is met
+    with error in sub-agent
+      terminates loop on error
+
+ADK::Agents::ParallelAgent
+  #run_task
+    executes sub-agents concurrently
+    handles errors in one sub-agent gracefully
+    handles agent returning error status
+
+ADK::Agents::SequentialAgent
+  #run_task
+    executes sub-agents in order
+    passes previous result to next agent input
+    stops execution if a sub-agent fails
+
+ADK::Auth::Coordinator
+  #start
+    initializes the fiber and returns the first auth request
+  #resume
+    resumes the authentication flow with a response
+    handles errors during authentication
+    handles timeouts
+  #cancel
+    cancels an in-progress authentication flow
+    returns false when trying to cancel a completed flow
+
+ADK::Auth::Coordinators::ServiceAccountCoordinator
+  #initialize
+    initializes with valid parameters
+    raises an error with invalid scheme type
+    raises an error with invalid credential type
+  #authenticate
+    exchanges tokens non-interactively
+    stores tokens when token_store is provided
+  #refresh
+    refreshes tokens non-interactively
+    stores refreshed tokens when token_store is provided
+  #generate_token_key
+    generates a unique key based on scheme and credential
+
+ADK::Auth::ExconMiddleware
+  initialization
+    accepts a scheme and credential
+    accepts optional parameters
+    registers token lifecycle callbacks if token_manager is provided
+  middleware integration
+    registers itself with Excon
+  authentication flow
+    applies authentication to requests
+    with authentication failures
+      retries failed authentication requests
+      respects max_retries limit
+      does not retry if auto_retry is disabled
+    with rate limiting and server errors
+WARN: ExconMiddleware (shell): No :auth_middleware_config found. Passing through.
+WARN: ExconMiddleware (shell): No :auth_middleware_config for response. Passing through.
+      retries on rate limiting (429) responses
+WARN: ExconMiddleware (shell): No :auth_middleware_config found. Passing through.
+WARN: ExconMiddleware (shell): No :auth_middleware_config for response. Passing through.
+      retries on server errors (5xx) by default
+WARN: ExconMiddleware (shell): No :auth_middleware_config found. Passing through.
+WARN: ExconMiddleware (shell): No :auth_middleware_config for response. Passing through.
+      retries on custom status codes when specified
+      does not retry non-idempotent methods by default
+WARN: ExconMiddleware (shell): No :auth_middleware_config found. Passing through.
+WARN: ExconMiddleware (shell): No :auth_middleware_config for response. Passing through.
+      retries non-idempotent methods when explicitly enabled
+    with token manager integration
+      uses token manager to get tokens
+ERROR: Error applying authentication: Authentication error: API key not found in credential
+ERROR: Error applying authentication: Authentication error: API key not found in credential
+      invalidates tokens on authentication failure
+  backoff strategies
+    calculates linear backoff correctly
+    calculates exponential backoff correctly
+    calculates fibonacci backoff correctly
+    calculates jitter backoff within expected range
+    returns zero for :none strategy
+    defaults to exponential backoff for unknown strategies
+  should_retry? logic
+    returns true for explicit retry_on status codes
+    returns true for authentication errors
+    returns true for server errors (5xx)
+    returns true when Retry-After header is present
+    returns false for non-idempotent methods by default
+    returns true for non-idempotent methods when retry_non_idempotent is true
+  middleware factory
+    creates middleware instances for different schemes
+
+Fiber-based authentication flow
+  OAuth2 interactive authentication
+    completes a full authentication flow with fiber suspension and resumption
+  Fiber-based OAuth2 coordinators
+    authenticates using the coordinator
+    handles token refresh
+    raises error when authentication fails
+
+ADK::Auth::HttpClientUtils
+  .configure_connection
+    adds middleware to the connection
+    accepts additional options for the middleware
+  .create_connection
+    creates a new connection with middleware
+    passes connection options to Excon
+  .create_api_key_connection
+    creates a connection with API key authentication
+  .create_bearer_connection
+    creates a connection with bearer token authentication
+  .create_service_account_connection
+    creates a connection with service account authentication
+  .authenticate_request
+    applies authentication to a request
+    accepts token_store and token_manager options
+  .extract_middleware_options
+    extracts middleware options from a combined options hash
+
+ADK::Auth::Manager
+  #initialize
+    registers default built-in schemes
+  #register_scheme
+    registers a scheme with a given name
+    uses scheme type as name if not provided
+    raises an error if scheme is not an ADK::Auth::Scheme
+  #register_credential
+    registers a credential with a given name
+    raises an error if credential is not an ADK::Auth::Credential
+    raises an error if name is nil
+  #register_url_mapping
+    registers a URL pattern to a scheme and credential
+    supports regex patterns
+    raises an error if scheme does not exist
+    raises an error if credential does not exist
+  #find_scheme_and_credential
+    finds scheme and credential based on URL
+    finds scheme and credential based on credential name
+    finds scheme and credential based on scheme type
+    combines filters to narrow search
+    returns nil when no matching scheme and credential found
+    returns nil when scheme type filter does not match URL mapping
+
+ADK::Auth::MiddlewareFactory
+  .create
+    creates a middleware instance with the given scheme and credential
+    accepts optional parameters
+  .create_api_key
+    creates middleware for API key authentication
+    accepts location and name parameters
+  .create_bearer
+    creates middleware for bearer token authentication
+  .create_oauth2
+    creates middleware for OAuth2 authentication
+  .create_oidc
+    creates middleware for OIDC authentication using discovery
+    creates middleware for OIDC authentication using direct URLs
+  .create_service_account
+    creates middleware for service account authentication
+    accepts a hash for service account key
+    raises an error for invalid JSON
+
+ADK::Auth::Runner
+  #run
+    runs a task within a fiber
+    handles errors in the task
+    with authentication
+      with a cached token
+        reuses cached tokens when available
+      without a cached token
+        handles authentication requests
+  #handle_auth_response
+    returns an error for invalid request IDs
+    processes valid responses
+  #cancel_auth_flow
+    returns false for invalid request IDs
+    cancels valid authentication flows
+
+ADK::Auth::Schemes::ApiKey
+  #initialize
+    creates a new API key scheme
+  #scheme_type
+    returns :api_key
+  #apply_to_request
+    raises an error if the credential is missing the API key
+    works with environment variable resolution
+    with header location
+      adds the API key to the request headers
+      preserves existing headers
+      handles the Excon middleware stack format correctly
+    with query location
+      adds the API key to the query parameters
+      preserves existing query parameters
+      handles the Excon middleware stack format correctly
+    with cookie location
+      adds the API key to the cookie header
+      appends to existing cookies
+      handles the Excon middleware stack format correctly
+  #to_h
+    returns a hash representation with the scheme type
+
+ADK::Auth::Schemes::GoogleServiceAccount
+  #initialize
+    sets the default token URL for Google
+    uses token URL as audience if none is provided
+    allows custom token URL
+  #scheme_type
+    returns :google_service_account
+  #fetch_token
+    creates a JWT with Google-specific claims
+    exchanges the JWT for a token
+    validates required fields in service account key
+    validates the type field in service account key
+    includes subject if provided in service account key
+
+ADK::Auth::Schemes::HTTPBearer
+  #initialize
+    creates a new HTTP Bearer scheme
+  #scheme_type
+    returns :http_bearer
+  #apply_to_request
+    preserves existing headers
+    with a Credential
+      adds the bearer token to the Authorization header
+      resolves environment variables for the token
+      raises an error if the bearer token is missing
+    with an ExchangedCredential
+      uses the access token as the bearer token
+      raises an error if the access token is missing
+  #to_h
+    returns a hash with the scheme type
+
+ADK::Auth::Schemes::OAuth2
+  #initialize
+    sets the required attributes
+    raises an error without authorization_url
+    raises an error without token_url
+    parses scopes from a string
+  #scheme_type
+    returns :oauth2
+  #build_authorization_uri
+    returns a hash with uri, state, and pkce
+    includes the client_id in the URI
+    includes the redirect_uri in the URI
+    includes the scopes in the URI
+    includes PKCE parameters when enabled
+    does not include PKCE parameters when disabled
+  #apply_to_request
+    adds the Authorization header with the token
+    raises an error if the credential is not an ExchangedCredential
+    raises an error if the access token is missing
+  #exchange_token
+    raises an error if response_uri is missing
+    raises an error if the code is missing from the response
+    raises an error if the state does not match
+    with mocked OAuth2 client
+      creates an exchanged credential with the token information
+  #refresh_token
+    raises an error if the refresh token is missing
+    with mocked OAuth2 client
+      creates a new exchanged credential with the refreshed token
+  #client_credentials_token
+    with mocked OAuth2 client
+      creates an exchanged credential with the token information
+  #password_token
+    with mocked OAuth2 client
+      creates an exchanged credential with the token information
+
+ADK::Auth::TestStubs::OAuth2
+  with mock provider
+    successfully initializes with config
+    #discover_endpoints
+      successfully discovers OAuth2 endpoints
+    #authorization_url
+      generates a valid authorization URL
+    #exchange_authorization_code
+      successfully exchanges code for token
+    #refresh_access_token
+      successfully refreshes access token
+      with invalid refresh token
+        handles error response
+    #client_credentials_flow
+      successfully obtains token using client credentials
+
+ADK::Auth::Schemes::OpenIDConnect
+  #initialize
+    with explicit endpoints
+      sets the required attributes
+      adds the openid scope if not present
+      raises an error without authorization_url
+      raises an error without token_url
+    with discovery URL
+      uses the endpoints from discovery
+  #scheme_type
+    returns :openid_connect
+  #build_authorization_uri
+    adds a nonce parameter
+    stores the nonce in the state hash
+    includes the openid scope
+  #exchange_token
+    with a valid ID token
+      creates an exchanged credential with the token and ID token
+  #to_h
+    with discovery URL
+      includes discovery URL if provided
+    with JWKS URL
+      includes JWKS URL if provided
+
+ADK::Auth::Schemes::OpenIDConnect
+  with mock provider
+    successfully initializes with config
+    #discover_endpoints
+      successfully discovers OpenID Connect endpoints
+    #authorization_url
+      generates a valid authorization URL with OIDC parameters
+    #exchange_authorization_code
+      successfully exchanges code for tokens including id_token
+    #verify_id_token
+      verifies and decodes the ID token
+    #get_userinfo
+      fetches user information using the access token
+      with invalid access token
+        handles error response
+
+ADK::Auth::Schemes::ServiceAccount
+  #initialize
+    sets the required attributes
+    raises an error without token_url
+    raises an error with negative token_lifetime
+    parses scopes from a string
+  #scheme_type
+    returns :service_account
+  #apply_to_request
+    adds the Authorization header with the token
+    raises an error if the credential is not an ExchangedCredential
+    raises an error if the access token is missing
+  #fetch_token
+    exchanges a JWT for an access token
+    raises an error if credential is invalid
+    handles service account key from environment variable
+    raises an error when token exchange fails
+  #to_h
+    includes token_url, audience, and scopes
+
+ADK::Auth::Schemes::ServiceAccount
+  with mock provider
+    successfully initializes with config
+    #create_signed_jwt
+      creates a signed JWT assertion
+    #fetch_access_token
+      successfully exchanges JWT assertion for access token
+    #authorization_header
+      generates a valid authorization header
+    caching behavior
+      caches access tokens
+      refreshes the token when expired
+
+Authentication Scheme Coverage
+  Scheme Factory Integration
+    can create all available scheme types through the factory
+  Authentication Manager Integration
+    registers all required schemes by default
+  Credential Compatibility
+    creates valid credentials for all scheme types
+  Test File Coverage
+    has test files for all authentication schemes
+  Scheme Interface Compliance
+    ensures all registered schemes implement required interface
+  No Orphaned Schemes
+    does not have test files for removed/deprecated schemes
+    only loads schemes through the main schemes.rb file
+
+Authentication Security Features
+  Token Encryption in Session Service
+    encrypts sensitive data before storage
+    decrypts data correctly when retrieved
+    handles non-sensitive data appropriately
+  Credential Security
+    masks sensitive data in string representation
+    masks sensitive data in debug output
+    does not expose sensitive data through standard methods
+    allows access to sensitive data through secure methods
+  CSRF Protection
+    generates and verifies CSRF tokens
+    includes and verifies CSRF tokens in OAuth2 flow
+
+ADK::Auth::TokenManager
+  #get_token
+    with no existing token
+      returns nil for OAuth2 schemes requiring full auth flow
+      creates a new token for APIKey schemes
+    with an existing non-expired token
+      returns the existing token
+      forces a refresh when force_refresh is true
+    with an existing expired token
+      attempts to refresh the token
+      handles refresh failure
+      invalidates expired tokens that cannot be refreshed
+  #refresh_token
+    attempts to refresh a token
+    returns nil if the token cannot be refreshed
+  #invalidate_token
+    removes the token from the store
+  #revoke_token
+    revokes a token if the scheme supports it
+    catches and logs errors if the scheme does not support revocation
+  event callbacks
+    registers and triggers callbacks
+    handles exceptions in callbacks
+
+ADK::Auth::TokenStore
+  #store
+    serializes and stores the token
+    returns false for invalid token types
+    handles exceptions
+  #get
+    retrieves and deserializes stored tokens
+    returns nil if no token is found
+    clears and returns nil for expired tokens
+    handles exceptions
+  #clear
+    clears the token at the given key
+    handles exceptions
+  #clear_all
+    clears all tokens in the auth scope
+    handles exceptions
+
+ADK::Auth::ToolIntegration
+  .apply_authentication
+    applies the authentication to the request
+    raises an error for an invalid request
+    raises an error for an invalid scheme
+    with a token store
+      uses cached tokens if available
+      refreshes expired tokens if supported
+  .authentication_error?
+    returns true for 401 status code
+    returns true for 403 status code
+    returns true for error messages in body text
+    returns true for error messages in JSON body
+    returns false for successful responses
+    returns false for non-authentication errors
+  .generate_cache_key
+    generates a unique key for API key schemes
+    generates a unique key for HTTP Bearer schemes
+    generates different keys for different schemes
+  .requires_authentication?
+    returns true for API paths
+    returns true for versioned API paths
+    returns true for secure paths
+    returns true for JSON content types
+    returns true for non-GET methods
+    returns false for public paths with GET method
+
+ADK Callbacks
+  ADK::Callbacks::CallbackContext
+    provides access to session state
+    tracks state changes in pending_state_delta
+    can update multiple keys at once with state_update
+    can clear the pending state delta
+  ADK::ToolContext
+    provides access to session state
+    tracks state changes in pending_state_delta
+  Agent callback DSL
+    allows setting callbacks via DSL
+  Agent callback execution
+WARN: I cannot fulfill this request with the available tools (empty plan).
+    executes before_agent_callback at the start of run_task
+    allows before_agent_callback to override normal execution
+WARN: I cannot fulfill this request with the available tools (empty plan).
+    executes after_agent_callback before returning the final result
+DEBUG: Agent callbacks: #<Proc:0x00007f554fd01320 /app/spec/adk/callbacks_spec.rb:221>
+WARN: Tool class TestTool initialized with missing metadata: [:description] using {name: :test_tool}. Tool may not function correctly.
+DEBUG: before_tool_callback called!
+DEBUG: After run_task, result: #<struct ADK::Event role=:agent, content={status: :success, result: "Test tool executed"}, timestamp=2026-01-21 04:30:11.748490197 UTC, tool_name=nil, state_delta=nil, event_id="91760757-f500-4f98-b756-3cf10af0e956">
+DEBUG: Events: [#<struct ADK::Event role=:user, content="test input", timestamp=2026-01-21 04:30:11.747919778 UTC, tool_name=nil, state_delta=nil, event_id="caafec9a-5fc8-42b7-9a3a-ecf92721fb38">, #<struct ADK::Event role=:tool_request, content={arg: "value"}, timestamp=2026-01-21 04:30:11.748314619 UTC, tool_name=:test_tool, state_delta=nil, event_id="4722177d-4ec5-479a-a020-e96d0af2a023">, #<struct ADK::Event role=:tool_result, content={status: :success, result: "Test tool executed"}, timestamp=2026-01-21 04:30:11.748404961 UTC, tool_name=:test_tool, state_delta={before_tool_ran: true}, event_id="256de55c-6470-4b66-b6fc-6059dc5de379">, #<struct ADK::Event role=:agent, content={status: :success, result: "Test tool executed"}, timestamp=2026-01-21 04:30:11.748490197 UTC, tool_name=nil, state_delta=nil, event_id="91760757-f500-4f98-b756-3cf10af0e956">]
+    executes before_tool_callback before tool execution
+WARN: Tool class TestTool initialized with missing metadata: [:description] using {name: :test_tool}. Tool may not function correctly.
+    allows before_tool_callback to override tool execution
+WARN: Tool class TestTool initialized with missing metadata: [:description] using {name: :test_tool}. Tool may not function correctly.
+    executes after_tool_callback after tool execution
+ERROR: Agent 'error_callback_test': Error in before_agent_callback: Deliberate error in before_agent_callback
+/app/spec/adk/callbacks_spec.rb:337:in 'block (5 levels) in <top (required)>'
+/app/lib/adk/agent.rb:567:in 'ADK::Agent#run_task'
+/app/spec/adk/callbacks_spec.rb:349:in 'block (3 levels) in <top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:263:in 'BasicObject#instance_exec'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:263:in 'block in RSpec::Core::Example#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:511:in 'block in RSpec::Core::Example#with_around_and_singleton_context_hooks'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:468:in 'block in RSpec::Core::Example#with_around_example_hooks'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/hooks.rb:486:in 'block in RSpec::Core::Hooks::HookCollections#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/hooks.rb:626:in 'block in RSpec::Core::Hooks::HookCollections#run_around_example_hooks_for'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:352:in 'RSpec::Core::Example::Procsy#call'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/webmock-3.26.1/lib/webmock/rspec.rb:39:in 'block (2 levels) in <top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:457:in 'BasicObject#instance_exec'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:457:in 'RSpec::Core::Example#instance_exec'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/hooks.rb:390:in 'RSpec::Core::Hooks::AroundHook#execute_with'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/hooks.rb:628:in 'block (2 levels) in RSpec::Core::Hooks::HookCollections#run_around_example_hooks_for'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:352:in 'RSpec::Core::Example::Procsy#call'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/hooks.rb:629:in 'RSpec::Core::Hooks::HookCollections#run_around_example_hooks_for'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/hooks.rb:486:in 'RSpec::Core::Hooks::HookCollections#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:468:in 'RSpec::Core::Example#with_around_example_hooks'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:511:in 'RSpec::Core::Example#with_around_and_singleton_context_hooks'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example.rb:259:in 'RSpec::Core::Example#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:653:in 'block in RSpec::Core::ExampleGroup.run_examples'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:649:in 'Array#map'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:649:in 'RSpec::Core::ExampleGroup.run_examples'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:614:in 'RSpec::Core::ExampleGroup.run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:615:in 'block in RSpec::Core::ExampleGroup.run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:615:in 'Array#map'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/example_group.rb:615:in 'RSpec::Core::ExampleGroup.run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:121:in 'block (3 levels) in RSpec::Core::Runner#run_specs'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:121:in 'Array#map'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:121:in 'block (2 levels) in RSpec::Core::Runner#run_specs'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/configuration.rb:2097:in 'RSpec::Core::Configuration#with_suite_hooks'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:116:in 'block in RSpec::Core::Runner#run_specs'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/reporter.rb:74:in 'RSpec::Core::Reporter#report'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:115:in 'RSpec::Core::Runner#run_specs'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:89:in 'RSpec::Core::Runner#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:71:in 'RSpec::Core::Runner.run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/lib/rspec/core/runner.rb:45:in 'RSpec::Core::Runner.invoke'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-core-3.13.6/exe/rspec:4:in '<top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/bin/rspec:25:in 'Kernel#load'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/bin/rspec:25:in '<top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/cli/exec.rb:61:in 'Kernel.load'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/cli/exec.rb:61:in 'Bundler::CLI::Exec#kernel_load'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/cli/exec.rb:24:in 'Bundler::CLI::Exec#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/cli.rb:500:in 'Bundler::CLI#exec'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/vendor/thor/lib/thor/command.rb:28:in 'Bundler::Thor::Command#run'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/vendor/thor/lib/thor/invocation.rb:127:in 'Bundler::Thor::Invocation#invoke_command'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/vendor/thor/lib/thor.rb:538:in 'Bundler::Thor.dispatch'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/cli.rb:35:in 'Bundler::CLI.dispatch'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/vendor/thor/lib/thor/base.rb:584:in 'Bundler::Thor::Base::ClassMethods#start'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/cli.rb:29:in 'Bundler::CLI.start'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/exe/bundle:28:in 'block in <top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/lib/bundler/friendly_errors.rb:118:in 'Bundler.with_friendly_errors'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/bundler-4.0.1/exe/bundle:20:in '<top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/bin/bundle:25:in 'Kernel#load'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/bin/bundle:25:in '<main>'
+    handles errors in callbacks gracefully
+
+ADK::CLI::AgentCommands
+  #list
+    when Redis connection fails
+      prints an error and exits
+    when no definitions exist
+      prints a message indicating no definitions
+    when definitions exist
+      lists the defined agents with details
+WARN: AgentDefinitionStore: Invalid definition hash provided for 'agent_three'. Skipping registration.
+      handles definitions with no description
+  #save
+    with valid options
+      saves the definition to Redis and registers it in memory
+      saves with a specific model
+      saves with no tools specified
+    with invalid tool names
+      warns about unknown tools but saves valid ones
+    when Redis save fails
+      prints an error and exits
+  #delete
+    when definition exists in memory
+WARN: AgentDefinitionStore: Invalid definition hash provided for 'my_agent_to_delete'. Skipping registration.
+      prompts for confirmation and deletes from Redis and memory
+      cancels deletion if user answers no
+    when definition exists only in Redis
+      prompts and deletes from Redis and memory (even if not initially loaded)
+    when definition does not exist anywhere
+      prints an error and exits
+    when checking Redis fails
+      prints a Redis connection error and exits
+    when deleting from Redis fails
+WARN: AgentDefinitionStore: Invalid definition hash provided for 'my_agent_to_delete'. Skipping registration.
+      prints an error, removes from memory, and exits with error status
+  #stop
+    when definition exists and is running
+      prompts for confirmation and updates status to stopped
+      skips prompt when force option is used
+      cancels stop when user says no
+    when agent is already stopped
+      informs user and exits without update
+    when agent definitions not found
+      prints error and exits
+  #export
+    exports to YAML by default (stdout)
+    exports to JSON when forced (stdout)
+    writes to file when output option is provided
+    handles file write errors
+  #start
+    when definition exists in memory
+      loads definition, instantiates agent, starts/stops runtime, and prints details
+    when definition exists only in Redis
+      loads from Redis, instantiates, starts/stops, and prints details
+    when a defined tool is not globally registered
+      warns about the missing tool but starts successfully
+    when agent instantiation fails
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:188:in 'block in RSpec::Mocks::MessageExpectation#and_raise'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:797:in 'block in RSpec::Mocks::Implementation#call'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:796:in 'Array#map'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:796:in 'RSpec::Mocks::Implementation#call'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:654:in 'RSpec::Mocks::MessageExpectation::ImplementationDetails#invoke_incrementing_actual_calls_by'
+      prints an error, includes backtrace, and exits
+    when agent start fails
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:188:in 'block in RSpec::Mocks::MessageExpectation#and_raise'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:797:in 'block in RSpec::Mocks::Implementation#call'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:796:in 'Array#map'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:796:in 'RSpec::Mocks::Implementation#call'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:654:in 'RSpec::Mocks::MessageExpectation::ImplementationDetails#invoke_incrementing_actual_calls_by'
+      prints an error, attempts stop, includes backtrace, and exits
+  #execute
+    basic execution (in-memory session)
+      loads definition, starts agent, runs task, formats result, and stops agent
+    loading definition from Redis
+      successfully loads from Redis and executes
+    with session handling options
+      uses existing session ID if provided and found
+      warns and creates new session if provided session ID not found
+    warning for missing tools
+      warns about missing tools during instantiation
+
+ADK::CLI::AuthCommandHelpers
+  #mask_sensitive_value
+    masks long values
+    fully masks short values
+    preserves ENV: references
+    handles nil values
+    handles empty strings
+  #scheme_type_description
+    returns description for api_key
+    returns description for oauth2
+    returns description for http_bearer
+    returns description for oidc
+    returns string for unknown types
+  #credential_type_description
+    returns description for api_key
+    returns description for oauth2
+    returns description for basic
+  #sensitive_field?
+    identifies api_key as sensitive
+    identifies client_secret as sensitive
+    identifies bearer_token as sensitive
+    identifies password as sensitive
+    identifies client_id as not sensitive
+    identifies redirect_uri as not sensitive
+  #auth_manager
+    returns the auth manager singleton
+
+ADK::CLI::AuthSchemeCommands
+  #list
+    lists authentication schemes
+    when no schemes registered
+      displays a message
+  #show
+    shows scheme details
+
+ADK::CLI::AuthCredentialCommands
+  #list
+    when no credentials registered
+      displays a message
+    when credentials exist
+      lists credentials
+
+ADK::CLI::AuthMappingCommands
+  #list
+    when no mappings registered
+      displays a message
+
+ADK::CLI::AuthCommands
+  #status
+    displays authentication system status
+    shows scheme count
+    shows credential count
+    shows mapping count
+
+ADK::CLI::DeploymentCommands
+  #generate
+    Generic assets
+      creates deployment directory
+      generates main Dockerfile
+      generates .dockerignore
+      generates config.ru
+      generates agent Dockerfiles if specified
+    Sample entrypoint generation
+      generates sample entrypoint if requested
+      fails if no entrypoint provided and sample not requested
+    GCP assets
+      generates GCP deployment script
+      generates Cloud Build config
+      copies GCP deployment docs
+      fails if GCP project ID is missing
+    AWS/Azure assets
+      warns that AWS is not implemented
+      warns that Azure is not implemented
+
+ADK::CLI::DeploymentCommands
+  Script Injection Vulnerability
+Generating deployment assets in /app/test_deploy...
+Created main Dockerfile at /app/test_deploy/Dockerfile
+Created .dockerignore at /app/test_deploy/.dockerignore
+Created config.ru at /app/test_deploy/config.ru
+Ensure the entrypoint path in config.ru ('bin/web') is correct for your project structure.
+Generating GCP specific assets...
+Created GCP deployment script at /app/test_deploy/deploy-gcp.sh
+Please review and customize the script, especially the Configuration section, before running.
+Created GCP Cloud Build config at /app/test_deploy/cloudbuild.yaml
+Warning: Source deployment document not found at /docs/go-to-gcp-production-gemini.md
+Deployment asset generation complete!
+Review the generated files in /app/test_deploy and the deployment guide:
+  /app/test_deploy/README-GCP-DEPLOYMENT.md
+    escapes inputs in deploy-gcp.sh via project_id
+
+ADK::CLI::ToolCommands
+  #list
+    when no tools are registered
+      prints "No tools registered"
+    when tools are registered
+      lists the available tools
+  #info
+    when tool does not exist
+      prints not found error
+    when tool exists
+      prints tool information
+  #execute
+    when tool does not exist
+      prints error and exits
+    when tool exists
+      executes successfully with key=value parameters
+      ignores invalid parameters and warns
+      handles single argument as required parameter if applicable
+      reports error when tool execution fails
+      reports pending status correctly
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:188:in 'block in RSpec::Mocks::MessageExpectation#and_raise'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:797:in 'block in RSpec::Mocks::Implementation#call'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:796:in 'Array#map'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:796:in 'RSpec::Mocks::Implementation#call'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-mocks-3.13.7/lib/rspec/mocks/message_expectation.rb:654:in 'RSpec::Mocks::MessageExpectation::ImplementationDetails#invoke_incrementing_actual_calls_by'
+      handles unexpected errors gracefully
+
+ADK::CLI::WebCommands
+  #start
+    with default options
+I, [2026-01-21T04:30:12.134661 #18351]  INFO -- : Compiling Sass files...
+I, [2026-01-21T04:30:12.135939 #18351]  INFO -- : Compiling main.scss to main.css
+I, [2026-01-21T04:30:12.282955 #18351]  INFO -- : Successfully compiled main.scss
+I, [2026-01-21T04:30:12.283071 #18351]  INFO -- : Sass compilation complete!
+      starts Rack server with default host and port
+I, [2026-01-21T04:30:12.319984 #18351]  INFO -- : Compiling Sass files...
+I, [2026-01-21T04:30:12.320187 #18351]  INFO -- : Compiling main.scss to main.css
+I, [2026-01-21T04:30:12.377013 #18351]  INFO -- : Successfully compiled main.scss
+I, [2026-01-21T04:30:12.377191 #18351]  INFO -- : Sass compilation complete!
+      attempts to load custom initializers, tools, and agents by default
+    with custom host and port
+I, [2026-01-21T04:30:12.393744 #18351]  INFO -- : Compiling Sass files...
+I, [2026-01-21T04:30:12.394846 #18351]  INFO -- : Compiling main.scss to main.css
+I, [2026-01-21T04:30:12.495218 #18351]  INFO -- : Successfully compiled main.scss
+I, [2026-01-21T04:30:12.495320 #18351]  INFO -- : Sass compilation complete!
+      starts Rack server with specified host and port
+    with no_autoload option
+I, [2026-01-21T04:30:12.548511 #18351]  INFO -- : Compiling Sass files...
+I, [2026-01-21T04:30:12.548899 #18351]  INFO -- : Compiling main.scss to main.css
+I, [2026-01-21T04:30:12.620519 #18351]  INFO -- : Successfully compiled main.scss
+I, [2026-01-21T04:30:12.620719 #18351]  INFO -- : Sass compilation complete!
+      skips loading custom files
+    Webhook Listener integration
+I, [2026-01-21T04:30:12.668091 #18351]  INFO -- : Compiling Sass files...
+I, [2026-01-21T04:30:12.668385 #18351]  INFO -- : Compiling main.scss to main.css
+I, [2026-01-21T04:30:12.731724 #18351]  INFO -- : Successfully compiled main.scss
+I, [2026-01-21T04:30:12.731813 #18351]  INFO -- : Sass compilation complete!
+      mounts webhook listener if enabled
+  Auto-loading logic (via private methods)
+    #load_custom_tools
+      searches expected directories
+    #load_custom_agents
+      searches expected directories and attempts sync
+
+ADK::Configuration::Webhooks
+  #initialize
+    sets default values
+  accessors
+    is expected to respond to #listener_enabled=
+    is expected to respond to #listen_address=
+    is expected to respond to #listen_port=
+    is expected to respond to #base_path=
+    is expected to respond to #enable_dynamic_agent_handler=
+    is expected to respond to #dynamic_agent_route_pattern=
+    is expected to respond to #global_validator=
+    is expected to respond to #global_secret=
+    is expected to respond to #default_session_service=
+    allows setting default_session_service to a SessionService instance
+  #register_validator
+    registers a validator with a block
+    raises an error if no block is given
+    raises an error if the name is already registered
+  #find_validator
+    returns the proc for a registered validator
+    returns nil for an unregistered validator
+  #register_route
+    registers a route with a block
+    yields a RouteConfig object to the block
+    stores the configured RouteConfig object
+    raises an error if no block is given
+    raises an error if the path is already registered
+  #static_routes
+    returns a hash of registered routes
+    returns a duplicate of the internal hash
+  ADK::Configuration::Webhooks::RouteConfig
+    is expected to respond to #handler
+    is expected to respond to #handler=
+    is expected to respond to #validator
+    is expected to respond to #validator=
+    is expected to respond to #secret
+    is expected to respond to #secret=
+    initializes handler to nil
+    initializes validator to nil
+    initializes secret to nil
+
+ADK::DefinitionStore::RedisStore
+  #initialize
+    initializes with a Redis client and logs info
+    logs error and sets @redis to nil if logger.info fails during initialization
+    logs an error during operations if initialized with a non-functional client
+    raises ConfigurationError if redis client is nil when methods are called
+  #save_definition
+    successfully saves a valid definition using MULTI
+    saves with default model if model is nil
+    saves with empty array JSON if mcp_servers_json is nil or empty
+    saves with empty array JSON if tools is nil or not an array
+    raises ArgumentError if name is nil or empty
+    raises ArgumentError for invalid MCP JSON
+    raises StoreError if Redis transaction is aborted
+    raises StoreError on Redis command error within MULTI
+    raises StoreError on generic Redis error
+    raises StoreError on JSON generation error for tools
+    raises StoreError on unexpected errors
+    saves with default llm agent_type if not specified
+  #get_definition
+    successfully retrieves and parses an existing definition
+    returns nil if agent name is nil or empty
+    returns nil if agent definition does not exist in Redis
+    uses default model if model field is missing from Redis
+    uses default empty array JSON if mcp_servers_json is missing
+    returns empty array for tools if tools field is missing or empty JSON
+    correctly parses fallback_mode symbol
+    correctly parses agent_type symbol
+    raises StoreError on Redis error
+    raises StoreError on JSON parsing error for tools
+    raises StoreError on unexpected errors
+  #update_definition
+    successfully updates specified fields
+    correctly serializes tools, mcp_servers_json, and fallback_mode
+    validates MCP JSON during update
+    returns false if agent does not exist
+    raises ArgumentError if agent name is nil or empty
+    raises ArgumentError if updates hash is nil or empty
+    ignores attempts to update the agent name and logs a warning
+    ignores attempts to update unknown fields and logs a warning
+    returns false if only invalid/ignored fields are provided
+    raises StoreError on Redis error during hset
+    raises StoreError on JSON generation error for tools update
+    raises StoreError on unexpected errors
+  #delete_definition
+    successfully deletes an existing agent using MULTI
+    returns true even if agent did not exist (idempotent)
+    returns true if agent name is nil or empty without calling Redis
+    raises StoreError if Redis transaction is aborted
+    raises StoreError on Redis error
+    raises StoreError on unexpected errors
+  #list_definitions
+    when agents exist
+      returns a sorted array of definition summaries
+    when no agents are defined
+      returns an empty array
+    handles inconsistencies where agent hash is missing and logs warning
+      handles inconsistencies where agent hash is missing and logs warning
+    on Redis error during smembers
+      raises StoreError
+    on Redis error during pipelined hmget
+      raises StoreError
+    on unexpected errors
+      raises StoreError
+  #definition_exists?
+    returns true if agent name exists in the set
+    returns false if agent name does not exist in the set
+    returns false if agent name is nil or empty without calling Redis
+    raises StoreError on Redis error
+    raises StoreError on unexpected errors
+  #check_connection
+    returns true if redis ping returns PONG
+    returns false if redis ping returns something other than PONG
+    returns false and logs error if redis ping raises a Redis error
+    returns false and logs error on unexpected errors
+
+ADK::Event
+  #initialize
+    initializes with required arguments
+    initializes with all arguments
+    defaults timestamp to Time.now.utc
+    defaults event_id to a SecureRandom.uuid
+    raises ArgumentError for invalid role
+    warns and sets state_delta to nil if it is not a Hash
+    symbolizes keys in state_delta
+    warns if content is of an unusual type
+    does not warn for common content types (String, Hash, Array, Nil, Numeric, Boolean)
+    is frozen after initialization
+    when role is :tool_request or :tool_result
+      warns if tool_name is nil
+      warns if tool_name is not a Symbol
+      does not warn if tool_name is a valid Symbol
+  #final_agent_response?
+    returns true if role is :agent
+    returns false if role is not :agent
+  #to_h
+    serializes the event to a hash
+    handles nil values correctly
+  .from_h
+    deserializes a valid hash with string keys
+    deserializes a valid hash with symbol keys
+    handles missing optional fields (tool_name, state_delta, event_id)
+    defaults timestamp if missing
+    symbolizes keys in state_delta during deserialization
+    returns nil and logs error for invalid role
+    returns nil and logs error for invalid timestamp format
+    returns nil and logs error for type errors (e.g., non-hash state_delta)
+    returns nil and logs error if role is missing
+
+ADK::GlobalDefinitionRegistry
+  .register
+    registers a valid agent definition
+    returns false for non-AgentDefinition objects
+    returns false for definitions without a symbol name
+    overwrites existing definitions with the same name
+  .find
+    returns the definition for a registered agent
+    returns nil for an unregistered agent
+    returns nil and logs a warning for non-symbol keys
+  .clear!
+    removes all registered definitions
+  .all
+    returns all registered definitions
+    returns a copy of the registry, not the original
+
+ADK::GlobalToolManager
+  .register_tool
+    registers a valid tool class
+    warns and overwrites when registering a tool with the same name
+    registers tool via inferred name even if metadata is explicitly missing
+    warns and skips registration if object is not an ADK::Tool subclass
+    uses klass.to_s in warning for anonymous non-tool classes
+  .find_class
+    returns the class for a registered tool symbol
+    returns nil for an unregistered tool symbol
+    accepts string input and finds the class
+  .create_instance
+    creates an instance of a registered tool
+    returns nil and logs warning for an unregistered tool
+    returns nil and logs error if tool initialization fails
+    accepts string input and creates an instance
+  .list_all_tools
+    returns an empty array when no tools are registered
+    returns metadata for all registered tools, sorted by name
+    handles tools with missing descriptions or parameters gracefully
+  .reset!
+    clears all registered tools
+
+ADK::Mcp::Client
+  #initialize
+    validates :stdio connection params
+    rejects unsupported connection types
+  #connect
+    creates and connects the connection object
+    performs the MCP initialize handshake
+    stores server capabilities on successful handshake
+    sets connected state to true
+    raises ConnectionError and disconnects if connection.connect fails
+    raises ConnectionError and disconnects if handshake response is missing
+    raises ConnectionError and disconnects if handshake response has no result
+    raises ConnectionError on unexpected errors during connect
+    does not reconnect if already connected
+  #disconnect
+    calls disconnect on the connection object
+    resets connected state and capabilities
+    handles errors during connection disconnect
+  #list_tools
+    raises ConnectionError if not connected
+    sends tools/list request and returns tools array on success
+    raises ProtocolError if result.tools is not an array
+    raises RemoteToolError if server returns an error
+    raises ProtocolError if response is invalid or missing
+  #call_tool
+    raises ConnectionError if not connected
+    raises ArgumentError if arguments is not a Hash
+    sends tools/call request and returns result on success
+    raises RemoteToolError if server returns an error
+    raises ProtocolError if response is invalid or missing
+
+ADK::Mcp::Connection::Sse
+  #initialize
+    parses the base URL and sets SSE/message URIs correctly
+    logs initialization
+  #connect
+    establishes an SSE connection and starts reader thread
+    raises ConnectionError if SSE connection fails (non-200)
+    raises ConnectionError if SSE connection has wrong content type
+    raises ConnectionError on network errors
+    returns true if already connected
+  #disconnect
+    kills the reader thread and resets state
+    does nothing if not connected
+  #send_request
+    sends a POST request and returns the parsed successful response
+    raises ConnectionError for non-200 HTTP responses
+    raises RemoteToolError if non-200 response contains MCP error structure
+    raises ProtocolError if the successful response body is not valid JSON
+    raises ConnectionError on network errors
+  #read_notification
+    returns nil if not connected
+    returns notification from queue if available (non-blocking)
+    returns nil if queue is empty (non-blocking)
+ERROR: Error reading SSE stream: RSpec::Mocks::OutsideOfExampleError - The use of doubles or partial doubles from rspec-mocks outside of the per-test lifecycle is not supported.
+ERROR: Error reading SSE stream: RSpec::Mocks::OutsideOfExampleError - The use of doubles or partial doubles from rspec-mocks outside of the per-test lifecycle is not supported.
+    waits for notification with timeout
+    returns nil when timeout is reached
+  #process_sse_event (private)
+    parses data field and adds to notification queue
+    parses multi-line data fields
+    handles event field (but ignores it for queueing)
+    ignores comments
+    logs error for invalid JSON in data field
+  #next_request_id
+    increments request ID
+
+ADK::Mcp::Connection::Stdio
+  #initialize
+    sets command and args
+    initializes state variables
+  #connect (integration-like)
+    attempts to launch command via Open3.popen3
+    raises ConnectionError if command not found
+  #send_request
+    raises ConnectionError if disconnected (state check)
+    converts hash to JSON and sends to stdin
+    flushes stdin
+    logs the request
+    raises ConnectionError on EPIPE
+  #read_message
+    raises ConnectionError if disconnected (state check)
+    returns message from response queue if available
+    returns message from notification queue if response queue empty
+    prioritizes response queue over notification queue
+    returns nil if both queues are empty and timeout is 0
+    when waiting with timeout
+      returns nil if timeout occurs before message arrives
+      raises ConnectionError if connection drops during wait
+  #disconnect
+    closes stdin
+    kills reader threads
+    closes stdout
+    sends SIGTERM to the process
+    waits for process to exit
+    sends SIGKILL if process does not exit after timeout and force: true
+    does not send SIGKILL if force: false
+    rescues process kill errors and logs them
+    resets state variables
+  #next_request_id
+    increments the request ID counter
+  Reader Thread Logic (Direct Testing)
+    stderr processing
+      stores the last error line
+    stdout processing
+      parses valid JSON response and adds to response queue
+      parses valid JSON notification (id: nil) and adds to notification queue
+      parses valid JSON notification (no id) and adds to notification queue
+      ignores empty lines
+      skips lines not starting with { or [
+      handles invalid JSON and continues
+      stops processing and sets state after PARSE_ERROR_THRESHOLD errors
+      resets parse error count on valid JSON
+
+ADK::Mcp::Server::AdkAgentAdapter
+  .wrap
+    raises ArgumentError if agent name is invalid
+    raises ArgumentError if session service is invalid
+    creates an anonymous subclass of AdkAgentAdapter
+    sets class instance variables on the subclass
+    sets fast-mcp tool_name based on agent name
+    sets fast-mcp description based on agent name
+    defines the :prompt argument using fast-mcp DSL
+    logs creation info
+  #call
+    when execution is successful
+      loads definition, creates session, runs agent, cleans up, and returns result
+      uses default model if not specified in Redis
+      handles empty tool list from Redis
+      handles invalid JSON tool list from Redis
+    when agent definition is not found
+      raises an error and does not attempt session creation or agent run
+    when Redis connection fails during definition load
+      raises an error
+    when a defined tool is not found in the registry
+      logs a warning and proceeds with found tools
+    when session creation fails
+      raises an error and does not run the agent
+    when agent execution returns an error status
+      raises an error with the message from the event
+      raises an error with a default message if not provided
+    when agent execution returns a pending status
+      returns the pending status structure
+      returns pending status with default message if not provided
+    when agent execution returns an unexpected event format
+      raises an error
+    when agent execution returns an unknown status
+      raises an error
+    when agent start fails
+      raises an error and ensures cleanup is attempted
+    when agent run_task fails with an exception
+      raises an error and ensures cleanup
+    when agent stop fails during cleanup
+      logs the stop error but still attempts session deletion and returns result
+    when session deletion fails during cleanup
+      logs the deletion error but still returns the result
+    when both agent stop and session deletion fail during cleanup
+      logs both errors and returns the result
+    when called without using .wrap first (directly on base class)
+      raises NotImplementedError
+
+ADK::Mcp::Server::AdkToolAdapter
+  .wrap
+    raises ArgumentError if input is not an ADK::Tool class
+    raises ArgumentError if ADK::Tool has no metadata
+    creates an anonymous subclass of AdkToolAdapter
+    sets the adk_tool_class attribute on the subclass
+    sets the tool_name for fast-mcp based on ADK metadata
+    sets the description for fast-mcp based on ADK metadata
+    calls SchemaConverter and sets arguments using the returned proc
+    logs creation info
+  #call
+    instantiates the wrapped ADK tool
+    transforms string keys to symbol keys for ADK execute
+    creates and passes a dummy ADK::ToolContext
+    raises NotImplementedError if called on the base class
+    when ADK tool returns :success
+      returns the raw result
+    when ADK tool returns :error
+      raises StandardError with the error message
+      uses a default error message if missing
+    when ADK tool returns :pending
+      returns a hash with status: pending, job_id, and message
+    when ADK tool returns unknown status
+      raises StandardError
+    when ADK tool execute method raises an error
+      rescues the error and raises a generic StandardError
+
+ADK::Mcp::Util::SchemaConverter
+  .json_to_adk
+    with valid basic types
+      converts properties to ADK parameters hash
+      handles empty required array
+      handles nil required array
+      handles missing descriptions
+    with symbol keys in properties
+      handles symbol keys correctly
+    with invalid or unsupported input
+      returns empty hash for nil properties
+      returns empty hash for non-hash properties
+      skips properties with invalid schema format
+      skips properties with missing type
+      skips and logs warning for unsupported types like array
+      skips and logs warning for unsupported types like object
+      skips and logs warning for unknown types
+  .adk_to_dry_schema
+    with valid basic ADK parameters
+      generates a Proc that defines the correct Dry::Schema structure
+      handles numeric type coercion from string
+    with invalid or unsupported ADK parameters
+      returns an empty Proc for nil input
+      returns an empty Proc for non-hash input
+      skips parameters with invalid definition format
+      skips parameters with missing type
+      maps :array and logs warning
+      maps :hash/:object and logs warning
+      maps :object like :hash and logs warning
+      skips unknown ADK types and logs warning
+
+Planner Callbacks
+  before_model_callback
+WARN: Invalid or empty plan structure: {"thought_process" => "test", "plan" => []}
+WARN: Plan validation failed: Invalid or empty plan structure returned by the model. Using fallback plan.
+ERROR: Fallback failed: Echo tool not available to the agent.
+    modifies the prompt before sending to model
+  after_model_callback
+    modifies the model response
+
+ADK::Planner
+  #format_delegation_targets
+    returns an empty string when agent has no delegation targets
+    formats delegation targets as special tools
+  #build_multi_step_gemini_prompt
+    includes delegation instructions when delegation targets are available
+    does not include delegation instructions when no delegation targets exist
+  #validate_and_format_multi_step_plan
+    converts agent_transfer_to_X tools to delegate_task steps
+    keeps regular tools as-is
+    handles a mix of regular tools and delegation steps
+
+ADK::Planner
+  #initialize
+    initializes with an agent
+    initializes with a default model name
+    uses a custom model name when provided
+    logs an error when API key is missing
+    logs an error when Gemini client initialization fails
+  #plan
+    when Gemini client is not initialized
+      returns a fallback plan
+    when Gemini client is available
+      sends a request to Gemini and processes the response
+      handles empty Gemini response
+      handles JSON parsing errors
+      handles general errors during planning
+  #parse_gemini_response
+    parses valid JSON response
+    removes markdown code blocks from response
+    removes generic code blocks from response
+    returns empty array when response is not a JSON array
+  #validate_and_format_multi_step_plan
+    returns an error if the parsed response is not valid JSON
+    returns an error if the plan field is missing or not an array
+    returns an error if any step is missing required fields
+    returns an error if step has invalid type
+    returns a valid formatted step if tool does not exist in available tools
+    returns an error if tool_input is not a hash
+    returns a properly formatted plan when input is valid
+    converts parameter keys to symbols
+  #fallback_plan
+    when echo tool is available
+      creates a fallback plan using the echo tool
+    when echo tool is not available
+      returns an empty plan
+  #format_tools_for_prompt
+    with no delegation targets
+      returns a message when no tools or delegation targets are available
+      formats a tool with no parameters
+      formats a tool with parameters
+      formats multiple tools
+    with delegation targets
+      combines tools and delegation targets
+  #format_delegation_targets
+    returns empty string when no delegation targets exist
+    formats delegation targets as tools
+  #build_multi_step_gemini_prompt
+    includes the task in the prompt
+    includes the tool descriptions in the prompt
+    includes instructions for JSON format
+    when agent has an instruction
+      prepends the instruction to the prompt
+    when agent instruction is nil
+      does not include the instruction block
+    when agent instruction is an empty string
+      does not include the instruction block
+    with delegation targets
+      includes delegation instructions when delegation targets exist
+
+ADK::SessionService::Base
+  #persistent?
+    returns false by default
+  #save_scoped_state
+    raises NotImplementedError
+  #load_scoped_state
+    raises NotImplementedError
+  #clear_scoped_state
+    raises NotImplementedError
+
+ADK::SessionService::InMemory
+  #initialize
+    initializes sessions and scoped_states as Concurrent::Map
+    logs initialization
+  #persistent?
+    returns false
+  #create_session
+    creates a new session with the correct attributes
+    logs session creation
+  #get_session
+    retrieves an existing session by ID
+    returns nil if the session ID does not exist
+    logs session retrieval success
+    logs session not found
+  #save_session (deprecated)
+    returns true for an existing session and updates timestamp
+    returns false for a non-existent session
+  #append_event
+    appends an event to the session
+    returns false if the session ID does not exist
+  #delete_session
+    deletes an existing session
+    returns false if the session ID does not exist
+  #list_sessions
+    returns all sessions when no filters are provided
+    filters sessions by app_name
+    filters sessions by user_id
+    filters sessions by both app_name and user_id
+    logs the count of listed sessions
+  #save_scoped_state, #load_scoped_state, #clear_scoped_state
+    saves and loads scoped state correctly
+    load_scoped_state returns nil for non-existent keys
+    clear_scoped_state removes a specific key
+    clear_scoped_state with wildcard removes all keys in that scope
+    clear_scoped_state with wildcard does nothing if no keys match the scope
+    clear_scoped_state does nothing if the specific key does not exist
+
+ADK::SessionService::Redis
+  #initialize
+    with provided Redis client
+      uses the provided client
+      sets the session TTL
+    without provided Redis client
+      creates a new Redis client and pings it
+    when Redis connection fails during initialization
+      raises an ADK::Error
+  #create_session
+    creates a session object with correct parameters
+    stores session metadata and state in Redis hash
+    adds session ID to the global sessions set
+    sets TTL on session and events keys when configured
+    does not set TTL if session_ttl is nil
+    when state serialization fails
+ERROR: Failed to serialize session state for 0f8cf8e4-5297-418f-af1f-35d575d59216: Serialization failed
+      raises ADK::Error
+    when Redis MULTI fails
+ERROR: Redis error creating session eef98221-5312-41fb-bbea-4910132b0f84: Redis::BaseError - Redis MULTI failed
+      handles Redis errors gracefully
+  #get_session
+    retrieves session hash and events list from Redis
+    reconstructs the Session object correctly
+    when session does not exist
+      returns nil
+    when state JSON is corrupted
+ERROR: Failed to parse state JSON for session 670ecc2c-b0f9-432d-ad42-90a08336b434: unexpected token at 'invalid json'. Data: invalid json
+      returns session with error marker in state
+    when event JSON is corrupted
+      skips the corrupted event and logs error
+    when Redis error occurs
+ERROR: Redis error getting session b6e0c05e-8c1c-42c1-934b-d4b7f2f3e885: Redis::BaseError - Connection error
+      raises ADK::Error
+  #append_event
+    returns false if event is not an ADK::Event
+    returns false if session key does not exist
+    pushes serialized event to events list
+    updates updated_at timestamp in session hash
+    refreshes TTL on keys
+    returns true on successful append
+    when event has state_delta
+      fetches current state, merges delta, and updates state in hash
+      still updates timestamp and pushes event
+    when WATCH conflict occurs
+      retries up to max_retries and succeeds
+  #delete_session
+    deletes the session hash
+    deletes the events list
+    removes the ID from the global set
+    returns true on success
+    when Redis error occurs
+ERROR: Redis error deleting session 2107fbda-debd-4954-ac41-c06013753465: Redis::BaseError - Deletion failed
+      returns false
+  #list_sessions
+    retrieves all sessions when no filters are applied
+    filters sessions by app_name
+    filters sessions by user_id
+    when Redis error occurs during smembers
+      returns empty array on Redis errors
+  with TTL disabled
+    does not set expiry on session or events keys
+
+ADK::SessionService::Redis Transaction Tests
+  optimistic locking with WATCH/MULTI/EXEC
+    transaction succeeds on first attempt
+      executes all Redis commands in the transaction
+    when event has no state_delta
+      does not update state in Redis
+    with WATCH conflict
+      retries transaction and succeeds on third attempt
+      fails after max retries
+    with state_delta handling
+      properly merges state_delta during the WATCH block
+      handles errors parsing current state
+  transaction error handling
+    with Redis errors
+      handles Redis::BaseError during transaction
+      handles errors during WATCH
+    with inconsistent transaction results
+      handles some commands failing in the transaction
+  create_session transaction tests
+    executes session creation as a transaction
+    handles transaction failure during creation
+  delete_session transaction tests
+    executes deletion as a transaction
+    handles transaction failure during deletion
+    handles Redis errors during deletion
+
+ADK::Session
+  #initialize
+    sets basic attributes correctly
+    initializes with a default UUID if no ID is provided
+    initializes state correctly from initial_state
+    initializes events correctly
+    initializes events as empty array if not provided
+    skips invalid event data during initialization and logs warning
+  #add_event
+    adds a valid event to the events array
+    updates the updated_at timestamp
+    returns the added event
+    returns nil and does not add an invalid object
+    calls update_state if event has a state_delta
+    does not call update_state if event has no state_delta
+    does not call update_state if state_delta is empty
+  State Management (get/set/update/delete/clear)
+    without prefixes (in-memory state)
+      #get_state retrieves existing keys
+      #get_state returns nil for non-existent keys
+      #set_state adds a new key-value pair
+      #set_state updates an existing key-value pair
+      #set_state updates updated_at
+      #update_state merges a hash into the state
+      #update_state does nothing if input is not a hash
+      #update_state updates updated_at
+      #delete_state removes an existing key
+      #delete_state returns nil for non-existent key
+      #delete_state updates updated_at
+      #clear_state! removes all in-memory keys
+      #clear_state! updates updated_at
+      #state_to_h returns a plain hash copy
+    with prefixes (session_service interaction)
+      #get_state calls session_service.load_scoped_state for prefixed keys
+      #set_state calls session_service.save_scoped_state for prefixed keys
+      #update_state calls session_service.save_scoped_state for prefixed keys
+      #delete_state calls session_service.clear_scoped_state for prefixed keys
+      #clear_state! calls session_service.clear_scoped_state for all prefixes with wildcard
+    state validation
+      #set_state raises SerializationError for non-serializable value
+      #set_state allows nil, basic types, and nested serializable structures
+      #set_state raises InvalidPrefixError for invalid prefixes
+      #set_state allows valid prefixes
+      #update_state raises SerializationError if any value is invalid
+      #update_state raises InvalidPrefixError if any key has invalid prefix
+      #delete_state raises InvalidPrefixError for invalid prefixes
+  Private Methods
+    #parse_key
+      returns [prefix, key] for prefixed keys
+      returns [nil, key] for non-prefixed keys
+    #validate_prefix!
+      does nothing for nil prefix
+      does nothing for valid prefixes
+      raises InvalidPrefixError for invalid prefix
+    #validate_serializable!
+      allows nil
+      allows basic JSON types
+      allows nested serializable hashes
+      allows nested serializable arrays
+      raises SerializationError for non-serializable objects
+      raises SerializationError for nested non-serializable objects
+  Serialization (#to_h, .from_h)
+    #to_h serializes session to a hash correctly
+    .from_h deserializes a valid hash correctly
+    .from_h handles missing optional fields
+    .from_h skips invalid event data during deserialization
+    .from_h returns nil and logs error on ArgumentError (e.g., bad timestamp)
+
+ADK::ToolCodeGenerator
+  .generate
+    with a registered tool
+      generates valid Ruby code for the echo tool
+      generates syntactically valid Ruby for echo tool
+      generates valid Ruby code for the calculator tool
+      generates syntactically valid Ruby for calculator tool
+    with unregistered tool
+      returns nil for non-existent tool
+    generated code structure
+      includes frozen_string_literal comment
+      includes generation timestamp comment
+      wraps class in ADK::Tools module
+      includes TODO comment for implementation
+      includes context method documentation
+      includes parameter access examples
+    with multiple parameter types
+      handles different parameter types correctly
+
+ADK::ToolContext
+  #authenticate_request
+    uses token manager when available
+  #authentication_error?
+    identifies 401 responses as authentication errors
+    identifies 403 responses as authentication errors
+    identifies responses with auth error messages
+    returns false for successful responses
+  #requires_authentication?
+    identifies API URLs as requiring authentication
+    identifies non-GET methods as requiring authentication
+    returns false for public URLs with GET method
+  #get_token
+    uses token manager when available
+    forces refresh when specified
+  #refresh_token
+    uses token manager when available
+  #store_token
+    stores token in token store
+  #clear_token
+    clears token from token store
+  #revoke_token
+    uses token manager when available
+  #handle_request_auth
+    automatically applies authentication when needed
+    respects provided options
+    returns original request when authentication not needed
+    returns original request when no authentication found
+
+ADK::ToolRegistry
+  #initialize
+    starts with an empty tool set
+  #register
+    registers a valid tool class
+    warns and overwrites when registering a tool with the same name
+    returns false and logs error if class is not an ADK::Tool subclass
+  #find_class
+    returns the class for a registered tool symbol
+    returns the class for a registered tool string (converted to symbol)
+    returns nil for an unregistered tool
+  #create_instance
+    creates an instance of a registered tool
+    returns nil for an unregistered tool
+  #list_tools
+    returns metadata for registered tools
+    returns empty array if no tools are registered
+    sorts metadata by tool name symbol
+
+ADK::Tool
+  #execute
+    validates and coerces parameters before calling perform_execution
+    passes parameters and context to perform_execution
+ERROR: Validation failed: Missing required parameters for tool 'dummy': req. Provided: [None]. Params: {}
+    raises error if required parameters are missing
+    handles context being nil (for potential backward compatibility)
+    when perform_execution is not implemented
+      raises NotImplementedError
+  #validate_params
+    does not raise error if required parameters are present
+ERROR: Validation failed: Missing required parameters for tool 'dummy': req. Provided: [None]. Params: {}
+    raises error if required parameters are missing
+  .define_metadata and tool registration
+    stores metadata correctly
+    triggers registration when the class is loaded
+
+ADK::Tools::AgentTool
+  Class Metadata
+    has the correct explicit name
+    has the correct description
+    defines parameters correctly
+  #execute
+    when delegation is successful
+      loads definition, instantiates agent, adds tools, runs task
+      returns a success hash containing the target agents result
+    when definition is loaded from Redis (not memory)
+      successfully loads from Redis and executes
+    when target agent definition is not found
+      raises ToolArgumentError
+    when target agent task execution raises an error
+      raises ToolError capturing the exception
+    when context does not provide a valid tool registry
+      raises ToolError
+    when target agent definition has no tools listed
+      warns but proceeds successfully
+    when a needed tool is not found in the executing registry
+WARN: AgentTool: Could not find tool class for 'non_existent_tool' in GlobalToolManager.
+      warns about the missing tool but continues with found tools
+    when use_calling_session is true
+      reuses the calling session service and session id
+    with missing parameters (base validation)
+      raises ADK::ToolArgumentError if target_agent_name is missing
+      raises ADK::ToolArgumentError if task is missing
+
+ADK::Tools::Base::HttpClient
+  #setup_http_client
+    with valid base URL
+      initializes the Excon connection
+      parses and stores the base URL as URI object
+      sets default headers including User-Agent
+      merges custom headers with defaults
+      sets default Excon options
+      allows overriding default options
+      configures logging instrumentor
+      allows disabling the instrumentor
+    with invalid base URL
+      raises ADK::ToolError for invalid URL
+      raises ADK::ToolError for unsupported scheme
+    when Excon initialization fails
+      raises ADK::ToolError
+  request helpers
+    #http_get
+      requires setup_http_client first
+      makes a request with correct method and relative path
+      joins relative path correctly
+      joins absolute path correctly
+      handles full URL path directly
+      raises ADK::ToolError for invalid path chars
+      sends query parameters
+      merges headers
+      merges options
+      does not send a body
+      returns Excon::Response on success
+    #http_post
+      requires setup_http_client first
+      makes a request with correct method and relative path
+      sends string body directly
+      encodes Hash body as JSON by default
+      encodes Hash body as JSON when Content-Type is json
+      raises error if Content-Type not JSON for Hash body
+      raises ADK::ToolError if JSON encoding fails
+    #http_put
+      makes a request with correct method
+      encodes Hash body as JSON by default
+    #http_delete
+      makes a request with correct method
+      does not send a body
+  error handling within make_request
+    when Excon raises TimeoutError
+      raises ADK::ToolTimeoutError
+    when Excon raises SocketError
+      raises ADK::ToolError
+    when Excon raises CertificateError
+      raises ADK::ToolError
+    when request returns 4xx/5xx status code
+      raises ADK::ToolHttpError with response and cause
+      with 503 status
+        raises ADK::ToolHttpError
+    when Excon raises other errors
+      raises ADK::ToolError
+    when unexpected non-Excon error occurs
+      raises ADK::ToolError
+
+ADK::Tools::BaseAsyncJobTool
+  requires subclasses to implement sidekiq_worker_class
+  requires subclasses to implement prepare_job_arguments
+  #perform_execution
+2026-01-21T04:30:14.296Z pid=18351 tid=1nxr INFO: Sidekiq 7.3.9 connecting to Redis with options {size: 10, pool_name: "internal", url: "redis://localhost:6379/2"}
+    calls prepare_job_arguments with params and context
+    calls worker_class.perform_async with correct args and options
+    returns a :pending status hash with the job_id on success
+    when sidekiq_worker_class is invalid
+ERROR: sidekiq_worker_class not defined or invalid for tool 'my_async_job'.
+      raises ToolError
+    when perform_async returns nil
+ERROR: Failed to enqueue Sidekiq job for 'my_async_job'. perform_async returned nil.
+ERROR: Unexpected error enqueuing Sidekiq job for tool 'my_async_job': ADK::ToolError - Failed to enqueue Sidekiq job for 'my_async_job'. perform_async returned nil.
+ERROR: /app/lib/adk/tools/base_async_job_tool.rb:87:in 'ADK::Tools::BaseAsyncJobTool#perform_execution'
+/app/spec/adk/tools/base_async_job_tool_spec.rb:130:in 'block (5 levels) in <top (required)>'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-expectations-3.13.5/lib/rspec/matchers/built_in/raise_error.rb:63:in 'RSpec::Matchers::BuiltIn::RaiseError#matches?'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-expectations-3.13.5/lib/rspec/expectations/handler.rb:50:in 'block in RSpec::Expectations::PositiveExpectationHandler.handle_matcher'
+/home/jules/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/3.4.0/gems/rspec-expectations-3.13.5/lib/rspec/expectations/handler.rb:26:in 'RSpec::Expectations::ExpectationHelper.with_matcher'
+      raises ToolError
+    when Redis connection fails
+ERROR: Failed to enqueue job for tool 'my_async_job': Could not connect to Redis. Connection refused
+      raises ToolError
+    when perform_async raises a generic StandardError
+      rescues, logs, and raises ToolError
+  .store_job_result
+    connects to Redis with correct options
+    calls redis.setex with correct key, ttl, and JSON data
+    logs error and does not raise if Redis fails
+    closes the Redis connection
+  .store_job_error
+    calls redis.setex with correct key, ttl, and error JSON data
+    logs error and does not raise if Redis fails
+    closes the Redis connection
+  .store_job_pending
+    connects to Redis with correct options
+    calls redis.setex with correct key, ttl, and JSON data
+    logs error and does not raise if Redis fails
+    closes the Redis connection
+
+ADK::Tools::Calculator
+  Class Metadata
+    has the correct inferred name
+    has the correct description
+    defines parameters correctly
+  #execute
+    with valid parameters for addition
+      returns a success hash with the correct sum
+    with valid parameters for subtraction
+      returns a success hash with the correct difference
+    with valid parameters for multiplication
+      returns a success hash with the correct product
+    with valid parameters for division
+      returns a success hash with the correct quotient
+    with symbol keys for parameters
+      correctly processes symbol keys
+    with uppercase operation
+      correctly handles case-insensitive operation
+    with operation aliases
+      handles "+" alias for addition
+      handles "-" alias for subtraction
+      handles "multiply" alias
+      handles "divide" alias
+    with division by zero
+ERROR: Calculator Tool Argument Error: Division by zero is not allowed.
+      raises ToolArgumentError
+    with an unsupported operation
+WARN: Calculator Tool Argument Warning: Unsupported operation: 'modulo'. Use add, subtract, multiply, or divide (or +, -, *, /).
+      raises ToolArgumentError
+    with non-numeric input for operands
+      raises ToolArgumentError
+    with nil input causing TypeError during Float conversion
+ERROR: Calculator Tool Argument Error: Invalid numeric input provided for operands. Op1: '10.0', Op2: ''
+      raises ToolArgumentError wrapping the TypeError
+    with missing required parameters
+ERROR: Validation failed: Missing required parameters for tool 'calculator': operand2. Provided: [operand1, operation]. Params: {operand1: 10, operation: "add"}
+      raises an ADK::ToolArgumentError
+
+ADK::Tools::CatFacts
+  Class Metadata
+    has the correct inferred name
+    has the correct description
+    has no parameters defined
+  #execute
+    when API call is successful
+      returns a success hash with the cat fact
+    when API response body is missing the fact field
+WARN: Cat fact API response did not contain a valid 'fact' field.
+      raises ToolError
+    when API call returns an error status (e.g., 500)
+      raises ToolError (propagated from HttpClient)
+    when API call times out
+      raises ToolError (propagated from HttpClient)
+    when API connection fails
+      raises ToolError (propagated from HttpClient)
+    when API response is invalid JSON
+      raises ToolError (from JSON.parse)
+
+ADK::Tools::CheckJobStatusTool
+  Class Metadata
+    has the correct explicit name
+    has the correct description
+    defines the job_id parameter correctly
+  #perform_execution
+    when job_id is missing
+      raises ToolArgumentError
+    when result is found in Redis (success)
+      parses and returns the stored success result
+    when result is found in Redis (error)
+      parses and returns the stored error result
+    when stored result in Redis is invalid JSON
+      raises ToolError after logging parse error
+    when no result in Redis and job is in Sidekiq queue
+      returns a pending status hash
+    when no result in Redis and job is in Sidekiq retries
+      returns a pending status hash
+    when no result in Redis and job is in Sidekiq dead set
+      raises ToolError indicating failure
+    when no result in Redis and job not found in Sidekiq
+      raises ToolError indicating completion/disappearance
+    when Redis connection fails
+ERROR: Could not connect to Redis to check job status: Connection refused
+      raises ToolError
+    when Sidekiq API query fails
+ERROR: Could not determine the status of job jid_test_456 via Sidekiq API: Sidekiq API error (StandardError)
+      raises ToolError indicating unknown status
+
+ADK::Tools::Echo
+  Class Metadata
+    has the correct inferred name
+    has the correct description
+    defines the message parameter correctly
+  #execute
+    with valid parameters
+      returns a success hash with the original message
+    with missing required parameters
+ERROR: Validation failed: Missing required parameters for tool 'echo': message. Provided: [None]. Params: {}
+      raises an ADK::ToolArgumentError
+    with parameters as strings (less common case)
+      returns a success hash
+    when message is unexpectedly nil in perform_execution (post-validation)
+      logs an error and raises a ToolError
+    when an unexpected error occurs during fetch
+      logs the error and raises a ToolError
+
+ADK::Tools::RandomNumberTool
+  Class Metadata
+    has the correct explicit name
+    has the correct description
+    defines optional parameters :min and :max correctly
+  #execute
+    with default parameters
+      returns a success hash with an integer between 1 and 100
+      uses the default range 1..100 for rand
+    with valid min and max parameters
+      returns a success hash with an integer within the specified range
+    with symbolic keys for min and max parameters
+      returns a success hash with an integer within the specified range
+    with min greater than max
+ERROR: RandomNumberTool Argument Error: Min value (100) cannot be greater than Max value (90).
+      raises ToolArgumentError
+    with non-integer input for min
+      raises ToolArgumentError
+    with non-integer input for max
+      raises ToolArgumentError
+
+ADK::Tools::SleepyTool
+  has the correct tool name
+  has a description
+  defines parameters
+  #sidekiq_worker_class
+    returns the SleepyWorker class
+  #prepare_job_arguments
+    prepares arguments correctly for the worker
+    handles string duration input
+  #execute (inherited behavior)
+    enqueues and executes the worker job, returning a job ID
+    enqueues the job with correct arguments using fake! mode
+
+ADK::Tools::SleepyWorker
+  #perform
+    stores pending status, sleeps, and stores result
+    stores error if sleep fails
+    stores error if storing result fails
+    logs error and continues if storing initial pending status fails
+
+ADK::Tools::WebhookTool
+  Class Metadata
+    has the correct inferred tool name
+    has the correct description
+    defines parameters correctly
+  #execute
+    with basic hash payload
+      sends POST with JSON payload and default headers
+    with string payload
+      sends POST with string payload and no default Content-Type
+      sends POST with string payload and custom Content-Type
+    with secret for signing
+      calculates and includes correct X-Hub-Signature-256 header
+    with custom headers
+      includes custom headers in the request
+    with invalid URL
+      raises ToolArgumentError
+    when http_post fails (e.g., timeout)
+ERROR: [excon.error] Excon::Error::Timeout
+ERROR: Timeout during POST request to https://example.com/webhook: Excon::Error::Timeout
+ERROR: WebhookTool: Error sending webhook to https://example.com/webhook: Timeout during POST request to https://example.com/webhook: Excon::Error::Timeout
+      raises the underlying ToolError
+
+ADK::Tools::WebhookTool
+  SSRF Protection
+    blocks requests to localhost
+    blocks requests to private IPs
+    blocks requests to cloud metadata
+    allows requests to public IPs (FAILED - 1)
+
+Webhook Integration
+  POST /agents/:agent_name/trigger (Dynamic Agent Route)
+    successfully receives webhook, processes job, and calls agent.run_task
+    when agent definition is not webhook_enabled
+      returns 404
+
+ADK::Web::WebhookListener
+  Error Handling Cases
+    when JSON request body is malformed
+      returns 400 Bad Request for invalid JSON
+    with global validator
+      accepts requests that pass global validation
+      rejects requests that fail global validation
+    with per-agent validator
+      accepts requests that pass agent-specific validation
+      rejects requests that fail agent-specific validation
+    when validator raises an unexpected error
+      returns 500 Internal Server Error
+
+ADK::Web::WebhookListener
+  POST /agents/:agent_name/trigger
+    when request is valid and agent is configured correctly
+      enqueues a job to Sidekiq
+      returns status 202 Accepted with job ID
+    when dynamic handler is disabled
+      returns status 403 Forbidden
+    when agent definition is not found
+      returns status 500 Internal Server Error (as per code)
+    when agent is not webhook_enabled
+      returns status 404 Not Found
+    when validation fails
+      returns status 401 Unauthorized
+    when transformation fails
+      returns status 500 Internal Server Error
+    when transformation raises WebhookConfigurationError
+      returns status 400 Bad Request
+    when session extraction fails
+      returns status 500 Internal Server Error
+    when session extraction raises WebhookConfigurationError
+      returns status 400 Bad Request
+    when enqueuing fails
+      returns status 503 Service Unavailable
+    when Sidekiq push returns nil
+      returns status 503 Service Unavailable
+    with global validator
+      uses global validator when agent validator is not set
+      rejects request if global validator fails
+  Static Routes
+    handles registered static route
+    with validation
+      passes validation
+      when validator returns false
+        fails validation
+
+ADK::Web::WebhookListener
+  static routes basic functionality
+    responds to POST /api/webhook endpoint
+    responds to GET /api/data endpoint
+    handles PUT requests
+    handles DELETE requests
+    returns 404 for undefined routes
+    returns 500 when handler raises an error
+
+ADK::WebhookJobWorker
+  #perform
+    with a valid payload
+      instantiates Redis SessionService with correct options
+      loads the correct agent definition
+      instantiates the agent with the definition
+      calls agent.run_task with correct arguments
+      logs success when task completes successfully
+      logs error when task returns an error status
+    with an invalid payload
+      raises ArgumentError if agent_definition_name is missing
+      raises ArgumentError if session_id is missing
+    when definition store fails
+      re-raises DefinitionNotFound
+    when session service instantiation fails
+      raises NotImplementedError for unsupported type
+      propagates Redis connection errors
+    when agent instantiation fails
+      raises the error
+    when agent.run_task fails
+      re-raises the error
+    when session service integration fails during run_task
+      raises ADK::SessionError if session service raises it during run_task
+      propagates ADK::Error from session service during run_task
+    with different session service types
+      raises NotImplementedError for unsupported session service types
+    when the job payload is invalid
+      raises ArgumentError for missing agent_definition_name
+      raises ArgumentError for missing session_id
+      raises ArgumentError for missing transformed_user_input
+      raises ArgumentError for missing session_service_config
+
+Agent Delegation Integration
+  with hierarchical agent structure
+    delegation via agent hierarchy
+      can find and delegate to calculator agent
+ERROR: Agent 'unauthorized_agent' is not in the delegation targets for 'coordinator_agent'
+      prevents delegation to agents not in delegation_targets
+  with direct delegation using transfer_to
+    creates a new agent instance for the target if not in hierarchy
+    maintains session continuity during delegation
+  with execute_step processing agent_transfer_to tools
+    handles agent_transfer_to_ tools by calling transfer_to
+
+Failures:
+
+  1) ADK::Tools::WebhookTool SSRF Protection allows requests to public IPs
+     Failure/Error: raise ADK::ToolTimeoutError, err_msg, cause: e
+
+     ADK::ToolTimeoutError:
+       Timeout during POST request to http://8.8.8.8/webhook: connect_write timeout reached
+     # ./lib/adk/tools/base/http_client.rb:249:in 'ADK::Tools::Base::HttpClient#make_request'
+     # ./lib/adk/tools/webhook_tool.rb:88:in 'ADK::Tools::WebhookTool#perform_execution'
+     # ./lib/adk/tool.rb:125:in 'ADK::Tool#execute'
+     # ./spec/adk/tools/webhook_tool_ssrf_spec.rb:50:in 'block (3 levels) in <top (required)>'
+
+Finished in 17.79 seconds (files took 2.87 seconds to load)
+1370 examples, 1 failure
+
+Failed examples:
+
+rspec ./spec/adk/tools/webhook_tool_ssrf_spec.rb:46 # ADK::Tools::WebhookTool SSRF Protection allows requests to public IPs
+
+Coverage report generated for RSpec to /app/coverage.
+Line Coverage: 79.43% (18119 / 22810)
+Stopped processing SimpleCov as a previous error not related to SimpleCov has been detected
