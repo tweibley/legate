@@ -104,6 +104,55 @@ RSpec.describe ADK::Tool do
     end
   end
 
+  describe '#validate_and_coerce_params' do
+    let(:coercion_tool_class) do
+      Class.new(ADK::Tool) do
+        self.explicit_tool_name = :coercion_tool
+        tool_description 'Coercion Test'
+        parameter :flag, type: :boolean
+        parameter :list, type: :array
+        parameter :config, type: :hash
+        parameter :count, type: :integer
+
+        def perform_execution(params, context); end
+      end
+    end
+    let(:tool) { coercion_tool_class.new }
+
+    context 'with boolean parameters' do
+      it 'coerces string representations to boolean' do
+        expect(tool.validate_and_coerce_params(flag: 'true')[:flag]).to be true
+        expect(tool.validate_and_coerce_params(flag: 'YES')[:flag]).to be true
+        expect(tool.validate_and_coerce_params(flag: '1')[:flag]).to be true
+        expect(tool.validate_and_coerce_params(flag: 'false')[:flag]).to be false
+        expect(tool.validate_and_coerce_params(flag: 'NO')[:flag]).to be false
+        expect(tool.validate_and_coerce_params(flag: '0')[:flag]).to be false
+      end
+
+      it 'raises error for invalid boolean strings' do
+        expect { tool.validate_and_coerce_params(flag: 'maybe') }
+          .to raise_error(ADK::ToolArgumentError, /expected Boolean, got String 'maybe'/i)
+      end
+    end
+
+    context 'with complex types' do
+      it 'parses JSON strings for arrays and hashes' do
+        expect(tool.validate_and_coerce_params(list: '[1, 2]')[:list]).to eq([1, 2])
+        expect(tool.validate_and_coerce_params(config: '{"a": 1}')[:config]).to eq({ 'a' => 1 })
+      end
+
+      it 'raises error for malformed JSON' do
+        expect { tool.validate_and_coerce_params(list: '[1,') }
+          .to raise_error(ADK::ToolArgumentError, /expected Array/)
+      end
+
+      it 'raises error for valid JSON of wrong type' do
+        expect { tool.validate_and_coerce_params(list: '{"a": 1}') }
+          .to raise_error(ADK::ToolArgumentError, /expected Array/)
+      end
+    end
+  end
+
   describe '#validate_params' do
     it 'does not raise error if required parameters are present' do
       expect { tool_instance.validate_params(req: 'val') }.not_to raise_error
