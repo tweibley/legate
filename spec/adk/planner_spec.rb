@@ -24,6 +24,7 @@ RSpec.describe ADK::Planner do
   # Mock basic metadata for tools used in planner tests
   let(:echo_tool_metadata) { { name: :echo, description: 'Echoes input', parameters: { message: { required: true } } } }
   let(:mock_agent_metadata) { [echo_tool_metadata] } # Default metadata for most agent mocks
+  let(:mock_tool_registry) { instance_double(ADK::ToolRegistry, version: 1) }
   let(:agent_with_echo) {
     # Allow instruction call for this mock as well
     agent = instance_double(ADK::Agent,
@@ -34,7 +35,8 @@ RSpec.describe ADK::Planner do
                             instruction: nil,
                             definition: agent_definition_without_delegation,
                             before_model_callback: nil,
-                            after_model_callback: nil)
+                            after_model_callback: nil,
+                            tool_registry: mock_tool_registry)
     # Configure proper respond_to? behavior for the agent definition
     allow(agent_definition_without_delegation).to receive(:respond_to?).with(:sequential_sub_agent_names).and_return(true)
     allow(agent_definition_without_delegation).to receive(:sequential_sub_agent_names).and_return([])
@@ -49,7 +51,8 @@ RSpec.describe ADK::Planner do
                             instruction: nil,
                             definition: agent_definition_without_delegation,
                             before_model_callback: nil,
-                            after_model_callback: nil)
+                            after_model_callback: nil,
+                            tool_registry: mock_tool_registry)
     # Configure proper respond_to? behavior for the agent definition
     allow(agent_definition_without_delegation).to receive(:respond_to?).with(:sequential_sub_agent_names).and_return(true)
     allow(agent_definition_without_delegation).to receive(:sequential_sub_agent_names).and_return([])
@@ -491,7 +494,8 @@ RSpec.describe ADK::Planner do
                                 available_tools_metadata: [],
                                 name: 'test_agent',
                                 instruction: nil,
-                                definition: agent_definition_with_delegation)
+                                definition: agent_definition_with_delegation,
+                                tool_registry: mock_tool_registry)
         # Configure proper respond_to? behavior for the agent definition
         allow(agent_definition_with_delegation).to receive(:respond_to?).with(:sequential_sub_agent_names).and_return(true)
         allow(agent_definition_with_delegation).to receive(:sequential_sub_agent_names).and_return([])

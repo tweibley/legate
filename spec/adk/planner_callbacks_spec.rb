@@ -26,10 +26,13 @@ RSpec.describe "Planner Callbacks" do
     allow(agent_def).to receive(:delegation_targets).and_return([])
     allow(agent_def).to receive(:sequential_sub_agent_names).and_return([])
     
+    tool_registry = double('ToolRegistry', version: 1)
+
     agent = double('Agent',
       name: :test_agent,
       definition: agent_def,
-      available_tools_metadata: []
+      available_tools_metadata: [],
+      tool_registry: tool_registry
     )
     
     # Make the agent respond to required methods
