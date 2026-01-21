@@ -863,16 +863,27 @@ module ADK
 
           status_message("  - Warning: Tools defined but not loaded/found: [#{missing_tools.join(', ')}]", :yellow) unless missing_tools.empty?
           status_message("  - Loaded tools: [#{loaded_tool_names.join(', ')}]", :cyan)
-          status_message('  - Starting agent runtime...', :cyan)
-          agent.start
-          status_message('started.', :cyan)
-          status_message("  - Running task in session #{session_id_opt}: '#{task}'...", :cyan)
-          final_event_or_error = agent.run_task(
-            session_id: session_id_opt,
-            user_input: task,
-            session_service: session_service_instance
-          )
-          status_message('finished.', :cyan)
+
+          if quiet_mode?
+            agent.start
+            final_event_or_error = agent.run_task(
+              session_id: session_id_opt,
+              user_input: task,
+              session_service: session_service_instance
+            )
+          else
+            # Enable CLI UI for spinners
+            ::CLI::UI::StdoutRouter.enable
+            ::CLI::UI::Spinner.spin('Starting agent runtime...') { agent.start }
+            ::CLI::UI::Spinner.spin("Running task in session #{session_id_opt}...") do
+              final_event_or_error = agent.run_task(
+                session_id: session_id_opt,
+                user_input: task,
+                session_service: session_service_instance
+              )
+            end
+          end
+
           status_message("\nTask Result:", :bold)
           output_result(final_event_or_error, metadata: { session_id: session_id_opt, agent: name }, format_method: :format_cli_result)
         rescue StandardError => e

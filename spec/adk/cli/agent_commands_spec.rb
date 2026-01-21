@@ -738,8 +738,8 @@ RSpec.describe ADK::CLI::AgentCommands do
         expect(output.string).to match(/Started new session: [\w-]{36}/)
         expect(output.string).to include('Agent uses model: gemini-exec')
         expect(output.string).to include('Loaded tools: [mock_cli_tool]')
-        expect(output.string).to match(/Running task in session [\w-]{36}: '#{task}'.../)
-        expect(output.string).to include('finished.')
+        # "Running task..." and "finished." are now handled by CLI::UI::Spinner in non-quiet mode
+        # and not captured by Thor's shell mock
         expect(output.string).to include('Task Result:')
         expect(output.string).to include('Success:')
         expect(output.string).to include('Result: Task completed!')
@@ -789,7 +789,7 @@ RSpec.describe ADK::CLI::AgentCommands do
         invoke_command(:execute, agent_name.to_s, task, session_id: existing_session_id)
 
         expect(output.string).to include("Continuing session: #{existing_session_id}")
-        expect(output.string).to include("Running task in session #{existing_session_id}")
+        # "Running task..." is handled by Spinner
         expect(output.string).to include('Result: Used existing session')
       end
 
