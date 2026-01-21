@@ -2,7 +2,24 @@
 
 module ADK
   class Tool
-    # Module to provide a more concise DSL for defining tool metadata.
+    # Module to provide a concise DSL for defining tool metadata in ADK.
+    #
+    # This module is included by `ADK::Tool` and exposes class-level methods like
+    # `tool_description` and `parameter` to define tool capabilities and inputs.
+    #
+    # @example Defining a custom tool
+    #   class MyTool < ADK::Tool
+    #     tool_description 'Calculates the square root of a number'
+    #
+    #     parameter :number,
+    #               type: :numeric,
+    #               description: 'The number to calculate square root for',
+    #               required: true
+    #
+    #     def perform_execution(params, context)
+    #       # ... implementation ...
+    #     end
+    #   end
     module MetadataDsl
       def self.included(base)
         base.extend ClassMethods
@@ -50,14 +67,36 @@ module ADK
         end
       end
 
+      # Class-level DSL methods extended into tool classes.
       module ClassMethods
-        # DSL method for setting description
+        # Sets the description for the tool.
+        # This description is used by the LLM planner to understand the tool's purpose.
+        #
+        # @param text [String] The description of what the tool does.
+        # @example
+        #   tool_description 'Fetches current weather for a location'
         def tool_description(text)
           initialize_dsl_storage # Ensure vars exist
           self.description = text.to_s
         end
 
-        # DSL method for defining a parameter
+        # Defines a parameter for the tool.
+        # Parameters defined here are automatically validated and coerced before
+        # execution.
+        #
+        # @param name [Symbol] The name of the parameter.
+        # @param options [Hash] Configuration options for the parameter.
+        # @option options [Symbol] :type The expected type (:string, :integer, :float, :numeric, :boolean, :array, :hash).
+        # @option options [String] :description A description of the parameter for the LLM.
+        # @option options [Boolean] :required (false) Whether the parameter is mandatory.
+        #
+        # @raise [ArgumentError] if name is not a Symbol.
+        #
+        # @example Defining a required string parameter
+        #   parameter :location, type: :string, description: 'City name', required: true
+        #
+        # @example Defining an optional boolean parameter
+        #   parameter :verbose, type: :boolean, description: 'Enable verbose output', required: false
         def parameter(name, options = {})
           initialize_dsl_storage # Ensure hash exists
           raise ArgumentError, 'Parameter name must be a Symbol' unless name.is_a?(Symbol)
@@ -66,7 +105,11 @@ module ADK
           @_tool_metadata_cache = nil # Invalidate cache on modification
         end
 
-        # Get the inferred name (logic unchanged)
+        # Infers the tool name from the Ruby class name.
+        # Converts CamelCase class names to snake_case symbols (e.g., `MyCustomTool` -> `:my_custom_tool`).
+        #
+        # @api private
+        # @return [Symbol, nil] The inferred tool name, or nil if anonymous class.
         def inferred_name
           class_name_str = Module.instance_method(:name).bind(self).call
           return nil unless class_name_str && !class_name_str.empty? && class_name_str.is_a?(String)
@@ -83,10 +126,13 @@ module ADK
           inferred.to_sym
         end
 
-        # Get the final tool name with priority:
-        # 1. DSL's explicit_tool_name
-        # 2. define_metadata's @tool_name
-        # 3. Inferred name
+        # Determines the effective name of the tool.
+        # Priorities:
+        # 1. Explicitly set name via `self.explicit_tool_name=`
+        # 2. Name set via deprecated `define_metadata`
+        # 3. Name inferred from the class name
+        #
+        # @return [Symbol, nil] The final tool name.
         def effective_tool_name
           initialize_dsl_storage # Ensure @explicit_tool_name exists
           explicit_dsl = self.explicit_tool_name
@@ -103,8 +149,11 @@ module ADK
           inferred_name
         end
 
-        # Retrieve consolidated metadata, preferring DSL values but falling back to define_metadata values.
-        # Cached for performance.
+        # Retrieves the consolidated metadata for the tool.
+        # Combines name, description, and parameters into a single hash.
+        # The result is cached for performance and invalidated when DSL methods are called.
+        #
+        # @return [Hash] Tool metadata containing :name, :description, and :parameters.
         def tool_metadata
           @_tool_metadata_cache ||= begin
             initialize_dsl_storage # Ensure DSL variables exist
