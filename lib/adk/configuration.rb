@@ -11,10 +11,10 @@ module ADK
   # Access via `ADK.config` after calling `ADK.configure`.
   class Configuration
     # @return [ADK::DefinitionStore::Base] The store used to load agent definitions.
-    attr_accessor :definition_store
+    attr_writer :definition_store
 
     # @return [ADK::SessionService::Base] The service used to manage agent session state.
-    attr_accessor :session_service
+    attr_writer :session_service
 
     # @return [Symbol] Default model name to use if not specified in agent definition.
     attr_accessor :default_model_name
@@ -27,11 +27,18 @@ module ADK
 
     def initialize
       # Set defaults
-      @definition_store = ADK::DefinitionStore::RedisStore.new(redis_client: Redis.new(ADK.redis_options))
-      @session_service = ADK::SessionService::Redis.new
+      # Note: definition_store and session_service are now lazy-initialized
       @default_model_name = 'gemini-2.5-flash'
       @default_temperature = 0.7
       @webhooks = ADK::Configuration::Webhooks.new
+    end
+
+    def definition_store
+      @definition_store ||= ADK::DefinitionStore::RedisStore.new(redis_client: Redis.new(ADK.redis_options))
+    end
+
+    def session_service
+      @session_service ||= ADK::SessionService::Redis.new
     end
   end
 end
