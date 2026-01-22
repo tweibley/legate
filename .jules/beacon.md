@@ -10,3 +10,9 @@
 **Learning:** The method signature `def execute(params = {}, context = nil)` only handles missing arguments, not explicit `nil`.
 **Action:** Future reliability improvements should guard against `nil` input in `execute` to prevent crashes.
 
+
+## 2025-02-24 - Untested Configuration Defaults
+
+**Gap:** `ADK::Configuration` was completely untested, meaning default values for critical dependencies like `DefinitionStore` and `SessionService` were assumed but not verified.
+**Learning:** Core configuration classes often get overlooked in testing because they are "just data," but they orchestrate the entire dependency graph.
+**Action:** Added `spec/adk/configuration_spec.rb` to lock in default values and dependency initialization behavior.
