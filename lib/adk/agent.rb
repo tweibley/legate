@@ -1034,9 +1034,6 @@ module ADK
     # @param invocation_id [String] The ID of the current agent invocation.
     # @return [Hash] A standard result hash { status: ..., result/error_message/job_id: ... }.
     def execute_step(step, session, session_service, invocation_id = nil)
-      session_id = session.id
-
-      # --- Basic validation ---
       unless step.is_a?(Hash) && step[:tool] && step[:params].is_a?(Hash)
         error_msg = "Invalid step format. Expected { tool: :symbol, params: {...} }"
         ADK.logger.error(error_msg)
@@ -1046,32 +1043,10 @@ module ADK
       tool_name = step[:tool].to_sym
       params = step[:params].to_h
 
-      # --- Intercept Delegation Tools (MAS) ---
-      # If the model outputs "agent_transfer_to_xyz", map it to "delegate_task"
-      if tool_name.to_s.start_with?('agent_transfer_to_')
-        target_agent_name = tool_name.to_s.sub('agent_transfer_to_', '')
-        ADK.logger.info("Intercepted delegation tool '#{tool_name}'. Mapping to 'delegate_task' for target '#{target_agent_name}'.")
-        
-        # Remap tool name
-        tool_name = :delegate_task
-        
-        # Remap params: ensure target_agent_name is set
-        params[:target_agent_name] = target_agent_name
-        
-        # Ensure 'task' param exists (model should provide it, but handle aliasing/defaults if needed)
-        # The prompt says: - task (string, required)
-        unless params.key?(:task)
-          # Fallback: if model used a different key like 'message' or 'input', map it to 'task'
-          if params.key?(:message)
-            params[:task] = params.delete(:message)
-          elsif params.key?(:input)
-            params[:task] = params.delete(:input)
-          end
-        end
-      end
-      # --- End Delegation Interception ---
+      # Resolve delegation shortcuts (MAS)
+      tool_name, params = _resolve_delegation_tool(tool_name, params)
 
-      # --- Get the tool from our registry ---
+      # Get the tool from registry
       tool = @tool_registry.create_instance(tool_name)
       unless tool
         error_msg = "Tool '#{tool_name}' not found in available tools."
@@ -1079,8 +1054,39 @@ module ADK
         return { status: :error, error_message: error_msg }
       end
 
-      # --- Prepare tool context with invocation_id and auth config ---
-      tool_context = ADK::ToolContext.new(
+      # Prepare context
+      tool_context = _create_tool_context(session, session_service, invocation_id)
+
+      # Execute with full lifecycle (logging, callbacks, error handling)
+      _execute_tool_lifecycle(tool, tool_name, params, tool_context)
+    end
+
+    private
+
+    # Handles logic to map model delegation output to the actual delegate_task tool
+    def _resolve_delegation_tool(tool_name, params)
+      if tool_name.to_s.start_with?('agent_transfer_to_')
+        target_agent_name = tool_name.to_s.sub('agent_transfer_to_', '')
+        ADK.logger.info("Intercepted delegation tool '#{tool_name}'. Mapping to 'delegate_task' for target '#{target_agent_name}'.")
+
+        tool_name = :delegate_task
+        params[:target_agent_name] = target_agent_name
+
+        # Ensure 'task' param exists
+        unless params.key?(:task)
+          if params.key?(:message)
+            params[:task] = params.delete(:message)
+          elsif params.key?(:input)
+            params[:task] = params.delete(:input)
+          end
+        end
+      end
+      [tool_name, params]
+    end
+
+    # Creates the ToolContext for execution
+    def _create_tool_context(session, session_service, invocation_id)
+      ADK::ToolContext.new(
         session_id: session.id,
         user_id: session.user_id,
         app_name: session.app_name,
@@ -1089,120 +1095,121 @@ module ADK
         invocation_id: invocation_id,
         agent_auth_config: build_agent_auth_config
       )
+    end
 
-      # --- Log the tool request event ---
-      tool_request_event = ADK::Event.new(
-        role: :tool_request,
-        tool_name: tool_name,
-        content: params
+    # Handles the full lifecycle of tool execution including logging and callbacks
+    def _execute_tool_lifecycle(tool, tool_name, params, tool_context)
+      session_service = tool_context.session_service
+      session_id = tool_context.session_id
+
+      # 1. Log Request
+      session_service.append_event(
+        session_id: session_id,
+        event: ADK::Event.new(role: :tool_request, tool_name: tool_name, content: params)
       )
-      session_service.append_event(session_id: session_id, event: tool_request_event)
 
-      # --- Execute before_tool_callback if defined ---
+      # 2. Before Callback
       if @before_tool_callback.is_a?(Proc)
-        ADK.logger.debug { "Agent '#{@name}': Executing before_tool_callback for tool '#{tool_name}'." }
+        result = _execute_before_callback(tool, tool_name, params, tool_context)
+        return result if result # Callback returned an override result
+      end
 
-        begin
-          # Execute the callback and check if it returns a result
-          override_result = @before_tool_callback.call(tool, params.dup, tool_context)
+      # 3. Execution & After Callback
+      begin
+        ADK.logger.debug { "Executing tool '#{tool_name}' with params #{params.inspect}" }
+        result = tool.execute(params, tool_context)
 
-          # If the callback returns a result (not nil), use it instead of normal tool execution
-          if override_result
-            ADK.logger.info { "Agent '#{@name}': before_tool_callback provided an override result for tool '#{tool_name}'." }
+        if @after_tool_callback.is_a?(Proc)
+          result = _execute_after_callback(tool, tool_name, params, tool_context, result)
+        end
 
-            # Create a tool result event with the override result and any state changes
-            tool_result_event = ADK::Event.new(
+        # 4. Log Result
+        session_service.append_event(
+          session_id: session_id,
+          event: ADK::Event.new(
+            role: :tool_result,
+            tool_name: tool_name,
+            content: result,
+            state_delta: tool_context.pending_state_delta
+          )
+        )
+        result
+      rescue StandardError => e
+        _handle_tool_error(e, tool_name, session_id, session_service)
+      end
+    end
+
+    def _execute_before_callback(tool, tool_name, params, tool_context)
+      ADK.logger.debug { "Agent '#{@name}': Executing before_tool_callback for tool '#{tool_name}'." }
+      begin
+        override_result = @before_tool_callback.call(tool, params.dup, tool_context)
+        if override_result
+          ADK.logger.info { "Agent '#{@name}': before_tool_callback provided an override result for tool '#{tool_name}'." }
+          tool_context.session_service.append_event(
+            session_id: tool_context.session_id,
+            event: ADK::Event.new(
               role: :tool_result,
               tool_name: tool_name,
               content: override_result,
               state_delta: tool_context.pending_state_delta
             )
-            session_service.append_event(session_id: session_id, event: tool_result_event)
-
-            return override_result
-          end
-        rescue StandardError => e
-          ADK.logger.error { "Agent '#{@name}': Error in before_tool_callback for tool '#{tool_name}': #{e.message}\n#{e.backtrace.join("\n")}" }
-
-          error_result = {
-            status: :error,
-            error_message: "Error in before_tool_callback: #{e.message}",
-            error_class: e.class.name
-          }
-
-          # Create a tool result event with the error
-          tool_result_event = ADK::Event.new(
-            role: :tool_result,
-            tool_name: tool_name,
-            content: error_result,
-            state_delta: tool_context.pending_state_delta
           )
-          session_service.append_event(session_id: session_id, event: tool_result_event)
-
-          return error_result
         end
-      end
-
-      # --- Execute the tool ---
-      begin
-        ADK.logger.debug { "Executing tool '#{tool_name}' with params #{params.inspect}" }
-        final_tool_name_to_execute = tool_name
-
-        # For delegate_task tool, capture the delegate to show in logs
-        if tool_name == :delegate_task && params[:agent_name]
-          final_tool_name_to_execute = "#{tool_name} -> #{params[:agent_name]}"
-        end
-
-        result = tool.execute(params, tool_context)
-
-        # --- Execute after_tool_callback if defined ---
-        if @after_tool_callback.is_a?(Proc)
-          ADK.logger.debug { "Agent '#{@name}': Executing after_tool_callback for tool '#{final_tool_name_to_execute}'." }
-
-          begin
-            # Execute the callback and let it modify the result if needed
-            modified_result = @after_tool_callback.call(tool, params.dup, tool_context, result.dup)
-
-            # If the callback returned a modified result, use it
-            if modified_result && modified_result != result
-              ADK.logger.info { "Agent '#{@name}': after_tool_callback modified the result for tool '#{final_tool_name_to_execute}'." }
-              result = modified_result
-            end
-          rescue StandardError => e
-            ADK.logger.error { "Agent '#{@name}': Error in after_tool_callback for tool '#{final_tool_name_to_execute}': #{e.message}\n#{e.backtrace.join("\n")}" }
-            # Don't override the result completely on error, just log it
-          end
-        end
-
-        # --- Log the tool result event ---
-        tool_result_event = ADK::Event.new(
-          role: :tool_result,
-          tool_name: tool_name,
-          content: result,
-          state_delta: tool_context.pending_state_delta
-        )
-        session_service.append_event(session_id: session_id, event: tool_result_event)
-
-        return result
+        override_result
       rescue StandardError => e
-        ADK.logger.error { "Error executing tool '#{tool_name}': #{e.message}\n#{e.backtrace.join("\n")}" }
+        _handle_callback_error(e, 'before_tool_callback', tool_name, tool_context.session_id, tool_context.session_service, tool_context.pending_state_delta)
+      end
+    end
 
-        error_result = {
-          status: :error,
-          error_message: "Tool '#{tool_name}' execution error: #{e.message}",
-          exception: e.class.name
-        }
+    def _execute_after_callback(tool, tool_name, params, tool_context, result)
+      display_name = (tool_name == :delegate_task && params[:agent_name]) ? "#{tool_name} -> #{params[:agent_name]}" : tool_name
+      ADK.logger.debug { "Agent '#{@name}': Executing after_tool_callback for tool '#{display_name}'." }
 
-        # Create a tool result event with the error
-        tool_result_event = ADK::Event.new(
+      begin
+        modified_result = @after_tool_callback.call(tool, params.dup, tool_context, result.dup)
+        if modified_result && modified_result != result
+          ADK.logger.info { "Agent '#{@name}': after_tool_callback modified the result for tool '#{display_name}'." }
+          modified_result
+        else
+          result
+        end
+      rescue StandardError => e
+        ADK.logger.error { "Agent '#{@name}': Error in after_tool_callback for tool '#{display_name}': #{e.message}\n#{e.backtrace.join("\n")}" }
+        result
+      end
+    end
+
+    def _handle_tool_error(error, tool_name, session_id, session_service)
+      ADK.logger.error { "Error executing tool '#{tool_name}': #{error.message}\n#{error.backtrace.join("\n")}" }
+      error_result = {
+        status: :error,
+        error_message: "Tool '#{tool_name}' execution error: #{error.message}",
+        exception: error.class.name
+      }
+      session_service.append_event(
+        session_id: session_id,
+        event: ADK::Event.new(role: :tool_result, tool_name: tool_name, content: error_result)
+      )
+      error_result
+    end
+
+    def _handle_callback_error(error, callback_name, tool_name, session_id, session_service, state_delta)
+      ADK.logger.error { "Agent '#{@name}': Error in #{callback_name} for tool '#{tool_name}': #{error.message}\n#{error.backtrace.join("\n")}" }
+      error_result = {
+        status: :error,
+        error_message: "Error in #{callback_name}: #{error.message}",
+        error_class: error.class.name
+      }
+      session_service.append_event(
+        session_id: session_id,
+        event: ADK::Event.new(
           role: :tool_result,
           tool_name: tool_name,
-          content: error_result
+          content: error_result,
+          state_delta: state_delta
         )
-        session_service.append_event(session_id: session_id, event: tool_result_event)
-
-        return error_result
-      end
+      )
+      error_result
     end
 
     # Connects to all configured MCP servers.
