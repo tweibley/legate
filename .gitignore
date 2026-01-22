@@ -43,3 +43,6 @@ Thumbs.db
 coverage
 server.log
 reviews.md
+
+# Allow .env.example
+!.env.example
