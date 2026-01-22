@@ -7,6 +7,7 @@ require 'json'
 require 'yaml'
 require 'fileutils' # For creating directories
 require 'cli/ui'    # Correct require
+require 'did_you_mean' # For spell checking suggestions
 require_relative '../tool_registry'
 require_relative '../agent'
 require_relative '../event'
@@ -33,6 +34,13 @@ module ADK
       @@session_service_for_execute = ADK::SessionService::InMemory.new
 
       no_commands do
+        # Helper to get all agent names from both memory and Redis for spell checking
+        def all_agent_names
+          in_memory = ADK::GlobalDefinitionRegistry.all.keys.map(&:to_s)
+          persisted = ADK::AgentDefinitionStore.all_names
+          (in_memory + persisted).uniq
+        end
+
         # --- Existing format_cli_result (for 'execute' command) ---
         def format_cli_result(result_data)
           content_to_display = nil
@@ -270,7 +278,10 @@ module ADK
             if valid_tools.include?(tool_name)
               selected_tools << tool_name unless selected_tools.include?(tool_name)
             else
-              say "Warning: Unknown globally registered tool '#{tool_name}', ignoring.", :yellow
+              msg = "Warning: Unknown globally registered tool '#{tool_name}', ignoring."
+              suggestion = DidYouMean::SpellChecker.new(dictionary: valid_tools).correct(tool_name).first
+              msg += " Did you mean '#{suggestion}'?" if suggestion
+              say msg, :yellow
             end
           end
         end
@@ -315,7 +326,10 @@ module ADK
         end
 
         unless definition_exists
-          say "Error: Agent definition '#{name}' not found.", :red
+          msg = "Error: Agent definition '#{name}' not found."
+          suggestion = DidYouMean::SpellChecker.new(dictionary: all_agent_names).correct(name).first
+          msg += " Did you mean '#{suggestion}'?" if suggestion
+          say msg, :red
           exit(1)
         end
 
@@ -535,7 +549,10 @@ module ADK
           definition_hash = ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
           unless definition_hash
-            output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+            msg = "Agent definition '#{name}' not found."
+            suggestion = DidYouMean::SpellChecker.new(dictionary: all_agent_names).correct(name).first
+            msg += " Did you mean '#{suggestion}'?" if suggestion
+            output_error(msg, metadata: { agent: name })
             exit(1)
           end
 
@@ -627,7 +644,10 @@ module ADK
         end
 
         unless definition
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          msg = "Agent definition '#{name}' not found."
+          suggestion = DidYouMean::SpellChecker.new(dictionary: all_agent_names).correct(name).first
+          msg += " Did you mean '#{suggestion}'?" if suggestion
+          output_error(msg, metadata: { agent: name })
           exit(1)
         end
 
@@ -698,7 +718,10 @@ module ADK
         end
 
         unless definition
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          msg = "Agent definition '#{name}' not found."
+          suggestion = DidYouMean::SpellChecker.new(dictionary: ADK::AgentDefinitionStore.all_names).correct(name).first
+          msg += " Did you mean '#{suggestion}'?" if suggestion
+          output_error(msg, metadata: { agent: name })
           exit(1)
         end
 
@@ -747,7 +770,10 @@ module ADK
         end
 
         unless definition
-          say "Error: Agent definition '#{name}' not found.", :red
+          msg = "Error: Agent definition '#{name}' not found."
+          suggestion = DidYouMean::SpellChecker.new(dictionary: all_agent_names).correct(name).first
+          msg += " Did you mean '#{suggestion}'?" if suggestion
+          say msg, :red
           exit(1)
         end
 
@@ -812,7 +838,10 @@ module ADK
         definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
         unless definition_hash
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          msg = "Agent definition '#{name}' not found."
+          suggestion = DidYouMean::SpellChecker.new(dictionary: all_agent_names).correct(name).first
+          msg += " Did you mean '#{suggestion}'?" if suggestion
+          output_error(msg, metadata: { agent: name })
           exit(1)
         end
 
@@ -913,7 +942,10 @@ module ADK
 
         definition = ADK::AgentDefinitionStore.load_from_redis(agent_name_sym)
         unless definition
-          ::CLI::UI.puts "{{red:Error: Agent definition '#{agent_name_str}' not found in Redis.}}"
+          msg = "Error: Agent definition '#{agent_name_str}' not found in Redis."
+          suggestion = DidYouMean::SpellChecker.new(dictionary: all_agent_names).correct(agent_name_str).first
+          msg += " Did you mean '#{suggestion}'?" if suggestion
+          ::CLI::UI.puts "{{red:#{msg}}}"
           exit(1)
         end
 
