@@ -316,77 +316,7 @@ module ADK
         "Agent '#{@name}' initialized with #{@tool_registry.tools.count} tools: [#{@tool_registry.tools.keys.join(', ')}]"
       }
 
-      # MAS: Instantiate Sub-Agents or use provided ones
-      if sub_agents && !sub_agents.empty?
-        ADK.logger.info("Agent '#{@name}': Initializing with programmatically provided sub-agents (#{sub_agents.length} agents).")
-        sub_agents.each do |sub_agent|
-          unless sub_agent.is_a?(ADK::Agent)
-            ADK.logger.warn("Agent '#{@name}': Item in provided sub_agents list is not an ADK::Agent. Skipping: #{sub_agent.inspect}")
-            next
-          end
-
-          # Check for circular dependencies
-          begin
-            _check_circular_dependency(sub_agent.name)
-          rescue ADK::ConfigurationError => e
-            ADK.logger.error("Agent '#{@name}': #{e.message}")
-            next # Skip this sub-agent
-          end
-
-          # Enforce single parent rule
-          if sub_agent.parent_agent.nil?
-            sub_agent.instance_variable_set(:@parent_agent, self)
-          elsif sub_agent.parent_agent != self
-            ADK.logger.error("Agent '#{@name}': Cannot adopt sub-agent '#{sub_agent.name}'. It already has a different parent: '#{sub_agent.parent_agent.name}'. Skipping this sub-agent.")
-            next # Skip this sub-agent
-          end
-          # (If sub_agent.parent_agent == self, it's already correctly parented, do nothing extra here)
-
-          # Verify session service consistency and assign if missing
-          if sub_agent.instance_variable_get(:@session_service).nil? && @session_service
-            ADK.logger.debug("Agent '#{@name}': Setting session_service for programmatic sub-agent '#{sub_agent.name}' to match parent.")
-            sub_agent.instance_variable_set(:@session_service, @session_service)
-          elsif sub_agent.instance_variable_get(:@session_service) != @session_service && @session_service # Warn if different and parent has one
-            ADK.logger.warn("Agent '#{@name}': Programmatic sub-agent '#{sub_agent.name}' has a different session_service than parent.")
-          end
-          @sub_agents << sub_agent
-          ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent.name}'.")
-        end
-        ADK.logger.info("Agent '#{@name}' finished linking programmatic sub-agents. Total sub-agents: #{@sub_agents.length}")
-      elsif definition.respond_to?(:sub_agent_names) && definition.sub_agent_names&.any?
-        ADK.logger.info("Agent '#{@name}' attempting to instantiate sub-agents from definition: #{definition.sub_agent_names.to_a.inspect}")
-        definition.sub_agent_names.each do |sub_agent_name|
-          begin
-            # Check for circular dependencies before instantiation
-            _check_circular_dependency(sub_agent_name)
-
-            sub_agent_definition = ADK::GlobalDefinitionRegistry.get(sub_agent_name)
-            unless sub_agent_definition
-              ADK.logger.error("Agent '#{@name}': Could not find definition for sub-agent '#{sub_agent_name}' in GlobalDefinitionRegistry. Skipping.")
-              next
-            end
-
-            ADK.logger.debug("Agent '#{@name}': Instantiating sub-agent '#{sub_agent_name}'...")
-            sub_agent = ADK::Agent.new(definition: sub_agent_definition, session_service: @session_service)
-            # Set parent link - enforce single parent rule
-            if sub_agent.parent_agent.nil?
-              sub_agent.instance_variable_set(:@parent_agent, self)
-            elsif sub_agent.parent_agent != self # Should not happen if instantiated fresh, but defensive check
-              ADK.logger.error("Agent '#{@name}': Newly instantiated sub-agent '#{sub_agent.name}' unexpectedly already has a different parent: '#{sub_agent.parent_agent.name}'. Skipping.")
-              next # Skip this sub-agent
-            end
-            # (If sub_agent.parent_agent == self, it's already fine)
-
-            @sub_agents << sub_agent
-            ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent.name}'.")
-          rescue ArgumentError => e # Catch errors from ADK::Agent.new (e.g. definition issues)
-            ADK.logger.error("Agent '#{@name}': ArgumentError instantiating sub-agent '#{sub_agent_name}': #{e.message}")
-          rescue StandardError => e
-            ADK.logger.error("Agent '#{@name}': Unexpected error instantiating sub-agent '#{sub_agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
-          end
-        end
-        ADK.logger.info("Agent '#{@name}' finished sub-agent instantiation. Total sub-agents: #{@sub_agents.length}")
-      end
+      initialize_sub_agents(sub_agents)
     end
 
     # Adds a tool instance OR class to the agent's registry
@@ -1297,6 +1227,80 @@ module ADK
       ADK.config.session_service
     end
     # --- End Session Service Initialization Helpers --- #
+
+    def initialize_sub_agents(sub_agents)
+      # MAS: Instantiate Sub-Agents or use provided ones
+      if sub_agents && !sub_agents.empty?
+        ADK.logger.info("Agent '#{@name}': Initializing with programmatically provided sub-agents (#{sub_agents.length} agents).")
+        sub_agents.each do |sub_agent|
+          unless sub_agent.is_a?(ADK::Agent)
+            ADK.logger.warn("Agent '#{@name}': Item in provided sub_agents list is not an ADK::Agent. Skipping: #{sub_agent.inspect}")
+            next
+          end
+
+          # Check for circular dependencies
+          begin
+            _check_circular_dependency(sub_agent.name)
+          rescue ADK::ConfigurationError => e
+            ADK.logger.error("Agent '#{@name}': #{e.message}")
+            next # Skip this sub-agent
+          end
+
+          # Enforce single parent rule
+          if sub_agent.parent_agent.nil?
+            sub_agent.instance_variable_set(:@parent_agent, self)
+          elsif sub_agent.parent_agent != self
+            ADK.logger.error("Agent '#{@name}': Cannot adopt sub-agent '#{sub_agent.name}'. It already has a different parent: '#{sub_agent.parent_agent.name}'. Skipping this sub-agent.")
+            next # Skip this sub-agent
+          end
+          # (If sub_agent.parent_agent == self, it's already correctly parented, do nothing extra here)
+
+          # Verify session service consistency and assign if missing
+          if sub_agent.instance_variable_get(:@session_service).nil? && @session_service
+            ADK.logger.debug("Agent '#{@name}': Setting session_service for programmatic sub-agent '#{sub_agent.name}' to match parent.")
+            sub_agent.instance_variable_set(:@session_service, @session_service)
+          elsif sub_agent.instance_variable_get(:@session_service) != @session_service && @session_service # Warn if different and parent has one
+            ADK.logger.warn("Agent '#{@name}': Programmatic sub-agent '#{sub_agent.name}' has a different session_service than parent.")
+          end
+          @sub_agents << sub_agent
+          ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent.name}'.")
+        end
+        ADK.logger.info("Agent '#{@name}' finished linking programmatic sub-agents. Total sub-agents: #{@sub_agents.length}")
+      elsif @definition.respond_to?(:sub_agent_names) && @definition.sub_agent_names&.any?
+        ADK.logger.info("Agent '#{@name}' attempting to instantiate sub-agents from definition: #{@definition.sub_agent_names.to_a.inspect}")
+        @definition.sub_agent_names.each do |sub_agent_name|
+          begin
+            # Check for circular dependencies before instantiation
+            _check_circular_dependency(sub_agent_name)
+
+            sub_agent_definition = ADK::GlobalDefinitionRegistry.get(sub_agent_name)
+            unless sub_agent_definition
+              ADK.logger.error("Agent '#{@name}': Could not find definition for sub-agent '#{sub_agent_name}' in GlobalDefinitionRegistry. Skipping.")
+              next
+            end
+
+            ADK.logger.debug("Agent '#{@name}': Instantiating sub-agent '#{sub_agent_name}'...")
+            sub_agent = ADK::Agent.new(definition: sub_agent_definition, session_service: @session_service)
+            # Set parent link - enforce single parent rule
+            if sub_agent.parent_agent.nil?
+              sub_agent.instance_variable_set(:@parent_agent, self)
+            elsif sub_agent.parent_agent != self # Should not happen if instantiated fresh, but defensive check
+              ADK.logger.error("Agent '#{@name}': Newly instantiated sub-agent '#{sub_agent.name}' unexpectedly already has a different parent: '#{sub_agent.parent_agent.name}'. Skipping.")
+              next # Skip this sub-agent
+            end
+            # (If sub_agent.parent_agent == self, it's already fine)
+
+            @sub_agents << sub_agent
+            ADK.logger.info("Agent '#{@name}': Successfully instantiated and linked sub-agent '#{sub_agent.name}'.")
+          rescue ArgumentError => e # Catch errors from ADK::Agent.new (e.g. definition issues)
+            ADK.logger.error("Agent '#{@name}': ArgumentError instantiating sub-agent '#{sub_agent_name}': #{e.message}")
+          rescue StandardError => e
+            ADK.logger.error("Agent '#{@name}': Unexpected error instantiating sub-agent '#{sub_agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+          end
+        end
+        ADK.logger.info("Agent '#{@name}' finished sub-agent instantiation. Total sub-agents: #{@sub_agents.length}")
+      end
+    end
 
     # Helper method to check for circular dependencies in the agent hierarchy
     # @param new_sub_agent_name [Symbol] The name of the new sub-agent to check for cycles
