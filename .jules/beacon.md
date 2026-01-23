@@ -10,3 +10,8 @@
 **Learning:** The method signature `def execute(params = {}, context = nil)` only handles missing arguments, not explicit `nil`.
 **Action:** Future reliability improvements should guard against `nil` input in `execute` to prevent crashes.
 
+## 2025-12-19 - Tool Loading Resilience
+
+**Gap:** `ADK::ToolLoader` critical error handling logic (rescuing `SyntaxError` and `StandardError` during file `require`) was completely untested.
+**Learning:** `ADK::ToolLoader` uses `require` directly on files discovered via globbing, which means a single malformed file could crash the entire agent boot process if exceptions weren't handled.
+**Action:** Added `spec/adk/tool_loader_spec.rb` to verify that the loader gracefully logs errors instead of crashing when encountering bad files.
