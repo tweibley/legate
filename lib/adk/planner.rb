@@ -13,6 +13,16 @@ module ADK
   # sends it to the LLM, and parses the response into a structured plan of execution.
   # It handles multi-step planning, tool selection, and fallback strategies.
   class Planner
+    # Regex constants for plan parsing
+    JSON_CODE_BLOCK_REGEX = /```(?:json)?\s*(\{.*?\})\s*```/m
+    JSON_OBJECT_REGEX = /(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})/m
+    SIMPLE_JSON_REGEX = /\{.*\}/m
+    CODE_BLOCK_CLEANUP_REGEX = /```[\s\S]*?```/
+    JSON_OBJECT_CLEANUP_REGEX = /\{[\s\S]*\}/
+    JSON_ARRAY_REGEX = /(\[.*\])/m
+    MARKDOWN_JSON_BLOCK_REGEX = /```json\s*(.*?)\s*```/m
+    MARKDOWN_BLOCK_REGEX = /```\s*(.*?)\s*```/m
+
     # @return [ADK::Agent] The agent instance this planner belongs to.
     attr_reader :agent
     # @return [Logger] The logger instance.
@@ -457,7 +467,7 @@ module ADK
       candidate_json = nil
 
       # Method 1: Extract JSON array using regex - find anything between square brackets
-      json_array_match = response_text.match(/(\[.*\])/m)
+      json_array_match = response_text.match(JSON_ARRAY_REGEX)
       if json_array_match
         # Use the matched array part
         candidate_json = json_array_match[1].strip
@@ -467,12 +477,12 @@ module ADK
         clean_text = response_text.strip
         if clean_text.include?('```json')
           # Extract content from ```json ... ``` block
-          match = clean_text.match(/```json\s*(.*?)\s*```/m)
+          match = clean_text.match(MARKDOWN_JSON_BLOCK_REGEX)
           candidate_json = match ? match[1].strip : clean_text
           logger.debug('Extracted from ```json block')
         elsif clean_text.include?('```')
           # Extract content from ``` ... ``` block
-          match = clean_text.match(/```\s*(.*?)\s*```/m)
+          match = clean_text.match(MARKDOWN_BLOCK_REGEX)
           candidate_json = match ? match[1].strip : clean_text
           logger.debug('Extracted from ``` block')
         else
@@ -518,8 +528,21 @@ module ADK
       # Try multiple methods to extract JSON from the response
       parsed_json = nil
 
+      # Method 0: Try direct JSON parsing (optimization for clean responses)
+      # This avoids expensive regex matching when the response is already valid JSON
+      # Only try if it looks like a JSON object or array to avoid exception overhead
+      clean_text = llm_response.strip
+      if clean_text.start_with?('{') || clean_text.start_with?('[')
+        begin
+          parsed_json = JSON.parse(clean_text)
+          logger.debug('Successfully parsed JSON directly')
+        rescue JSON::ParserError
+          # Fall through to extraction methods
+        end
+      end
+
       # Method 1: Try to extract from markdown code block (```json ... ```)
-      json_code_block_match = llm_response.match(/```(?:json)?\s*(\{.*?\})\s*```/m)
+      json_code_block_match = llm_response.match(JSON_CODE_BLOCK_REGEX) unless parsed_json
       if json_code_block_match
         begin
           parsed_json = JSON.parse(json_code_block_match[1])
@@ -532,8 +555,7 @@ module ADK
       # Method 2: Try direct JSON object extraction (greedy match from first { to last })
       unless parsed_json
         # Use a non-greedy inner match but capture the full object structure
-        json_pattern = /(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})/m
-        json_match = llm_response.match(json_pattern)
+        json_match = llm_response.match(JSON_OBJECT_REGEX)
         if json_match
           begin
             parsed_json = JSON.parse(json_match[1])
@@ -546,8 +568,7 @@ module ADK
 
       # Method 3: Try the simple greedy pattern as fallback
       unless parsed_json
-        simple_pattern = /\{.*\}/m
-        simple_match = llm_response.match(simple_pattern)
+        simple_match = llm_response.match(SIMPLE_JSON_REGEX)
         if simple_match
           begin
             parsed_json = JSON.parse(simple_match[0])
@@ -637,8 +658,8 @@ module ADK
       # Try to find any meaningful content from the response
       # Remove markdown code blocks and JSON-like structures
       clean_response = llm_response
-                       .gsub(/```[\s\S]*?```/, '') # Remove code blocks
-                       .gsub(/\{[\s\S]*\}/, '')    # Remove JSON objects
+                       .gsub(CODE_BLOCK_CLEANUP_REGEX, '') # Remove code blocks
+                       .gsub(JSON_OBJECT_CLEANUP_REGEX, '') # Remove JSON objects
                        .strip
 
       # If we have some clean text, use it (truncated if too long)
