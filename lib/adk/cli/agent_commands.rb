@@ -236,13 +236,20 @@ module ADK
         elsif definitions.empty?
           say 'No agent definitions found.'
         else
-          say 'Defined Agents:', :bold
-          definitions.sort_by { |name, _| name.to_s }.each do |name, data|
-            description = data[:description] || '[No description]'
-            tools = data[:tools]
-            model = data[:model] || "#{ADK::Agent::DEFAULT_MODEL} (Default)"
-            tools_str = tools.empty? ? 'None' : tools.join(', ')
-            say "- #{name}: #{description} (Model: #{model}, Tools: #{tools_str})"
+          # Use CLI::UI for cleaner, structured output
+          ::CLI::UI::StdoutRouter.enable
+          ::CLI::UI::Frame.open('Defined Agents', color: :cyan) do
+            definitions.sort_by { |name, _| name.to_s }.each do |name, data|
+              description = data[:description] || '{{italic:[No description]}}'
+              tools = data[:tools]
+              model = data[:model] || "#{ADK::Agent::DEFAULT_MODEL} (Default)"
+              tools_str = tools.empty? ? '{{italic:None}}' : tools.join(', ')
+
+              ::CLI::UI.puts "• {{bold:#{name}}}"
+              ::CLI::UI.puts "  #{description}"
+              ::CLI::UI.puts "  {{gray:Model:}} #{model} | {{gray:Tools:}} #{tools_str}"
+              ::CLI::UI.puts ''
+            end
           end
         end
       end
@@ -716,18 +723,22 @@ module ADK
                                tools: tools
                              })
         else
-          say "Agent: #{name}", :bold
-          case persistent_status
-          when 'running'
-            say "  Status: #{persistent_status}", :green
-          when 'stopped'
-            say "  Status: #{persistent_status}", :yellow
-          else
-            say "  Status: #{persistent_status}", :cyan
+          ::CLI::UI::StdoutRouter.enable
+
+          # Colors based on status
+          color = case persistent_status
+                  when 'running' then :green
+                  when 'stopped' then :yellow
+                  else :cyan
+                  end
+
+          ::CLI::UI::Frame.open("Agent Status: #{name}", color: color) do
+            ::CLI::UI.puts "{{bold:Status:}} {{#{color}:#{persistent_status}}}"
+            ::CLI::UI.puts "{{bold:Model:}} #{model}"
+            ::CLI::UI.puts "{{bold:Description:}} #{description}"
+            tools_str = tools.empty? ? '{{italic:None}}' : tools.join(', ')
+            ::CLI::UI.puts "{{bold:Tools:}} #{tools_str}"
           end
-          say "  Model: #{model}"
-          say "  Description: #{description}"
-          say "  Tools: #{tools.empty? ? 'None' : tools.join(', ')}"
         end
       end
 

@@ -6,3 +6,8 @@
 2. Automatically coerce string inputs to the expected type (Integer, Float, Boolean, JSON Array/Hash) based on DSL definition.
 3. Validate types strictly if coercion fails.
 This improves CLI ergonomics (no need to manually parse strings in tools) and debugging speed.
+
+## 2024-05-24 - Structured CLI Output for Agent Lists
+
+**Learning:** Human-readable CLI output (like `adk agent list`) is often parsed by scripts, creating a tension between UX (formatting/frames) and scriptability.
+**Action:** When improving CLI output with libraries like `CLI::UI`, ensure a robust `--json` flag exists and is well-documented as the stable interface for scripts. This allows us to make the default output rich and user-friendly without breaking automation that opts into JSON.

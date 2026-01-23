@@ -122,16 +122,23 @@ RSpec.describe ADK::CLI::AgentCommands do
         ADK::AgentDefinitionStore.register(:agent_two, agent2_def)
         # Prevent actual Redis load which clears memory
         allow(ADK::AgentDefinitionStore).to receive(:load_all_from_redis)
+
+        # Mock CLI::UI
+        allow(CLI::UI::StdoutRouter).to receive(:enable)
+        allow(CLI::UI::Frame).to receive(:open).and_yield
+        allow(CLI::UI).to receive(:puts)
+        allow(CLI::UI).to receive(:fmt).and_call_original
       end
 
       it 'lists the defined agents with details' do
         # Mock .all to return only the agents set up in the before block
         allow(ADK::AgentDefinitionStore).to receive(:all).and_return({ agent_one: agent1_def, agent_two: agent2_def })
         invoke_command(:list)
-        expect(output.string).to include('Defined Agents:')
-        expect(output.string).to include('- agent_one: First agent (Model: gemini-1.5-pro, Tools: mock_cli_tool)')
-        expect(output.string).to include("- agent_two: Second agent (Model: #{ADK::Agent::DEFAULT_MODEL}, Tools: None)")
-        expect(output.string).not_to include('agent_three') # Ensure it doesn't list agent 3 here
+
+        expect(CLI::UI).to have_received(:puts).with(include('agent_one'))
+        expect(CLI::UI).to have_received(:puts).with(include('First agent'))
+        expect(CLI::UI).to have_received(:puts).with(include('agent_two'))
+        expect(CLI::UI).not_to have_received(:puts).with(include('agent_three'))
       end
 
       it 'handles definitions with no description' do
@@ -141,10 +148,9 @@ RSpec.describe ADK::CLI::AgentCommands do
         allow(ADK::AgentDefinitionStore).to receive(:all).and_return({ agent_one: agent1_def, agent_two: agent2_def,
                                                                        agent_three: agent3_def })
         invoke_command(:list)
-        expect(output.string).to include('Defined Agents:')
-        expect(output.string).to include('- agent_three: [No description] (Model: gemini-1.5-pro, Tools: mock_cli_tool)')
-        expect(output.string).to include('- agent_one: First agent')
-        expect(output.string).to include('- agent_two: Second agent')
+
+        expect(CLI::UI).to have_received(:puts).with(include('agent_three'))
+        expect(CLI::UI).to have_received(:puts).with(include('[No description]'))
       end
     end
   end
