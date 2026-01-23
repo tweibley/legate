@@ -4,6 +4,7 @@
 require_relative '../scheme'
 require_relative '../error'
 require_relative '../exchanged_credential'
+require_relative '../../util'
 
 module ADK
   module Auth
@@ -27,7 +28,7 @@ module ADK
         # @raise [ADK::Auth::Error] If the API key cannot be applied
         def apply_to_request(request, credential)
           # Create a deep copy of the request to avoid modifying the original
-          request_copy = Marshal.load(Marshal.dump(request))
+          request_copy = ADK::Util.deep_copy(request)
           
           # Handle the case where we get a stack object from Excon
           if request_copy.is_a?(Hash)

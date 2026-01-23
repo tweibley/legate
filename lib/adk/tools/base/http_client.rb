@@ -7,6 +7,7 @@ require 'uri' # For URI.join
 
 require_relative '../../tool/error' # Use the errors defined in Step 2
 require_relative '../../version'
+require_relative '../../util'
 
 module ADK
   module Tools
@@ -209,7 +210,7 @@ module ADK
             # Prepare options for the temporary Excon client instance
             temp_client_options = @http_connection_options.reject { |k, _| k == :headers }
             # Deep duplicate headers hash to avoid modifying the original
-            final_headers_for_new = Marshal.load(Marshal.dump(@http_connection_options[:headers] || {}))
+            final_headers_for_new = ADK::Util.deep_copy(@http_connection_options[:headers] || {})
             # Merge the fully processed request_params[:headers] (which includes defaults and customs)
             final_headers_for_new.merge!(request_params[:headers].transform_keys(&:to_s))
             temp_client_options[:headers] = final_headers_for_new

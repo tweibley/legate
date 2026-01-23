@@ -76,6 +76,7 @@ end
 
 # --- NOW Require Configuration (Depends on Logger for its own initialization maybe?) ---
 require_relative 'adk/configuration'
+require_relative 'adk/util'
 
 # --- Central ADK Module (Reopened) ---
 module ADK

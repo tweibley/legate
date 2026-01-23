@@ -10,3 +10,9 @@
 **Learning:** Tools that accept URLs as input must explicitly validate the destination to prevent Server-Side Request Forgery (SSRF), especially given the agent's ability to explore networks.
 **Prevention:** Implemented `validate_url_security` using `Resolv` and `IPAddr` to block access to private, loopback, and link-local addresses. This pattern should be applied to any future tools making outbound HTTP requests.
 
+
+## 2025-05-23 - Unsafe Deserialization Pattern
+
+**Vulnerability:** Used `Marshal.load(Marshal.dump(obj))` for deep copying internal objects. While not directly exploitable with untrusted input in this context, it promotes unsafe `Marshal` usage and can lead to RCE if the pattern spreads to handling user input.
+**Learning:** `Marshal` is often used as a lazy deep copy mechanism in Ruby, but it carries significant security risks and performance overhead. It also fails on non-serializable objects (IO, Proc).
+**Prevention:** Use a dedicated `deep_copy` utility or `clone`/`dup` logic appropriate for the data structure. Avoid `Marshal` entirely unless strictly necessary for trusted serialization.
