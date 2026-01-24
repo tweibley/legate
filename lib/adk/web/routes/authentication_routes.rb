@@ -1,6 +1,9 @@
 # File: lib/adk/web/routes/authentication_routes.rb
 # frozen_string_literal: true
 
+require 'resolv'
+require 'ipaddr'
+
 module ADK
   module Web
     module AuthenticationRoutes
@@ -336,6 +339,8 @@ module ADK
             return { name: 'API Key Test', status: 'failed', message: 'API key is missing' } unless api_key
 
             if options[:test_url]
+              return { name: 'API Key Test', status: 'failed', message: 'Invalid or internal URL' } unless valid_public_url?(options[:test_url])
+
               # Test against provided URL
               begin
                 require 'net/http'
@@ -354,7 +359,10 @@ module ADK
                 when 'header'
                   request[key_name] = api_key
                 when 'query'
-                  uri.query = "#{key_name}=#{api_key}"
+                  # Safe parameter handling
+                  params = URI.decode_www_form(uri.query || '')
+                  params << [key_name, api_key]
+                  uri.query = URI.encode_www_form(params)
                   request = Net::HTTP::Get.new(uri)
                 end
 
@@ -424,6 +432,8 @@ module ADK
             return { name: 'Bearer Token Test', status: 'failed', message: 'Bearer token is missing' } unless bearer_token
 
             if options[:test_url]
+              return { name: 'Bearer Token Test', status: 'failed', message: 'Invalid or internal URL' } unless valid_public_url?(options[:test_url])
+
               begin
                 require 'net/http'
                 uri = URI(options[:test_url])
@@ -449,8 +459,30 @@ module ADK
             end
           end
 
+          # Helper to validate URL is public
+          def valid_public_url?(url)
+            uri = URI(url)
+            return false unless %w[http https].include?(uri.scheme)
+
+            hostname = uri.hostname
+            return false if hostname.nil?
+
+            ips = Resolv.getaddresses(hostname)
+            return false if ips.empty?
+
+            ips.each do |ip_str|
+              ip = IPAddr.new(ip_str)
+              return false if ip.loopback? || ip.private? || ip.link_local?
+            end
+            true
+          rescue StandardError
+            false
+          end
+
           # Helper to test API calls with authentication
           def test_authenticated_api_call(url, scheme_name, credential_name, options = {})
+            return { success: false, error: 'Invalid or internal URL' } unless valid_public_url?(url)
+
             auth_manager = ADK::Auth::Manager.instance
             scheme = auth_manager.get_scheme(scheme_name.to_sym)
             credential = auth_manager.get_credential(credential_name.to_sym)
@@ -479,7 +511,10 @@ module ADK
                 when 'header'
                   request[key_name] = api_key
                 when 'query'
-                  uri.query = "#{key_name}=#{api_key}"
+                  # Safe parameter handling
+                  params = URI.decode_www_form(uri.query || '')
+                  params << [key_name, api_key]
+                  uri.query = URI.encode_www_form(params)
                   request = Net::HTTP::Get.new(uri)
                 end
               when :http_bearer
