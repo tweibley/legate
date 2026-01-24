@@ -35,25 +35,7 @@ module ADK
         end
 
         # 2. Instantiate Session Service
-        service_type = session_service_config.fetch('type', 'redis').to_sym
-        if service_type == :redis
-          # Convert keys to symbols and remove :type
-          redis_opts_sym = session_service_config.transform_keys(&:to_sym).reject { |k, _| k == :type }
-          # Explicitly create Redis client instance using options from config
-          begin
-            redis_client = Redis.new(**redis_opts_sym)
-            redis_client.ping # Verify connection early
-          rescue Redis::BaseError => e
-            ADK.logger.error("WebhookJobWorker: Failed to connect to Redis using config [#{redis_opts_sym}]: #{e.message}")
-            raise # Re-raise connection error
-          end
-          # Pass the client instance using the keyword argument
-          session_service = ADK::SessionService::Redis.new(redis_client: redis_client)
-          ADK.logger.debug("WebhookJobWorker using RedisSessionService with options: #{redis_opts_sym}")
-        else
-          # Config error, likely non-retryable
-          raise NotImplementedError, "Unsupported session service type in job config: #{service_type}"
-        end
+        session_service = instantiate_session_service(session_service_config)
 
         # 3. Load Agent Definition
         definition_hash = ADK.config.definition_store.get_definition(agent_name_sym)
@@ -116,6 +98,31 @@ module ADK
         ADK.logger.error(e.backtrace.join("\n"))
         raise # Re-raise StandardError: Let Sidekiq handle retry for transient issues.
         # -----------------------------
+      end
+    end
+
+    private
+
+    def instantiate_session_service(session_service_config)
+      service_type = session_service_config.fetch('type', 'redis').to_sym
+      if service_type == :redis
+        # Convert keys to symbols and remove :type
+        redis_opts_sym = session_service_config.transform_keys(&:to_sym).reject { |k, _| k == :type }
+        # Explicitly create Redis client instance using options from config
+        begin
+          redis_client = Redis.new(**redis_opts_sym)
+          redis_client.ping # Verify connection early
+        rescue Redis::BaseError => e
+          ADK.logger.error("WebhookJobWorker: Failed to connect to Redis using config [#{redis_opts_sym}]: #{e.message}")
+          raise # Re-raise connection error
+        end
+        # Pass the client instance using the keyword argument
+        session_service = ADK::SessionService::Redis.new(redis_client: redis_client)
+        ADK.logger.debug("WebhookJobWorker using RedisSessionService with options: #{redis_opts_sym}")
+        session_service
+      else
+        # Config error, likely non-retryable
+        raise NotImplementedError, "Unsupported session service type in job config: #{service_type}"
       end
     end
   end
