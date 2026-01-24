@@ -3,6 +3,7 @@
 
 require_relative 'tool_registry'
 require 'logger'
+require 'did_you_mean'
 require_relative 'tool_context'
 require_relative 'global_tool_manager'
 require_relative 'tool/metadata_dsl'
@@ -71,7 +72,7 @@ module ADK
       #   ...
       # end
       # --- End Fallback Metadata Method ---
-    end # End Class-level
+    end
     # --- End Class-level ---
 
     # --- Self-Registration Hook ---
@@ -152,6 +153,17 @@ module ADK
       unless missing_params.empty?
         msg = "Missing required parameters for tool '#{@name}': #{missing_params.join(', ')}."
         msg += " Provided: [#{present_keys.empty? ? 'None' : present_keys.join(', ')}]."
+
+        # Suggest similar parameters (UX Improvement)
+        unless present_keys.empty?
+          checker = DidYouMean::SpellChecker.new(dictionary: missing_params.map(&:to_s))
+          suggestions = []
+          present_keys.each do |key|
+            correction = checker.correct(key.to_s).first
+            suggestions << "Did you mean '#{correction}' instead of '#{key}'?" if correction
+          end
+          msg += " #{suggestions.join(' ')}" unless suggestions.empty?
+        end
 
         ADK.logger.error("Validation failed: #{msg} Params: #{params.inspect}")
         raise ADK::ToolArgumentError, msg
