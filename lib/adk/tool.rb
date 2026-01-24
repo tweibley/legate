@@ -101,6 +101,7 @@ module ADK
       @name = metadata[:name]
       @description = metadata[:description]
       @parameters = metadata[:parameters] || {}
+      @required_parameters = @parameters.select { |_, p| p[:required] }.keys.freeze
 
       # Lenient check for missing metadata
       return unless @name.nil? || @name == :'' || @description.nil? || @description.empty?
@@ -139,17 +140,16 @@ module ADK
     # @raise [ADK::ToolArgumentError] if validation fails
     def validate_and_coerce_params(params)
       # 1. Normalize keys to symbols
+      # transform_keys creates a new hash, which we will use directly as coerced_params
+      # to avoid an extra duplication.
       normalized_params = params.transform_keys(&:to_sym)
 
-      current_parameters = @parameters || {}
-
-      # 2. Check for missing required parameters
-      # Use symbol keys for check
-      required_param_names = current_parameters.select { |_, p| p[:required] }.keys
-      present_keys = normalized_params.keys
-      missing_params = required_param_names - present_keys
+      # 2. Check for missing required parameters using pre-calculated list
+      # Optimization: Avoid creating intermediate arrays for all keys
+      missing_params = @required_parameters.reject { |key| normalized_params.key?(key) }
 
       unless missing_params.empty?
+        present_keys = normalized_params.keys
         msg = "Missing required parameters for tool '#{@name}': #{missing_params.join(', ')}."
         msg += " Provided: [#{present_keys.empty? ? 'None' : present_keys.join(', ')}]."
 
@@ -158,9 +158,10 @@ module ADK
       end
 
       # 3. Type Validation & Coercion
-      coerced_params = normalized_params.dup
+      # We reuse normalized_params as the base for coerced_params since it's already a new hash
+      coerced_params = normalized_params
 
-      current_parameters.each do |param_name, param_def|
+      (@parameters || {}).each do |param_name, param_def|
         # Only process if present
         next unless coerced_params.key?(param_name)
 

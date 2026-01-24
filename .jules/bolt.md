@@ -13,3 +13,12 @@
 **Learning:** Tool metadata resolution (`tool_metadata`, which infers names and consolidates DSL/legacy attributes) was being recalculated on every tool instantiation. Since tools are instantiated frequently (e.g., every step in `execute_plan` and during planning prompts), this was a significant overhead (~1.03s vs 0.07s for 100k instantiations).
 **Action:** Implemented caching for `tool_metadata` using `@_tool_metadata_cache`. Replaced `attr_accessor` with manual setters in `MetadataDsl` to ensure proper cache invalidation when metadata changes. Always look for "static" calculations in hot paths (like class instantiation) that can be memoized.
 
+## 2026-01-24 - [ADK::Tool Parameter Validation Optimization]
+
+**Learning:** `ADK::Tool#validate_and_coerce_params` was a hot path with unnecessary object allocations (Hash duplication, Array creation for key checks). In high-frequency tool execution scenarios, simple optimizations like pre-calculating constant data (`@required_parameters`) and avoiding `dup` on already-new hashes can yield significant speedups (observed ~35%).
+**Action:** Inspect other core framework components (like `Planner` or `Agent`) for similar "re-calculation of constants" patterns in hot paths.
+
+## 2026-01-24 - [Encapsulation in Optimization]
+
+**Learning:** Exposing internal optimization structures (like `@required_parameters`) via public `attr_reader` to "make it available" violates encapsulation and API stability principles.
+**Action:** Keep optimization state internal unless there is a compelling use case for external consumers. Use `run_in_bash_session` to verify API surface area changes are minimal.
