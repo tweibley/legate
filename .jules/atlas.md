@@ -12,3 +12,8 @@
 
 **Action:** Created `lib/adk/tool_loader.rb` to encapsulate file traversal and loading. Refactored `ADK::Agent` to delegate to this new module. This maintains the same behavior but enforces better module boundaries.
 
+## 2025-12-22 - Decoupling Core Entry Point
+
+**Issue:** `lib/adk.rb` acted as a "God object" for configuration, manually requiring and registering every built-in tool. This meant the core framework file had to change whenever a new standard tool was added.
+**Learning:** Centralized manual registration in the root file creates tight coupling between the framework core and its extensions (tools).
+**Action:** Extracted registration logic to `ADK::BuiltinTools`, allowing the core to remain stable while the toolset expands.
