@@ -858,6 +858,54 @@ module ADK
     end
 
 
+    # Private helper to resolve parameter injection from previous steps
+    # @param step [Hash] The current plan step
+    # @param previous_result [Hash, nil] The result from the previous step execution
+    def _resolve_step_params(step, previous_result)
+      current_params = step[:params].dup
+      current_params.transform_values! do |value|
+        _resolve_single_param(value, previous_result)
+      end
+      current_params
+    end
+
+    def _resolve_single_param(value, previous_result)
+      return value unless value.is_a?(String) && value.match?(/\[Result from step \d+\]|\[Result from previous step\]/i)
+
+      unless previous_result && %i[success pending].include?(previous_result[:status])
+        ADK.logger.warn("Cannot inject: Previous step failed or absent. Prev Hash: #{previous_result.inspect}")
+        return value
+      end
+
+      injection_value = _extract_injection_value(previous_result)
+
+      if injection_value
+        injection_value
+      else
+        ADK.logger.warn("Cannot inject: Previous successful/pending step missing usable key (:result, :job_id, :message). Prev Hash: #{previous_result.inspect}")
+        value
+      end
+    end
+
+    def _extract_injection_value(previous_result)
+      if previous_result.key?(:result)
+        res = previous_result[:result]
+        if res.is_a?(Hash) && res.key?(:status) && res.key?(:result)
+          ADK.logger.debug('Injecting nested result...')
+          res[:result]
+        else
+          ADK.logger.debug('Injecting direct result...')
+          res
+        end
+      elsif previous_result.key?(:job_id)
+        ADK.logger.debug('Injecting job_id from previous step...')
+        previous_result[:job_id]
+      elsif previous_result.key?(:message)
+        ADK.logger.debug('Injecting message from previous step...')
+        previous_result[:message]
+      end
+    end
+
     # --- REFACTORED: execute_plan now returns hash { details: [...], last_result: original_hash } ---
     # Executes a plan, logging tool request/result events via the session service.
     # @param plan [Hash, Array] The plan from the planner, either as a hash with :thought_process and :steps, or as an array of steps.
@@ -934,41 +982,8 @@ module ADK
         ADK.logger.debug("  Step details: #{step.inspect}")
         ADK.logger.debug("  Input (result hash from previous step): #{previous_step_result_hash.inspect}")
 
-        # --- Input Injection Logic (Updated for job_id) ---
-        current_params = step[:params].dup
-        current_params.transform_values! do |value|
-          injection_value = nil
-          if value.is_a?(String) && value.match?(/\[Result from step \d+\]|\[Result from previous step\]/i)
-            if previous_step_result_hash && %i[success pending].include?(previous_step_result_hash[:status])
-              # Prioritize :result, then :job_id (was workflow_id), then :message
-              if previous_step_result_hash.key?(:result)
-                prev_result = previous_step_result_hash[:result]
-                if prev_result.is_a?(Hash) && prev_result.key?(:status) && prev_result.key?(:result) # AgentTool nested result
-                  injection_value = prev_result[:result]
-                  ADK.logger.debug('Injecting nested result...')
-                else
-                  injection_value = prev_result
-                  ADK.logger.debug('Injecting direct result...')
-                end
-              elsif previous_step_result_hash.key?(:job_id) # <-- CHANGED from workflow_id
-                injection_value = previous_step_result_hash[:job_id]
-                ADK.logger.debug('Injecting job_id from previous step...')
-              elsif previous_step_result_hash.key?(:message)
-                injection_value = previous_step_result_hash[:message]
-                ADK.logger.debug('Injecting message from previous step...')
-              else
-                ADK.logger.warn("Cannot inject: Previous successful/pending step missing usable key (:result, :job_id, :message). Prev Hash: #{previous_step_result_hash.inspect}")
-                value
-              end
-            else
-              ADK.logger.warn("Cannot inject: Previous step failed or absent. Prev Hash: #{previous_step_result_hash.inspect}")
-              value
-            end
-            injection_value || value # Use injection if found, otherwise keep original
-          else
-            value # Not a placeholder string, keep original value
-          end
-        end
+        # --- Input Injection Logic ---
+        current_params = _resolve_step_params(step, previous_step_result_hash)
         step_with_injected_params = step.merge(params: current_params)
         ADK.logger.debug("  Params after potential injection: #{current_params.inspect}")
         # --- End Input Injection Logic ---
