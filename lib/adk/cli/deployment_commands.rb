@@ -616,12 +616,12 @@ module ADK
 
         # 1. Create or check configuration
         # Use describe to check existence non-destructively
-        `gcloud config configurations describe #{config_name} > /dev/null 2>&1`
+        `gcloud config configurations describe #{Shellwords.escape(config_name)} > /dev/null 2>&1`
         if $?.success?
           say "Configuration '#{config_name}' already exists. Settings will be updated.", :yellow
         else
           # Try to create (use --no-activate)
-          unless run_gcloud_command("config configurations create #{config_name} --no-activate",
+          unless run_gcloud_command("config configurations create #{Shellwords.escape(config_name)} --no-activate",
                                     "Failed to create gcloud configuration '#{config_name}'.")
             return nil # Failed, can't set properties
           end
@@ -630,9 +630,9 @@ module ADK
         end
 
         # 2. Set properties
-        run_gcloud_command("config set project #{project_id} --configuration=#{config_name}",
+        run_gcloud_command("config set project #{Shellwords.escape(project_id)} --configuration=#{Shellwords.escape(config_name)}",
                            'Failed to set project in gcloud config.')
-        run_gcloud_command("config set compute/region #{region} --configuration=#{config_name}",
+        run_gcloud_command("config set compute/region #{Shellwords.escape(region)} --configuration=#{Shellwords.escape(config_name)}",
                            'Failed to set region in gcloud config.')
         # Add other relevant defaults? e.g., run/region?
         # run_gcloud_command("config set run/region #{region} --configuration=#{config_name}", "Failed to set run/region in gcloud config.")
