@@ -50,14 +50,39 @@ module ADK
         end
       end
 
+      # Class methods mixed into the Tool class to provide the DSL.
       module ClassMethods
-        # DSL method for setting description
+        # Sets the description for the tool.
+        #
+        # This description is used by the Planner to decide when and how to use this tool.
+        #
+        # @param text [String] The description of the tool's functionality.
+        # @return [String] The set description.
         def tool_description(text)
           initialize_dsl_storage # Ensure vars exist
           self.description = text.to_s
         end
 
-        # DSL method for defining a parameter
+        # DSL method for defining a parameter.
+        #
+        # Defines a parameter that the tool accepts, including its type, whether it's required,
+        # and a description for the LLM.
+        #
+        # @param name [Symbol] The name of the parameter.
+        # @param options [Hash] Configuration options for the parameter.
+        # @option options [Symbol] :type The data type of the parameter.
+        #   Supported types: :string (default), :integer, :float, :boolean, :array, :hash.
+        # @option options [String] :description A description of what the parameter is for.
+        #   Critical for the LLM to understand how to use the tool.
+        # @option options [Boolean] :required (false) Whether this parameter must be provided.
+        #
+        # @example Defining a required string parameter
+        #   parameter :location, type: :string, description: 'The city name', required: true
+        #
+        # @example Defining an optional integer parameter
+        #   parameter :limit, type: :integer, description: 'Max items to return', required: false
+        #
+        # @return [void]
         def parameter(name, options = {})
           initialize_dsl_storage # Ensure hash exists
           raise ArgumentError, 'Parameter name must be a Symbol' unless name.is_a?(Symbol)
@@ -83,10 +108,13 @@ module ADK
           inferred.to_sym
         end
 
-        # Get the final tool name with priority:
+        # Get the final tool name with priority.
+        #
         # 1. DSL's explicit_tool_name
         # 2. define_metadata's @tool_name
         # 3. Inferred name
+        #
+        # @return [Symbol, nil] The resolved tool name.
         def effective_tool_name
           initialize_dsl_storage # Ensure @explicit_tool_name exists
           explicit_dsl = self.explicit_tool_name
