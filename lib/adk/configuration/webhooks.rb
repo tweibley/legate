@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'adk/session_service/base'
+require 'openssl'
 
 module ADK
   class Configuration
@@ -45,6 +46,23 @@ module ADK
         @default_session_service = nil
         @validators = {}
         @static_routes = {} # Store static routes: path -> RouteConfig
+
+        # Default Validators
+        register_validator(:hmac_sha256) do |request, secret|
+          next false unless secret
+
+          signature_header = request.env['HTTP_X_HUB_SIGNATURE_256']
+          next false unless signature_header&.start_with?('sha256=')
+
+          expected_signature = signature_header.delete_prefix('sha256=')
+          request.body.rewind
+          payload_body = request.body.read
+          request.body.rewind
+          calculated_signature = OpenSSL::HMAC.hexdigest('sha256', secret, payload_body)
+          calculated_signature.bytesize == expected_signature.bytesize && OpenSSL.fixed_length_secure_compare(
+            calculated_signature, expected_signature
+          )
+        end
       end
 
       # Registers a named validator proc/lambda.

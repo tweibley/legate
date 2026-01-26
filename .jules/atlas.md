@@ -12,3 +12,8 @@
 
 **Action:** Created `lib/adk/tool_loader.rb` to encapsulate file traversal and loading. Refactored `ADK::Agent` to delegate to this new module. This maintains the same behavior but enforces better module boundaries.
 
+## 2025-12-19 - Centralized Configuration vs. Cohesion
+
+**Issue:** The root `lib/adk.rb` file was injecting default validator logic into `ADK::Configuration::Webhooks` from the outside. This created a split in logic (configuration object + external defaults) and hid dependencies (`openssl`). It also concealed a critical bug where `return` was used inside a block that might be executed later, risking process termination.
+**Learning:** Logic that belongs to a configuration object's default state should reside within that object's initialization, not in the framework bootstrap file. Moving logic to the correct home (high cohesion) often reveals subtle bugs caused by the awkward original context.
+**Action:** Moved the default `hmac_sha256` validator registration into `ADK::Configuration::Webhooks#initialize`, fixed the `return` vs `next` bug, and made dependencies explicit.

@@ -18,7 +18,7 @@ RSpec.describe ADK::Configuration::Webhooks do
       expect(config.global_validator).to be_nil
       expect(config.global_secret).to be_nil
       expect(config.default_session_service).to be_nil
-      expect(config.instance_variable_get(:@validators)).to eq({})
+      expect(config.instance_variable_get(:@validators).keys).to contain_exactly(:hmac_sha256)
       expect(config.static_routes).to eq({})
     end
 

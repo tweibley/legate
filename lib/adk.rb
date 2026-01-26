@@ -9,7 +9,6 @@ require 'sidekiq'
 require_relative 'adk/version'
 require 'redis'
 require 'forwardable'
-require 'openssl' # For HMAC in validator
 
 # --- Eager Logger Initialization (Moved BEFORE other ADK requires) ---
 module ADK
@@ -142,24 +141,6 @@ module ADK
   rescue StandardError => e # Catch potential NoMethodError if logger is somehow still nil
     puts "[WARN] Error configuring Sidekiq, logger might not be available: #{e.message}"
   end
-
-  # --- NEW: Register Core Webhook Validators --- #
-  config.webhooks.register_validator(:hmac_sha256) do |request, secret|
-    return false unless secret
-
-    signature_header = request.env['HTTP_X_HUB_SIGNATURE_256']
-    return false unless signature_header&.start_with?('sha256=')
-
-    expected_signature = signature_header.delete_prefix('sha256=')
-    request.body.rewind
-    payload_body = request.body.read
-    request.body.rewind
-    calculated_signature = OpenSSL::HMAC.hexdigest('sha256', secret, payload_body)
-    calculated_signature.bytesize == expected_signature.bytesize && OpenSSL.fixed_length_secure_compare(
-      calculated_signature, expected_signature
-    )
-  end
-  # --- END NEW --- #
 
   # Reset configuration (mainly for testing)
   def self.reset_config!

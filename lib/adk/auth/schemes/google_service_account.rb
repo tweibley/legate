@@ -5,6 +5,7 @@ require 'json'
 require 'net/http'
 require 'base64'
 require 'time'
+require 'openssl'
 require_relative 'service_account'
 
 module ADK
@@ -115,4 +116,4 @@ module ADK
       end
     end
   end
-end 
+end
