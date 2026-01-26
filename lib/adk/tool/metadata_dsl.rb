@@ -51,13 +51,42 @@ module ADK
       end
 
       module ClassMethods
-        # DSL method for setting description
+        # Set the description of the tool.
+        #
+        # @param text [String] The description of what the tool does.
+        #
+        # @example
+        #   tool_description "Calculates the sum of two numbers"
         def tool_description(text)
           initialize_dsl_storage # Ensure vars exist
           self.description = text.to_s
         end
 
-        # DSL method for defining a parameter
+        # Define a parameter for the tool.
+        #
+        # @param name [Symbol] The name of the parameter.
+        # @param options [Hash] Configuration options for the parameter.
+        # @option options [Symbol] :type The data type of the parameter.
+        #   Supported types:
+        #   * `:string` - Coerces to String.
+        #   * `:integer` - Coerces to Integer.
+        #   * `:float`, `:numeric` - Coerces to Float.
+        #   * `:boolean` - Coerces to true/false.
+        #   * `:array` - Expects Array or parses JSON string.
+        #   * `:hash` - Expects Hash or parses JSON string.
+        # @option options [String] :description A description of the parameter.
+        # @option options [Boolean] :required (false) Whether the parameter is required.
+        #
+        # @raise [ArgumentError] if the name is not a Symbol.
+        #
+        # @example Defining a required string parameter
+        #   parameter :username, type: :string, description: "The username", required: true
+        #
+        # @example Defining an optional integer parameter
+        #   parameter :count, type: :integer, description: "Number of items", required: false
+        #
+        # @example Defining an array parameter
+        #   parameter :tags, type: :array, description: "List of tags"
         def parameter(name, options = {})
           initialize_dsl_storage # Ensure hash exists
           raise ArgumentError, 'Parameter name must be a Symbol' unless name.is_a?(Symbol)
