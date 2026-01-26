@@ -20,6 +20,17 @@ module ADK
     # @return [String, nil] The model name being used.
     attr_reader :model_name
 
+    # Regex constants for parsing LLM responses
+    # Extracted to constants to avoid recompilation
+    JSON_CODE_BLOCK_PATTERN = /```(?:json)?\s*(\{.*?\})\s*```/m.freeze
+    JSON_OBJECT_PATTERN = /(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})/m.freeze
+    SIMPLE_JSON_PATTERN = /\{.*\}/m.freeze
+    MARKDOWN_CODE_BLOCK_PATTERN = /```[\s\S]*?```/.freeze
+    JSON_LIKE_PATTERN = /\{[\s\S]*\}/.freeze
+    JSON_ARRAY_PATTERN = /(\[.*\])/m.freeze
+    JSON_CODE_BLOCK_ARRAY_PATTERN = /```json\s*(.*?)\s*```/m.freeze
+    GENERIC_CODE_BLOCK_PATTERN = /```\s*(.*?)\s*```/m.freeze
+
     # Initializes a new Planner instance.
     #
     # @param agent [ADK::Agent] The agent that owns this planner.
@@ -457,7 +468,7 @@ module ADK
       candidate_json = nil
 
       # Method 1: Extract JSON array using regex - find anything between square brackets
-      json_array_match = response_text.match(/(\[.*\])/m)
+      json_array_match = response_text.match(JSON_ARRAY_PATTERN)
       if json_array_match
         # Use the matched array part
         candidate_json = json_array_match[1].strip
@@ -467,12 +478,12 @@ module ADK
         clean_text = response_text.strip
         if clean_text.include?('```json')
           # Extract content from ```json ... ``` block
-          match = clean_text.match(/```json\s*(.*?)\s*```/m)
+          match = clean_text.match(JSON_CODE_BLOCK_ARRAY_PATTERN)
           candidate_json = match ? match[1].strip : clean_text
           logger.debug('Extracted from ```json block')
         elsif clean_text.include?('```')
           # Extract content from ``` ... ``` block
-          match = clean_text.match(/```\s*(.*?)\s*```/m)
+          match = clean_text.match(GENERIC_CODE_BLOCK_PATTERN)
           candidate_json = match ? match[1].strip : clean_text
           logger.debug('Extracted from ``` block')
         else
@@ -519,7 +530,7 @@ module ADK
       parsed_json = nil
 
       # Method 1: Try to extract from markdown code block (```json ... ```)
-      json_code_block_match = llm_response.match(/```(?:json)?\s*(\{.*?\})\s*```/m)
+      json_code_block_match = llm_response.match(JSON_CODE_BLOCK_PATTERN)
       if json_code_block_match
         begin
           parsed_json = JSON.parse(json_code_block_match[1])
@@ -532,8 +543,7 @@ module ADK
       # Method 2: Try direct JSON object extraction (greedy match from first { to last })
       unless parsed_json
         # Use a non-greedy inner match but capture the full object structure
-        json_pattern = /(\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})/m
-        json_match = llm_response.match(json_pattern)
+        json_match = llm_response.match(JSON_OBJECT_PATTERN)
         if json_match
           begin
             parsed_json = JSON.parse(json_match[1])
@@ -546,8 +556,7 @@ module ADK
 
       # Method 3: Try the simple greedy pattern as fallback
       unless parsed_json
-        simple_pattern = /\{.*\}/m
-        simple_match = llm_response.match(simple_pattern)
+        simple_match = llm_response.match(SIMPLE_JSON_PATTERN)
         if simple_match
           begin
             parsed_json = JSON.parse(simple_match[0])
@@ -637,8 +646,8 @@ module ADK
       # Try to find any meaningful content from the response
       # Remove markdown code blocks and JSON-like structures
       clean_response = llm_response
-                       .gsub(/```[\s\S]*?```/, '') # Remove code blocks
-                       .gsub(/\{[\s\S]*\}/, '')    # Remove JSON objects
+                       .gsub(MARKDOWN_CODE_BLOCK_PATTERN, '') # Remove code blocks
+                       .gsub(JSON_LIKE_PATTERN, '')    # Remove JSON objects
                        .strip
 
       # If we have some clean text, use it (truncated if too long)

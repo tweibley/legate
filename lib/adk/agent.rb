@@ -52,6 +52,10 @@ module ADK
 
     # --- End Authentication Instance Variables ---
 
+    # Regex for detecting result injection placeholders in parameters
+    # Extracted to constant to avoid recompilation
+    RESULT_INJECTION_PATTERN = /\[Result from step \d+\]|\[Result from previous step\]/i.freeze
+
     # --- Builder Class for `define` method ---
     # class AgentBuilder
     #   ...
@@ -938,7 +942,7 @@ module ADK
         current_params = step[:params].dup
         current_params.transform_values! do |value|
           injection_value = nil
-          if value.is_a?(String) && value.match?(/\[Result from step \d+\]|\[Result from previous step\]/i)
+          if value.is_a?(String) && value.match?(RESULT_INJECTION_PATTERN)
             if previous_step_result_hash && %i[success pending].include?(previous_step_result_hash[:status])
               # Prioritize :result, then :job_id (was workflow_id), then :message
               if previous_step_result_hash.key?(:result)
