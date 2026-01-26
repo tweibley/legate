@@ -46,6 +46,24 @@ unless defined?(DummyTestTool)
   end
 end
 
+# Define a Dummy Coercion Tool for testing type conversions
+unless defined?(DummyCoercionTool)
+  class DummyCoercionTool < ADK::Tool
+    self.explicit_tool_name = :coercion_tool
+    tool_description 'Coercion Test Tool'
+
+    parameter :int_val, type: :integer
+    parameter :float_val, type: :float
+    parameter :bool_val, type: :boolean
+    parameter :arr_val, type: :array
+    parameter :hash_val, type: :hash
+
+    def perform_execution(params, _context)
+      { status: :success, result: params }
+    end
+  end
+end
+
 RSpec.describe ADK::Tool do
   # Create a registry instance for tests that might need it (though many operate on the instance directly)
   let(:registry) { ADK::ToolRegistry.new }
@@ -111,6 +129,68 @@ RSpec.describe ADK::Tool do
 
     it 'raises error if required parameters are missing' do
       expect { tool_instance.validate_params({}) }.to raise_error(ADK::Error, /Missing required parameters for tool 'dummy': req/)
+    end
+  end
+
+  describe 'parameter coercion' do
+    let(:coercion_tool) { DummyCoercionTool.new }
+
+    context 'integer parameters' do
+      it 'coerces valid values' do
+        { '123' => 123, 456 => 456 }.each do |input, expected|
+          expect(coercion_tool.execute(int_val: input)[:result][:int_val]).to eq(expected)
+        end
+      end
+
+      it 'raises error for invalid values' do
+        expect { coercion_tool.execute(int_val: 'abc') }.to raise_error(ADK::ToolArgumentError, /expected Integer/)
+      end
+    end
+
+    context 'float parameters' do
+      it 'coerces valid values' do
+        { '12.34' => 12.34, 56.78 => 56.78 }.each do |input, expected|
+          expect(coercion_tool.execute(float_val: input)[:result][:float_val]).to eq(expected)
+        end
+      end
+
+      it 'raises error for invalid values' do
+        expect { coercion_tool.execute(float_val: 'abc') }.to raise_error(ADK::ToolArgumentError, %r{expected Numeric/Float})
+      end
+    end
+
+    context 'boolean parameters' do
+      it 'coerces valid values' do
+        truthy = %w[true yes 1]
+        falsy = %w[false no 0]
+
+        truthy.each { |val| expect(coercion_tool.execute(bool_val: val)[:result][:bool_val]).to be true }
+        falsy.each { |val| expect(coercion_tool.execute(bool_val: val)[:result][:bool_val]).to be false }
+      end
+
+      it 'raises error for invalid values' do
+        expect { coercion_tool.execute(bool_val: 'maybe') }.to raise_error(ADK::ToolArgumentError, /expected Boolean/)
+      end
+    end
+
+    context 'complex types (array/hash)' do
+      it 'handles JSON strings and raw values' do
+        cases = {
+          arr_val: { '[1, 2]' => [1, 2], [3] => [3] },
+          hash_val: { '{"a": 1}' => { 'a' => 1 }, { b: 2 } => { b: 2 } }
+        }
+
+        cases.each do |param, examples|
+          examples.each do |input, expected|
+            expect(coercion_tool.execute(param => input)[:result][param]).to eq(expected)
+          end
+        end
+      end
+
+      it 'raises error for invalid JSON' do
+        expect { coercion_tool.execute(arr_val: 'bad') }.to raise_error(ADK::ToolArgumentError, /expected Array/)
+        expect { coercion_tool.execute(hash_val: 'bad') }.to raise_error(ADK::ToolArgumentError, /expected Hash/)
+      end
     end
   end
 
