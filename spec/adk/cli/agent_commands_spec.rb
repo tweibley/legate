@@ -129,8 +129,8 @@ RSpec.describe ADK::CLI::AgentCommands do
         allow(ADK::AgentDefinitionStore).to receive(:all).and_return({ agent_one: agent1_def, agent_two: agent2_def })
         invoke_command(:list)
         expect(output.string).to include('Defined Agents:')
-        expect(output.string).to include('- agent_one: First agent (Model: gemini-1.5-pro, Tools: mock_cli_tool)')
-        expect(output.string).to include("- agent_two: Second agent (Model: #{ADK::Agent::DEFAULT_MODEL}, Tools: None)")
+        expect(output.string).to include('- agent_one: First agent (Status: stopped, Model: gemini-1.5-pro, Tools: mock_cli_tool)')
+        expect(output.string).to include("- agent_two: Second agent (Status: stopped, Model: #{ADK::Agent::DEFAULT_MODEL}, Tools: None)")
         expect(output.string).not_to include('agent_three') # Ensure it doesn't list agent 3 here
       end
 
@@ -142,7 +142,7 @@ RSpec.describe ADK::CLI::AgentCommands do
                                                                        agent_three: agent3_def })
         invoke_command(:list)
         expect(output.string).to include('Defined Agents:')
-        expect(output.string).to include('- agent_three: [No description] (Model: gemini-1.5-pro, Tools: mock_cli_tool)')
+        expect(output.string).to include('- agent_three: [No description] (Status: stopped, Model: gemini-1.5-pro, Tools: mock_cli_tool)')
         expect(output.string).to include('- agent_one: First agent')
         expect(output.string).to include('- agent_two: Second agent')
       end

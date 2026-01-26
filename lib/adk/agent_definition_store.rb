@@ -115,7 +115,7 @@ module ADK
       key = agent_redis_key(name_str)
       redis = Redis.new(ADK.redis_options)
 
-      fields = ['description', 'tools', 'model', 'instruction', 'fallback_mode', 'mcp_servers_json', 'webhook_enabled', 'webhook_secret']
+      fields = %w[description tools model instruction fallback_mode mcp_servers_json webhook_enabled webhook_secret persistent_status]
       data = redis.hmget(key, *fields)
       return nil unless data[0] # Return nil if description (and thus agent) not found
 
@@ -127,7 +127,8 @@ module ADK
         fallback_mode: data[4] ? data[4].to_sym : :error, # Convert to symbol, default to :error
         mcp_servers_json: data[5] || '[]', # Default to empty JSON array string
         webhook_enabled: data[6] == 'true', # Convert 'true' string to true, others to false
-        webhook_secret: data[7] # Will be nil if not set, or empty string
+        webhook_secret: data[7], # Will be nil if not set, or empty string
+        persistent_status: data[8] || 'stopped' # Default to 'stopped' if not set
       }
     rescue Redis::BaseError => e
       ADK.logger.error("AgentDefinitionStore: Failed to load '#{name_str}' from Redis: #{e.message}")
@@ -159,7 +160,7 @@ module ADK
 
       # Use pipelining for efficiency
       definitions_data = redis.pipelined do |pipe|
-        fields = ['description', 'tools', 'model', 'instruction', 'fallback_mode', 'mcp_servers_json', 'webhook_enabled', 'webhook_secret']
+        fields = %w[description tools model instruction fallback_mode mcp_servers_json webhook_enabled webhook_secret persistent_status]
         agent_names.each { |name| pipe.hmget(agent_redis_key(name), *fields) }
       end
 
@@ -174,7 +175,8 @@ module ADK
               fallback_mode: data[4] ? data[4].to_sym : :error,
               mcp_servers_json: data[5] || '[]',
               webhook_enabled: data[6] == 'true',
-              webhook_secret: data[7]
+              webhook_secret: data[7],
+              persistent_status: data[8] || 'stopped'
             }
             register(name, definition) # Register in memory
             loaded_count += 1

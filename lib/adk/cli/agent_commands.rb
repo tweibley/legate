@@ -241,8 +241,9 @@ module ADK
             description = data[:description] || '[No description]'
             tools = data[:tools]
             model = data[:model] || "#{ADK::Agent::DEFAULT_MODEL} (Default)"
+            status = data[:persistent_status] || 'stopped'
             tools_str = tools.empty? ? 'None' : tools.join(', ')
-            say "- #{name}: #{description} (Model: #{model}, Tools: #{tools_str})"
+            say "- #{name}: #{description} (Status: #{status}, Model: #{model}, Tools: #{tools_str})"
           end
         end
       end

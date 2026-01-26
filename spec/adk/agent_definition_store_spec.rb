@@ -34,7 +34,8 @@ RSpec.describe ADK::AgentDefinitionStore do
     test_agent_def.merge( # .to_s conversion for some fields happens on save, then back to type on load
       tools: test_agent_def[:tools].map(&:to_s), # tools are stringified on save, parsed back
       fallback_mode: test_agent_def[:fallback_mode].to_sym, # Stored as string, loaded as symbol
-      webhook_enabled: test_agent_def[:webhook_enabled] # Stored as 'true'/'false', loaded as boolean
+      webhook_enabled: test_agent_def[:webhook_enabled], # Stored as 'true'/'false', loaded as boolean
+      persistent_status: 'stopped' # Default retrieved value
     )
   end
 
@@ -198,16 +199,17 @@ RSpec.describe ADK::AgentDefinitionStore do
         test_agent_def[:fallback_mode].to_s,
         test_agent_def[:mcp_servers_json].to_s,
         test_agent_def[:webhook_enabled].to_s,
-        test_agent_def[:webhook_secret].to_s
+        test_agent_def[:webhook_secret].to_s,
+        'stopped'
       ]
-      fields_to_load = %w[description tools model instruction fallback_mode mcp_servers_json webhook_enabled webhook_secret]
+      fields_to_load = %w[description tools model instruction fallback_mode mcp_servers_json webhook_enabled webhook_secret persistent_status]
       expect(mock_redis).to receive(:hmget).with(redis_key, *fields_to_load).and_return(redis_data)
       loaded_def = described_class.load_from_redis(test_agent_name)
       expect(loaded_def).to eq(test_agent_def_loaded)
     end
 
     it 'returns nil if agent not found in Redis' do
-      fields_to_load = %w[description tools model instruction fallback_mode mcp_servers_json webhook_enabled webhook_secret]
+      fields_to_load = %w[description tools model instruction fallback_mode mcp_servers_json webhook_enabled webhook_secret persistent_status]
       # Simulate not found: description (index 0) is nil
       not_found_data = [nil] + Array.new(fields_to_load.length - 1)
       expect(mock_redis).to receive(:hmget).with(redis_key, *fields_to_load).and_return(not_found_data)
@@ -215,7 +217,7 @@ RSpec.describe ADK::AgentDefinitionStore do
     end
 
     it 'handles missing model with default' do
-      fields_to_load = %w[description tools model instruction fallback_mode mcp_servers_json webhook_enabled webhook_secret]
+      fields_to_load = %w[description tools model instruction fallback_mode mcp_servers_json webhook_enabled webhook_secret persistent_status]
       redis_data_missing_model = [
         test_agent_def[:description].to_s,
         test_agent_def[:tools].to_json,
@@ -224,7 +226,8 @@ RSpec.describe ADK::AgentDefinitionStore do
         default_loaded_values[:fallback_mode].to_s,
         default_loaded_values[:mcp_servers_json].to_s,
         default_loaded_values[:webhook_enabled].to_s,
-        default_loaded_values[:webhook_secret].to_s
+        default_loaded_values[:webhook_secret].to_s,
+        'stopped'
       ]
       expect(mock_redis).to receive(:hmget).with(redis_key, *fields_to_load).and_return(redis_data_missing_model)
       loaded_def = described_class.load_from_redis(test_agent_name)
@@ -235,7 +238,7 @@ RSpec.describe ADK::AgentDefinitionStore do
     end
 
     it 'handles invalid tools JSON gracefully' do
-      fields_to_load = %w[description tools model instruction fallback_mode mcp_servers_json webhook_enabled webhook_secret]
+      fields_to_load = %w[description tools model instruction fallback_mode mcp_servers_json webhook_enabled webhook_secret persistent_status]
       redis_data_invalid_tools = [
         test_agent_def[:description].to_s,
         '[invalid JSON', # Invalid tools JSON
@@ -244,7 +247,8 @@ RSpec.describe ADK::AgentDefinitionStore do
         default_loaded_values[:fallback_mode].to_s,
         default_loaded_values[:mcp_servers_json].to_s,
         default_loaded_values[:webhook_enabled].to_s,
-        default_loaded_values[:webhook_secret].to_s
+        default_loaded_values[:webhook_secret].to_s,
+        'stopped'
       ]
       expect(mock_redis).to receive(:hmget).with(redis_key, *fields_to_load).and_return(redis_data_invalid_tools)
       expect(ADK.logger).to receive(:error).with(/Failed to parse tools JSON.*invalid/)
@@ -271,7 +275,8 @@ RSpec.describe ADK::AgentDefinitionStore do
         test_agent_def[:description].to_s, test_agent_def[:tools].to_json, test_agent_def[:model].to_s,
         test_agent_def[:instruction].to_s, test_agent_def[:fallback_mode].to_s,
         test_agent_def[:mcp_servers_json].to_s, test_agent_def[:webhook_enabled].to_s,
-        test_agent_def[:webhook_secret].to_s
+        test_agent_def[:webhook_secret].to_s,
+        'stopped'
       ]
     end
     let(:redis_data2) do
@@ -279,10 +284,11 @@ RSpec.describe ADK::AgentDefinitionStore do
         agent2_def[:description].to_s, agent2_def[:tools].to_json, agent2_def[:model].to_s,
         agent2_def[:instruction].to_s, agent2_def[:fallback_mode].to_s,
         agent2_def[:mcp_servers_json].to_s, agent2_def[:webhook_enabled].to_s,
-        agent2_def[:webhook_secret].to_s
+        agent2_def[:webhook_secret].to_s,
+        'stopped'
       ]
     end
-    let(:fields_to_load_all) { %w[description tools model instruction fallback_mode mcp_servers_json webhook_enabled webhook_secret] }
+    let(:fields_to_load_all) { %w[description tools model instruction fallback_mode mcp_servers_json webhook_enabled webhook_secret persistent_status] }
 
     before do
       allow(mock_redis).to receive(:smembers).with(redis_set_key).and_return(agent_names)
@@ -319,6 +325,7 @@ RSpec.describe ADK::AgentDefinitionStore do
       expect(loaded_agent1[:mcp_servers_json]).to eq(test_agent_def[:mcp_servers_json])
       expect(loaded_agent1[:webhook_enabled]).to eq(test_agent_def[:webhook_enabled])
       expect(loaded_agent1[:webhook_secret]).to eq(test_agent_def[:webhook_secret])
+      expect(loaded_agent1[:persistent_status]).to eq('stopped')
 
       loaded_agent2 = described_class.find(agent2_name)
       expect(loaded_agent2[:description]).to eq(agent2_def[:description])
@@ -327,6 +334,7 @@ RSpec.describe ADK::AgentDefinitionStore do
       expect(loaded_agent2[:instruction]).to eq(agent2_def[:instruction])
       expect(loaded_agent2[:fallback_mode]).to eq(agent2_def[:fallback_mode].to_sym)
       expect(loaded_agent2[:webhook_enabled]).to eq(agent2_def[:webhook_enabled])
+      expect(loaded_agent2[:persistent_status]).to eq('stopped')
     end
 
     it 'clears existing definitions before loading' do
