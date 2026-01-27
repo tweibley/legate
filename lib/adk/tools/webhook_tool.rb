@@ -50,6 +50,7 @@ module ADK
         begin
           uri = URI.parse(target_url)
           raise URI::InvalidURIError, 'URL must be http or https' unless uri.is_a?(URI::HTTP) || uri.is_a?(URI::HTTPS)
+
           validate_url_security(uri.host)
         rescue URI::InvalidURIError => e
           raise ADK::ToolArgumentError, "Invalid URL provided: #{target_url} - #{e.message}", cause: e
@@ -81,7 +82,7 @@ module ADK
           ADK.logger.debug { "WebhookTool: Calculated signature: #{request_headers['X-Hub-Signature-256']}" }
         end
 
-        ADK.logger.info("WebhookTool: Sending POST to #{target_url}")
+        ADK.logger.info("WebhookTool: Sending POST to #{redact_url(target_url)}")
 
         begin
           # Pass the custom headers; make_request adds defaults if needed
@@ -89,7 +90,7 @@ module ADK
           ADK.logger.info("WebhookTool: Received response status: #{response.status}")
           { status: :success, result: { response_status: response.status, response_body: response.body } }
         rescue ADK::ToolError => e
-          ADK.logger.error("WebhookTool: Error sending webhook to #{target_url}: #{e.message}")
+          ADK.logger.error("WebhookTool: Error sending webhook to #{redact_url(target_url)}: #{e.message}")
           raise
         end
       end

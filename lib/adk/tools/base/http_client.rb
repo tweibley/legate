@@ -118,6 +118,46 @@ module ADK
 
         private
 
+        SENSITIVE_KEYS = %w[api_key token secret password authorization client_secret x-api-key].freeze
+
+        def redact_url(url)
+          return url.to_s unless url
+
+          uri = URI.parse(url.to_s)
+          return url.to_s unless uri
+
+          if uri.query
+            params = URI.decode_www_form(uri.query)
+            params.map! do |key, value|
+              if SENSITIVE_KEYS.any? { |k| key.to_s.downcase.include?(k) }
+                [key, '[REDACTED]']
+              else
+                [key, value]
+              end
+            end
+            uri.query = URI.encode_www_form(params)
+          end
+          uri.to_s
+        rescue StandardError => e
+          "#{url} (Redaction Failed: #{e.message})"
+        end
+
+        def redact_hash(hash)
+          return hash unless hash.is_a?(Hash)
+
+          hash.each_with_object({}) do |(k, v), memo|
+            memo[k] = if SENSITIVE_KEYS.any? { |sk| k.to_s.downcase.include?(sk) }
+                        '[REDACTED]'
+                      elsif v.is_a?(Hash)
+                        redact_hash(v)
+                      elsif v.is_a?(Array)
+                        v.map { |el| redact_hash(el) }
+                      else
+                        v
+                      end
+          end
+        end
+
         def resolve_target_uri(path)
           parsed_path = URI.parse(path.to_s)
           if parsed_path.is_a?(URI::HTTP) || parsed_path.is_a?(URI::HTTPS)
@@ -200,11 +240,11 @@ module ADK
           end
 
           # 5. Execute Request: Choose client based on absolute vs relative path
-          ADK.logger.info "Executing HTTP #{method.to_s.upcase} request to #{target_uri}"
+          ADK.logger.info "Executing HTTP #{method.to_s.upcase} request to #{redact_url(target_uri)}"
 
           response = nil
           if is_absolute
-            ADK.logger.debug "Using temporary Excon client for absolute URL: #{target_uri}"
+            ADK.logger.debug "Using temporary Excon client for absolute URL: #{redact_url(target_uri)}"
 
             # Prepare options for the temporary Excon client instance
             temp_client_options = @http_connection_options.reject { |k, _| k == :headers }
@@ -219,15 +259,15 @@ module ADK
             # Prepare the params for the .request call (method, body, query, etc., NO headers)
             request_params_for_absolute = request_params.reject { |k, _| k == :headers }
 
-            ADK.logger.debug "Excon Temp Request Params (for .request call): #{request_params_for_absolute.inspect}"
-            ADK.logger.debug "Excon Temp Client Options (for .new call): #{temp_client_options.inspect}"
+            ADK.logger.debug "Excon Temp Request Params (for .request call): #{redact_hash(request_params_for_absolute).inspect}"
+            ADK.logger.debug "Excon Temp Client Options (for .new call): #{redact_hash(temp_client_options).inspect}"
             response = temp_client.request(request_params_for_absolute)
           else
-            ADK.logger.debug "Using persistent Excon client for relative path: #{target_uri}"
+            ADK.logger.debug "Using persistent Excon client for relative path: #{redact_url(target_uri)}"
             # Use the persistent client setup with the base URL
             raise ADK::ToolError, 'Persistent HTTP client not initialized.' unless @http_client
 
-            ADK.logger.debug "Excon Persistent Request Params: #{request_params.inspect}"
+            ADK.logger.debug "Excon Persistent Request Params: #{redact_hash(request_params).inspect}"
             response = @http_client.request(request_params)
           end
 
