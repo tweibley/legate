@@ -4,6 +4,11 @@
 module ADK
   class Error < StandardError; end
 
+  # --- Core Errors ---
+
+  # Raised when a required configuration is missing or invalid
+  class ConfigurationError < Error; end
+
   # Raised when state validation fails
   class StateValidationError < Error; end
 
@@ -16,6 +21,33 @@ module ADK
   # Raised when attempting to modify state directly
   class StateAccessError < Error; end
 
+  # Raised when a tool execution fails
+  class ToolExecutionError < Error; end
+
+  # Raised when a tool's parameters are invalid
+  class InvalidParametersError < Error; end
+
+  # Raised when a background job operation fails
+  class JobError < Error; end
+
+  # Raised when an operation times out
+  class TimeoutError < Error; end
+
+  # Raised when a required dependency is missing
+  class DependencyError < Error; end
+
+  # Error raised during planning phase.
+  class PlanningError < Error; end
+
+  # Error related to session management.
+  class SessionError < Error; end
+
+  # Error related to definition or session storage operations.
+  class StoreError < Error; end
+
+  # Error related to webhook configuration or processing within the listener.
+  class WebhookConfigurationError < Error; end
+
   # --- Tool Errors ---
 
   # Base class for errors raised during tool execution.
@@ -23,17 +55,15 @@ module ADK
   # instead of returning { status: :error, ... }.
   # The agent runtime catches these errors and formats a standard error event.
   # @see ADK::ToolArgumentError
-  class ToolError < Error
-    # Add attributes here if needed later (e.g., tool name, params)
-  end
+  class ToolError < Error; end
 
   # Raised specifically when tool arguments are invalid (e.g., missing, wrong type).
   # Inherits from {ADK::ToolError}.
   # Raise this when input parameters fail validation within the tool's logic.
   class ToolArgumentError < ToolError; end
 
-  # --- Agent and Session Errors ---
-  # Placeholder for potential future errors related to agent lifecycle or session management
+  # Error raised when a required tool is not found.
+  class ToolNotFound < Error; end
 
   # --- MCP Errors ---
   module Mcp
@@ -51,34 +81,6 @@ module ADK
     class Error < ADK::Error; end
     class ConfigurationError < Error; end
     class StoreError < Error; end
-  end
-
-  # Error raised when a required tool is not found.
-  class ToolNotFound < Error; end
-
-  # Error raised during tool execution.
-  class ToolError < Error; end
-
-  # Error raised during planning phase.
-  class PlanningError < Error; end
-
-  # Error related to session management.
-  class SessionError < Error; end
-
-  # Error related to Multi-Capability Protocol (MCP) interactions.
-  class McpError < Error; end
-  class McpConnectionError < McpError; end
-  class McpProtocolError < McpError; end
-  class McpTimeoutError < McpError; end
-
-  # Error related to webhook configuration or processing within the listener.
-  class WebhookConfigurationError < Error; end
-
-  # Define DefinitionStore specific errors (nested or separate?)
-  module DefinitionStore
     class DefinitionNotFound < StoreError; end
   end
-
-  # Error related to definition or session storage operations.
-  class StoreError < Error; end
 end
