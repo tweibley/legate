@@ -343,6 +343,19 @@ RSpec.describe ADK::AgentDefinitionStore do
     end
   end
 
+  describe '.all_names' do
+    it 'returns a list of all agent names from Redis' do
+      expect(mock_redis).to receive(:smembers).with(redis_set_key).and_return([test_agent_name_str])
+      expect(described_class.all_names).to eq([test_agent_name_str])
+    end
+
+    it 'returns an empty array and logs error on Redis failure' do
+      expect(mock_redis).to receive(:smembers).and_raise(Redis::BaseError, 'Connection failed')
+      expect(ADK.logger).to receive(:error).with(/Failed to get all agent names: Connection failed/)
+      expect(described_class.all_names).to eq([])
+    end
+  end
+
   describe '.delete_from_redis' do
     it 'removes the definition hash and set member from Redis' do
       expect(mock_redis).to receive(:del).with(redis_key).and_return(1)

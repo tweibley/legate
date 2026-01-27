@@ -6,3 +6,8 @@
 2. Automatically coerce string inputs to the expected type (Integer, Float, Boolean, JSON Array/Hash) based on DSL definition.
 3. Validate types strictly if coercion fails.
 This improves CLI ergonomics (no need to manually parse strings in tools) and debugging speed.
+
+## 2024-01-27 - Helping Hand for CLI Typos
+
+**Learning:** When users mistype a resource name (like an agent), a generic "Not Found" error is a dead end. Providing a "Did you mean?" suggestion transforms a frustration into a quick recovery.
+**Action:** Always check if a lookup failure might be a typo by comparing against known valid keys, especially in CLI interfaces where exact spelling is required.

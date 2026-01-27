@@ -7,6 +7,7 @@ require 'json'
 require 'yaml'
 require 'fileutils' # For creating directories
 require 'cli/ui'    # Correct require
+require 'did_you_mean'
 require_relative '../tool_registry'
 require_relative '../agent'
 require_relative '../event'
@@ -33,6 +34,13 @@ module ADK
       @@session_service_for_execute = ADK::SessionService::InMemory.new
 
       no_commands do
+        def suggest_agent_message(name)
+          all_names = ADK::AgentDefinitionStore.all_names.map(&:to_s)
+          corrections = DidYouMean::SpellChecker.new(dictionary: all_names).correct(name.to_s)
+          return " Did you mean '#{corrections.first}'?" if corrections.any?
+          nil
+        end
+
         # --- Existing format_cli_result (for 'execute' command) ---
         def format_cli_result(result_data)
           content_to_display = nil
@@ -315,7 +323,7 @@ module ADK
         end
 
         unless definition_exists
-          say "Error: Agent definition '#{name}' not found.", :red
+          say "Error: Agent definition '#{name}' not found.#{suggest_agent_message(name)}", :red
           exit(1)
         end
 
@@ -535,7 +543,7 @@ module ADK
           definition_hash = ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
           unless definition_hash
-            output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+            output_error("Agent definition '#{name}' not found.#{suggest_agent_message(name)}", metadata: { agent: name })
             exit(1)
           end
 
@@ -627,7 +635,7 @@ module ADK
         end
 
         unless definition
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          output_error("Agent definition '#{name}' not found.#{suggest_agent_message(name)}", metadata: { agent: name })
           exit(1)
         end
 
@@ -698,7 +706,7 @@ module ADK
         end
 
         unless definition
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          output_error("Agent definition '#{name}' not found.#{suggest_agent_message(name)}", metadata: { agent: name })
           exit(1)
         end
 
@@ -747,7 +755,7 @@ module ADK
         end
 
         unless definition
-          say "Error: Agent definition '#{name}' not found.", :red
+          say "Error: Agent definition '#{name}' not found.#{suggest_agent_message(name)}", :red
           exit(1)
         end
 
@@ -812,7 +820,7 @@ module ADK
         definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(name_sym)
 
         unless definition_hash
-          output_error("Agent definition '#{name}' not found.", metadata: { agent: name })
+          output_error("Agent definition '#{name}' not found.#{suggest_agent_message(name)}", metadata: { agent: name })
           exit(1)
         end
 
@@ -913,7 +921,7 @@ module ADK
 
         definition = ADK::AgentDefinitionStore.load_from_redis(agent_name_sym)
         unless definition
-          ::CLI::UI.puts "{{red:Error: Agent definition '#{agent_name_str}' not found in Redis.}}"
+          ::CLI::UI.puts "{{red:Error: Agent definition '#{agent_name_str}' not found in Redis.#{suggest_agent_message(agent_name_str)}}}"
           exit(1)
         end
 
