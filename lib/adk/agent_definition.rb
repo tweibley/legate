@@ -6,6 +6,24 @@ require 'json'
 require_relative 'errors'
 
 module ADK
+  # Defines the blueprint for an Agent, including its identity, instructions, and capabilities.
+  #
+  # AgentDefinition uses a DSL (Domain Specific Language) to configure agent properties
+  # such as name, description, tools, model parameters, and behavior callbacks.
+  # These definitions are then used to instantiate {ADK::Agent} objects.
+  #
+  # @example Defining a simple agent
+  #   definition = ADK::AgentDefinition.new.define do |a|
+  #     a.name :my_agent
+  #     a.description 'A helpful assistant'
+  #     a.instruction 'You are a helpful assistant.'
+  #     a.use_tool :echo
+  #     a.model_name 'gemini-1.5-flash'
+  #     a.temperature 0.7
+  #   end
+  #
+  #   agent = ADK::Agent.new(definition: definition)
+  #
   class AgentDefinition
     extend Forwardable
 
