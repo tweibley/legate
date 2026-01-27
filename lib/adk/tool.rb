@@ -87,7 +87,7 @@ module ADK
     # 2. Be discovered via tool_paths when creating agents
     def self.inherited(subclass)
       super # Call parent's inherited if necessary
-      ADK.logger.debug("Tool subclass #{subclass} inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry.")
+      ADK.logger.debug { "Tool subclass #{subclass} inherited. Tool will be registered when explicitly added to GlobalToolManager or an agent's tool registry." }
     end
     # --- End Hook ---
 
@@ -121,7 +121,8 @@ module ADK
     # @return [Hash] A hash with :status (:success, :error, :pending) and :result/:error_message/:workflow_id.
     def execute(params = {}, context = nil)
       coerced_params = validate_and_coerce_params(params)
-      ADK.logger.debug("Executing tool '#{@name}' with validated params: #{coerced_params.inspect} and context: #{context&.to_h.inspect}")
+      # OPTIMIZE: Use block syntax for lazy evaluation to avoid string allocation when debug is off
+      ADK.logger.debug { "Executing tool '#{@name}' with validated params: #{coerced_params.inspect} and context: #{context&.to_h.inspect}" }
       perform_execution(coerced_params, context)
     end
 

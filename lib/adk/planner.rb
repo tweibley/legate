@@ -98,6 +98,7 @@ module ADK
         )
 
         # Call the callback and get modified prompt if returned
+        # OPTIMIZE: Use block syntax for lazy evaluation to avoid string allocation when debug is off
         logger.debug { "Agent '#{@agent.name}': Executing before_model_callback for model input." }
         callback_result = begin
           @agent.before_model_callback.call(modified_prompt, callback_context)
@@ -130,7 +131,7 @@ module ADK
 
         unless raw_response_text
           logger.warn("Gemini response was empty or couldn't find text.")
-          logger.debug("Raw Gemini Response Object: #{response.inspect}")
+          logger.debug { "Raw Gemini Response Object: #{response.inspect}" }
           return { error: 'Gemini response was empty or unparseable.' }
         end
 
@@ -441,7 +442,7 @@ module ADK
     # @param response_text [String] The raw response text from the LLM.
     # @return [Array] The parsed JSON array, or empty array on failure.
     def parse_gemini_response(response_text)
-      logger.debug("Attempting to parse Gemini response text: #{response_text}")
+      logger.debug { "Attempting to parse Gemini response text: #{response_text}" }
 
       # First attempt: try direct JSON parsing
       begin
@@ -450,7 +451,7 @@ module ADK
 
         logger.warn("JSON parsed successfully but not an array: #{parsed.class}")
       rescue JSON::ParserError => e
-        logger.debug("Direct JSON parsing failed: #{e.message}, trying extraction methods")
+        logger.debug { "Direct JSON parsing failed: #{e.message}, trying extraction methods" }
       end
 
       # Try different extraction methods
@@ -525,7 +526,7 @@ module ADK
           parsed_json = JSON.parse(json_code_block_match[1])
           logger.debug('Successfully extracted JSON from markdown code block')
         rescue JSON::ParserError => e
-          logger.debug("Failed to parse JSON from code block: #{e.message}")
+          logger.debug { "Failed to parse JSON from code block: #{e.message}" }
         end
       end
 
@@ -539,7 +540,7 @@ module ADK
             parsed_json = JSON.parse(json_match[1])
             logger.debug('Successfully extracted JSON via regex pattern')
           rescue JSON::ParserError => e
-            logger.debug("Failed to parse extracted JSON: #{e.message}")
+            logger.debug { "Failed to parse extracted JSON: #{e.message}" }
           end
         end
       end
@@ -553,7 +554,7 @@ module ADK
             parsed_json = JSON.parse(simple_match[0])
             logger.debug('Successfully extracted JSON via simple pattern')
           rescue JSON::ParserError => e
-            logger.debug("Failed to parse JSON from simple pattern: #{e.message}")
+            logger.debug { "Failed to parse JSON from simple pattern: #{e.message}" }
           end
         end
       end
