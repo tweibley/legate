@@ -10,3 +10,9 @@
 **Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
 **Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
 
+
+## 2026-01-28 - Mixin API Discoverability
+
+**Gap:** `ADK::Tools::Base::HttpClient` public helpers (`http_get`, etc.) were undocumented, forcing users to read private/protected implementation logic (`make_request`) to understand available options.
+**Learning:** Mixins often provide the "sugar" that users interact with. If these public helpers aren't documented, the convenience is lost.
+**Action:** Ensure public helper methods in mixins have full YARD documentation, even if they just delegate to a shared internal method.

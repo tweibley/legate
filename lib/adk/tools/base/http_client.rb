@@ -34,22 +34,80 @@ module ADK
 
         # Make request helpers public API for tools including this module
 
+        # Performs an HTTP GET request.
+        #
+        # @param path [String] The path relative to the base URL (e.g., "users/1") or an absolute URL.
+        # @param query [Hash] Query parameters to append to the URL (e.g., { page: 1 }).
+        # @param headers [Hash] Additional headers to send with the request.
+        # @param options [Hash] Excon request options (e.g., { read_timeout: 30 }).
+        # @return [Excon::Response] The response object.
+        # @raise [ADK::ToolTimeoutError] If the request times out.
+        # @raise [ADK::ToolNetworkError] If there is a connection error.
+        # @raise [ADK::ToolHttpError] If the response status is not 2xx.
+        # @example Fetch user details
+        #   response = http_get("users/123", query: { details: true })
+        #   data = JSON.parse(response.body)
         def http_get(path, query: {}, headers: {}, options: {})
           make_request(:get, path, query: query, headers: headers, options: options)
         end
 
+        # Performs an HTTP HEAD request.
+        #
+        # @param path [String] The path relative to the base URL or an absolute URL.
+        # @param query [Hash] Query parameters to append to the URL.
+        # @param headers [Hash] Additional headers to send with the request.
+        # @param options [Hash] Excon request options.
+        # @return [Excon::Response] The response object.
+        # @raise [ADK::ToolError] For standard ADK tool errors (timeout, network, HTTP status).
         def http_head(path, query: {}, headers: {}, options: {})
           make_request(:head, path, query: query, headers: headers, options: options)
         end
 
+        # Performs an HTTP POST request.
+        #
+        # Automatically encodes `body` as JSON if it is a Hash and Content-Type is not set or is application/json.
+        #
+        # @param path [String] The path relative to the base URL or an absolute URL.
+        # @param body [Hash, String, nil] The request body. Hashes are JSON-encoded by default.
+        # @param query [Hash] Query parameters to append to the URL.
+        # @param headers [Hash] Additional headers to send with the request.
+        # @param options [Hash] Excon request options.
+        # @return [Excon::Response] The response object.
+        # @raise [ADK::ToolError] For standard ADK tool errors.
+        # @example Create a new resource
+        #   payload = { name: "New Item", value: 100 }
+        #   http_post("items", body: payload)
         def http_post(path, body: nil, query: {}, headers: {}, options: {})
           make_request(:post, path, body: body, query: query, headers: headers, options: options)
         end
 
+        # Performs an HTTP PUT request.
+        #
+        # Automatically encodes `body` as JSON if it is a Hash and Content-Type is not set or is application/json.
+        #
+        # @param path [String] The path relative to the base URL or an absolute URL.
+        # @param body [Hash, String, nil] The request body. Hashes are JSON-encoded by default.
+        # @param query [Hash] Query parameters to append to the URL.
+        # @param headers [Hash] Additional headers to send with the request.
+        # @param options [Hash] Excon request options.
+        # @return [Excon::Response] The response object.
+        # @raise [ADK::ToolError] For standard ADK tool errors.
+        # @example Update a resource
+        #   http_put("items/123", body: { status: "active" })
         def http_put(path, body: nil, query: {}, headers: {}, options: {})
           make_request(:put, path, body: body, query: query, headers: headers, options: options)
         end
 
+        # Performs an HTTP DELETE request.
+        #
+        # @param path [String] The path relative to the base URL or an absolute URL.
+        # @param query [Hash] Query parameters to append to the URL.
+        # @param headers [Hash] Additional headers to send with the request.
+        # @param options [Hash] Excon request options.
+        # @return [Excon::Response] The response object.
+        # @raise [ADK::ToolError] For standard ADK tool errors.
+        # @example Delete a resource
+        #   http_delete("items/123")
         def http_delete(path, query: {}, headers: {}, options: {})
           make_request(:delete, path, query: query, headers: headers, options: options)
         end
