@@ -232,35 +232,7 @@ module ADK
 
         # 7. Enqueue Job
         begin
-          # TODO: Define ADK::WebhookJobWorker class
-          # worker_class = ADK::WebhookJobWorker
-          worker_class_name = 'ADK::WebhookJobWorker' # Use string name for Sidekiq
-
-          # Prepare session service config (assuming Redis for now based on user prompt)
-          # We need the config used by the worker, not necessarily the instance itself.
-          # ADK.redis_options provides the base Redis config hash.
-          session_service_config = ADK.redis_options.dup
-          # Optionally add type marker if multiple service types could be used?
-          # session_service_config[:type] = :redis # Symbols might not serialize well
-
-          # --- Ensure config keys are strings for Sidekiq ---
-          string_key_config = session_service_config.transform_keys(&:to_s)
-          string_key_config['type'] = 'redis' # Use string type marker
-          # --------------------------------------------------
-
-          job_payload = {
-            'agent_definition_name' => agent_name_sym.to_s,
-            'session_id' => session_id,
-            'transformed_user_input' => transformed_user_input,
-            'session_service_config' => string_key_config # Use stringified keys
-          }
-
-          # Use Sidekiq Client API directly
-          job_id = Sidekiq::Client.push(
-            'queue' => 'adk_webhooks', # TODO: Make queue name configurable?
-            'class' => worker_class_name,
-            'args' => [job_payload]
-          )
+          job_id = enqueue_job_to_sidekiq(agent_name_sym, session_id, transformed_user_input)
 
           if job_id.nil?
             logger.error("Failed to enqueue webhook job for agent '#{agent_name_sym}': Sidekiq push returned nil.")
@@ -299,6 +271,36 @@ module ADK
       end
 
       private
+
+      def enqueue_job_to_sidekiq(agent_name_sym, session_id, transformed_user_input)
+        worker_class_name = 'ADK::WebhookJobWorker' # Use string name for Sidekiq
+
+        # Prepare session service config (assuming Redis for now based on user prompt)
+        # We need the config used by the worker, not necessarily the instance itself.
+        # ADK.redis_options provides the base Redis config hash.
+        session_service_config = ADK.redis_options.dup
+        # Optionally add type marker if multiple service types could be used?
+        # session_service_config[:type] = :redis # Symbols might not serialize well
+
+        # --- Ensure config keys are strings for Sidekiq ---
+        string_key_config = session_service_config.transform_keys(&:to_s)
+        string_key_config['type'] = 'redis' # Use string type marker
+        # --------------------------------------------------
+
+        job_payload = {
+          'agent_definition_name' => agent_name_sym.to_s,
+          'session_id' => session_id,
+          'transformed_user_input' => transformed_user_input,
+          'session_service_config' => string_key_config # Use stringified keys
+        }
+
+        # Use Sidekiq Client API directly
+        Sidekiq::Client.push(
+          'queue' => 'adk_webhooks', # TODO: Make queue name configurable?
+          'class' => worker_class_name,
+          'args' => [job_payload]
+        )
+      end
 
       # --- Instance method to set up static routes ---
       def setup_static_routes!
