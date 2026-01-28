@@ -102,6 +102,9 @@ module ADK
       @description = metadata[:description]
       @parameters = metadata[:parameters] || {}
 
+      # Pre-calculate required parameters for faster validation
+      @required_parameters = @parameters.select { |_, p| p[:required] }.keys
+
       # Lenient check for missing metadata
       return unless @name.nil? || @name == :'' || @description.nil? || @description.empty?
 
@@ -139,17 +142,15 @@ module ADK
     # @raise [ADK::ToolArgumentError] if validation fails
     def validate_and_coerce_params(params)
       # 1. Normalize keys to symbols
-      normalized_params = params.transform_keys(&:to_sym)
-
-      current_parameters = @parameters || {}
+      # This creates a new hash which we can then modify in-place for coercion
+      coerced_params = params.transform_keys(&:to_sym)
 
       # 2. Check for missing required parameters
-      # Use symbol keys for check
-      required_param_names = current_parameters.select { |_, p| p[:required] }.keys
-      present_keys = normalized_params.keys
-      missing_params = required_param_names - present_keys
+      # Use pre-calculated @required_parameters for performance
+      missing_params = @required_parameters - coerced_params.keys
 
       unless missing_params.empty?
+        present_keys = coerced_params.keys
         msg = "Missing required parameters for tool '#{@name}': #{missing_params.join(', ')}."
         msg += " Provided: [#{present_keys.empty? ? 'None' : present_keys.join(', ')}]."
 
@@ -158,9 +159,8 @@ module ADK
       end
 
       # 3. Type Validation & Coercion
-      coerced_params = normalized_params.dup
-
-      current_parameters.each do |param_name, param_def|
+      # We iterate over definition to ensure we check types for all provided parameters that match definition
+      (@parameters || {}).each do |param_name, param_def|
         # Only process if present
         next unless coerced_params.key?(param_name)
 
