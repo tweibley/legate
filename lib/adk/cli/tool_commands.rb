@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'thor'
+require 'did_you_mean'
 require_relative '../global_tool_manager' # Require the global manager
 require_relative '../tool_context' # <--- ADDED require
 require 'securerandom' # <-- ADDED require for dummy context
@@ -80,7 +81,11 @@ module ADK
         tool = ADK::GlobalToolManager.create_instance(tool_name_sym)
 
         unless tool
-          output_error("Tool '#{name}' not found in registry.", metadata: { tool: name })
+          msg = "Tool '#{name}' not found in registry."
+          valid_tools = ADK::GlobalToolManager.registered_tool_names.map(&:to_s)
+          suggestion = DidYouMean::SpellChecker.new(dictionary: valid_tools).correct(name).first
+          msg += " Did you mean '#{suggestion}'?" if suggestion
+          output_error(msg, metadata: { tool: name })
           exit(1)
         end
 
@@ -94,7 +99,10 @@ module ADK
             value = parts[1]
 
             unless valid_param_names.include?(key)
-              status_message("Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring.", :yellow)
+              msg = "Warning: Provided parameter '#{key}' is not defined for tool '#{name}'. Ignoring."
+              suggestion = DidYouMean::SpellChecker.new(dictionary: valid_param_names).correct(key).first
+              msg += " Did you mean '#{suggestion}'?" if suggestion
+              status_message(msg, :yellow)
               next
             end
 
