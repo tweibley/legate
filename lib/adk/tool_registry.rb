@@ -13,9 +13,31 @@ module ADK
       @tools = {} # Stores { name_symbol => tool_class } for this instance
     end
 
+    # Register a tool class using its own metadata to determine the name.
+    # @param klass [Class] The tool class (must inherit from ADK::Tool).
+    # @return [Boolean] True if registered, false otherwise.
+    def register_class(klass)
+      unless klass < ADK::Tool
+        ADK.logger.error("ToolRegistry: Attempted to register non-tool class: #{klass.inspect}")
+        return false
+      end
+
+      # Use metadata DSL to determine name
+      metadata = klass.tool_metadata
+      tool_name = metadata[:name]&.to_sym
+
+      if tool_name.nil? || tool_name == :''
+        ADK.logger.error("ToolRegistry: Could not determine a valid tool name for #{klass}. Skipping registration.")
+        return false
+      end
+
+      register(tool_name, klass)
+    end
+
     # Register a tool class with this registry instance.
     # @param name [Symbol] The symbolic name of the tool.
     # @param klass [Class] The tool class (must inherit from ADK::Tool).
+    # @return [Boolean] True if registered, false otherwise.
     def register(name, klass)
       logger = ADK.logger # Get the central logger instance
 
@@ -35,6 +57,11 @@ module ADK
       end
       @tools[name_symbol] = klass
       true # Indicate success
+    end
+
+    # Clears all registered tools.
+    def reset!
+      @tools = {}
     end
 
     # Find a tool class by its name symbol within this registry.
@@ -58,9 +85,13 @@ module ADK
     # Get a list of available tools registered in this instance with basic info.
     # @return [Array<Hash>] An array of hashes, each with :name and :description.
     def list_tools
-      @tools.values.map do |klass|
-        metadata = klass.tool_metadata # Get the full { name:, description:, parameters: } hash
-        metadata # Return the full hash
+      @tools.map do |name_sym, klass|
+        metadata = klass.tool_metadata
+        {
+          name: metadata[:name] || name_sym,
+          description: metadata[:description] || '[No description provided]',
+          parameters: metadata[:parameters] || []
+        }
       end.sort_by { |t| t[:name].to_s }
     end
   end # End ToolRegistry class

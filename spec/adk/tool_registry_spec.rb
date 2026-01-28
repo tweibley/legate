@@ -66,6 +66,40 @@ RSpec.describe ADK::ToolRegistry do
     end
   end
 
+  describe '#register_class' do
+    it 'registers a tool class using its metadata name' do
+      expect(registry.register_class(RegistryMockTool)).to be true
+      expect(registry.find_class(:registry_mock)).to eq(RegistryMockTool)
+    end
+
+    it 'returns false if name cannot be determined' do
+      # RegistryMockToolNoMeta has no explicit name and empty inferred name context?
+      # Actually in tests anonymous classes might have issues inferring unless we assign them to constants.
+      # RegistryMockToolNoMeta is assigned to a constant so it might infer name "registry_mock_tool_no_meta"
+
+      # Let's use an anonymous class that really fails inference or has nil name
+      anon = Class.new(ADK::Tool)
+      allow(anon).to receive(:tool_metadata).and_return({ name: nil })
+
+      expect(logger_spy).to receive(:error).with(/Could not determine a valid tool name/)
+      expect(registry.register_class(anon)).to be false
+    end
+
+    it 'returns false if class is not a tool' do
+      expect(logger_spy).to receive(:error).with(/Attempted to register non-tool class: String/)
+      expect(registry.register_class(String)).to be false
+    end
+  end
+
+  describe '#reset!' do
+    it 'clears all registered tools' do
+      registry.register(:test, RegistryMockTool)
+      expect(registry.instance_variable_get(:@tools)).not_to be_empty
+      registry.reset!
+      expect(registry.instance_variable_get(:@tools)).to be_empty
+    end
+  end
+
   describe '#find_class' do
     before { registry.register(:registry_mock, RegistryMockTool) }
 
@@ -108,8 +142,17 @@ RSpec.describe ADK::ToolRegistry do
       metadata = registry.list_tools
       expect(metadata.size).to eq(2)
       # Need to fetch metadata from the mock classes correctly
-      expect(metadata).to include(RegistryMockTool.tool_metadata)
-      expect(metadata).to include(RegistryErrorTool.tool_metadata)
+
+      expected_mock = RegistryMockTool.tool_metadata
+      expected_mock[:description] ||= '[No description provided]'
+      expected_mock[:parameters] ||= []
+
+      expected_error = RegistryErrorTool.tool_metadata
+      expected_error[:description] ||= '[No description provided]'
+      expected_error[:parameters] ||= []
+
+      expect(metadata).to include(expected_mock)
+      expect(metadata).to include(expected_error)
     end
 
     it 'returns empty array if no tools are registered' do
