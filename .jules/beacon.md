@@ -10,3 +10,8 @@
 **Learning:** The method signature `def execute(params = {}, context = nil)` only handles missing arguments, not explicit `nil`.
 **Action:** Future reliability improvements should guard against `nil` input in `execute` to prevent crashes.
 
+## 2024-05-22 - [Parameter Coercion Edge Cases]
+
+**Gap:** `ADK::Tool` parameter coercion had undefined behavior for edge cases like float-to-integer truncation and JSON parsing for array/hash types.
+**Learning:** `Integer(val)` in Ruby truncates floats (e.g., `12.9` -> `12`) but raises for float-strings (e.g., `"12.9"`). This creates inconsistent behavior depending on input type.
+**Action:** Added comprehensive coercion tests (`spec/adk/tool_coercion_spec.rb`) to document and lock in current behavior, preventing accidental regressions or silent data loss.
