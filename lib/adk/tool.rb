@@ -255,14 +255,28 @@ module ADK
     #
     # This method must be implemented by subclasses to define the tool's behavior.
     #
-    # @param params [Hash] The validated parameters to execute with. Keys are symbols.
-    # @param context [ADK::ToolContext] Contextual information (session, user, state).
+    # @param params [Hash] The validated parameters to execute with.
+    #   Keys are symbols (e.g., `:location`). Values are coerced to the types defined
+    #   in the tool metadata (e.g., "123" -> 123 for :integer).
+    # @param context [ADK::ToolContext] Contextual information.
+    #   Provides access to `context.session_id`, `context.user_id`, and
+    #   methods like `context.state_get(key)` / `context.state_set(key, value)`.
     #
-    # @return [Hash] The result hash containing:
-    #   * :status [Symbol] :success, :error, or :pending
-    #   * :result [Object] The output data (if success)
-    #   * :error_message [String] Error description (if error)
-    #   * :job_id [String] Job ID (if pending/async)
+    # @return [Hash] The result hash. Must contain `:status` and additional keys based on status:
+    #   * `:status` [Symbol] One of `:success`, `:error`, or `:pending`.
+    #   * `:result` [Object] The output data (required if status is `:success`).
+    #   * `:error_message` [String] Error description (required if status is `:error`).
+    #   * `:job_id` [String] Job ID for tracking (required if status is `:pending`).
+    #
+    # @example Successful execution
+    #   { status: :success, result: "The weather is sunny" }
+    #
+    # @example Execution with error
+    #   { status: :error, error_message: "City 'Atlantis' not found" }
+    #
+    # @example Asynchronous execution (pending)
+    #   # Returned by tools that offload work to background jobs
+    #   { status: :pending, job_id: "job_12345" }
     #
     # @raise [NotImplementedError] if the subclass does not implement this method.
     def perform_execution(params, context)

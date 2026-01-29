@@ -1,12 +1,5 @@
-## 2025-12-18 - ADK::Planner Documentation Gap
+## 2024-05-24 - Documenting Base Class Contracts
 
-**Gap:** `ADK::Planner` was undocumented despite being the central orchestration component for LLM planning. Its return structure was implicit.
-**Learning:** Core "brain" components must have explicit contracts documented, especially when they return complex structures like plans parsed from LLM output.
-**Action:** Always document return types of service objects that wrap external APIs or perform complex parsing.
-
-## 2025-12-17 - ADK::Tool Contract Clarity
-
-**Gap:** `ADK::Tool#perform_execution` return type is documented as `Object` but the framework expects a structured Hash `{:status, :result}`, leading to potential runtime errors for new tool developers.
-**Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
-**Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
-
+**Gap:** The abstract method `ADK::Tool#perform_execution` had sparse documentation regarding its return values, specifically the differing requirements for `:success`, `:error`, and `:pending` states.
+**Learning:** For base classes that users are expected to subclass, generic return type documentation is insufficient. Users need to know exactly what keys are required for different outcomes (e.g., `:job_id` for async). Concrete examples for each state are more valuable than a text description.
+**Action:** When documenting abstract methods or interfaces, always include separate `@example` blocks for each distinct return state or mode of operation.
