@@ -1,5 +1,5 @@
-## 2025-12-17 - Missing Setup Script
+## 2024-02-12 - Broken Setup Script
 
-**Friction:** New contributors have to manually install dependencies and create `.env` file based on prose in README.
-**Learning:** `bin/setup` is a standard convention (Scripts to Rule Them All) that is missing here, leading to friction and potential configuration errors.
-**Action:** Created `bin/setup` and `.env.example` to automate the initial environment configuration.
+**Friction:** `bin/setup` failed immediately because `.env.example` was missing from the repository, but the script (and README) relied on it.
+**Learning:** The file was likely ignored by a broad `.env*` pattern in `.gitignore` and never committed, causing the setup process to be broken for all new contributors.
+**Action:** Created `.env.example` and explicitly whitelisted it in `.gitignore` to prevent regression.
