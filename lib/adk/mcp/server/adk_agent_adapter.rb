@@ -7,6 +7,7 @@ require 'json' # Needed to parse tools
 require 'securerandom'
 require_relative '../../agent'
 require_relative '../../tool_registry'
+require_relative '../../agent_definition_store'
 require_relative '../../session_service/base' # Need base for type check
 require_relative '../../event' # Needed for result processing
 require_relative '../error'
@@ -24,32 +25,6 @@ module ADK
         # Using class instance variables set by `wrap`
         class << self
           attr_reader :agent_definition_name, :session_service
-
-          # --- Redis Helpers (mirrored from AgentCommands CLI for now) ---
-          # TODO: Refactor these into a shared ADK::Util::RedisAgentLoader?
-          def agent_redis_key(name)
-            # Constants need to be defined or accessed carefully
-            # Assuming default prefix for now
-            redis_prefix = ENV.fetch('ADK_REDIS_AGENT_PREFIX', 'adk:agent:')
-            "#{redis_prefix}#{name}"
-          end
-
-          def connect_redis
-            # Assumes ADK.redis_options are configured
-            redis = Redis.new(ADK.redis_options)
-            redis.ping
-            redis
-          rescue Redis::CannotConnectError => e
-            Mcp.logger.error("AdkAgentAdapter: Could not connect to Redis. #{e.message}")
-            raise ADK::Mcp::Error, "Redis connection failed: #{e.message}"
-          end
-
-          def parse_tools(tools_json)
-            return [] unless tools_json && !tools_json.empty?
-
-            JSON.parse(tools_json) rescue []
-          end
-          # --- End Redis Helpers ---
         end
         # -------------------------
 
@@ -106,30 +81,16 @@ module ADK
           agent = nil
           temp_session = nil
           begin
-            # 1. Load Full Agent Definition Hash from Redis
-            Mcp.logger.debug("Loading full agent definition hash '#{agent_name}' from Redis...")
-            redis = self.class.connect_redis
-            key = self.class.agent_redis_key(agent_name)
-            definition_hash_from_redis = redis.hgetall(key)
+            # 1. Load Full Agent Definition Hash from Redis using Store
+            Mcp.logger.debug("Loading full agent definition hash '#{agent_name}' from Redis using AgentDefinitionStore...")
+            definition_hash = ADK::AgentDefinitionStore.load_from_redis(agent_name)
 
-            if definition_hash_from_redis.empty?
-              raise ADK::Mcp::Error, "Agent definition '#{agent_name}' not found in Redis or is empty."
+            unless definition_hash
+              raise ADK::Mcp::Error, "Agent definition '#{agent_name}' not found in Redis."
             end
 
-            # Ensure all keys in the hash are symbols for from_hash consistency
-            # and handle potential stringified JSON for mcp_servers or tools array.
-            # Note: ADK::AgentDefinitionStore.load_from_redis likely does this already.
-            # For direct hgetall, manual conversion is safer.
-            definition_hash = definition_hash_from_redis.transform_keys(&:to_sym)
-            if definition_hash[:tools].is_a?(String)
-              definition_hash[:tools] = JSON.parse(definition_hash[:tools]) rescue []
-            end
-            # ADK::AgentDefinition.from_hash expects :tool_names, not :tools
-            definition_hash[:tool_names] = definition_hash.delete(:tools) if definition_hash.key?(:tools)
-            # mcp_servers might be stored as mcp_servers_json
-            if definition_hash.key?(:mcp_servers_json) && !definition_hash.key?(:mcp_servers)
-              definition_hash[:mcp_servers] = definition_hash.delete(:mcp_servers_json) # from_hash handles parsing if string
-            end
+            # Inject the name into the hash (Store returns attributes but not the name as a key usually)
+            definition_hash[:name] = agent_name
 
             Mcp.logger.debug("Agent definition hash loaded. Creating AgentDefinition object for '#{agent_name}'.")
             agent_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
