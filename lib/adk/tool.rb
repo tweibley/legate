@@ -101,6 +101,7 @@ module ADK
       @name = metadata[:name]
       @description = metadata[:description]
       @parameters = metadata[:parameters] || {}
+      @required_parameters = @parameters.select { |_, p| p[:required] }.keys
 
       # Lenient check for missing metadata
       return unless @name.nil? || @name == :'' || @description.nil? || @description.empty?
@@ -145,7 +146,7 @@ module ADK
 
       # 2. Check for missing required parameters
       # Use symbol keys for check
-      required_param_names = current_parameters.select { |_, p| p[:required] }.keys
+      required_param_names = @required_parameters
       present_keys = normalized_params.keys
       missing_params = required_param_names - present_keys
 
@@ -158,7 +159,7 @@ module ADK
       end
 
       # 3. Type Validation & Coercion
-      coerced_params = normalized_params.dup
+      coerced_params = normalized_params
 
       current_parameters.each do |param_name, param_def|
         # Only process if present

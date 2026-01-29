@@ -13,3 +13,8 @@
 **Learning:** Tool metadata resolution (`tool_metadata`, which infers names and consolidates DSL/legacy attributes) was being recalculated on every tool instantiation. Since tools are instantiated frequently (e.g., every step in `execute_plan` and during planning prompts), this was a significant overhead (~1.03s vs 0.07s for 100k instantiations).
 **Action:** Implemented caching for `tool_metadata` using `@_tool_metadata_cache`. Replaced `attr_accessor` with manual setters in `MetadataDsl` to ensure proper cache invalidation when metadata changes. Always look for "static" calculations in hot paths (like class instantiation) that can be memoized.
 
+
+## 2024-05-23 - [Optimization: Pre-calculate Required Parameters in ADK::Tool]
+
+**Learning:** Pre-calculating derived values in `initialize` (like `@required_parameters`) provides significant speedups (~29%) for frequently instantiated/executed objects compared to re-deriving them in hot paths. Also, `Hash#transform_keys` creates a fresh object, making subsequent `.dup` calls redundant and wasteful.
+**Action:** When working with schema-based objects or validation logic, always check if schema derivatives can be cached at initialization. Verify object freshness before `dup`ing.
