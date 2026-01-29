@@ -10,3 +10,9 @@
 **Learning:** The method signature `def execute(params = {}, context = nil)` only handles missing arguments, not explicit `nil`.
 **Action:** Future reliability improvements should guard against `nil` input in `execute` to prevent crashes.
 
+
+## 2026-01-29 - [Untested Utility Modules]
+
+**Gap:** `ADK::ToolLoader` was completely untested, likely because it is a low-level utility module.
+**Learning:** Utility modules (especially those handling filesystem IO) are often overlooked but are critical failure points for app startup.
+**Action:** Periodically scan `lib/` for modules that lack corresponding spec files, even if they are just "plumbing".
