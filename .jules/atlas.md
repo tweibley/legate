@@ -12,3 +12,8 @@
 
 **Action:** Created `lib/adk/tool_loader.rb` to encapsulate file traversal and loading. Refactored `ADK::Agent` to delegate to this new module. This maintains the same behavior but enforces better module boundaries.
 
+## 2025-01-01 - Global State vs Registry Instance
+
+**Issue:** `ADK::GlobalToolManager` was implemented as a module with global state (`@@defined_tools`), creating a hard dependency and making it difficult to test without explicit reset logic. It duplicated the functionality of `ADK::ToolRegistry` which is instance-based.
+**Learning:** Singleton patterns implemented via module variables often lead to hidden state and duplication when "instance" versions of the same concept (Registry) are introduced later. Delegating to a singleton instance of the Registry class unifies the logic.
+**Action:** Refactored `GlobalToolManager` to delegate to a singleton instance of `ToolRegistry`, unifying the implementation while preserving the legacy static API.

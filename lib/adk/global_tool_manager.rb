@@ -4,14 +4,17 @@
 require 'logger'
 require_relative 'tool' # Need Tool class for instance checks/metadata
 require_relative 'tool/metadata_dsl'
+require_relative 'tool_registry'
 
 module ADK
   # Manages the central registration and discovery of all defined ADK::Tool subclasses.
   # This provides a way to list all available tools without needing a specific
   # ToolRegistry instance (which is tied to an Agent).
+  #
+  # Refactored to delegate storage to a singleton ADK::ToolRegistry instance.
   module GlobalToolManager
-    # Store tool classes keyed by their symbolic name
-    @@defined_tools = {} # { :tool_symbol => ToolClass }
+    # Singleton registry instance
+    @@registry = ADK::ToolRegistry.new
 
     # Register a tool class globally. Called automatically via ADK::Tool.inherited
     # @param tool_class [Class] The tool class to register.
@@ -65,22 +68,25 @@ module ADK
         return
       end
 
-      if @@defined_tools.key?(tool_name) && @@defined_tools[tool_name] != tool_class
-        ADK.logger.warn("GlobalToolManager: Tool name '#{tool_name}' is already registered with class #{@@defined_tools[tool_name]}. Overwriting with #{tool_class}.")
-      elsif !@@defined_tools.key?(tool_name)
-        # Only log debug if it wasn't an overwrite or already logged during inference
-        ADK.logger.debug("GlobalToolManager: Registered tool '#{tool_name}' with class #{tool_class}.") unless @@defined_tools.key?(tool_name)
+      # Delegate to registry
+      # ToolRegistry handles overwrite warnings
+      if @@registry.tools.key?(tool_name) && @@registry.tools[tool_name] != tool_class
+         ADK.logger.warn("GlobalToolManager: Tool name '#{tool_name}' is already registered with class #{@@registry.tools[tool_name]}. Overwriting with #{tool_class}.")
+      elsif !@@registry.tools.key?(tool_name)
+         ADK.logger.debug("GlobalToolManager: Registered tool '#{tool_name}' with class #{tool_class}.")
       end
-      @@defined_tools[tool_name] = tool_class
+
+      @@registry.register(tool_name, tool_class)
     end
 
     # Get a list of all globally registered tools with basic info.
     # @return [Array<Hash>] An array of hashes, each with :name and :description.
     def self.list_all_tools
-      @@defined_tools.map do |name_sym, klass|
-        metadata = klass.tool_metadata
+      # ToolRegistry returns pure metadata. We wrap it to ensure defaults are applied
+      # matching legacy GlobalToolManager behavior.
+      @@registry.list_tools.map do |metadata|
         {
-          name: metadata[:name] || name_sym, # Fallback, though name should always be present if registered
+          name: metadata[:name],
           description: metadata[:description] || '[No description provided]',
           parameters: metadata[:parameters] || []
         }
@@ -91,40 +97,45 @@ module ADK
     # @param name_symbol [Symbol] The symbolic name of the tool.
     # @return [Class, nil] The tool class or nil if not found.
     def self.find_class(name_symbol)
-      @@defined_tools[name_symbol.to_sym]
+      @@registry.find_class(name_symbol)
     end
 
     # Get the names (symbols) of all registered tools.
     # @return [Array<Symbol>] An array of tool name symbols.
     def self.registered_tool_names
-      @@defined_tools.keys
+      @@registry.tools.keys
     end
 
     # Create an instance of a tool by its name symbol using the globally registered class.
     # @param name_symbol [Symbol] The symbolic name of the tool.
     # @return [ADK::Tool, nil] An instance of the tool or nil if instantiation fails or class not found.
     def self.create_instance(name_symbol)
-      klass = find_class(name_symbol.to_sym)
+      klass = @@registry.find_class(name_symbol)
 
-      if klass
-        begin
-          instance = klass.new
-          ADK.logger.debug("GlobalToolManager: Successfully instantiated tool '#{name_symbol}'.")
-          instance
-        rescue StandardError => e
-          ADK.logger.error("GlobalToolManager: Failed to instantiate tool '#{name_symbol}' (Class: #{klass}): #{e.class} - #{e.message}")
-          ADK.logger.error(e.backtrace.first(5).join("\n"))
-          nil
-        end
-      else
+      unless klass
         ADK.logger.warn("GlobalToolManager: Attempted to create instance of tool '#{name_symbol}' which is not globally registered.")
+        return nil
+      end
+
+      begin
+        instance = klass.new
+        ADK.logger.debug("GlobalToolManager: Successfully instantiated tool '#{name_symbol}'.")
+        instance
+      rescue StandardError => e
+        ADK.logger.error("GlobalToolManager: Failed to instantiate tool '#{name_symbol}' (Class: #{klass}): #{e.class} - #{e.message}")
+        ADK.logger.error(e.backtrace.first(5).join("\n"))
         nil
       end
     end
 
     # Clears all registered tools. Primarily for testing.
     def self.reset!
-      @@defined_tools = {}
+      @@registry = ADK::ToolRegistry.new
+    end
+
+    # Expose registry for testing/advanced usage if needed (optional)
+    def self.registry
+      @@registry
     end
   end # End GlobalToolManager module
 end # End ADK module
