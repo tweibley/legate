@@ -1,6 +1,8 @@
 # File: lib/adk/web/routes/authentication_routes.rb
 # frozen_string_literal: true
 
+require 'adk/security_utils'
+
 module ADK
   module Web
     module AuthenticationRoutes
@@ -340,6 +342,13 @@ module ADK
               begin
                 require 'net/http'
                 uri = URI(options[:test_url])
+
+                begin
+                  ADK::SecurityUtils.validate_url_security(uri.host)
+                rescue ADK::SecurityError => e
+                  return { name: 'API Key Test', status: 'failed', message: "Security Error: #{e.message}" }
+                end
+
                 http = Net::HTTP.new(uri.host, uri.port)
                 http.use_ssl = uri.scheme == 'https'
                 http.read_timeout = 10
@@ -427,6 +436,13 @@ module ADK
               begin
                 require 'net/http'
                 uri = URI(options[:test_url])
+
+                begin
+                  ADK::SecurityUtils.validate_url_security(uri.host)
+                rescue ADK::SecurityError => e
+                  return { name: 'Bearer Token Test', status: 'failed', message: "Security Error: #{e.message}" }
+                end
+
                 http = Net::HTTP.new(uri.host, uri.port)
                 http.use_ssl = uri.scheme == 'https'
                 http.read_timeout = 10
@@ -462,6 +478,13 @@ module ADK
             begin
               require 'net/http'
               uri = URI(url)
+
+              begin
+                ADK::SecurityUtils.validate_url_security(uri.host)
+              rescue ADK::SecurityError => e
+                return { success: false, error: "Security Error: #{e.message}" }
+              end
+
               http = Net::HTTP.new(uri.host, uri.port)
               http.use_ssl = uri.scheme == 'https'
               http.read_timeout = 15

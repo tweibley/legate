@@ -4,6 +4,9 @@
 module ADK
   class Error < StandardError; end
 
+  # Raised when a security violation is detected
+  class SecurityError < Error; end
+
   # Raised when state validation fails
   class StateValidationError < Error; end
 
