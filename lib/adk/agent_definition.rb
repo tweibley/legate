@@ -6,6 +6,46 @@ require 'json'
 require_relative 'errors'
 
 module ADK
+  # Defines the configuration and behavior of an Agent using a DSL.
+  #
+  # AgentDefinition is the primary way to configure agents in ADK. It provides a
+  # flexible block-based DSL to set properties like name, description, tools,
+  # model configuration, and callbacks.
+  #
+  # @example Basic Agent Definition
+  #   definition = ADK::AgentDefinition.new.define do |a|
+  #     a.name :weather_bot
+  #     a.description 'An agent that checks the weather'
+  #     a.instruction 'You are a helpful weather assistant. Use the weather tool to check conditions.'
+  #     a.use_tool :weather_tool
+  #     a.model_name 'gemini-1.5-pro'
+  #   end
+  #
+  #   agent = ADK::Agent.new(definition: definition)
+  #
+  # @example Agent with Callbacks and Authentication
+  #   definition = ADK::AgentDefinition.new.define do |a|
+  #     a.name :secure_agent
+  #     a.description 'An agent with auth and monitoring'
+  #     a.instruction 'Perform secure tasks.'
+  #     a.use_tool :sensitive_op
+  #
+  #     # Authentication mapping
+  #     a.auth_mapping 'https://api.example.com/*', scheme: :bearer, credential: :my_api_key
+  #
+  #     # Lifecycle callbacks
+  #     a.before_agent_callback do |context|
+  #       puts "Agent starting for session #{context.session_id}"
+  #       nil # Continue execution
+  #     end
+  #
+  #     a.after_tool_callback do |tool, params, context, result|
+  #       # Audit log tool usage
+  #       ADK.logger.info("Tool #{tool.name} executed")
+  #       nil
+  #     end
+  #   end
+  #
   class AgentDefinition
     extend Forwardable
 
@@ -225,7 +265,7 @@ module ADK
 
       # Registers a tool for the agent to use.
       # @param tool_name [Symbol] The registered name of the tool.
-      # @param options [Hash] Tool-specific options (currently unused).
+      # @param _options [Hash] Tool-specific options (currently unused).
       def use_tool(tool_name, _options = {})
         raise ArgumentError, 'Tool name must be a Symbol.' unless tool_name.is_a?(Symbol)
 

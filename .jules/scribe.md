@@ -10,3 +10,8 @@
 **Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
 **Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
 
+## 2024-05-23 - ADK::AgentDefinition DSL Documentation
+
+**Gap:** `ADK::AgentDefinition` relied on internal `DefinitionProxy` logic for its DSL, making the public API for configuring agents opaque without reading source code.
+**Learning:** When using internal proxy objects for DSLs, the public-facing class must document the DSL methods available in the block, as the proxy itself is often private or hidden.
+**Action:** Add class-level `@example` blocks showing the full DSL capability when the DSL is implemented via delegation or proxy.
