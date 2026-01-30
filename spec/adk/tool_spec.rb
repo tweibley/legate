@@ -46,6 +46,21 @@ unless defined?(DummyTestTool)
   end
 end
 
+# Define a tool specifically for testing parameter coercion
+unless defined?(CoercionTestTool)
+  class CoercionTestTool < ADK::Tool
+    self.explicit_tool_name = :coercion_tool
+    tool_description 'Testing coercion'
+    parameter :int_param, type: :integer
+    parameter :float_param, type: :float
+    parameter :bool_param, type: :boolean
+    parameter :array_param, type: :array
+    parameter :hash_param, type: :hash
+
+    def perform_execution(params, context); end
+  end
+end
+
 RSpec.describe ADK::Tool do
   # Create a registry instance for tests that might need it (though many operate on the instance directly)
   let(:registry) { ADK::ToolRegistry.new }
@@ -111,6 +126,84 @@ RSpec.describe ADK::Tool do
 
     it 'raises error if required parameters are missing' do
       expect { tool_instance.validate_params({}) }.to raise_error(ADK::Error, /Missing required parameters for tool 'dummy': req/)
+    end
+  end
+
+  describe '#validate_and_coerce_params' do
+    let(:coercion_tool) { CoercionTestTool.new }
+
+    context 'with integer parameters' do
+      it 'coerces string integer to integer' do
+        result = coercion_tool.validate_and_coerce_params(int_param: '123')
+        expect(result[:int_param]).to eq(123)
+      end
+
+      it 'coerces float to integer (truncate)' do
+        result = coercion_tool.validate_and_coerce_params(int_param: 12.9)
+        expect(result[:int_param]).to eq(12)
+      end
+
+      it 'raises error for invalid integer string' do
+        expect { coercion_tool.validate_and_coerce_params(int_param: 'abc') }
+          .to raise_error(ADK::ToolArgumentError, /expected Integer/)
+      end
+    end
+
+    context 'with float parameters' do
+      it 'coerces string float to float' do
+        result = coercion_tool.validate_and_coerce_params(float_param: '12.3')
+        expect(result[:float_param]).to eq(12.3)
+      end
+
+      it 'coerces integer to float' do
+        result = coercion_tool.validate_and_coerce_params(float_param: 12)
+        expect(result[:float_param]).to eq(12.0)
+      end
+    end
+
+    context 'with boolean parameters' do
+      it 'coerces true strings to true' do
+        %w[true yes 1 t].each do |val|
+          result = coercion_tool.validate_and_coerce_params(bool_param: val)
+          expect(result[:bool_param]).to be(true)
+        end
+      end
+
+      it 'coerces false strings to false' do
+        %w[false no 0 f].each do |val|
+          result = coercion_tool.validate_and_coerce_params(bool_param: val)
+          expect(result[:bool_param]).to be(false)
+        end
+      end
+
+      it 'raises error for invalid boolean string' do
+        expect { coercion_tool.validate_and_coerce_params(bool_param: 'foo') }
+          .to raise_error(ADK::ToolArgumentError, /expected Boolean/)
+      end
+    end
+
+    context 'with array parameters' do
+      it 'coerces JSON string to array' do
+        result = coercion_tool.validate_and_coerce_params(array_param: '[1, 2]')
+        expect(result[:array_param]).to eq([1, 2])
+      end
+
+      it 'raises error for invalid array JSON' do
+        expect { coercion_tool.validate_and_coerce_params(array_param: 'not_array') }
+          .to raise_error(ADK::ToolArgumentError, /expected Array/)
+      end
+    end
+
+    context 'with hash parameters' do
+      it 'coerces JSON string to hash' do
+        result = coercion_tool.validate_and_coerce_params(hash_param: '{"a": 1}')
+        expect(result[:hash_param]).to eq({ 'a' => 1 })
+      end
+
+      it 'raises error for invalid hash JSON' do
+        expect { coercion_tool.validate_and_coerce_params(hash_param: 'not_hash') }
+          .to raise_error(ADK::ToolArgumentError, /expected Hash/)
+      end
     end
   end
 
