@@ -102,6 +102,9 @@ module ADK
       @description = metadata[:description]
       @parameters = metadata[:parameters] || {}
 
+      # Pre-calculate required parameters for faster validation
+      @required_param_names = @parameters.select { |_, p| p[:required] }.keys.freeze
+
       # Lenient check for missing metadata
       return unless @name.nil? || @name == :'' || @description.nil? || @description.empty?
 
@@ -145,9 +148,9 @@ module ADK
 
       # 2. Check for missing required parameters
       # Use symbol keys for check
-      required_param_names = current_parameters.select { |_, p| p[:required] }.keys
+      # used cached @required_param_names calculated in initialize
       present_keys = normalized_params.keys
-      missing_params = required_param_names - present_keys
+      missing_params = @required_param_names - present_keys
 
       unless missing_params.empty?
         msg = "Missing required parameters for tool '#{@name}': #{missing_params.join(', ')}."
