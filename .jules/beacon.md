@@ -10,3 +10,8 @@
 **Learning:** The method signature `def execute(params = {}, context = nil)` only handles missing arguments, not explicit `nil`.
 **Action:** Future reliability improvements should guard against `nil` input in `execute` to prevent crashes.
 
+## 2025-12-19 - [Configuration Initialization Gaps]
+
+**Gap:** `ADK::Configuration` lacked unit tests, relying on implicit coverage from other tests.
+**Learning:** Core configuration classes often accumulate default values and dependency injections that are critical but easily overlooked in integration tests.
+**Action:** Always verify that configuration objects initialize their dependencies and defaults correctly with isolated unit tests.
