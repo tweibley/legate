@@ -92,6 +92,16 @@ module ADK
 
       # --- NEW: Before filter for Web User ID ---
       before do
+        # Enforce Security Headers
+        headers['X-Content-Type-Options'] = 'nosniff'
+        headers['X-Frame-Options'] = 'DENY'
+        headers['X-XSS-Protection'] = '1; mode=block'
+        headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+        if request.ssl?
+          headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        end
+
         session[:web_user_id] ||= SecureRandom.uuid
         # Optional: Log the web_user_id for debugging purposes during development
         # logger.debug "Current web_user_id: #{session[:web_user_id]}"
