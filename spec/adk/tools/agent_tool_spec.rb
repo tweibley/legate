@@ -205,7 +205,7 @@ RSpec.describe ADK::Tools::AgentTool do
         allow(ADK::GlobalToolManager).to receive(:find_class).with(:calculator).and_return(ADK::Tools::Calculator)
         # Stub find to return nil, load_from_redis to return definition
         allow(ADK::AgentDefinitionStore).to receive(:find).with(target_agent_name.to_sym).and_return(nil)
-        allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(target_agent_name.to_s).and_return(target_definition_hash)
+        allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(target_agent_name.to_sym).and_return(target_definition_hash)
       end
 
       it 'successfully loads from Redis and executes' do

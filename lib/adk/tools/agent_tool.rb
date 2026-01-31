@@ -37,12 +37,7 @@ module ADK
       private
 
       def perform_execution(params, context) # context is the ToolContext of the calling agent
-        # Validate that the context has a valid tool registry
-        unless context && context.respond_to?(:tool_registry) && context.tool_registry
-          msg = "Tool registry not found or invalid in the provided context"
-          ADK.logger.error("AgentTool: #{msg}")
-          raise ADK::ToolError, msg
-        end
+        validate_context!(context)
 
         target_agent_name_str = params.fetch(:target_agent_name) do
           raise ADK::ToolArgumentError, 'Missing required parameter: target_agent_name'
@@ -53,90 +48,11 @@ module ADK
 
         ADK.logger.info("AgentTool: Attempting to delegate task '#{task_to_delegate}' to agent '#{target_agent_name_str}' (Session reuse: #{use_calling_session})")
 
-        # Load definition hash from the store
-        definition_hash = ADK::AgentDefinitionStore.find(target_agent_name_str.to_sym) # Try memory first
-        definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(target_agent_name_str.to_sym) # Ensure symbol key for lookup
-
-        unless definition_hash
-          msg = "Target agent definition '#{target_agent_name_str}' could not be loaded from store."
-          ADK.logger.error("AgentTool: #{msg}")
-          raise ADK::ToolArgumentError, msg
-        end
-
-        # Ensure we have essential fields for a valid definition
-        definition_hash = definition_hash.transform_keys(&:to_sym) if definition_hash.respond_to?(:transform_keys)
-
-        # Ensure the definition has all required fields
-        definition_hash[:name] = target_agent_name_str.to_sym unless definition_hash.key?(:name)
-        definition_hash[:description] = definition_hash[:description] || "Delegated agent #{target_agent_name_str}"
-        definition_hash[:instruction] = definition_hash[:instruction] || "Perform the delegated task: #{task_to_delegate}"
-
-        # Handle 'tools' field: parse if JSON string, convert to array of symbols
-        if definition_hash.key?(:tools)
-          tool_array = if definition_hash[:tools].is_a?(String)
-                         begin
-                           parsed = JSON.parse(definition_hash[:tools])
-                           parsed.is_a?(Array) ? parsed : []
-                         rescue JSON::ParserError
-                           ADK.logger.warn("AgentTool: Could not parse :tools JSON for agent '#{target_agent_name_str}'. Defaulting to empty tools array.")
-                           []
-                         end
-                       else
-                         Array(definition_hash[:tools])
-                       end
-
-          # Convert to symbols for the definition
-          definition_hash[:tools] = tool_array.map(&:to_sym)
-        elsif !definition_hash.key?(:tool_names) # Ensure some form of tools field exists
-          definition_hash[:tools] = []
-        end
-
-        # Handle 'mcp_servers_json' field: if present and no mcp_servers, rename
-        if definition_hash.key?(:mcp_servers_json) && !definition_hash.key?(:mcp_servers)
-          definition_hash[:mcp_servers] = definition_hash.delete(:mcp_servers_json)
-        end
-
-        # Ensure fallback_mode is symbolized
-        if definition_hash[:fallback_mode].is_a?(String)
-          definition_hash[:fallback_mode] = definition_hash[:fallback_mode].to_sym
-        end
-
-        # Convert hash to an ADK::AgentDefinition object
-        target_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
-
-        unless target_definition_object
-          msg = "Failed to create a valid AgentDefinition object for target '#{target_agent_name_str}' from loaded hash."
-          ADK.logger.error("AgentTool: #{msg} Hash was: #{definition_hash.inspect}")
-          raise ADK::ToolError, msg # More generic error as it's post-load
-        end
+        target_definition_object = load_agent_definition(target_agent_name_str, task_to_delegate)
 
         ADK.logger.debug("AgentTool: Instantiating target agent '#{target_definition_object.name}' using its definition object.")
 
-        # Determine session service and session ID to use
-        delegate_session_service = nil
-        delegate_session_id = nil
-
-        if use_calling_session
-          if context.session_service
-            delegate_session_service = context.session_service
-            delegate_session_id = context.session_id
-            ADK.logger.debug("AgentTool: Reusing session service and session ID '#{delegate_session_id}' from caller.")
-          else
-            ADK.logger.warn("AgentTool: use_calling_session is true but context has no session_service. Falling back to new isolated session.")
-          end
-        end
-
-        # Fallback if reuse failed or not requested
-        unless delegate_session_service
-          delegate_session_service = ADK::SessionService::InMemory.new
-          # Create a new session
-          new_session = delegate_session_service.create_session(
-            app_name: target_definition_object.name.to_s,
-            user_id: "delegation_#{SecureRandom.hex(4)}"
-          )
-          delegate_session_id = new_session.id
-          ADK.logger.debug("AgentTool: Created new isolated session '#{delegate_session_id}' for target agent.")
-        end
+        delegate_session_service, delegate_session_id = determine_session_context(context, use_calling_session, target_definition_object)
 
         # Create the ephemeral agent using its definition object
         target_agent = ADK::Agent.new(
@@ -144,22 +60,7 @@ module ADK
           session_service: delegate_session_service
         )
 
-        # Check if tools are configured for this agent
-        if target_definition_object.tool_names.empty?
-          ADK.logger.warn("AgentTool: Target agent '#{target_agent_name_str}' has no tools configured.")
-        end
-
-        # Register tools - get the class objects for each tool name and register with the agent
-        tool_names = Array(definition_hash[:tools] || definition_hash[:tool_names] || [])
-        tool_names.each do |tool_name|
-          tool_class = ADK::GlobalToolManager.find_class(tool_name.to_sym)
-          if tool_class
-            target_agent.register_tool_class(tool_class)
-            ADK.logger.debug("AgentTool: Registered tool '#{tool_name}' with target agent.")
-          else
-            ADK.logger.warn("AgentTool: Could not find tool class for '#{tool_name}' in GlobalToolManager.")
-          end
-        end
+        register_tools_for_agent(target_agent, target_definition_object)
 
         target_agent.start
         ADK.logger.info("AgentTool: Running task '#{task_to_delegate}' on target agent '#{target_agent.name}' (Session: #{delegate_session_id})")
@@ -186,6 +87,125 @@ module ADK
         ADK.logger.error(e.backtrace.first(5).join("\n"))
         raise ADK::ToolError, msg
       end # end perform_execution
+
+      def validate_context!(context)
+        # Validate that the context has a valid tool registry
+        return if context && context.respond_to?(:tool_registry) && context.tool_registry
+
+        msg = "Tool registry not found or invalid in the provided context"
+        ADK.logger.error("AgentTool: #{msg}")
+        raise ADK::ToolError, msg
+      end
+
+      def load_agent_definition(target_agent_name_str, task_to_delegate)
+        # Load definition hash from the store
+        definition_hash = ADK::AgentDefinitionStore.find(target_agent_name_str.to_sym) # Try memory first
+        definition_hash ||= ADK::AgentDefinitionStore.load_from_redis(target_agent_name_str.to_sym) # Ensure symbol key for lookup
+
+        unless definition_hash
+          msg = "Target agent definition '#{target_agent_name_str}' could not be loaded from store."
+          ADK.logger.error("AgentTool: #{msg}")
+          raise ADK::ToolArgumentError, msg
+        end
+
+        definition_hash = normalize_definition_hash(definition_hash, target_agent_name_str, task_to_delegate)
+
+        # Convert hash to an ADK::AgentDefinition object
+        target_definition_object = ADK::AgentDefinition.from_hash(definition_hash)
+
+        unless target_definition_object
+          msg = "Failed to create a valid AgentDefinition object for target '#{target_agent_name_str}' from loaded hash."
+          ADK.logger.error("AgentTool: #{msg} Hash was: #{definition_hash.inspect}")
+          raise ADK::ToolError, msg # More generic error as it's post-load
+        end
+
+        target_definition_object
+      end
+
+      def normalize_definition_hash(definition_hash, target_agent_name_str, task_to_delegate)
+        # Ensure we have essential fields for a valid definition
+        definition_hash = definition_hash.transform_keys(&:to_sym) if definition_hash.respond_to?(:transform_keys)
+
+        # Ensure the definition has all required fields
+        definition_hash[:name] = target_agent_name_str.to_sym unless definition_hash.key?(:name)
+        definition_hash[:description] = definition_hash[:description] || "Delegated agent #{target_agent_name_str}"
+        definition_hash[:instruction] = definition_hash[:instruction] || "Perform the delegated task: #{task_to_delegate}"
+
+        normalize_tools!(definition_hash, target_agent_name_str)
+
+        # Handle 'mcp_servers_json' field: if present and no mcp_servers, rename
+        if definition_hash.key?(:mcp_servers_json) && !definition_hash.key?(:mcp_servers)
+          definition_hash[:mcp_servers] = definition_hash.delete(:mcp_servers_json)
+        end
+
+        # Ensure fallback_mode is symbolized
+        if definition_hash[:fallback_mode].is_a?(String)
+          definition_hash[:fallback_mode] = definition_hash[:fallback_mode].to_sym
+        end
+
+        definition_hash
+      end
+
+      def normalize_tools!(definition_hash, target_agent_name_str)
+        # Handle 'tools' field: parse if JSON string, convert to array of symbols
+        if definition_hash.key?(:tools)
+          tool_array = if definition_hash[:tools].is_a?(String)
+                         begin
+                           parsed = JSON.parse(definition_hash[:tools])
+                           parsed.is_a?(Array) ? parsed : []
+                         rescue JSON::ParserError
+                           ADK.logger.warn("AgentTool: Could not parse :tools JSON for agent '#{target_agent_name_str}'. Defaulting to empty tools array.")
+                           []
+                         end
+                       else
+                         Array(definition_hash[:tools])
+                       end
+
+          # Convert to symbols for the definition
+          definition_hash[:tools] = tool_array.map(&:to_sym)
+        elsif !definition_hash.key?(:tool_names) # Ensure some form of tools field exists
+          definition_hash[:tools] = []
+        end
+      end
+
+      def determine_session_context(context, use_calling_session, target_definition_object)
+        if use_calling_session
+          if context.session_service
+            ADK.logger.debug("AgentTool: Reusing session service and session ID '#{context.session_id}' from caller.")
+            return [context.session_service, context.session_id]
+          else
+            ADK.logger.warn("AgentTool: use_calling_session is true but context has no session_service. Falling back to new isolated session.")
+          end
+        end
+
+        # Fallback if reuse failed or not requested
+        delegate_session_service = ADK::SessionService::InMemory.new
+        # Create a new session
+        new_session = delegate_session_service.create_session(
+          app_name: target_definition_object.name.to_s,
+          user_id: "delegation_#{SecureRandom.hex(4)}"
+        )
+        ADK.logger.debug("AgentTool: Created new isolated session '#{new_session.id}' for target agent.")
+        [delegate_session_service, new_session.id]
+      end
+
+      def register_tools_for_agent(target_agent, target_definition_object)
+        # Check if tools are configured for this agent
+        if target_definition_object.tool_names.empty?
+          ADK.logger.warn("AgentTool: Target agent '#{target_agent.name}' has no tools configured.")
+        end
+
+        # Register tools - get the class objects for each tool name and register with the agent
+        target_definition_object.tool_names.each do |tool_name|
+          tool_class = ADK::GlobalToolManager.find_class(tool_name.to_sym)
+          if tool_class
+            target_agent.register_tool_class(tool_class)
+            ADK.logger.debug("AgentTool: Registered tool '#{tool_name}' with target agent.")
+          else
+            ADK.logger.warn("AgentTool: Could not find tool class for '#{tool_name}' in GlobalToolManager.")
+          end
+        end
+      end
     end # End AgentTool class
   end # End Tools module
 end # End ADK module
