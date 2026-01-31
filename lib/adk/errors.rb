@@ -1,8 +1,27 @@
-# File: lib/adk/errors.rb
 # frozen_string_literal: true
 
 module ADK
+  # Base error class for all ADK errors
   class Error < StandardError; end
+
+  # --- Core Errors ---
+
+  # Raised when a required configuration is missing or invalid
+  class ConfigurationError < Error; end
+
+  # Raised when a required dependency is missing
+  class DependencyError < Error; end
+
+  # Raised when an operation times out (generic)
+  class TimeoutError < Error; end
+
+  # --- Job Errors ---
+  class JobError < Error; end
+
+  # --- Session and State Errors ---
+
+  # Raised when a session operation fails
+  class SessionError < Error; end
 
   # Raised when state validation fails
   class StateValidationError < Error; end
@@ -13,27 +32,63 @@ module ADK
   # Raised when state value cannot be serialized
   class SerializationError < Error; end
 
-  # Raised when attempting to modify state directly
+  # Raised when attempting to modify state directly where prohibited
   class StateAccessError < Error; end
 
   # --- Tool Errors ---
 
-  # Base class for errors raised during tool execution.
-  # Tools should raise this or a more specific subclass (like ToolArgumentError)
-  # instead of returning { status: :error, ... }.
-  # The agent runtime catches these errors and formats a standard error event.
-  # @see ADK::ToolArgumentError
+  # Base error class for all Tool-related exceptions within the ADK framework.
+  # Provides a consistent way to handle errors originating from tool executions.
   class ToolError < Error
-    # Add attributes here if needed later (e.g., tool name, params)
+    # Stores the original exception that caused this ToolError, if any.
+    attr_reader :cause
+
+    # Initializes a new ToolError.
+    #
+    # @param message [String] The error message.
+    # @param cause [Exception, nil] The original exception that triggered this error (optional).
+    def initialize(message = nil, cause: nil)
+      super(message)
+      @cause = cause
+      set_backtrace(cause.backtrace) if cause&.backtrace
+    end
   end
 
   # Raised specifically when tool arguments are invalid (e.g., missing, wrong type).
-  # Inherits from {ADK::ToolError}.
-  # Raise this when input parameters fail validation within the tool's logic.
+  # Inherits from ToolError.
   class ToolArgumentError < ToolError; end
 
-  # --- Agent and Session Errors ---
-  # Placeholder for potential future errors related to agent lifecycle or session management
+  # Raised when a tool execution fails (generic)
+  class ToolExecutionError < ToolError; end
+
+  # Raised when tool parameters are invalid (alias or specific use case)
+  class InvalidParametersError < ToolError; end
+
+  # Error raised when a required tool is not found.
+  class ToolNotFound < Error; end
+
+  # Error raised when a tool encounters a network-related issue during execution.
+  class ToolNetworkError < ToolError; end
+
+  # Error raised specifically when an SSL/TLS certificate verification fails.
+  class ToolCertificateError < ToolNetworkError; end
+
+  # Error raised when a tool operation times out.
+  class ToolTimeoutError < ToolError; end
+
+  # Error raised when an HTTP request made by a tool receives an unsuccessful status code.
+  class ToolHttpError < ToolError
+    # @return [Object, nil] The response object associated with the HTTP error.
+    attr_reader :response
+
+    def initialize(message = nil, response: nil, cause: nil)
+      super(message, cause: cause)
+      @response = response
+    end
+  end
+
+  # --- Planning Errors ---
+  class PlanningError < Error; end
 
   # --- MCP Errors ---
   module Mcp
@@ -42,43 +97,26 @@ module ADK
     class HandshakeError < Error; end
     class ToolRegistrationError < Error; end
     class AgentWrapError < Error; end
-    # Error related to MCP protocol rules or JSON-RPC formatting.
     class ProtocolError < Error; end
+    class TimeoutError < Error; end
   end
 
-  # --- Definition Store Errors ---
-  module DefinitionStore
-    class Error < ADK::Error; end
-    class ConfigurationError < Error; end
-    class StoreError < Error; end
-  end
-
-  # Error raised when a required tool is not found.
-  class ToolNotFound < Error; end
-
-  # Error raised during tool execution.
-  class ToolError < Error; end
-
-  # Error raised during planning phase.
-  class PlanningError < Error; end
-
-  # Error related to session management.
-  class SessionError < Error; end
-
-  # Error related to Multi-Capability Protocol (MCP) interactions.
+  # Legacy/Root MCP Errors (kept for compatibility)
   class McpError < Error; end
   class McpConnectionError < McpError; end
   class McpProtocolError < McpError; end
   class McpTimeoutError < McpError; end
 
-  # Error related to webhook configuration or processing within the listener.
+  # --- Webhook Errors ---
   class WebhookConfigurationError < Error; end
 
-  # Define DefinitionStore specific errors (nested or separate?)
+  # --- Definition Store Errors ---
+  class StoreError < Error; end
+
   module DefinitionStore
+    class Error < ADK::Error; end
+    class ConfigurationError < Error; end
+    class StoreError < Error; end
     class DefinitionNotFound < StoreError; end
   end
-
-  # Error related to definition or session storage operations.
-  class StoreError < Error; end
 end

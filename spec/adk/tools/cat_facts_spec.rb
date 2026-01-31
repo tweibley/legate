@@ -3,7 +3,7 @@
 
 require 'spec_helper'
 require 'adk/tools/cat_facts'
-require 'adk/tool/error' # Include ADK errors
+require 'adk/errors' # Include ADK errors
 require 'excon' # Required for Excon::Response mock
 
 RSpec.describe ADK::Tools::CatFacts do

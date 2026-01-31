@@ -3,7 +3,7 @@
 
 require 'spec_helper'
 require 'adk/tools/base/http_client'
-require 'adk/tool/error'
+require 'adk/errors'
 # require 'excon' # No longer directly needed for stubbing logic
 require 'webmock/rspec' # Ensure WebMock matchers are available
 

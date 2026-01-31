@@ -5,7 +5,7 @@ require 'excon'
 require 'json'
 require 'uri' # For URI.join
 
-require_relative '../../tool/error' # Use the errors defined in Step 2
+require_relative '../../errors'
 require_relative '../../version'
 
 module ADK
