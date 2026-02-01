@@ -6,3 +6,8 @@
 2. Automatically coerce string inputs to the expected type (Integer, Float, Boolean, JSON Array/Hash) based on DSL definition.
 3. Validate types strictly if coercion fails.
 This improves CLI ergonomics (no need to manually parse strings in tools) and debugging speed.
+
+## 2024-05-22 - Did You Mean Suggestions
+
+**Learning:** `DidYouMean::SpellChecker` (stdlib) is an easy win for CLI typos, but requires fetching the "dictionary" (valid names) first. In ADK, fetching just names from Redis (`smembers`) is much faster/safer than loading full definitions (`load_all_from_redis`) just for a suggestion.
+**Action:** When implementing suggestions, always look for a lightweight "list names" query instead of loading full objects.

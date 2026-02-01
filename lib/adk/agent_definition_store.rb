@@ -194,6 +194,19 @@ module ADK
       redis&.close
     end
 
+    # Get all persistent agent names from Redis.
+    # @return [Array<String>] List of agent names. Returns empty array on error.
+    def self.list_all_names
+      redis = Redis.new(ADK.redis_options)
+      names = redis.smembers(REDIS_AGENTS_SET_KEY)
+      names || []
+    rescue Redis::BaseError => e
+      ADK.logger.debug("AgentDefinitionStore: Failed to list all names from Redis: #{e.message}")
+      []
+    ensure
+      redis&.close
+    end
+
     # Delete a definition from Redis.
     # @param name [Symbol, String] Agent name.
     # @return [Boolean] True on success, false on Redis error.
