@@ -98,6 +98,18 @@ module ADK
       end
       # --- END NEW ---
 
+      # --- Security Headers ---
+      before do
+        headers['X-Frame-Options'] = 'DENY'
+        headers['X-Content-Type-Options'] = 'nosniff'
+        headers['X-XSS-Protection'] = '1; mode=block'
+        headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+        if request.ssl?
+          headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        end
+      end
+
       # --- Sinatra Settings ---
       set :root, File.expand_path('../../..', __dir__) # Project root directory
       set :views, File.expand_path('views', __dir__) # Views directory for Slim templates
