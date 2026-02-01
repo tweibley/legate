@@ -12,3 +12,8 @@
 
 **Action:** Created `lib/adk/tool_loader.rb` to encapsulate file traversal and loading. Refactored `ADK::Agent` to delegate to this new module. This maintains the same behavior but enforces better module boundaries.
 
+## 2025-12-19 - Unify Tool Registration
+
+**Issue:** `ADK::GlobalToolManager` duplicated `ADK::ToolRegistry` logic using a class variable `@@defined_tools`, creating inconsistent storage mechanisms and coupling tests to internal state.
+**Learning:** Singleton modules with mutable class variables (`@@`) are hard to test and maintain compared to delegating to an instance of a dedicated class (Registry pattern).
+**Action:** Refactored `GlobalToolManager` to delegate to a singleton `ADK::ToolRegistry` instance, extracted complex inference logic, and updated tests to verify behavior instead of internal state.
