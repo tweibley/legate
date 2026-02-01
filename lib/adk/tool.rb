@@ -102,6 +102,9 @@ module ADK
       @description = metadata[:description]
       @parameters = metadata[:parameters] || {}
 
+      # Pre-calculate required param names to avoid re-calculating on every execution
+      @required_param_names = @parameters.select { |_, p| p[:required] }.keys.freeze
+
       # Lenient check for missing metadata
       return unless @name.nil? || @name == :'' || @description.nil? || @description.empty?
 
@@ -139,14 +142,15 @@ module ADK
     # @raise [ADK::ToolArgumentError] if validation fails
     def validate_and_coerce_params(params)
       # 1. Normalize keys to symbols
-      normalized_params = params.transform_keys(&:to_sym)
+      # transform_keys returns a new Hash, so we can modify it safely without dup
+      coerced_params = params.transform_keys(&:to_sym)
 
       current_parameters = @parameters || {}
 
       # 2. Check for missing required parameters
-      # Use symbol keys for check
-      required_param_names = current_parameters.select { |_, p| p[:required] }.keys
-      present_keys = normalized_params.keys
+      # Use symbol keys for check. @required_param_names is pre-calculated in initialize
+      required_param_names = @required_param_names || current_parameters.select { |_, p| p[:required] }.keys
+      present_keys = coerced_params.keys
       missing_params = required_param_names - present_keys
 
       unless missing_params.empty?
@@ -158,8 +162,6 @@ module ADK
       end
 
       # 3. Type Validation & Coercion
-      coerced_params = normalized_params.dup
-
       current_parameters.each do |param_name, param_def|
         # Only process if present
         next unless coerced_params.key?(param_name)
