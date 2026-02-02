@@ -354,7 +354,10 @@ module ADK
                 when 'header'
                   request[key_name] = api_key
                 when 'query'
-                  uri.query = "#{key_name}=#{api_key}"
+                  # Safe parameter handling to prevent injection
+                  params = URI.decode_www_form(uri.query || '')
+                  params << [key_name, api_key]
+                  uri.query = URI.encode_www_form(params)
                   request = Net::HTTP::Get.new(uri)
                 end
 
@@ -479,7 +482,10 @@ module ADK
                 when 'header'
                   request[key_name] = api_key
                 when 'query'
-                  uri.query = "#{key_name}=#{api_key}"
+                  # Safe parameter handling to prevent injection
+                  params = URI.decode_www_form(uri.query || '')
+                  params << [key_name, api_key]
+                  uri.query = URI.encode_www_form(params)
                   request = Net::HTTP::Get.new(uri)
                 end
               when :http_bearer
