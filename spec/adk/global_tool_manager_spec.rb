@@ -50,7 +50,7 @@ RSpec.describe ADK::GlobalToolManager do
   describe '.register_tool' do
     it 'registers a valid tool class' do
       expect { described_class.register_tool(GtmMockTool) }
-        .to change { described_class.class_variable_get(:@@defined_tools).count }.by(1)
+        .to change { described_class.instance_variable_get(:@defined_tools).count }.by(1)
       expect(described_class.find_class(:gtm_mock)).to eq(GtmMockTool)
       expect(logger_spy).to have_received(:debug).with(/Registered tool 'gtm_mock'/)
     end
@@ -65,26 +65,26 @@ RSpec.describe ADK::GlobalToolManager do
 
       expect(logger_spy).to receive(:warn).with(/GlobalToolManager: Tool name 'gtm_mock' is already registered.*Overwriting with GtmMockToolDuplicate/)
       expect { described_class.register_tool(GtmMockToolDuplicate) }
-        .not_to change { described_class.class_variable_get(:@@defined_tools).count }
+        .not_to change { described_class.instance_variable_get(:@defined_tools).count }
     end
 
     it 'registers tool via inferred name even if metadata is explicitly missing' do
       expect { described_class.register_tool(GtmMockToolNoMeta) }
-        .to change { described_class.class_variable_get(:@@defined_tools).count }.by(1)
+        .to change { described_class.instance_variable_get(:@defined_tools).count }.by(1)
       expect(described_class.find_class(:gtm_mock_tool_no_meta)).to eq(GtmMockToolNoMeta)
     end
 
     it 'warns and skips registration if object is not an ADK::Tool subclass' do
       expect(logger_spy).to receive(:warn).with(/Attempted to register non-tool class: String/)
       expect { described_class.register_tool(String) }
-        .not_to change { described_class.class_variable_get(:@@defined_tools).count }
+        .not_to change { described_class.instance_variable_get(:@defined_tools).count }
     end
 
     it 'uses klass.to_s in warning for anonymous non-tool classes' do
       anon_class = Class.new
       expect(logger_spy).to receive(:warn).with(/Attempted to register non-tool class: #{anon_class.to_s}/)
       expect { described_class.register_tool(anon_class) }
-        .not_to change { described_class.class_variable_get(:@@defined_tools).count }
+        .not_to change { described_class.instance_variable_get(:@defined_tools).count }
     end
 
     # Removing the test for the unreachable path where respond_to?(:tool_name) is false
@@ -175,9 +175,9 @@ RSpec.describe ADK::GlobalToolManager do
   describe '.reset!' do
     it 'clears all registered tools' do
       described_class.register_tool(GtmMockTool)
-      expect(described_class.class_variable_get(:@@defined_tools)).not_to be_empty
+      expect(described_class.instance_variable_get(:@defined_tools)).not_to be_empty
       described_class.reset!
-      expect(described_class.class_variable_get(:@@defined_tools)).to be_empty
+      expect(described_class.instance_variable_get(:@defined_tools)).to be_empty
     end
   end
 end

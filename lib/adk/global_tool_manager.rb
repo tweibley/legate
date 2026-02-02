@@ -11,7 +11,7 @@ module ADK
   # ToolRegistry instance (which is tied to an Agent).
   module GlobalToolManager
     # Store tool classes keyed by their symbolic name
-    @@defined_tools = {} # { :tool_symbol => ToolClass }
+    @defined_tools = {} # { :tool_symbol => ToolClass }
 
     # Register a tool class globally. Called automatically via ADK::Tool.inherited
     # @param tool_class [Class] The tool class to register.
@@ -65,19 +65,19 @@ module ADK
         return
       end
 
-      if @@defined_tools.key?(tool_name) && @@defined_tools[tool_name] != tool_class
-        ADK.logger.warn("GlobalToolManager: Tool name '#{tool_name}' is already registered with class #{@@defined_tools[tool_name]}. Overwriting with #{tool_class}.")
-      elsif !@@defined_tools.key?(tool_name)
+      if @defined_tools.key?(tool_name) && @defined_tools[tool_name] != tool_class
+        ADK.logger.warn("GlobalToolManager: Tool name '#{tool_name}' is already registered with class #{@defined_tools[tool_name]}. Overwriting with #{tool_class}.")
+      elsif !@defined_tools.key?(tool_name)
         # Only log debug if it wasn't an overwrite or already logged during inference
-        ADK.logger.debug("GlobalToolManager: Registered tool '#{tool_name}' with class #{tool_class}.") unless @@defined_tools.key?(tool_name)
+        ADK.logger.debug("GlobalToolManager: Registered tool '#{tool_name}' with class #{tool_class}.") unless @defined_tools.key?(tool_name)
       end
-      @@defined_tools[tool_name] = tool_class
+      @defined_tools[tool_name] = tool_class
     end
 
     # Get a list of all globally registered tools with basic info.
     # @return [Array<Hash>] An array of hashes, each with :name and :description.
     def self.list_all_tools
-      @@defined_tools.map do |name_sym, klass|
+      @defined_tools.map do |name_sym, klass|
         metadata = klass.tool_metadata
         {
           name: metadata[:name] || name_sym, # Fallback, though name should always be present if registered
@@ -91,13 +91,13 @@ module ADK
     # @param name_symbol [Symbol] The symbolic name of the tool.
     # @return [Class, nil] The tool class or nil if not found.
     def self.find_class(name_symbol)
-      @@defined_tools[name_symbol.to_sym]
+      @defined_tools[name_symbol.to_sym]
     end
 
     # Get the names (symbols) of all registered tools.
     # @return [Array<Symbol>] An array of tool name symbols.
     def self.registered_tool_names
-      @@defined_tools.keys
+      @defined_tools.keys
     end
 
     # Create an instance of a tool by its name symbol using the globally registered class.
@@ -124,7 +124,7 @@ module ADK
 
     # Clears all registered tools. Primarily for testing.
     def self.reset!
-      @@defined_tools = {}
+      @defined_tools = {}
     end
   end # End GlobalToolManager module
 end # End ADK module
