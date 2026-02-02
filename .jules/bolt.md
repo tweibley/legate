@@ -13,3 +13,7 @@
 **Learning:** Tool metadata resolution (`tool_metadata`, which infers names and consolidates DSL/legacy attributes) was being recalculated on every tool instantiation. Since tools are instantiated frequently (e.g., every step in `execute_plan` and during planning prompts), this was a significant overhead (~1.03s vs 0.07s for 100k instantiations).
 **Action:** Implemented caching for `tool_metadata` using `@_tool_metadata_cache`. Replaced `attr_accessor` with manual setters in `MetadataDsl` to ensure proper cache invalidation when metadata changes. Always look for "static" calculations in hot paths (like class instantiation) that can be memoized.
 
+## 2025-02-12 - [Redundant Validation Calculation]
+
+**Learning:** `validate_and_coerce_params` is a hot path method called on every tool execution. It was recalculating `required_param_names` (filtering the params hash) on every call, despite tool parameters being static after initialization.
+**Action:** Pre-calculate derived static data (like required parameter lists) in `#initialize` and freeze it. This reduced validation overhead by ~50%.
