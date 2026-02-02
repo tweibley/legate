@@ -12,3 +12,9 @@
 
 **Action:** Created `lib/adk/tool_loader.rb` to encapsulate file traversal and loading. Refactored `ADK::Agent` to delegate to this new module. This maintains the same behavior but enforces better module boundaries.
 
+
+## 2025-05-15 - Lazy Loading Configuration Dependencies
+
+**Issue:** `ADK::Configuration#initialize` was eagerly instantiating Redis connections for `definition_store` and `session_service`. This meant that simply loading the configuration (e.g., for CLI help or unit tests) would attempt to connect to Redis, causing failures in isolated environments or if a custom store was intended.
+**Learning:** Configuration objects should generally be inert data holders or factories. Eagerly instantiating heavy dependencies (like database connections) in a configuration class couples the configuration to the infrastructure's availability.
+**Action:** Refactored `ADK::Configuration` to use lazy initialization (memoized reader methods) for these dependencies. This ensures they are only created when actually accessed, and allows them to be overridden before the default is ever instantiated.
