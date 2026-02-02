@@ -36,21 +36,55 @@ module ADK
       # @param error [Exception, String] The error to output
       # @param metadata [Hash] Additional metadata to include
       def output_error(error, metadata: {})
+        base_message = error.is_a?(Exception) ? error.message : error.to_s
+
+        # Attempt to find "Did you mean?" suggestions
+        if metadata[:agent] || metadata[:tool]
+          type = metadata[:agent] ? :agent : :tool
+          invalid_name = metadata[type]
+          suggestion = find_suggestions(invalid_name, type)
+          base_message += ". Did you mean '#{suggestion}'?" if suggestion
+        end
+
         if json_mode?
           error_data = {
             status: 'error',
             error_class: error.is_a?(Exception) ? error.class.name : 'Error',
-            error_message: error.is_a?(Exception) ? error.message : error.to_s
+            error_message: base_message
           }
           error_data.merge!(metadata) unless metadata.empty?
           puts JSON.generate(error_data)
         else
-          message = error.is_a?(Exception) ? "#{error.class} - #{error.message}" : error.to_s
-          say message, :red
+          display_message = error.is_a?(Exception) ? "#{error.class} - #{base_message}" : base_message
+          say display_message, :red
         end
       end
 
       private
+
+      # Try to find a suggestion for a misspelled name
+      def find_suggestions(invalid_name, type)
+        return nil unless invalid_name
+
+        begin
+          require 'did_you_mean'
+        rescue LoadError
+          return nil
+        end
+
+        candidates = []
+        if type == :agent && defined?(ADK::AgentDefinitionStore)
+          candidates = ADK::AgentDefinitionStore.list_all_names
+        elsif type == :tool && defined?(ADK::GlobalToolManager)
+          candidates = ADK::GlobalToolManager.registered_tool_names.map(&:to_s)
+        end
+
+        return nil if candidates.empty?
+
+        DidYouMean::SpellChecker.new(dictionary: candidates).correct(invalid_name.to_s).first
+      rescue StandardError
+        nil
+      end
 
       # Check if quiet mode is enabled (--quiet or --json)
       # Thor options may use string or symbol keys depending on how they're accessed
