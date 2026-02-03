@@ -4,7 +4,7 @@
 require 'spec_helper'
 require 'adk/tools/webhook_tool'
 require 'adk/tool_context'
-require 'adk/tool/error'
+require 'adk/errors'
 require 'json'
 require 'openssl'
 require 'webmock/rspec' # Use WebMock

@@ -12,3 +12,9 @@
 
 **Action:** Created `lib/adk/tool_loader.rb` to encapsulate file traversal and loading. Refactored `ADK::Agent` to delegate to this new module. This maintains the same behavior but enforces better module boundaries.
 
+
+## 2026-02-03 - Error Handling Consolidation
+
+**Issue:** Error definitions were scattered across `lib/adk/error.rb`, `lib/adk/errors.rb`, and `lib/adk/tool/error.rb`, with colliding class definitions (specifically `ADK::ToolError`) and inconsistent inheritance.
+**Learning:** Ruby's open classes allow silent redefinition, which masked the collision between the basic `ToolError` in `errors.rb` and the richer implementation in `tool/error.rb`. Consolidating them into a single `lib/adk/errors.rb` prevents this ambiguity and simplifies the dependency graph.
+**Action:** Centralized all ADK error classes into `lib/adk/errors.rb`, ensuring the richest definition (with `cause` and subclasses) was preserved, and removed the redundant files.
