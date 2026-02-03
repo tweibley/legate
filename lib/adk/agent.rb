@@ -1047,28 +1047,7 @@ module ADK
       params = step[:params].to_h
 
       # --- Intercept Delegation Tools (MAS) ---
-      # If the model outputs "agent_transfer_to_xyz", map it to "delegate_task"
-      if tool_name.to_s.start_with?('agent_transfer_to_')
-        target_agent_name = tool_name.to_s.sub('agent_transfer_to_', '')
-        ADK.logger.info("Intercepted delegation tool '#{tool_name}'. Mapping to 'delegate_task' for target '#{target_agent_name}'.")
-        
-        # Remap tool name
-        tool_name = :delegate_task
-        
-        # Remap params: ensure target_agent_name is set
-        params[:target_agent_name] = target_agent_name
-        
-        # Ensure 'task' param exists (model should provide it, but handle aliasing/defaults if needed)
-        # The prompt says: - task (string, required)
-        unless params.key?(:task)
-          # Fallback: if model used a different key like 'message' or 'input', map it to 'task'
-          if params.key?(:message)
-            params[:task] = params.delete(:message)
-          elsif params.key?(:input)
-            params[:task] = params.delete(:input)
-          end
-        end
-      end
+      tool_name, params = _intercept_delegation_tools(tool_name, params)
       # --- End Delegation Interception ---
 
       # --- Get the tool from our registry ---
@@ -1203,6 +1182,37 @@ module ADK
 
         return error_result
       end
+    end
+
+    # Internal helper to handle delegation tool mapping
+    def _intercept_delegation_tools(tool_name, params)
+      # If the model outputs "agent_transfer_to_xyz", map it to "delegate_task"
+      return [tool_name, params] unless tool_name.to_s.start_with?('agent_transfer_to_')
+
+      target_agent_name = tool_name.to_s.sub('agent_transfer_to_', '')
+      ADK.logger.info("Intercepted delegation tool '#{tool_name}'. Mapping to 'delegate_task' for target '#{target_agent_name}'.")
+
+      # Remap tool name
+      new_tool_name = :delegate_task
+
+      # Remap params: ensure target_agent_name is set
+      # Since params passed in is already a new hash (from step[:params].to_h), we can modify it or clone it.
+      # To be safe and clean, let's clone.
+      new_params = params.dup
+      new_params[:target_agent_name] = target_agent_name
+
+      # Ensure 'task' param exists (model should provide it, but handle aliasing/defaults if needed)
+      # The prompt says: - task (string, required)
+      unless new_params.key?(:task)
+        # Fallback: if model used a different key like 'message' or 'input', map it to 'task'
+        if new_params.key?(:message)
+          new_params[:task] = new_params.delete(:message)
+        elsif new_params.key?(:input)
+          new_params[:task] = new_params.delete(:input)
+        end
+      end
+
+      [new_tool_name, new_params]
     end
 
     # Connects to all configured MCP servers.
