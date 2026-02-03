@@ -1,12 +1,5 @@
-## 2025-12-18 - Script Generation Injection
+## 2026-02-03 - [Missing Security Headers in Sinatra App]
 
-**Vulnerability:** User input was interpolated into a generated Bash script inside double quotes (`VAR="#{input}"`). Malicious input containing quotes could break out and execute arbitrary commands when the user runs the script.
-**Learning:** `Shellwords.escape` is essential not just for `system()` calls but also when generating shell scripts programmatically.
-**Prevention:** Use `Shellwords.escape(input)` and remove surrounding quotes in the target script template (e.g., `VAR=#{escaped_input}`).
-
-## 2025-12-17 - [SSRF in WebhookTool]
-
-**Vulnerability:** `ADK::Tools::WebhookTool` allowed agents to send HTTP requests to any URL, including `localhost` and private IPs.
-**Learning:** Tools that accept URLs as input must explicitly validate the destination to prevent Server-Side Request Forgery (SSRF), especially given the agent's ability to explore networks.
-**Prevention:** Implemented `validate_url_security` using `Resolv` and `IPAddr` to block access to private, loopback, and link-local addresses. This pattern should be applied to any future tools making outbound HTTP requests.
-
+**Vulnerability:** The Sinatra web application was missing the `Referrer-Policy` header, and while other headers were likely set by defaults/middleware, they were not explicitly enforced.
+**Learning:** Framework defaults (like `Sinatra::Base` or `rack-protection`) may provide some security headers but often miss newer or stricter ones like `Referrer-Policy`. Implicit reliance on defaults makes the security posture opaque.
+**Prevention:** Explicitly configure critical security headers in a `before` block or dedicated middleware configuration to ensure they are present and set to desired values, regardless of underlying framework updates or default changes. Always verify with tests.

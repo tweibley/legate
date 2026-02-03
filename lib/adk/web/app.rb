@@ -95,6 +95,15 @@ module ADK
         session[:web_user_id] ||= SecureRandom.uuid
         # Optional: Log the web_user_id for debugging purposes during development
         # logger.debug "Current web_user_id: #{session[:web_user_id]}"
+
+        # --- Security Headers ---
+        # Explicitly set security headers to protect against common attacks.
+        # X-Frame-Options, X-Content-Type-Options, and X-XSS-Protection might be set by default
+        # by Sinatra/Rack protection, but we enforce them here for defense in depth.
+        headers['X-Frame-Options'] = 'SAMEORIGIN'
+        headers['X-Content-Type-Options'] = 'nosniff'
+        headers['X-XSS-Protection'] = '1; mode=block'
+        headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
       end
       # --- END NEW ---
 
