@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require 'did_you_mean'
 
 module ADK
   module CLI
@@ -46,6 +47,19 @@ module ADK
           puts JSON.generate(error_data)
         else
           message = error.is_a?(Exception) ? "#{error.class} - #{error.message}" : error.to_s
+
+          suggestion = nil
+          if metadata[:agent]
+            typo = metadata[:agent].to_s
+            candidates = ADK::AgentDefinitionStore.all.keys.map(&:to_s) | ADK::AgentDefinitionStore.list_all_names
+            suggestion = DidYouMean::SpellChecker.new(dictionary: candidates).correct(typo).first
+          elsif metadata[:tool]
+            typo = metadata[:tool].to_s
+            candidates = ADK::GlobalToolManager.registered_tool_names.map(&:to_s)
+            suggestion = DidYouMean::SpellChecker.new(dictionary: candidates).correct(typo).first
+          end
+
+          message += "\nDid you mean '#{suggestion}'?" if suggestion
           say message, :red
         end
       end
