@@ -2,9 +2,32 @@
 # frozen_string_literal: true
 
 module ADK
-  # Provides contextual information to ADK::Tool#perform_execution
-  # Includes session details and a reference to the agent's tool registry.
-  # Read-only.
+  # Provides contextual information to {ADK::Tool#perform_execution}.
+  #
+  # The ToolContext gives tools access to the agent's runtime environment, including:
+  # * Session metadata (session_id, user_id)
+  # * Persistent session state (get/set)
+  # * Logging facilities
+  # * Authentication helpers for API calls
+  #
+  # @example Using context in a custom tool
+  #   def perform_execution(params, context)
+  #     # Access session metadata
+  #     context.logger.info "Executing for user: #{context.user_id}"
+  #
+  #     # Retrieve state from previous interactions
+  #     user_preference = context.state_get(:preference) || 'default'
+  #
+  #     # Persist state for future steps (applied after tool success)
+  #     context.state_set(:last_action, 'executed_custom_tool')
+  #
+  #     # Authenticate an external request using configured credentials
+  #     request = { url: "https://api.example.com/data", method: :get }
+  #     authenticated_req = context.handle_request_auth(request, credential_name: :my_api_key)
+  #
+  #     # ... execution logic ...
+  #   end
+  #
   class ToolContext
     attr_reader :session_id, :user_id, :app_name, :tool_registry, :session_service, :logger, :invocation_id
 

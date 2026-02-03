@@ -1,12 +1,6 @@
-## 2025-12-18 - ADK::Planner Documentation Gap
 
-**Gap:** `ADK::Planner` was undocumented despite being the central orchestration component for LLM planning. Its return structure was implicit.
-**Learning:** Core "brain" components must have explicit contracts documented, especially when they return complex structures like plans parsed from LLM output.
-**Action:** Always document return types of service objects that wrap external APIs or perform complex parsing.
+## 2025-05-18 - ToolContext Documentation Gap
 
-## 2025-12-17 - ADK::Tool Contract Clarity
-
-**Gap:** `ADK::Tool#perform_execution` return type is documented as `Object` but the framework expects a structured Hash `{:status, :result}`, leading to potential runtime errors for new tool developers.
-**Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
-**Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
-
+**Gap:** `ADK::ToolContext` is a critical API for tool authors but lacked usage examples, forcing developers to read the source to understand how to access state or loggers.
+**Learning:** Examples are crucial for context objects because their API surface (methods like `state_set`) isn't immediately obvious from just seeing the object passed into a method.
+**Action:** When documenting "context" or "environment" objects, always include a full usage example showing the most common interactions (logging, state, user ID).
