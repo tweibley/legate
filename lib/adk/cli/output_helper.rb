@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require 'did_you_mean'
 
 module ADK
   module CLI
@@ -36,21 +37,70 @@ module ADK
       # @param error [Exception, String] The error to output
       # @param metadata [Hash] Additional metadata to include
       def output_error(error, metadata: {})
+        suggestions = get_suggestions(metadata)
+
         if json_mode?
-          error_data = {
-            status: 'error',
-            error_class: error.is_a?(Exception) ? error.class.name : 'Error',
-            error_message: error.is_a?(Exception) ? error.message : error.to_s
-          }
-          error_data.merge!(metadata) unless metadata.empty?
-          puts JSON.generate(error_data)
+          output_json_error(error, metadata, suggestions)
         else
-          message = error.is_a?(Exception) ? "#{error.class} - #{error.message}" : error.to_s
-          say message, :red
+          output_text_error(error, suggestions)
         end
       end
 
       private
+
+      def output_json_error(error, metadata, suggestions)
+        error_data = {
+          status: 'error',
+          error_class: error.is_a?(Exception) ? error.class.name : 'Error',
+          error_message: error.is_a?(Exception) ? error.message : error.to_s
+        }
+        error_data[:suggestion] = suggestions.first if suggestions&.any?
+        error_data.merge!(metadata) unless metadata.empty?
+        puts JSON.generate(error_data)
+      end
+
+      def output_text_error(error, suggestions)
+        message = error.is_a?(Exception) ? "#{error.class} - #{error.message}" : error.to_s
+        message += ". Did you mean? #{suggestions.join(', ')}" if suggestions&.any?
+        say message, :red
+      end
+
+      # Get "Did you mean?" suggestions based on metadata
+      def get_suggestions(metadata)
+        return nil unless metadata
+
+        candidates = nil
+        typo = nil
+
+        if metadata[:tool]
+          typo = metadata[:tool].to_s
+          candidates = ADK::GlobalToolManager.registered_tool_names
+        elsif metadata[:agent]
+          typo = metadata[:agent].to_s
+          candidates = safe_get_agent_names
+        end
+
+        return nil unless candidates && typo
+
+        checker = DidYouMean::SpellChecker.new(dictionary: candidates)
+        checker.correct(typo)
+      end
+
+      def safe_get_agent_names
+        # Safety check to avoid crashing if ADK not fully configured or Redis down
+        return nil unless defined?(ADK) && ADK.respond_to?(:config)
+
+        begin
+          store = ADK.config.definition_store
+          return nil unless store
+
+          definitions = store.list_definitions
+          definitions&.map { |d| d[:name] }
+        rescue StandardError => _e
+          # Silently ignore errors during suggestion generation (e.g. Redis down)
+          nil
+        end
+      end
 
       # Check if quiet mode is enabled (--quiet or --json)
       # Thor options may use string or symbol keys depending on how they're accessed
