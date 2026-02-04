@@ -6,6 +6,31 @@ require 'json'
 require_relative 'errors'
 
 module ADK
+  # Defines the configuration and capabilities of an Agent.
+  #
+  # This class is typically used via the DSL in {ADK::Agent.define}.
+  # It stores metadata like the agent's name, description, instructions, tools,
+  # and model configuration.
+  #
+  # @example Defining a simple agent
+  #   ADK::Agent.define do |a|
+  #     a.name :my_agent
+  #     a.description 'A helpful assistant'
+  #     a.instruction 'You are a helpful assistant.'
+  #     a.use_tool :calculator
+  #     a.model_name 'gemini-2.0-flash'
+  #   end
+  #
+  # @example Defining a complex agent with callbacks
+  #   ADK::Agent.define do |a|
+  #     a.name :monitor
+  #     a.instruction 'Monitor system status'
+  #     a.use_tool :check_status
+  #
+  #     a.before_agent_callback do |context|
+  #       puts "Starting monitoring..."
+  #     end
+  #   end
   class AgentDefinition
     extend Forwardable
 
@@ -225,7 +250,7 @@ module ADK
 
       # Registers a tool for the agent to use.
       # @param tool_name [Symbol] The registered name of the tool.
-      # @param options [Hash] Tool-specific options (currently unused).
+      # @param _options [Hash] Tool-specific options (currently unused).
       def use_tool(tool_name, _options = {})
         raise ArgumentError, 'Tool name must be a Symbol.' unless tool_name.is_a?(Symbol)
 
