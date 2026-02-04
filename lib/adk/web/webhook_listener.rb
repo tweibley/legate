@@ -231,54 +231,7 @@ module ADK
         end
 
         # 7. Enqueue Job
-        begin
-          # TODO: Define ADK::WebhookJobWorker class
-          # worker_class = ADK::WebhookJobWorker
-          worker_class_name = 'ADK::WebhookJobWorker' # Use string name for Sidekiq
-
-          # Prepare session service config (assuming Redis for now based on user prompt)
-          # We need the config used by the worker, not necessarily the instance itself.
-          # ADK.redis_options provides the base Redis config hash.
-          session_service_config = ADK.redis_options.dup
-          # Optionally add type marker if multiple service types could be used?
-          # session_service_config[:type] = :redis # Symbols might not serialize well
-
-          # --- Ensure config keys are strings for Sidekiq ---
-          string_key_config = session_service_config.transform_keys(&:to_s)
-          string_key_config['type'] = 'redis' # Use string type marker
-          # --------------------------------------------------
-
-          job_payload = {
-            'agent_definition_name' => agent_name_sym.to_s,
-            'session_id' => session_id,
-            'transformed_user_input' => transformed_user_input,
-            'session_service_config' => string_key_config # Use stringified keys
-          }
-
-          # Use Sidekiq Client API directly
-          job_id = Sidekiq::Client.push(
-            'queue' => 'adk_webhooks', # TODO: Make queue name configurable?
-            'class' => worker_class_name,
-            'args' => [job_payload]
-          )
-
-          if job_id.nil?
-            logger.error("Failed to enqueue webhook job for agent '#{agent_name_sym}': Sidekiq push returned nil.")
-            halt 503, json({ status: :error, error_message: 'Service Unavailable: Failed to queue background job.' })
-          end
-
-          logger.info("Webhook job enqueued successfully for agent '#{agent_name_sym}'. Session: #{session_id}, Job ID: #{job_id}")
-
-        # Catch standard errors during push, differentiate status code
-        rescue Redis::CannotConnectError => e
-          logger.error("Failed to enqueue webhook job (Redis Connect Error) for agent '#{agent_name_sym}': #{e.class} - #{e.message}")
-          halt 503, json({ status: :error, error_message: 'Service Unavailable: Error connecting to job queue.' })
-        rescue StandardError => e
-          logger.error("Unexpected error during job enqueuing for '#{agent_name_sym}': #{e.class} - #{e.message}")
-          # Check if it's likely a Sidekiq issue vs. other standard error?
-          # For now, return 500 for unexpected errors during this phase.
-          halt 500, json({ status: :error, error_message: 'Internal Server Error during job queuing.' })
-        end
+        job_id = enqueue_webhook_job(agent_name_sym, session_id, transformed_user_input)
 
         # 8. Return 202 Accepted
         content_type :json
@@ -299,6 +252,55 @@ module ADK
       end
 
       private
+
+      def enqueue_webhook_job(agent_name, session_id, transformed_user_input)
+        # TODO: Define ADK::WebhookJobWorker class
+        # worker_class = ADK::WebhookJobWorker
+        worker_class_name = 'ADK::WebhookJobWorker' # Use string name for Sidekiq
+
+        # Prepare session service config (assuming Redis for now based on user prompt)
+        # We need the config used by the worker, not necessarily the instance itself.
+        # ADK.redis_options provides the base Redis config hash.
+        session_service_config = ADK.redis_options.dup
+        # Optionally add type marker if multiple service types could be used?
+        # session_service_config[:type] = :redis # Symbols might not serialize well
+
+        # --- Ensure config keys are strings for Sidekiq ---
+        string_key_config = session_service_config.transform_keys(&:to_s)
+        string_key_config['type'] = 'redis' # Use string type marker
+        # --------------------------------------------------
+
+        job_payload = {
+          'agent_definition_name' => agent_name.to_s,
+          'session_id' => session_id,
+          'transformed_user_input' => transformed_user_input,
+          'session_service_config' => string_key_config # Use stringified keys
+        }
+
+        # Use Sidekiq Client API directly
+        job_id = Sidekiq::Client.push(
+          'queue' => 'adk_webhooks', # TODO: Make queue name configurable?
+          'class' => worker_class_name,
+          'args' => [job_payload]
+        )
+
+        if job_id.nil?
+          logger.error("Failed to enqueue webhook job for agent '#{agent_name}': Sidekiq push returned nil.")
+          halt 503, json({ status: :error, error_message: 'Service Unavailable: Failed to queue background job.' })
+        end
+
+        logger.info("Webhook job enqueued successfully for agent '#{agent_name}'. Session: #{session_id}, Job ID: #{job_id}")
+
+        job_id
+      rescue Redis::CannotConnectError => e
+        logger.error("Failed to enqueue webhook job (Redis Connect Error) for agent '#{agent_name}': #{e.class} - #{e.message}")
+        halt 503, json({ status: :error, error_message: 'Service Unavailable: Error connecting to job queue.' })
+      rescue StandardError => e
+        logger.error("Unexpected error during job enqueuing for '#{agent_name}': #{e.class} - #{e.message}")
+        # Check if it's likely a Sidekiq issue vs. other standard error?
+        # For now, return 500 for unexpected errors during this phase.
+        halt 500, json({ status: :error, error_message: 'Internal Server Error during job queuing.' })
+      end
 
       # --- Instance method to set up static routes ---
       def setup_static_routes!
