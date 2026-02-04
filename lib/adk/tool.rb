@@ -101,6 +101,8 @@ module ADK
       @name = metadata[:name]
       @description = metadata[:description]
       @parameters = metadata[:parameters] || {}
+      # Pre-calculate required parameters to optimize validation
+      @required_param_names = @parameters.select { |_, p| p[:required] }.keys.freeze
 
       # Lenient check for missing metadata
       return unless @name.nil? || @name == :'' || @description.nil? || @description.empty?
@@ -139,15 +141,13 @@ module ADK
     # @raise [ADK::ToolArgumentError] if validation fails
     def validate_and_coerce_params(params)
       # 1. Normalize keys to symbols
-      normalized_params = params.transform_keys(&:to_sym)
-
-      current_parameters = @parameters || {}
+      # transform_keys creates a new hash, so we can modify it safely as our working copy
+      coerced_params = params.transform_keys(&:to_sym)
 
       # 2. Check for missing required parameters
-      # Use symbol keys for check
-      required_param_names = current_parameters.select { |_, p| p[:required] }.keys
-      present_keys = normalized_params.keys
-      missing_params = required_param_names - present_keys
+      # Use pre-calculated @required_param_names to avoid iteration
+      present_keys = coerced_params.keys
+      missing_params = @required_param_names - present_keys
 
       unless missing_params.empty?
         msg = "Missing required parameters for tool '#{@name}': #{missing_params.join(', ')}."
@@ -158,9 +158,7 @@ module ADK
       end
 
       # 3. Type Validation & Coercion
-      coerced_params = normalized_params.dup
-
-      current_parameters.each do |param_name, param_def|
+      (@parameters || {}).each do |param_name, param_def|
         # Only process if present
         next unless coerced_params.key?(param_name)
 
@@ -169,8 +167,8 @@ module ADK
         next unless expected_type
 
         begin
-          coerced_value = coerce_value(value, expected_type)
-          coerced_params[param_name] = coerced_value
+          # Modifies coerced_params in place
+          coerced_params[param_name] = coerce_value(value, expected_type)
         rescue ArgumentError, TypeError => e
           raise ADK::ToolArgumentError, "Parameter '#{param_name}' for tool '#{@name}' error: #{e.message}"
         end

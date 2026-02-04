@@ -13,3 +13,7 @@
 **Learning:** Tool metadata resolution (`tool_metadata`, which infers names and consolidates DSL/legacy attributes) was being recalculated on every tool instantiation. Since tools are instantiated frequently (e.g., every step in `execute_plan` and during planning prompts), this was a significant overhead (~1.03s vs 0.07s for 100k instantiations).
 **Action:** Implemented caching for `tool_metadata` using `@_tool_metadata_cache`. Replaced `attr_accessor` with manual setters in `MetadataDsl` to ensure proper cache invalidation when metadata changes. Always look for "static" calculations in hot paths (like class instantiation) that can be memoized.
 
+## 2025-12-19 - [Hot Path Allocation in Tool Validation]
+
+**Learning:** `ADK::Tool#validate_and_coerce_params` was re-calculating required parameter keys (array allocation) and duplicating the parameters hash (`.dup`) on every execution.
+**Action:** Pre-calculate static derived data (like required parameter lists) in `initialize`. Use `transform_keys` return value directly as a working copy instead of duplicating it again, as it's already a new object.
