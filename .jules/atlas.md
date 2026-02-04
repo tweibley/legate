@@ -12,3 +12,8 @@
 
 **Action:** Created `lib/adk/tool_loader.rb` to encapsulate file traversal and loading. Refactored `ADK::Agent` to delegate to this new module. This maintains the same behavior but enforces better module boundaries.
 
+## 2025-12-19 - Extract Agent Tool Management to Concern
+
+**Issue:** `ADK::Agent` was acting as a "God Class", managing tool registration, retrieval, and metadata extraction alongside its core responsibilities of planning and execution. This violated the Single Responsibility Principle and made the class large and difficult to maintain.
+**Learning:** Using Ruby Modules (Concerns) is an effective way to decompose large classes into cohesive units of behavior without changing the public API or requiring complex dependency injection refactors immediately. It allows for a "phase 1" separation of concerns.
+**Action:** Extracted tool management methods (`add_tool`, `tools`, `find_tool`, etc.) into `ADK::Concerns::AgentToolManagement`. Included this module in `ADK::Agent` to preserve existing behavior while physically separating the logic.
