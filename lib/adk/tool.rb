@@ -101,6 +101,8 @@ module ADK
       @name = metadata[:name]
       @description = metadata[:description]
       @parameters = metadata[:parameters] || {}
+      # OPTIMIZE: Pre-calculate required parameters to avoid doing it on every execution
+      @required_param_names = @parameters.select { |_, p| p[:required] }.keys.freeze
 
       # Lenient check for missing metadata
       return unless @name.nil? || @name == :'' || @description.nil? || @description.empty?
@@ -139,15 +141,19 @@ module ADK
     # @raise [ADK::ToolArgumentError] if validation fails
     def validate_and_coerce_params(params)
       # 1. Normalize keys to symbols
+      # OPTIMIZE: transform_keys creates a new hash, so we can modify it in place later
+      # without needing another .dup (unless we needed strict original preservation which we don't here)
       normalized_params = params.transform_keys(&:to_sym)
 
       current_parameters = @parameters || {}
 
       # 2. Check for missing required parameters
-      # Use symbol keys for check
-      required_param_names = current_parameters.select { |_, p| p[:required] }.keys
+      # OPTIMIZE: Use pre-calculated required param names
+      # If @required_param_names is nil (legacy initialization?), recalculate
+      req_params = @required_param_names || current_parameters.select { |_, p| p[:required] }.keys
+
       present_keys = normalized_params.keys
-      missing_params = required_param_names - present_keys
+      missing_params = req_params - present_keys
 
       unless missing_params.empty?
         msg = "Missing required parameters for tool '#{@name}': #{missing_params.join(', ')}."
@@ -158,7 +164,8 @@ module ADK
       end
 
       # 3. Type Validation & Coercion
-      coerced_params = normalized_params.dup
+      # OPTIMIZE: Reuse normalized_params as it's already a copy
+      coerced_params = normalized_params
 
       current_parameters.each do |param_name, param_def|
         # Only process if present
