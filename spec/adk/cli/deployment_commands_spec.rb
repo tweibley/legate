@@ -118,5 +118,18 @@ RSpec.describe ADK::CLI::DeploymentCommands do
         expect(output.string).to include('Azure deployment asset generation is not yet implemented')
       end
     end
+
+    context 'Security' do
+      it 'safely handles command arguments in run_gcloud_command' do
+        require 'open3'
+        malicious_arg = '; rm -rf /'
+
+        # Verify Open3.capture2e receives arguments as separate list items, preventing shell injection
+        expect(Open3).to receive(:capture2e).with('gcloud', 'config', 'set', malicious_arg).and_return(['', double(success?: true)])
+
+        # Invoke the private method
+        commands.send(:run_gcloud_command, 'config', 'set', malicious_arg, error_message: 'fail')
+      end
+    end
   end
 end
