@@ -149,6 +149,18 @@ module ADK
       redis&.close
     end
 
+    # List all agent names stored in Redis.
+    # @return [Array<String>] List of agent names.
+    def self.list_all_names
+      redis = Redis.new(ADK.redis_options)
+      redis.smembers(REDIS_AGENTS_SET_KEY)
+    rescue Redis::BaseError => e
+      ADK.logger.error("AgentDefinitionStore: Failed to list names: #{e.message}")
+      []
+    ensure
+      redis&.close
+    end
+
     # Load all definitions from Redis into the in-memory store.
     # @return [Integer] Number of definitions loaded.
     def self.load_all_from_redis
