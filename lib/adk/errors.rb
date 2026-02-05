@@ -4,6 +4,24 @@
 module ADK
   class Error < StandardError; end
 
+  # Raised when a required configuration is missing or invalid
+  class ConfigurationError < Error; end
+
+  # Raised when a tool execution fails
+  class ToolExecutionError < Error; end
+
+  # Raised when a tool's parameters are invalid
+  class InvalidParametersError < Error; end
+
+  # Raised when a background job operation fails
+  class JobError < Error; end
+
+  # Raised when an operation times out
+  class TimeoutError < Error; end
+
+  # Raised when a required dependency is missing
+  class DependencyError < Error; end
+
   # Raised when state validation fails
   class StateValidationError < Error; end
 
@@ -55,9 +73,6 @@ module ADK
 
   # Error raised when a required tool is not found.
   class ToolNotFound < Error; end
-
-  # Error raised during tool execution.
-  class ToolError < Error; end
 
   # Error raised during planning phase.
   class PlanningError < Error; end
