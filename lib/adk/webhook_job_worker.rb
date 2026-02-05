@@ -12,10 +12,35 @@ require 'redis'
 
 module ADK
   # Sidekiq worker responsible for processing agent tasks triggered by webhooks.
+  #
+  # This worker is enqueued by the webhook endpoint when a valid request is received.
+  # It handles:
+  # 1. Parsing and validating the job payload.
+  # 2. Re-instantiating the necessary services (SessionService, Agent).
+  # 3. Loading the agent definition from the store.
+  # 4. Executing the agent task asynchronously.
+  # 5. Handling errors and logging the outcome.
+  #
+  # @see ADK::Configuration::Webhooks
   class WebhookJobWorker
     include Sidekiq::Worker
     sidekiq_options queue: 'adk_webhooks', retry: 3 # Configure queue and retries
 
+    # Performs the background job to execute an agent task.
+    #
+    # @param job_payload [Hash] The payload containing task details.
+    # @option job_payload [String] 'agent_definition_name' The name of the agent to trigger.
+    # @option job_payload [String] 'session_id' The unique session ID.
+    # @option job_payload [String] 'transformed_user_input' The user input (possibly transformed from the webhook body).
+    # @option job_payload [Hash] 'session_service_config' Configuration for the session service (must include 'type' => 'redis' and Redis options).
+    #
+    # @raise [ArgumentError] If the payload is missing required keys.
+    # @raise [ADK::DefinitionStore::DefinitionNotFound] If the agent definition cannot be found in the store.
+    # @raise [NotImplementedError] If the session service type is not supported.
+    # @raise [ADK::ConfigurationError] If the in-memory definition is missing.
+    # @raise [Redis::CannotConnectError] If connection to Redis fails (retryable).
+    # @raise [ADK::SessionError] If there is a session service error (retryable).
+    # @raise [StandardError] For other unexpected errors during execution (retryable).
     def perform(job_payload)
       ADK.logger.info("WebhookJobWorker starting job: #{job_payload.inspect}")
 

@@ -10,3 +10,8 @@
 **Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
 **Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
 
+## 2025-02-19 - Background Worker Documentation
+
+**Gap:** `ADK::WebhookJobWorker` was completely undocumented, making it difficult to understand the payload structure and error handling for asynchronous webhook tasks.
+**Learning:** Background job workers often get overlooked in documentation but are critical integration points. Documenting the expected payload and raised exceptions clarifies the contract between the webhook endpoint and the worker.
+**Action:** Always check background workers for documentation gaps, especially regarding payload schemas and error handling.
