@@ -10,3 +10,8 @@
 **Learning:** The method signature `def execute(params = {}, context = nil)` only handles missing arguments, not explicit `nil`.
 **Action:** Future reliability improvements should guard against `nil` input in `execute` to prevent crashes.
 
+## 2025-12-19 - [Implicit Parameter Coercion Risks]
+
+**Gap:** `ADK::Tool` performs complex implicit coercion (e.g., parsing JSON strings for Array/Hash types, mapping "yes"/"no" to Booleans) which was not exhaustively tested.
+**Learning:** Custom coercion logic over standard Ruby types introduces non-obvious edge cases (e.g., invalid JSON strings) that simple "happy path" tests miss.
+**Action:** Implemented a dedicated coercion test suite `spec/adk/tool_coercion_spec.rb` to lock down behavior for all supported types and invalid inputs.
