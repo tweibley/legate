@@ -6,6 +6,7 @@ require 'logger'
 require_relative 'tool_context'
 require_relative 'global_tool_manager'
 require_relative 'tool/metadata_dsl'
+require_relative 'tool/type_coercer'
 require 'json'
 
 module ADK
@@ -71,7 +72,7 @@ module ADK
       #   ...
       # end
       # --- End Fallback Metadata Method ---
-    end # End Class-level
+    end
     # --- End Class-level ---
 
     # --- Self-Registration Hook ---
@@ -169,9 +170,12 @@ module ADK
         next unless expected_type
 
         begin
-          coerced_value = coerce_value(value, expected_type)
+          coerced_value = ADK::Tool::TypeCoercer.coerce(value, expected_type)
           coerced_params[param_name] = coerced_value
+        rescue ADK::Tool::TypeCoercer::CoercionError => e
+          raise ADK::ToolArgumentError, "Parameter '#{param_name}' for tool '#{@name}' error: #{e.message}"
         rescue ArgumentError, TypeError => e
+          # Catch other unexpected errors
           raise ADK::ToolArgumentError, "Parameter '#{param_name}' for tool '#{@name}' error: #{e.message}"
         end
       end
@@ -180,76 +184,6 @@ module ADK
     end
 
     private
-
-    # Coerce a value to the expected type
-    def coerce_value(value, type)
-      return value if value.nil?
-
-      case type
-      when :string
-        value.to_s
-      when :integer
-        # Integer(val) handles strings like "123" and numbers like 123.0 (truncates)
-        begin
-          Integer(value)
-        rescue ArgumentError, TypeError
-          raise ADK::ToolArgumentError, "expected Integer, got #{value.class} (#{value.inspect})"
-        end
-      when :float, :numeric
-        # :numeric treated as Float for broad compatibility
-        begin
-          Float(value)
-        rescue ArgumentError, TypeError
-          raise ADK::ToolArgumentError, "expected Numeric/Float, got #{value.class} (#{value.inspect})"
-        end
-      when :boolean
-        if value.is_a?(TrueClass) || value.is_a?(FalseClass)
-          value
-        elsif value.is_a?(String)
-          case value.downcase
-          when 'true', 't', 'yes', '1' then true
-          when 'false', 'f', 'no', '0' then false
-          else
-            raise ADK::ToolArgumentError, "expected Boolean, got String '#{value}'"
-          end
-        else
-          raise ADK::ToolArgumentError, "expected Boolean, got #{value.class} (#{value.inspect})"
-        end
-      when :array
-        if value.is_a?(Array)
-          value
-        elsif value.is_a?(String)
-          begin
-            parsed = JSON.parse(value)
-            raise ArgumentError unless parsed.is_a?(Array)
-
-            parsed
-          rescue StandardError
-            raise ADK::ToolArgumentError, "expected Array, got #{value.class} (#{value.inspect})"
-          end
-        else
-          raise ADK::ToolArgumentError, "expected Array, got #{value.class} (#{value.inspect})"
-        end
-      when :hash
-        if value.is_a?(Hash)
-          value
-        elsif value.is_a?(String)
-          begin
-            parsed = JSON.parse(value)
-            raise ArgumentError unless parsed.is_a?(Hash)
-
-            parsed
-          rescue StandardError
-            raise ADK::ToolArgumentError, "expected Hash, got #{value.class} (#{value.inspect})"
-          end
-        else
-          raise ADK::ToolArgumentError, "expected Hash, got #{value.class} (#{value.inspect})"
-        end
-      else
-        # Unknown type or 'any', return as is
-        value
-      end
-    end
 
     # Perform the actual execution of the tool.
     #

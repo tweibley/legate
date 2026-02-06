@@ -12,3 +12,8 @@
 
 **Action:** Created `lib/adk/tool_loader.rb` to encapsulate file traversal and loading. Refactored `ADK::Agent` to delegate to this new module. This maintains the same behavior but enforces better module boundaries.
 
+## 2025-05-14 - Extracted Parameter Coercion Logic
+
+**Issue:** `ADK::Tool` violated Single Responsibility Principle by mixing execution lifecycle with complex type coercion logic (God Method tendency in `coerce_value`).
+**Learning:** Separating infrastructure concerns (like type safety) from business logic (tool execution) improves testability and makes the system easier to extend with new types without modifying core classes.
+**Action:** Extracted `ADK::Tool::TypeCoercer` to handle all type conversions, reducing cyclomatic complexity in the base tool class.
