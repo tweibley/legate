@@ -13,26 +13,16 @@ module ADK
           # Replaced attr_accessor with manual methods to handle cache invalidation
           # attr_accessor :explicit_tool_name, :description, :parameters_definition
 
-          def explicit_tool_name
-            @explicit_tool_name
-          end
+          attr_reader :explicit_tool_name, :description, :parameters_definition
 
           def explicit_tool_name=(value)
             @explicit_tool_name = value
             @_tool_metadata_cache = nil # Invalidate cache
           end
 
-          def description
-            @description
-          end
-
           def description=(value)
             @description = value
             @_tool_metadata_cache = nil # Invalidate cache
-          end
-
-          def parameters_definition
-            @parameters_definition
           end
 
           def parameters_definition=(value)
@@ -89,7 +79,7 @@ module ADK
         # 3. Inferred name
         def effective_tool_name
           initialize_dsl_storage # Ensure @explicit_tool_name exists
-          explicit_dsl = self.explicit_tool_name
+          explicit_dsl = explicit_tool_name
           return explicit_dsl if explicit_dsl && explicit_dsl != :''
 
           # Check define_metadata's variable if explicit DSL name wasn't set
@@ -106,27 +96,32 @@ module ADK
         # Retrieve consolidated metadata, preferring DSL values but falling back to define_metadata values.
         # Cached for performance.
         def tool_metadata
-          @_tool_metadata_cache ||= begin
+          @tool_metadata ||= begin
             initialize_dsl_storage # Ensure DSL variables exist
 
             # Get description: Prefer DSL, fallback to define_metadata's @description
-            dsl_desc = self.description
+            dsl_desc = description
             old_desc = instance_variable_get(:@description) if instance_variable_defined?(:@description) && dsl_desc.nil?
             final_desc = dsl_desc || old_desc
 
             # Get parameters: Prefer DSL, fallback to define_metadata's @parameters_definition
-            dsl_params = self.parameters_definition
+            dsl_params = parameters_definition
             old_params = instance_variable_get(:@parameters_definition) if instance_variable_defined?(:@parameters_definition) && (dsl_params.nil? || dsl_params.empty?)
-            final_params = (dsl_params && !dsl_params.empty?) ? dsl_params : (old_params || {})
+            final_params = dsl_params && !dsl_params.empty? ? dsl_params : (old_params || {})
+
+            # Pre-calculate required parameter names for performance
+            # This avoids repeated iteration/allocation during tool execution
+            required_names = final_params.select { |_, p| p[:required] }.keys
 
             {
               name: effective_tool_name,
               description: final_desc,
-              parameters: final_params
+              parameters: final_params,
+              required_param_names: required_names
             }
           end
         end
-      end # End ClassMethods
+      end
     end
   end
 end

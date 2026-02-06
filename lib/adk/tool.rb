@@ -71,7 +71,7 @@ module ADK
       #   ...
       # end
       # --- End Fallback Metadata Method ---
-    end # End Class-level
+    end
     # --- End Class-level ---
 
     # --- Self-Registration Hook ---
@@ -101,6 +101,8 @@ module ADK
       @name = metadata[:name]
       @description = metadata[:description]
       @parameters = metadata[:parameters] || {}
+      # Store pre-calculated required parameter names to optimize validation
+      @required_param_names = metadata[:required_param_names] || []
 
       # Lenient check for missing metadata
       return unless @name.nil? || @name == :'' || @description.nil? || @description.empty?
@@ -145,9 +147,9 @@ module ADK
 
       # 2. Check for missing required parameters
       # Use symbol keys for check
-      required_param_names = current_parameters.select { |_, p| p[:required] }.keys
+      # Use pre-calculated array instead of iterating over parameters
       present_keys = normalized_params.keys
-      missing_params = required_param_names - present_keys
+      missing_params = @required_param_names - present_keys
 
       unless missing_params.empty?
         msg = "Missing required parameters for tool '#{@name}': #{missing_params.join(', ')}."
