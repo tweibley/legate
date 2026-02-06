@@ -10,3 +10,8 @@
 **Learning:** Base classes for plugins (like Tools) must rigorously document the contract for abstract methods to prevent integration issues.
 **Action:** Document the expected return Hash structure and provide a complete example of a custom tool.
 
+## 2026-02-06 - ADK::Tools::Base::HttpClient Mixin Discoverability
+
+**Gap:** The README encouraged using `HttpClient` for custom tools, but the mixin's public helpers were undocumented in the source, hiding critical usage details like automatic JSON encoding.
+**Learning:** Mixins intended for public use (SDK-style) are part of the public API and need rigorous documentation, even if they are technically "internal" modules.
+**Action:** Audit other mixins in `lib/adk/tools/base` for similar documentation gaps.

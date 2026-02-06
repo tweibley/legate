@@ -20,9 +20,25 @@ module ADK
       # It offers helper methods (http_get, http_head, http_post, etc.) for common requests,
       # handles base URL joining, JSON encoding/decoding (optional), logging,
       # and wraps Excon errors into standardized ADK::ToolError subclasses.
+      #
+      # @example Basic usage in a tool
+      #   class MyApiTool < ADK::Tool
+      #     include ADK::Tools::Base::HttpClient
+      #
+      #     def initialize(**options)
+      #       super
+      #       setup_http_client(base_url: 'https://api.example.com/v1')
+      #     end
+      #
+      #     def fetch_item(id)
+      #       response = http_get("items/#{id}")
+      #       JSON.parse(response.body)
+      #     end
+      #   end
       module HttpClient
         # Custom instrumentor that only logs errors
         class QuietInstrumentor < Excon::StandardInstrumentor
+          # @api private
           def instrument(name, params = {})
             # Only log if there's an error
             ADK.logger.error("[#{name}] #{params[:error]}") if params[:error]
@@ -34,22 +50,65 @@ module ADK
 
         # Make request helpers public API for tools including this module
 
+        # Perform an HTTP GET request.
+        #
+        # @param path [String] The path relative to the base URL (or an absolute URL).
+        # @param query [Hash] Query string parameters.
+        # @param headers [Hash] Additional headers for this request.
+        # @param options [Hash] Excon request options (overrides defaults).
+        # @return [Excon::Response] The HTTP response object.
+        # @raise [ADK::ToolError] If the request fails (network, timeout, 4xx/5xx).
         def http_get(path, query: {}, headers: {}, options: {})
           make_request(:get, path, query: query, headers: headers, options: options)
         end
 
+        # Perform an HTTP HEAD request.
+        #
+        # @param path [String] The path relative to the base URL (or an absolute URL).
+        # @param query [Hash] Query string parameters.
+        # @param headers [Hash] Additional headers for this request.
+        # @param options [Hash] Excon request options (overrides defaults).
+        # @return [Excon::Response] The HTTP response object.
+        # @raise [ADK::ToolError] If the request fails.
         def http_head(path, query: {}, headers: {}, options: {})
           make_request(:head, path, query: query, headers: headers, options: options)
         end
 
+        # Perform an HTTP POST request.
+        #
+        # @param path [String] The path relative to the base URL (or an absolute URL).
+        # @param body [String, Hash, nil] The request body. Hashes are automatically JSON-encoded
+        #   unless Content-Type indicates otherwise.
+        # @param query [Hash] Query string parameters.
+        # @param headers [Hash] Additional headers for this request.
+        # @param options [Hash] Excon request options (overrides defaults).
+        # @return [Excon::Response] The HTTP response object.
+        # @raise [ADK::ToolError] If the request fails.
         def http_post(path, body: nil, query: {}, headers: {}, options: {})
           make_request(:post, path, body: body, query: query, headers: headers, options: options)
         end
 
+        # Perform an HTTP PUT request.
+        #
+        # @param path [String] The path relative to the base URL (or an absolute URL).
+        # @param body [String, Hash, nil] The request body. Hashes are automatically JSON-encoded.
+        # @param query [Hash] Query string parameters.
+        # @param headers [Hash] Additional headers for this request.
+        # @param options [Hash] Excon request options (overrides defaults).
+        # @return [Excon::Response] The HTTP response object.
+        # @raise [ADK::ToolError] If the request fails.
         def http_put(path, body: nil, query: {}, headers: {}, options: {})
           make_request(:put, path, body: body, query: query, headers: headers, options: options)
         end
 
+        # Perform an HTTP DELETE request.
+        #
+        # @param path [String] The path relative to the base URL (or an absolute URL).
+        # @param query [Hash] Query string parameters.
+        # @param headers [Hash] Additional headers for this request.
+        # @param options [Hash] Excon request options (overrides defaults).
+        # @return [Excon::Response] The HTTP response object.
+        # @raise [ADK::ToolError] If the request fails.
         def http_delete(path, query: {}, headers: {}, options: {})
           make_request(:delete, path, query: query, headers: headers, options: options)
         end
