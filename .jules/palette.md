@@ -6,3 +6,8 @@
 2. Automatically coerce string inputs to the expected type (Integer, Float, Boolean, JSON Array/Hash) based on DSL definition.
 3. Validate types strictly if coercion fails.
 This improves CLI ergonomics (no need to manually parse strings in tools) and debugging speed.
+
+## 2024-05-24 - CLI Typo Suggestions
+
+**Learning:** CLI users frequently make typos in resource names. Generic "Not Found" errors are frustrating. Integrating `DidYouMean::SpellChecker` directly into the `output_error` helper provides a consistent "Did you mean?" pattern across all commands without cluttering individual command logic with suggestion calculation.
+**Action:** Use `output_error(..., suggestions: ...)` for all resource lookup failures in the CLI to guide users to the correct resource name.

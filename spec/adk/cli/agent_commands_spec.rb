@@ -333,8 +333,24 @@ RSpec.describe ADK::CLI::AgentCommands do
 
         invoke_command(:delete, agent_name.to_s)
 
-        expect(output.string).to include("Error: Agent definition 'my_agent_to_delete' not found.")
+        expect(output.string).to include("Agent definition 'my_agent_to_delete' not found.")
         expect(output.string).to include('SystemExit with status 1')
+      end
+    end
+
+    context 'when definition does not exist but similar one does' do
+      let(:typo_name) { 'my_agent_typo' }
+      let(:real_name) { 'my_agent_real' }
+
+      before do
+        allow(ADK::AgentDefinitionStore).to receive(:find).with(typo_name.to_sym).and_return(nil)
+        allow(ADK::AgentDefinitionStore).to receive(:load_from_redis).with(typo_name.to_sym).and_return(nil)
+        allow(ADK::AgentDefinitionStore).to receive(:list_all_names).and_return([real_name])
+      end
+
+      it 'prints "Did you mean?" suggestions' do
+        invoke_command(:delete, typo_name)
+        expect(output.string).to include("Did you mean? #{real_name}")
       end
     end
 

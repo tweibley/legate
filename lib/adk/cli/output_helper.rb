@@ -35,7 +35,8 @@ module ADK
       # Output error (JSON format in --json mode, otherwise text to stderr)
       # @param error [Exception, String] The error to output
       # @param metadata [Hash] Additional metadata to include
-      def output_error(error, metadata: {})
+      # @param suggestions [Array<String>] Optional "did you mean" suggestions
+      def output_error(error, metadata: {}, suggestions: [])
         if json_mode?
           error_data = {
             status: 'error',
@@ -43,10 +44,15 @@ module ADK
             error_message: error.is_a?(Exception) ? error.message : error.to_s
           }
           error_data.merge!(metadata) unless metadata.empty?
+          error_data[:suggestions] = suggestions if suggestions.any?
           puts JSON.generate(error_data)
         else
           message = error.is_a?(Exception) ? "#{error.class} - #{error.message}" : error.to_s
           say message, :red
+
+          if suggestions.any?
+            say "Did you mean? #{suggestions.join(', ')}", :yellow
+          end
         end
       end
 
