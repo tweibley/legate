@@ -7,6 +7,12 @@ Legate (_pronounced like "legit"_ — `/ˈle·jit/` — because it is) is a fram
 
 It's **batteries-included** — one gem ships the agent runtime, an LLM planner, a web UI, a CLI, MCP support, and an authentication subsystem. That's a deliberate choice: Legate is a framework, not a micro-library, so it bundles the dependencies those pieces need (Sinatra/Puma for the web UI, Thor for the CLI, and so on). If you only want the library, `require 'legate'` loads **just the core** — the web stack is opt-in via `require 'legate/web'` and the CLI via the `legate` executable, so library-only users never load Sinatra, Puma, or Slim.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/tweibley/legate/main/screenshots/web-ui-light.png" alt="Legate web UI — the command console" width="820">
+  <br>
+  <em>The built-in web UI (<code>legate web start</code>).</em>
+</p>
+
 ## Features
 
 - **Flexible Agent Architecture** — Create agents with custom tools, models, and capabilities
