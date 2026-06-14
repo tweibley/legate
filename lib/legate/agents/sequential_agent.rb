@@ -1,0 +1,190 @@
+# frozen_string_literal: true
+
+# File: lib/legate/agents/sequential_agent.rb
+require_relative '../agent'
+
+module Legate
+  module Agents
+    # SequentialAgent executes a series of sub-agents in a predefined order.
+    # Each sub-agent is executed one after another, with the same session and input.
+    class SequentialAgent < Legate::Agent
+      # Override run_task to execute sub-agents in sequence
+      # @param session_id [String] The session ID
+      # @param user_input [String] User input to process
+      # @param session_service [Legate::SessionService::Base] Session service for persistence
+      # @return [Legate::Event] The final agent event
+      def run_task(session_id:, user_input:, session_service:)
+        # Verify we have sequential sub-agents defined
+        unless @definition.sequential_sub_agent_names&.any?
+          err_msg = "SequentialAgent '#{name}' has no sequential_sub_agent_names defined."
+          Legate.logger.error(err_msg)
+          return Legate::Event.new(role: :agent, content: {
+                                     status: :error,
+                                     error_message: err_msg,
+                                     error_class: 'ConfigurationError'
+                                   })
+        end
+
+        # --- Pre-execution Checks --- #
+        unless running?
+          err_msg = "Agent '#{name}' is not running. Call agent.start before run_task, " \
+                    'or use agent.ask (which starts automatically).'
+          Legate.logger.error(err_msg)
+          return Legate::Event.new(role: :agent, content: { status: :error, error_message: err_msg })
+        end
+
+        session = session_service.get_session(session_id: session_id)
+        unless session
+          err_msg = "Session not found: #{session_id}"
+          Legate.logger.error(err_msg)
+          return Legate::Event.new(role: :agent, content: { status: :error, error_message: err_msg })
+        end
+        # --------------------------- #
+
+        # Log user input to the SequentialAgent itself
+        user_event = Legate::Event.new(role: :user, content: user_input)
+        session_service.append_event(session_id: session_id, event: user_event)
+
+        # Log the execution sequence start
+        Legate.logger.info("SequentialAgent '#{name}' starting execution of #{@definition.sequential_sub_agent_names.size} sub-agents in sequence.")
+
+        # Track results of all sub-agents
+        all_results = []
+        final_result = nil
+        current_input = user_input # Start with the original user input
+
+        # Execute each sub-agent in order
+        @definition.sequential_sub_agent_names.each_with_index do |sub_agent_name, index|
+          sub_agent = find_sub_agent(sub_agent_name)
+          unless sub_agent
+            err_msg = "Sub-agent '#{sub_agent_name}' not found for SequentialAgent '#{name}'."
+            Legate.logger.error(err_msg)
+            final_result = {
+              status: :error,
+              error_message: err_msg,
+              error_class: 'MissingSubAgentError',
+              step: index + 1,
+              total_steps: @definition.sequential_sub_agent_names.size,
+              previous_results: all_results.map.with_index { |r, i| { agent: @definition.sequential_sub_agent_names.to_a[i], result: r } }
+            }
+            break # Stop the sequence on error
+          end
+
+          # Start the sub-agent if it's not already running
+          sub_agent.start unless sub_agent.running?
+
+          # If this is not the first agent, try to augment its input with previous results
+          if index > 0 && all_results.any?
+            # Get previous agent name - handle both Array and Set types
+            previous_agent_name = nil
+            previous_agent_name = if @definition.sequential_sub_agent_names.is_a?(Set)
+                                    # For Set, convert to Array and get the element
+                                    @definition.sequential_sub_agent_names.to_a[index - 1]
+                                  else
+                                    # For Array, access directly
+                                    @definition.sequential_sub_agent_names[index - 1]
+                                  end
+
+            previous_output_key = find_sub_agent(previous_agent_name)&.definition&.output_key
+
+            if previous_output_key && session_service.respond_to?(:get_state)
+              # Get the previous agent's result from session state
+              previous_result = session_service.get_state(session_id: session_id, key: previous_output_key)
+
+              if previous_result && previous_result.is_a?(Hash) && previous_result[:result]
+                # Enhanced input with previous result
+                current_input = "#{current_input}\n\nHere is the result from the previous step (#{previous_agent_name}):\n#{previous_result[:result]}"
+                Legate.logger.info("Enhanced input for sub-agent '#{sub_agent_name}' with previous result from '#{previous_agent_name}'")
+              end
+            end
+          end
+
+          # Execute the sub-agent with the updated input
+          begin
+            Legate.logger.info("SequentialAgent '#{name}' executing sub-agent '#{sub_agent_name}' (step #{index + 1}/#{@definition.sequential_sub_agent_names.size}).")
+            sub_result = sub_agent.run_task(
+              session_id: session_id,
+              user_input: current_input,
+              session_service: session_service
+            )
+
+            # Record the result
+            all_results << sub_result.content
+
+            # Check for error to break sequence
+            if sub_result.content[:status] == :error
+              Legate.logger.warn("Sub-agent '#{sub_agent_name}' returned error, breaking sequence: #{sub_result.content[:error_message]}")
+              final_result = {
+                status: :error,
+                error_message: "Error in sub-agent '#{sub_agent_name}': #{sub_result.content[:error_message]}",
+                error_class: sub_result.content[:error_class] || 'SubAgentError',
+                step: index + 1,
+                total_steps: @definition.sequential_sub_agent_names.size,
+                sub_agent: sub_agent_name.to_s,
+                sub_result: sub_result.content,
+                previous_results: all_results.map.with_index { |r, i| { agent: @definition.sequential_sub_agent_names.to_a[i], result: r } }
+              }
+              break # Stop the sequence on error
+            elsif sub_result.content[:result]
+              # If the sub-agent succeeded, update the current_input to include its result for the next agent
+              # Store the raw result for potential state-based chaining in next iteration
+              current_input = sub_result.content[:result].to_s
+            end
+          rescue StandardError => e
+            Legate.logger.error("Error executing sub-agent '#{sub_agent_name}': #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
+            final_result = {
+              status: :error,
+              error_message: "Exception in sub-agent '#{sub_agent_name}': #{e.message}",
+              error_class: e.class.name,
+              step: index + 1,
+              total_steps: @definition.sequential_sub_agent_names.size,
+              sub_agent: sub_agent_name.to_s,
+              previous_results: all_results.map.with_index { |r, i| { agent: @definition.sequential_sub_agent_names.to_a[i], result: r } }
+            }
+            break # Stop the sequence on error
+          end
+        end
+
+        # If we didn't set a final_result due to an error, create a success result with all sub-results
+        if final_result.nil?
+          final_result = {
+            status: :success,
+            result: "Completed sequential execution of #{@definition.sequential_sub_agent_names.size} sub-agents",
+            steps_completed: @definition.sequential_sub_agent_names.size,
+            sub_results: all_results.map.with_index { |r, i| { agent: @definition.sequential_sub_agent_names.to_a[i], result: r } }
+          }
+        end
+
+        # Create the final event
+        final_agent_event = Legate::Event.new(role: :agent, content: final_result)
+
+        # Log the final event to the session
+        session_service.append_event(session_id: session_id, event: final_agent_event)
+
+        # --- MAS: Store result in session state if output_key is defined --- #
+        if @definition.respond_to?(:output_key) && @definition.output_key && final_agent_event
+          output_value = final_agent_event.content # Store the entire content hash
+
+          # Make sure the output value is serializable
+          serialized_value = begin
+            # Convert to JSON and back to ensure it's serializable
+            JSON.parse(output_value.to_json)
+          rescue StandardError => e
+            Legate.logger.warn("SequentialAgent '#{@name}': Failed to serialize output value: #{e.message}. Using simplified value.")
+            { status: output_value[:status], result: output_value[:result].to_s }
+          end
+
+          Legate.logger.info("SequentialAgent '#{@name}' storing output to session state with key '#{@definition.output_key}' for session '#{session_id}'.")
+          if session_service.respond_to?(:set_state)
+            session_service.set_state(session_id: session_id, key: @definition.output_key, value: serialized_value)
+          else
+            Legate.logger.warn("SequentialAgent '#{@name}': Session service does not support :set_state. Cannot store output for key '#{@definition.output_key}'.")
+          end
+        end
+        # --- End MAS State Management --- #
+
+        final_agent_event
+      end
+    end
+  end
+end

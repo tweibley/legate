@@ -1,0 +1,299 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+require 'legate/auth/token_manager'
+require 'legate/auth/token_store'
+require 'legate/auth/schemes/oauth2'
+require 'legate/auth/schemes/api_key'
+require 'legate/auth/credential'
+require 'legate/auth/exchanged_credential'
+require 'webmock/rspec'
+
+RSpec.describe Legate::Auth::TokenManager do
+  let(:session_service) { double('SessionService') }
+  let(:token_store) { Legate::Auth::TokenStore.new(session_service) }
+  let(:manager) { Legate::Auth::TokenManager.new(token_store) }
+
+  let(:api_key_scheme) { Legate::Auth::Schemes::ApiKey.new }
+  let(:api_key_credential) { Legate::Auth::Credential.new(auth_type: :api_key, api_key: 'test123') }
+
+  let(:oauth_scheme) {
+    Legate::Auth::Schemes::OAuth2.new(
+      authorization_url: 'https://example.com/auth',
+      token_url: 'https://example.com/token',
+      revocation_url: 'https://example.com/revoke'
+    )
+  }
+
+  let(:oauth_credential) {
+    Legate::Auth::Credential.new(
+      auth_type: :oauth2,
+      client_id: 'client123',
+      client_secret: 'secret123'
+    )
+  }
+
+  let(:exchanged_credential) {
+    Legate::Auth::ExchangedCredential.new(
+      auth_type: :oauth2,
+      access_token: 'access123',
+      refresh_token: 'refresh123',
+      expires_in: 3600
+    )
+  }
+
+  let(:expired_credential) {
+    credential = Legate::Auth::ExchangedCredential.new(
+      auth_type: :oauth2,
+      access_token: 'access123',
+      refresh_token: 'refresh123',
+      expires_in: -100 # Already expired
+    )
+    # Ensure expired? returns true to simulate an expired token
+    allow(credential).to receive(:expired?).and_return(true)
+    credential
+  }
+
+  before do
+    allow(session_service).to receive(:save_scoped_state).and_return(true)
+    allow(session_service).to receive(:load_scoped_state).and_return(nil)
+    allow(session_service).to receive(:clear_scoped_state).and_return(true)
+
+    # Set up scheme to support refresh
+    allow(oauth_scheme).to receive(:supports_refresh?).and_return(true)
+
+    # Stub the token refresh HTTP request
+    stub_request(:post, 'https://example.com/token')
+      .with(
+        body: { 'grant_type' => 'refresh_token', 'refresh_token' => 'refresh123' },
+        headers: {
+          'Authorization' => /Basic .+/,
+          'Content-Type' => 'application/x-www-form-urlencoded'
+        }
+      )
+      .to_return(
+        status: 200,
+        body: {
+          'access_token' => 'new_token',
+          'refresh_token' => 'new_refresh123',
+          'token_type' => 'Bearer',
+          'expires_in' => 3600
+        }.to_json,
+        headers: { 'Content-Type' => 'application/json' }
+      )
+  end
+
+  describe '#get_token' do
+    context 'with no existing token' do
+      it 'returns nil for OAuth2 schemes requiring full auth flow' do
+        expect(manager.get_token(oauth_scheme, oauth_credential)).to be_nil
+      end
+
+      it 'creates a new token for APIKey schemes' do
+        token = manager.get_token(api_key_scheme, api_key_credential)
+        expect(token).to be_a(Legate::Auth::ExchangedCredential)
+        expect(token.access_token).to eq('test123')
+      end
+    end
+
+    context 'with an existing non-expired token' do
+      before do
+        # Setup token store to return our non-expired credential
+        allow(token_store).to receive(:get).and_return(exchanged_credential)
+        # Ensure expired? returns false
+        allow(exchanged_credential).to receive(:expired?).and_return(false)
+      end
+
+      it 'returns the existing token' do
+        token = manager.get_token(oauth_scheme, oauth_credential)
+        expect(token).to eq(exchanged_credential)
+      end
+
+      it 'forces a refresh when force_refresh is true' do
+        # Mock the refresh_token method on the scheme directly instead of relying on HTTP
+        refreshed_token = exchanged_credential.with(access_token: 'refreshed_token')
+        allow(oauth_scheme).to receive(:refresh_token).and_return(refreshed_token)
+
+        # Ensure supports_refresh? returns true
+        allow(oauth_scheme).to receive(:supports_refresh?).and_return(true)
+
+        # Ensure the token is refreshable
+        allow(exchanged_credential).to receive(:refreshable?).and_return(true)
+
+        result = manager.get_token(oauth_scheme, oauth_credential, force_refresh: true)
+        expect(result.access_token).to eq('refreshed_token')
+      end
+    end
+
+    context 'with an existing expired token' do
+      before do
+        # Setup token store to return our expired credential
+        allow(token_store).to receive(:get).and_return(expired_credential)
+      end
+
+      it 'attempts to refresh the token' do
+        # Set up a refreshed token to be returned
+        refreshed = exchanged_credential.with(access_token: 'new_token')
+
+        # Make sure the scheme's refresh_token method returns our mocked refreshed token
+        allow(oauth_scheme).to receive(:refresh_token).and_return(refreshed)
+
+        # Make sure the token is considered refreshable
+        allow(expired_credential).to receive(:refreshable?).and_return(true)
+
+        # Also make sure token store can store the token
+        allow(token_store).to receive(:store).and_return(true)
+
+        # Call the method
+        token = manager.get_token(oauth_scheme, oauth_credential)
+
+        # Verify the result
+        expect(token).to eq(refreshed)
+        expect(token.access_token).to eq('new_token')
+      end
+
+      it 'handles refresh failure' do
+        # Mock refresh_token to throw an error
+        allow(oauth_scheme).to receive(:refresh_token).and_raise(Legate::Auth::TokenRefreshError, 'Refresh failed')
+        allow(expired_credential).to receive(:refreshable?).and_return(true)
+        allow(Legate).to receive(:logger).and_return(double(error: nil))
+
+        # Should return nil in case of refresh failure for OAuth
+        expect(manager.get_token(oauth_scheme, oauth_credential)).to be_nil
+      end
+
+      it 'invalidates expired tokens that cannot be refreshed' do
+        # Make the token not refreshable (no refresh token)
+        allow(expired_credential).to receive(:refreshable?).and_return(false)
+
+        # Expect the token to be invalidated
+        expect(token_store).to receive(:clear).and_return(true)
+
+        # Should return nil for expired tokens that can't be refreshed
+        expect(manager.get_token(oauth_scheme, oauth_credential)).to be_nil
+      end
+    end
+  end
+
+  describe '#refresh_token' do
+    it 'attempts to refresh a token' do
+      # Set up a refreshed token to be returned
+      refreshed = exchanged_credential.with(access_token: 'refreshed_token')
+
+      # Make sure the scheme's refresh_token method returns our mocked refreshed token
+      allow(oauth_scheme).to receive(:refresh_token).and_return(refreshed)
+
+      # Make sure the token is considered refreshable
+      allow(exchanged_credential).to receive(:refreshable?).and_return(true)
+
+      # Also make sure token store can store the token
+      allow(token_store).to receive(:store).and_return(true)
+
+      # Call the method
+      token = manager.refresh_token(oauth_scheme, oauth_credential, exchanged_credential)
+
+      # Verify the result
+      expect(token).to eq(refreshed)
+      expect(token.access_token).to eq('refreshed_token')
+    end
+
+    it 'returns nil if the token cannot be refreshed' do
+      # Make sure the token is considered refreshable
+      allow(exchanged_credential).to receive(:refreshable?).and_return(true)
+
+      # Mock refresh_token to throw an error
+      allow(oauth_scheme).to receive(:refresh_token).and_raise(Legate::Auth::TokenRefreshError, 'Refresh failed')
+
+      # Mock logger to avoid errors
+      allow(Legate).to receive(:logger).and_return(double(error: nil))
+
+      # Call the method
+      token = manager.refresh_token(oauth_scheme, oauth_credential, exchanged_credential)
+
+      # Verify the result is nil
+      expect(token).to be_nil
+    end
+  end
+
+  describe '#invalidate_token' do
+    it 'removes the token from the store' do
+      expect(token_store).to receive(:clear).with('some_key').and_return(true)
+      expect(manager.invalidate_token('some_key')).to eq(true)
+    end
+  end
+
+  describe '#revoke_token' do
+    it 'revokes a token if the scheme supports it' do
+      expect(oauth_scheme).to receive(:revoke_token).and_return(true)
+      expect(manager.revoke_token(oauth_scheme, oauth_credential, exchanged_credential)).to eq(true)
+    end
+
+    it 'catches and logs errors if the scheme does not support revocation' do
+      # API key scheme raises NotImplementedError for revocation
+      allow(Legate).to receive(:logger).and_return(double(warn: nil, error: nil))
+      manager.revoke_token(api_key_scheme, api_key_credential, exchanged_credential)
+      expect(Legate.logger).to have_received(:error).with(/does not support token revocation/)
+    end
+  end
+
+  describe 'event callbacks' do
+    it 'registers and triggers callbacks' do
+      callback_executed = false
+      event_data = nil
+
+      # Register a callback
+      manager.on(:refresh_success) do |data|
+        callback_executed = true
+        event_data = data
+      end
+
+      # Set up a refreshed token to be returned
+      refreshed = exchanged_credential.with(access_token: 'new_token')
+
+      # Make sure the scheme's refresh_token method returns our mocked refreshed token
+      allow(oauth_scheme).to receive(:refresh_token).and_return(refreshed)
+
+      # Make sure the token is considered refreshable
+      allow(exchanged_credential).to receive(:refreshable?).and_return(true)
+
+      # Also make sure token store can store the token
+      allow(token_store).to receive(:store).and_return(true)
+
+      # Trigger a refresh success
+      manager.refresh_token(oauth_scheme, oauth_credential, exchanged_credential)
+
+      # Verify callback was executed
+      expect(callback_executed).to be true
+      expect(event_data[:event]).to eq(:refresh_success)
+      expect(event_data[:token]).to eq(refreshed)
+    end
+
+    it 'handles exceptions in callbacks' do
+      # Register a callback that throws an exception
+      manager.on(:refresh_success) { |_| raise 'Callback error' }
+
+      # Setup logger mock
+      allow(Legate).to receive(:logger).and_return(double(error: nil))
+
+      # Set up a refreshed token to be returned
+      refreshed = exchanged_credential.with(access_token: 'new_token')
+
+      # Make sure the scheme's refresh_token method returns our mocked refreshed token
+      allow(oauth_scheme).to receive(:refresh_token).and_return(refreshed)
+
+      # Make sure the token is considered refreshable
+      allow(exchanged_credential).to receive(:refreshable?).and_return(true)
+
+      # Also make sure token store can store the token
+      allow(token_store).to receive(:store).and_return(true)
+
+      # Should not propagate the exception
+      expect {
+        manager.refresh_token(oauth_scheme, oauth_credential, exchanged_credential)
+      }.not_to raise_error
+
+      # Should log the error
+      expect(Legate.logger).to have_received(:error).with(/Error in refresh_success callback/)
+    end
+  end
+end

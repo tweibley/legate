@@ -1,0 +1,382 @@
+/ File: lib/legate/web/views/_agent_generator_modal.slim
+/ AI agent generator: describe → review editable fields → Add to Legion (live).
+/ Generates a STRUCTURED definition (no file/restart); .rb export kept for power users.
+
+#agent-generator-modal.modal
+  .modal-background onclick="closeAgentGeneratorModal()"
+  .modal-card style="width: 92%; max-width: 920px; max-height: 92vh;"
+    header.modal-card-head
+      p.modal-card-title
+        span.icon.mr-2
+          i.fas.fa-wand-magic-sparkles
+        | Generate Agent with AI
+      button.delete aria-label="close" onclick="closeAgentGeneratorModal()"
+
+    section.modal-card-body style="display: flex; flex-direction: column; gap: 1.25rem;"
+      / Input
+      #agent-generator-input-section
+        .field
+          label.label
+            span.icon.is-small.mr-1
+              i.fas.fa-comment-dots
+            | Describe your agent
+          .control
+            textarea#agent-generator-description.textarea(
+              rows="4"
+              placeholder="e.g. 'An agent that summarizes customer feedback', 'A support assistant that can echo and look things up'"
+            )
+          p.help Describe what the agent should do. The AI fills in a configuration you can review and tweak before adding it.
+        .field
+          .control
+            button#agent-generator-btn.button.is-primary(onclick="generateAgentDefinition()")
+              span.icon
+                i.fas.fa-wand-magic-sparkles
+              span Generate
+            span#agent-generator-loading.ml-3 style="display: none;"
+              span.icon.has-text-primary
+                i.fas.fa-spinner.fa-spin
+              span.has-text-grey  Generating…
+
+      / Error
+      #agent-generator-error.notification.is-danger.is-light style="display: none;"
+        button.delete onclick="this.parentElement.style.display='none'"
+        span#agent-generator-error-message
+
+      / Review (editable, hidden until generated)
+      #agent-generator-review-section style="display: none;"
+        .agent-gen-review-banner
+          span.icon.has-text-primary
+            i.fas.fa-circle-check
+          span Review and tweak the configuration, then add it to your legion.
+
+        .field
+          label.label Name
+          .control.has-icons-left
+            input#agent-gen-name.input type="text" placeholder="snake_case_name"
+            span.icon.is-small.is-left
+              i.fas.fa-robot
+        .columns.is-variable.is-3
+          .column.is-half
+            .field
+              label.label Model
+              .control
+                .select.is-fullwidth
+                  select#agent-gen-model
+                    - (@available_models || []).each do |m|
+                      option value=m = m
+          .column.is-half
+            .field
+              label.label Type
+              .control
+                .select.is-fullwidth
+                  select#agent-gen-type
+                    option value="llm" LLM Agent
+                    option value="sequential" Sequential Workflow
+                    option value="parallel" Parallel Workflow
+                    option value="loop" Loop Workflow
+        .field
+          label.label Description
+          .control
+            textarea#agent-gen-description-field.textarea rows="2"
+        .field
+          label.label Instruction (System Prompt)
+          .control
+            textarea#agent-gen-instruction.textarea rows="5"
+        .field
+          label.label Tools
+          .agent-gen-tools
+            - if @available_tools && !@available_tools.empty?
+              - @available_tools.each do |t|
+                label.checkbox.agent-gen-tool-item
+                  input.agent-gen-tool type="checkbox" value=t[:name]
+                  span.agent-gen-tool-name= t[:name]
+            - else
+              p.has-text-grey No tools available to select.
+        .field
+          label.label Output Key (optional)
+          .control
+            input#agent-gen-output-key.input type="text" placeholder="result_key"
+
+        / Suggested tools to create (capabilities no installed tool provides)
+        .field#agent-gen-suggested-field style="display: none;"
+          label.label
+            span.icon.is-small.mr-1
+              i.fas.fa-lightbulb
+            | Suggested tools to create
+          p.help.mb-2 This agent could use capabilities no installed tool provides yet. Build them with the tool generator — they’ll be available to add next time.
+          #agent-gen-suggested.agent-gen-suggested
+
+        details.agent-gen-code-details
+          summary
+            span.icon.is-small
+              i.fas.fa-code
+            |  View / export generated Ruby
+          .buttons.mt-2
+            button.button.is-small.is-light(onclick="copyAgentCode()" title="Copy code")
+              span.icon.is-small
+                i.fas.fa-copy
+              span Copy
+            button.button.is-small.is-light(onclick="downloadAgentCode()" title="Download as .rb")
+              span.icon.is-small
+                i.fas.fa-download
+              span Export .rb
+          .code-preview-container style="max-height: 280px; overflow: auto; border-radius: 6px;"
+            pre
+              code#agent-generator-code.language-ruby
+
+    footer.modal-card-foot style="justify-content: space-between;"
+      button.button onclick="closeAgentGeneratorModal()" Close
+      .buttons.mb-0
+        button#agent-gen-regenerate.button.is-light style="display: none;" onclick="generateAgentDefinition()"
+          span.icon.is-small
+            i.fas.fa-sync
+          span Regenerate
+        button#agent-gen-add-btn.button.is-primary style="display: none;" onclick="addAgentToLegion()"
+          span.icon
+            i.fas.fa-circle-plus
+          span Add to Legion
+
+javascript:
+  let generatedAgentCode = '';
+  let suggestedAgentName = 'generated_agent';
+
+  function openAgentGeneratorModal() {
+    document.getElementById('agent-generator-modal').classList.add('is-active');
+    document.getElementById('agent-generator-description').focus();
+  }
+
+  function closeAgentGeneratorModal() {
+    document.getElementById('agent-generator-modal').classList.remove('is-active');
+    document.getElementById('agent-generator-error').style.display = 'none';
+  }
+
+  function showAgentGeneratorError(message) {
+    document.getElementById('agent-generator-error-message').textContent = message;
+    document.getElementById('agent-generator-error').style.display = 'block';
+  }
+
+  function agSetSelect(id, value) {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    if (Array.from(sel.options).some(o => o.value === value)) sel.value = value;
+  }
+
+  async function generateAgentDefinition() {
+    const description = document.getElementById('agent-generator-description').value.trim();
+    if (!description) {
+      showAgentGeneratorError('Please describe the agent you want to create.');
+      return;
+    }
+    const btn = document.getElementById('agent-generator-btn');
+    const loading = document.getElementById('agent-generator-loading');
+    btn.disabled = true;
+    loading.style.display = 'inline';
+    document.getElementById('agent-generator-error').style.display = 'none';
+
+    try {
+      const tokenEl = document.querySelector('meta[name="csrf-token"]');
+      const response = await fetch('/agents/generate/definition', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': tokenEl ? tokenEl.content : ''
+        },
+        body: JSON.stringify({ description })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Generation failed');
+      populateAgentReview(data);
+      document.getElementById('agent-generator-review-section').style.display = 'block';
+      document.getElementById('agent-gen-add-btn').style.display = '';
+      document.getElementById('agent-gen-regenerate').style.display = '';
+    } catch (error) {
+      showAgentGeneratorError(error.message);
+    } finally {
+      btn.disabled = false;
+      loading.style.display = 'none';
+    }
+  }
+
+  function populateAgentReview(data) {
+    document.getElementById('agent-gen-name').value = data.name || '';
+    agSetSelect('agent-gen-model', data.model);
+    agSetSelect('agent-gen-type', data.agent_type || 'llm');
+    document.getElementById('agent-gen-description-field').value = data.description || '';
+    document.getElementById('agent-gen-instruction').value = data.instruction || '';
+    document.getElementById('agent-gen-output-key').value = data.output_key || '';
+
+    const tools = data.tools || [];
+    document.querySelectorAll('.agent-gen-tool').forEach(cb => { cb.checked = tools.includes(cb.value); });
+
+    renderSuggestedTools(data.suggested_tools || []);
+
+    generatedAgentCode = data.code || '';
+    suggestedAgentName = data.name || 'generated_agent';
+    const codeEl = document.getElementById('agent-generator-code');
+    codeEl.classList.remove('hljs');
+    delete codeEl.dataset.highlighted;
+    codeEl.textContent = generatedAgentCode;
+    if (typeof hljs !== 'undefined') hljs.highlightElement(codeEl);
+  }
+
+  function renderSuggestedTools(suggested) {
+    const field = document.getElementById('agent-gen-suggested-field');
+    const list = document.getElementById('agent-gen-suggested');
+    list.innerHTML = '';
+    if (!suggested.length) { field.style.display = 'none'; return; }
+
+    suggested.forEach(t => {
+      const item = document.createElement('div');
+      item.className = 'agent-gen-suggested-item';
+
+      const info = document.createElement('div');
+      info.className = 'agent-gen-suggested-info';
+      const nm = document.createElement('span');
+      nm.className = 'agent-gen-suggested-name';
+      nm.textContent = t.name;
+      info.appendChild(nm);
+      if (t.description) {
+        const d = document.createElement('span');
+        d.className = 'agent-gen-suggested-desc';
+        d.textContent = t.description;
+        info.appendChild(d);
+      }
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'button is-small is-primary is-light agent-gen-build-btn';
+      btn.innerHTML = '<span class="icon is-small"><i class="fas fa-wand-magic-sparkles"></i></span><span>Build&nbsp;→</span>';
+      btn.addEventListener('click', () => buildSuggestedTool(t.name, t.description));
+
+      item.appendChild(info);
+      item.appendChild(btn);
+      list.appendChild(item);
+    });
+    field.style.display = 'block';
+  }
+
+  function buildSuggestedTool(name, description) {
+    if (typeof openToolGeneratorModal !== 'function') {
+      showAgentGeneratorError('The tool generator is not available here.');
+      return;
+    }
+    // Remember to come back to the agent builder once this tool is installed,
+    // so the new tool gets added + checked (it didn't exist at page load).
+    window.legateReturnToAgentBuilder = name;
+    closeAgentGeneratorModal();
+    const field = document.getElementById('tool-generator-description');
+    if (field) {
+      const base = (description && description.trim()) ? description.trim() : ('A tool named "' + name + '"');
+      field.value = base + (name ? ('\n\nName it "' + name + '".') : '');
+    }
+    openToolGeneratorModal();
+  }
+
+  // Called by the tool modal after a suggested tool is installed live. Adds the
+  // newly-registered tool to the review form (checked), drops the suggestion, and
+  // re-opens the agent builder so "Add to Legion" includes the new tool.
+  function returnToAgentBuilderWithTool(installedName, originalSuggestion) {
+    const list = document.querySelector('.agent-gen-tools');
+    if (installedName && list) {
+      let cb = Array.from(document.querySelectorAll('.agent-gen-tool')).find(c => c.value === installedName);
+      if (!cb) {
+        const label = document.createElement('label');
+        label.className = 'checkbox agent-gen-tool-item';
+        cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'agent-gen-tool';
+        cb.value = installedName;
+        const span = document.createElement('span');
+        span.className = 'agent-gen-tool-name';
+        span.textContent = installedName;
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(' '));
+        label.appendChild(span);
+        list.appendChild(label);
+      }
+      cb.checked = true;
+    }
+    // Remove the suggestion we just satisfied (match the original suggestion name).
+    document.querySelectorAll('.agent-gen-suggested-item').forEach(item => {
+      const nm = item.querySelector('.agent-gen-suggested-name');
+      if (nm && (nm.textContent === originalSuggestion || nm.textContent === installedName)) item.remove();
+    });
+    const field = document.getElementById('agent-gen-suggested-field');
+    if (field && !document.querySelector('.agent-gen-suggested-item')) field.style.display = 'none';
+
+    if (typeof openAgentGeneratorModal === 'function') openAgentGeneratorModal();
+  }
+
+  async function addAgentToLegion() {
+    const name = document.getElementById('agent-gen-name').value.trim();
+    if (!name) { showAgentGeneratorError('The agent needs a name.'); return; }
+
+    const params = new URLSearchParams();
+    params.append('name', name);
+    params.append('description', document.getElementById('agent-gen-description-field').value.trim());
+    params.append('instruction', document.getElementById('agent-gen-instruction').value);
+    params.append('model', document.getElementById('agent-gen-model').value);
+    params.append('agent_type', document.getElementById('agent-gen-type').value);
+    const ok = document.getElementById('agent-gen-output-key').value.trim();
+    if (ok) params.append('output_key', ok);
+    document.querySelectorAll('.agent-gen-tool:checked').forEach(cb => params.append('tools[]', cb.value));
+
+    const addBtn = document.getElementById('agent-gen-add-btn');
+    addBtn.classList.add('is-loading');
+    try {
+      const tokenEl = document.querySelector('meta[name="csrf-token"]');
+      const response = await fetch('/agents', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRF-Token': tokenEl ? tokenEl.content : ''
+        },
+        body: params.toString()
+      });
+      const html = await response.text();
+      if (!response.ok) throw new Error('Could not add the agent. ' + (html.replace(/<[^>]*>/g, '').trim() || ''));
+
+      const grid = document.getElementById('agent-list-grid');
+      if (grid) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const card = tmp.querySelector('.agent-card');
+        if (card) grid.appendChild(card);
+      }
+      const empty = document.getElementById('no-agents-state');
+      if (empty) empty.classList.add('is-hidden');
+      if (typeof filterAgents === 'function') filterAgents();
+      closeAgentGeneratorModal();
+    } catch (error) {
+      showAgentGeneratorError(error.message);
+    } finally {
+      addBtn.classList.remove('is-loading');
+    }
+  }
+
+  async function copyAgentCode() {
+    try {
+      await navigator.clipboard.writeText(generatedAgentCode);
+    } catch (err) {
+      showAgentGeneratorError('Failed to copy to clipboard');
+    }
+  }
+
+  function downloadAgentCode() {
+    const blob = new Blob([generatedAgentCode], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${suggestedAgentName}.rb`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('agent-generator-modal');
+      if (modal && modal.classList.contains('is-active')) closeAgentGeneratorModal();
+    }
+  });

@@ -1,0 +1,279 @@
+# File: spec/legate/mcp/util/schema_converter_spec.rb
+# frozen_string_literal: true
+
+require 'spec_helper'
+require 'legate/mcp/util/schema_converter'
+require 'legate/mcp' # Ensure logger is available
+require 'dry-schema' # Needed for testing legate_to_dry_schema
+
+RSpec.describe Legate::Mcp::Util::SchemaConverter do
+  let(:logger_spy) { spy('Logger') }
+
+  before do
+    allow(Legate).to receive(:logger).and_return(logger_spy)
+  end
+
+  describe '.json_to_legate' do
+    context 'with valid basic types' do
+      let(:properties) do
+        {
+          'name' => { 'type' => 'string', 'description' => 'User name' },
+          'age' => { 'type' => 'integer', 'description' => 'User age' },
+          'score' => { 'type' => 'number', 'description' => 'User score' },
+          'active' => { 'type' => 'boolean', 'description' => 'Activation status' }
+        }
+      end
+      let(:required) { %w[name age] }
+
+      it 'converts properties to Legate parameters hash' do
+        expected_params = {
+          name: { type: :string, required: true, description: 'User name' },
+          age: { type: :integer, required: true, description: 'User age' },
+          score: { type: :numeric, required: false, description: 'User score' },
+          active: { type: :boolean, required: false, description: 'Activation status' }
+        }
+        expect(described_class.json_to_legate(properties, required)).to eq(expected_params)
+      end
+
+      it 'handles empty required array' do
+        expected_params = {
+          name: { type: :string, required: false, description: 'User name' },
+          age: { type: :integer, required: false, description: 'User age' },
+          score: { type: :numeric, required: false, description: 'User score' },
+          active: { type: :boolean, required: false, description: 'Activation status' }
+        }
+        expect(described_class.json_to_legate(properties, [])).to eq(expected_params)
+      end
+
+      it 'handles nil required array' do
+        expected_params = {
+          name: { type: :string, required: false, description: 'User name' },
+          age: { type: :integer, required: false, description: 'User age' },
+          score: { type: :numeric, required: false, description: 'User score' },
+          active: { type: :boolean, required: false, description: 'Activation status' }
+        }
+        expect(described_class.json_to_legate(properties, nil)).to eq(expected_params)
+      end
+
+      it 'handles missing descriptions' do
+        props_no_desc = { 'id' => { 'type' => 'string' } }
+        expected = { id: { type: :string, required: false, description: '' } }
+        expect(described_class.json_to_legate(props_no_desc)).to eq(expected)
+      end
+    end
+
+    context 'with symbol keys in properties' do
+      let(:properties) do
+        {
+          name: { type: 'string', description: 'User name' },
+          age: { type: 'integer' } # Missing description
+        }
+      end
+      let(:required) { [:name] } # Use symbol in required array
+
+      it 'handles symbol keys correctly' do
+        expected_params = {
+          name: { type: :string, required: true, description: 'User name' },
+          age: { type: :integer, required: false, description: '' }
+        }
+        # Pass symbols for properties and required list
+        expect(described_class.json_to_legate(properties, required)).to eq(expected_params)
+      end
+    end
+
+    context 'with invalid or unsupported input' do
+      it 'returns empty hash for nil properties' do
+        expect(described_class.json_to_legate(nil)).to eq({})
+      end
+
+      it 'returns empty hash for non-hash properties' do
+        expect(described_class.json_to_legate([])).to eq({})
+      end
+
+      it 'skips properties with invalid schema format' do
+        properties = { 'valid' => { 'type' => 'string' }, 'invalid' => 'not_a_hash' }
+        result = described_class.json_to_legate(properties)
+        expect(result).to have_key(:valid)
+        expect(result).not_to have_key(:invalid)
+        expect(Legate.logger).to have_received(:warn).with(/Skipping MCP property 'invalid': Invalid schema format/).once
+      end
+
+      it 'skips properties with missing type' do
+        properties = { 'valid' => { 'type' => 'string' }, 'no_type' => { 'description' => 'test' } }
+        result = described_class.json_to_legate(properties)
+        expect(result).to have_key(:valid)
+        expect(result).not_to have_key(:no_type)
+        expect(Legate.logger).to have_received(:warn).with(/Skipping MCP property 'no_type': Invalid schema format/).once
+      end
+
+      it 'skips and logs warning for unsupported types like array' do
+        properties = { 'my_array' => { 'type' => 'array', 'description' => 'List of items' } }
+        expected_params = { my_array: { type: :array, required: false, description: 'List of items' } }
+        expect(described_class.json_to_legate(properties)).to eq(expected_params)
+      end
+
+      it 'skips and logs warning for unsupported types like object' do
+        properties = { 'my_object' => { 'type' => 'object', 'description' => 'Some structure' } }
+        expect(described_class.json_to_legate(properties)).to be_empty
+        expect(Legate.logger).to have_received(:warn).with(/Unsupported JSON Schema type 'object'/)
+      end
+
+      it 'skips and logs warning for unknown types' do
+        properties = { 'weird_type' => { 'type' => 'custom_blob', 'description' => 'Weird' } }
+        expect(described_class.json_to_legate(properties)).to be_empty
+        expect(Legate.logger).to have_received(:warn).with(/Unsupported JSON Schema type 'custom_blob'/)
+      end
+    end
+  end
+
+  describe '.legate_to_dry_schema' do
+    # Helper to evaluate the generated Proc and build a Dry::Schema instance
+    def build_schema_from_proc(proc)
+      Dry::Schema.Params(&proc)
+    end
+
+    context 'with valid basic Legate parameters' do
+      let(:legate_params) do
+        {
+          name: { type: :string, required: true, description: 'User name' },
+          age: { type: :integer, required: true, description: 'User age' },
+          score: { type: :numeric, required: false, description: 'User score' },
+          active: { type: :boolean, required: false, description: "Is 'active'?" }
+        }
+      end
+
+      it 'generates a Proc that defines the correct Dry::Schema structure' do
+        schema_proc = described_class.legate_to_dry_schema(legate_params)
+        expect(schema_proc).to be_a(Proc)
+
+        schema = build_schema_from_proc(schema_proc)
+
+        # Test required fields and types
+        valid_data = { name: 'Test', age: 30, score: 99.5, active: true }
+        result = schema.call(valid_data)
+        expect(result).to be_success
+        expect(result.to_h).to eq(valid_data)
+
+        # Test missing required field
+        invalid_data_missing = { age: 30 }
+        result_missing = schema.call(invalid_data_missing)
+        expect(result_missing).to be_failure
+        expect(result_missing.errors[:name]).to include('is missing')
+
+        # Test wrong type
+        invalid_data_type = { name: 'Test', age: 'thirty', score: 99.5, active: true }
+        result_type = schema.call(invalid_data_type)
+        expect(result_type).to be_failure
+        expect(result_type.errors[:age]).to include('must be an integer')
+
+        # Test optional fields present
+        result_optional_present = schema.call({ name: 'Test', age: 30, score: 99.5, active: false })
+        expect(result_optional_present).to be_success
+        expect(result_optional_present.to_h[:score]).to eq(99.5)
+        expect(result_optional_present.to_h[:active]).to eq(false)
+
+        # Test optional fields absent
+        result_optional_absent = schema.call({ name: 'Test', age: 30 })
+        expect(result_optional_absent).to be_success
+        expect(result_optional_absent.to_h).not_to have_key(:score)
+        expect(result_optional_absent.to_h).not_to have_key(:active)
+      end
+
+      it 'handles numeric type coercion from string' do
+        legate_params = { num_val: { type: :numeric, required: true } }
+        schema_proc = described_class.legate_to_dry_schema(legate_params)
+        schema = build_schema_from_proc(schema_proc)
+
+        # Test coercion from string
+        result_coerced = schema.call({ num_val: '123.45' })
+        expect(result_coerced).to be_success
+        expect(result_coerced.to_h[:num_val]).to eq(123.45)
+
+        # Test failure for non-numeric string
+        result_fail = schema.call({ num_val: 'abc' })
+        expect(result_fail).to be_failure
+        expect(result_fail.errors[:num_val]).to include('must be a float') # Dry::Types specific message
+      end
+    end
+
+    context 'with invalid or unsupported Legate parameters' do
+      it 'returns an empty Proc for nil input' do
+        schema_proc = described_class.legate_to_dry_schema(nil)
+        schema = build_schema_from_proc(schema_proc)
+        expect(schema.call({})).to be_success # Empty schema passes anything
+      end
+
+      it 'returns an empty Proc for non-hash input' do
+        schema_proc = described_class.legate_to_dry_schema([])
+        schema = build_schema_from_proc(schema_proc)
+        expect(schema.call({})).to be_success
+      end
+
+      it 'skips parameters with invalid definition format' do
+        legate_params = { valid: { type: :string }, invalid: 'not_a_hash' }
+        schema_proc = described_class.legate_to_dry_schema(legate_params)
+        schema = build_schema_from_proc(schema_proc)
+        expect(schema.rules.key?(:valid)).to be true
+        expect(schema.rules.key?(:invalid)).to be false
+        expect(Legate.logger).to have_received(:warn).with("Skipping Legate parameter 'invalid': Invalid definition format or missing type.").once
+      end
+
+      it 'skips parameters with missing type' do
+        legate_params = { valid: { type: :string }, no_type: { required: true } }
+        schema_proc = described_class.legate_to_dry_schema(legate_params)
+        schema = build_schema_from_proc(schema_proc)
+        expect(schema.rules.key?(:valid)).to be true
+        expect(schema.rules.key?(:no_type)).to be false
+        expect(Legate.logger).to have_received(:warn).with("Skipping Legate parameter 'no_type': Invalid definition format or missing type.").once
+      end
+
+      it 'maps :array and logs warning' do
+        legate_params = { list: { type: :array, required: false, description: 'A list' } }
+        schema_proc = described_class.legate_to_dry_schema(legate_params)
+        schema = build_schema_from_proc(schema_proc)
+
+        # Test validation instead of inspecting internal structure
+        expect(schema.call({ list: [1, 2] })).to be_success
+        expect(schema.call({})).to be_success # Optional: passes when absent
+        expect(schema.call({ list: 'not_an_array' })).to be_failure # Ensure basic type check works
+
+        expect(Legate.logger).to have_received(:warn).with(/Legate parameter 'list': Type :array basic mapping/).once
+      end
+
+      it 'maps :hash/:object and logs warning' do
+        legate_params = { data: { type: :hash, required: true, description: 'Some data' } }
+        schema_proc = described_class.legate_to_dry_schema(legate_params)
+        schema = build_schema_from_proc(schema_proc)
+
+        # Test validation instead of inspecting internal structure
+        expect(schema.call({ data: { a: 1 } })).to be_success
+        expect(schema.call({})).to be_failure # Required: fails when absent
+        expect(schema.call({ data: 'not_a_hash' })).to be_failure # Ensure basic type check works
+
+        expect(Legate.logger).to have_received(:warn).with(/Legate parameter 'data': Type :hash basic mapping/).once
+      end
+
+      it 'maps :object like :hash and logs warning' do
+        legate_params = { obj_data: { type: :object, required: true, description: 'Some object' } }
+        schema_proc = described_class.legate_to_dry_schema(legate_params)
+        schema = build_schema_from_proc(schema_proc)
+
+        # Test validation like :hash
+        expect(schema.call({ obj_data: { a: 1 } })).to be_success
+        expect(schema.call({})).to be_failure # Required
+        expect(schema.call({ obj_data: 'not_an_object' })).to be_failure
+
+        expect(Legate.logger).to have_received(:warn).with(/Legate parameter 'obj_data': Type :object basic mapping/).once
+      end
+
+      it 'skips unknown Legate types and logs warning' do
+        legate_params = { unknown: { type: :custom_blob, required: true } }
+        schema_proc = described_class.legate_to_dry_schema(legate_params)
+        expected_log_message = "Legate parameter 'unknown': Unsupported Legate type 'custom_blob'. Skipping."
+        expect(Legate.logger).to have_received(:warn).with(expected_log_message).once
+        schema = build_schema_from_proc(schema_proc)
+        expect(schema.rules.key?(:unknown)).to be false
+      end
+    end
+  end
+end

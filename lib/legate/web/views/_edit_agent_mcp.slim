@@ -1,0 +1,33 @@
+/ File: lib/legate/web/views/_edit_agent_mcp.slim
+/ Form for editing MCP Server JSON using CodeMirror
+
+/! Add container ID to the form, put attributes on one line using space separation
+form#agent-mcp-display-container hx-put="/agents/#{agent_data[:name]}/update/mcp" hx-target="#agent-mcp-display-container" hx-swap="outerHTML"
+
+    / --- Display Error Message if Present ---
+    - if defined?(error_message) && error_message
+      .notification.is-danger.is-light.mb-3
+        button.delete type="button" onclick="this.parentElement.remove()"
+        = error_message
+
+    .field
+      label.label for="mcp-json-editor" MCP Server Configurations (JSON Array)
+      .control
+        /! Textarea will be replaced by CodeMirror via JS in layout.slim
+        textarea.textarea#mcp-json-editor name="value" rows="6" placeholder='[{"type": "stdio", "command": "...", "args": ["..."]}]' == agent_data[:mcp_servers_json]
+    p.help
+      | Enter a valid JSON array of MCP server config objects. Leave empty if none.
+      br
+      | Example: `[{"type": "stdio", "command": "npx", "args": ["@mcp/server", "/path/to/tools"]}]`
+
+    .field.is-grouped.is-grouped-right.mt-4
+      .control
+        / Button to cancel editing and revert to display view
+        /! Ensure cancel targets the container ID
+        button.button.is-light type="button" hx-get="/agents/#{agent_data[:name]}/display/mcp" hx-target="#agent-mcp-display-container" hx-swap="outerHTML"
+          span Cancel
+      .control
+        button.button.is-success type="submit"
+          span.icon.is-small
+            i.fas.fa-check
+          span Save MCP Config

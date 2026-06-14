@@ -1,0 +1,23 @@
+/ File: lib/legate/web/views/_edit_agent_model.slim
+/ Expects agent_data hash and available_models array
+
+- current_model = agent_data[:model] || Legate::Agent::DEFAULT_MODEL
+
+form#agent-model-display-container( hx-put="/agents/#{agent_data[:name]}/update/model" hx-target="#agent-model-display-container" hx-swap="outerHTML" )
+  .field.has-addons
+    .control.is-expanded
+      .select.is-fullwidth
+        select(name="value")
+          - available_models.each do |model_name|
+            option(value=model_name selected=(model_name == current_model)) = model_name
+    .control
+      button.button.is-success(type="submit")
+        span.icon.is-small
+          i.fas.fa-check
+        span Save
+    .field.is-grouped.is-grouped-right
+      .control
+        button.button.is-light type="button" hx-get="/agents/#{agent_data[:name]}/display/model" hx-target="#agent-model-display-container" hx-swap="outerHTML"
+          span.icon.is-small
+            i.fas.fa-times
+          span Cancel

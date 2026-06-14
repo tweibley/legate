@@ -1,0 +1,36 @@
+# frozen_string_literal: true
+
+# Schema for Legate's ActiveRecord session store (durable sessions, events, and
+# scoped state). Mirrors Legate::SessionService::ActiveRecord.create_tables!.
+class CreateLegateTables < ActiveRecord::Migration[7.0]
+  def change
+    create_table :legate_sessions, id: :string do |t|
+      t.string :app_name
+      t.string :user_id
+      t.text :state
+      t.timestamps
+    end
+
+    create_table :legate_events do |t|
+      t.string :legate_session_id, null: false
+      t.integer :position, null: false, default: 0
+      t.string :role
+      t.text :content
+      t.string :tool_name
+      t.text :state_delta
+      t.string :event_timestamp
+      t.string :event_id
+      t.timestamps
+    end
+    add_index :legate_events, :legate_session_id
+
+    create_table :legate_scoped_states do |t|
+      t.string :scope, null: false
+      t.string :state_key, null: false
+      t.text :value
+      t.timestamps
+    end
+    add_index :legate_scoped_states, %i[scope state_key], unique: true,
+                                                          name: 'index_legate_scoped_states_on_scope_and_key'
+  end
+end

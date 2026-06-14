@@ -1,0 +1,105 @@
+/ File: lib/legate/web/views/docs_index.slim
+
+.content.mb-5
+  h1.title.is-2 Legate Documentation
+  p.subtitle Browse available documentation for Legate.
+
+- if @categorized_documents.nil? || @categorized_documents.empty?
+  .notification.is-warning
+    p No documentation files found in 
+    code public/docs
+    p  or an error occurred while listing them.
+- else
+  .field.mb-4
+    .control.has-icons-left.search-with-shortcut
+      input.input#doc-search-input type="text" placeholder="Search documentation..." onkeyup="filterDocs()"
+      span.icon.is-left
+        i.fas.fa-search
+      span.keyboard-hint
+        kbd ⌘K
+
+  - @categorized_documents.each do |category, documents|
+    - unless documents.empty?
+      h3.title.is-4.mt-5 = category
+      .box.p-0
+        .table-container
+          table.table.is-fullwidth.is-hoverable.is-striped.documentation-index-table
+            thead
+              tr
+                th Document 
+                th Description
+                th.has-text-centered.action-column
+            tbody class="doc-category-body" data-category=category.downcase
+              - documents.each do |doc|
+                tr.doc-row data-title=doc[:title].downcase data-summary=doc[:summary].downcase data-path=doc[:path]
+                  td
+                    a.doc-title href="/docs/#{doc[:path]}" = doc[:title]
+                  td
+                    .doc-summary
+                      = doc[:summary]
+                      - if doc[:summary].empty?
+                        em.has-text-grey-light [No summary available]
+                  td.has-text-centered
+                    a.button.is-small.is-link.is-outlined href="/docs/#{doc[:path]}" 
+                      span.icon.is-small
+                        i.fas.fa-book
+                      span Read
+
+javascript:
+  function filterDocs() {
+    const input = document.getElementById('doc-search-input');
+    const filter = input.value.toLowerCase().trim();
+    const allRows = document.querySelectorAll('#doc-table-body .doc-row, .doc-category-body .doc-row'); // Select all rows
+    const categoryTitles = document.querySelectorAll('h3.title.is-4'); // Select all category titles
+
+    if (filter === '') {
+      // Show all rows and categories if search is empty
+      allRows.forEach(row => {
+        row.style.display = '';
+      });
+      categoryTitles.forEach(title => {
+        title.style.display = '';
+        const table = title.nextElementSibling.querySelector('table');
+        if(table) table.style.display = '';
+      });
+      input.placeholder = 'Search documentation...';
+      return;
+    }
+
+    let totalFoundCount = 0;
+
+    document.querySelectorAll('.doc-category-body').forEach(tableBody => {
+      let categoryFoundCount = 0;
+      const categoryRows = tableBody.querySelectorAll('.doc-row');
+      const selector = 'h3.title.is-4[data-category="' + tableBody.dataset.category + '"]'; 
+      const categoryTitleElement = document.querySelector(selector) || 
+                                 Array.from(categoryTitles).find(ct => ct.textContent.toLowerCase() === tableBody.dataset.category);
+      
+      categoryRows.forEach(row => {
+        const title = row.getAttribute('data-title');
+        const summary = row.getAttribute('data-summary');
+        
+        if (title.includes(filter) || summary.includes(filter)) {
+          row.style.display = '';
+          categoryFoundCount++;
+          totalFoundCount++;
+        } else {
+          row.style.display = 'none';
+        }
+      });
+
+      // Show/hide category title and table based on whether any docs in it matched
+      if (categoryTitleElement) {
+          const associatedTableContainer = categoryTitleElement.nextElementSibling; // Assuming .box.p-0 is next
+          if (categoryFoundCount > 0) {
+            categoryTitleElement.style.display = '';
+            if (associatedTableContainer) associatedTableContainer.style.display = '';
+          } else {
+            categoryTitleElement.style.display = 'none';
+            if (associatedTableContainer) associatedTableContainer.style.display = 'none';
+          }
+      }
+    });
+    
+    input.placeholder = `${totalFoundCount} result${totalFoundCount !== 1 ? 's' : ''} found`;
+  } 

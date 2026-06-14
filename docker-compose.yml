@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    ports:
+      - "4567:4567"
+    volumes:
+      - .:/app
+    environment:
+      - LEGATE_LOG_LEVEL=${LEGATE_LOG_LEVEL:-info}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - WEBHOOK_RECEIVER_SECRET=${WEBHOOK_RECEIVER_SECRET}

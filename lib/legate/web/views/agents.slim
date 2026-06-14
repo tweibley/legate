@@ -1,0 +1,369 @@
+/ File: lib/legate/web/views/agents.slim
+.content.mb-4
+  h1.title.is-2 Agents
+  p.subtitle Manage agent definitions and runtime instances.
+
+/ Stat strip — derived from the current view models
+- _total_agents = @view_agents ? @view_agents.size : 0
+- _running_agents = @view_agents ? @view_agents.count { |a| a[:running] } : 0
+- _tool_count = @available_tools ? @available_tools.size : 0
+.stat-strip.mb-5
+  .stat-card
+    .stat-icon
+      i.fas.fa-robot
+    .stat-body
+      .stat-value= _total_agents
+      .stat-label Total Agents
+  .stat-card
+    .stat-icon.is-accent
+      i.fas.fa-circle-play
+    .stat-body
+      .stat-value
+        = _running_agents
+        span.stat-suffix= "/#{_total_agents}"
+      .stat-label Running
+  .stat-card
+    .stat-icon.is-info
+      i.fas.fa-screwdriver-wrench
+    .stat-body
+      .stat-value= _tool_count
+      .stat-label Available Tools
+
+/ AI Generator button - prominent placement
+.buttons.mb-4
+  button.button.is-medium.ai-generate-btn(onclick="openAgentGeneratorModal()")
+    span.icon
+      i.fas.fa-wand-magic-sparkles
+    span
+      strong Build with AI Builder
+
+details.box.mb-5.create-agent-details( _="on closeCreateAgentForm from body remove @open" )
+  summary.is-clickable
+    span.icon.mr-2
+      i.fas.fa-plus-circle
+    strong Create New Agent Definition
+
+  .mt-4
+    form(hx-post="/agents" hx-target="#agent-list-grid" hx-swap="beforeend" _="on htmx:afterRequest call this.reset() then call destroyCodeMirrorInstance('mcp_servers_json') then call destroyCodeMirrorInstance('instruction') then call filterAgents()")
+      
+      / ===== Basic Information Section =====
+      .form-section
+        .form-section-header
+          span.icon
+            i.fas.fa-info-circle
+          span Basic Information
+        .form-section-content
+          .columns.is-multiline
+            .column.is-half
+              .field
+                label.label Name
+                .control.has-icons-left
+                  input.input(type="text" name="name" placeholder="unique-agent-name" required=true)
+                  span.icon.is-small.is-left
+                    i.fas.fa-robot
+            .column.is-half
+              .field
+                label.label for="agent_type" Agent Type
+                .control.has-icons-left
+                  .select.is-fullwidth
+                    select#agent_type(name="agent_type" onchange="toggleWorkflowFields()")
+                      option(value="llm" selected=true) LLM Agent
+                      option(value="sequential") Sequential Workflow
+                      option(value="parallel") Parallel Workflow
+                      option(value="loop") Loop Workflow
+                  span.icon.is-small.is-left
+                    i.fas.fa-cog
+                p.help
+                  | LLM uses AI for task execution.
+                  | Workflow agents orchestrate other agents.
+            .column.is-half
+              .field
+                label.label for="planning_strategy" Planning Strategy
+                .control.has-icons-left
+                  .select.is-fullwidth
+                    select#planning_strategy(name="planning_strategy")
+                      option(value="plan" selected=true) Plan (default)
+                      option(value="react") ReAct (agentic loop)
+                  span.icon.is-small.is-left
+                    i.fas.fa-route
+                p.help
+                  | LLM agents only. ReAct acts one step at a time, reacting to each tool result.
+            .column.is-full
+              .field
+                label.label for="description" Description
+                .control
+                  textarea.textarea#description name="description" placeholder="What does this agent do?" required="required" rows="2"
+            .column.is-full
+              .field
+                label.label for="output_key" Output Key
+                .control.has-icons-left
+                  input.input(type="text" name="output_key" placeholder="result_key")
+                  span.icon.is-small.is-left
+                    i.fas.fa-key
+                p.help Optional key to store the agent's final result in the session state.
+
+      / ===== Model Configuration Section =====
+      .form-section#model-config-section
+        .form-section-header
+          span.icon
+            i.fas.fa-brain
+          span Model Configuration
+        .form-section-content
+          .columns
+            .column.is-half
+              .field
+                label.label for="model" Language Model
+                .control.has-icons-left
+                  .select.is-fullwidth
+                    select(name="model")
+                      - default_model = Legate::Agent::DEFAULT_MODEL
+                      - @available_models.each do |model_name|
+                        option(value=model_name selected=(model_name == default_model)) = model_name
+                  span.icon.is-small.is-left
+                    i.fas.fa-microchip
+            .column.is-half
+              .field
+                label.label Planning Fallback
+                .control.has-icons-left
+                  .select.is-fullwidth
+                    select(name="fallback_mode")
+                      option(value="error" selected=true) Return Error Message
+                      option(value="echo") Attempt Echo Tool (if available)
+                  span.icon.is-small.is-left
+                    i.fas.fa-random
+                p.help Select behavior when the agent cannot determine which tool to use.
+
+      / ===== Instructions Section =====
+      .form-section
+        .form-section-header
+          span.icon
+            i.fas.fa-file-alt
+          span Instructions
+        .form-section-content
+          .field
+            label.label for="instruction" System Prompt
+            .control
+              textarea.textarea#instruction name="instruction" rows="5" placeholder="Guide the agent's behavior, persona, and tool usage..."
+            p.help Guide the agent's behavior, persona, and tool usage. Markdown is supported by some models.
+
+      / ===== Tools & Integrations Section =====
+      .form-section
+        .form-section-header
+          span.icon
+            i.fas.fa-toolbox
+          span Tools & Integrations
+        .form-section-content
+          .columns
+            .column.is-half
+              .field
+                label.label Tools
+                .control
+                  - if @available_tools && !@available_tools.empty?
+                    .panel.tool-selection-panel
+                      p.panel-heading Available Tools
+                      - @available_tools.each do |tool_info|
+                        label.panel-block.is-clickable
+                          input.mr-3(type="checkbox" name="tools[]" value=tool_info[:name])
+                          span
+                            strong #{tool_info[:name].to_s.capitalize}
+                            br
+                            small.has-text-grey #{tool_info[:description]}
+                  - else
+                    .notification.is-warning.is-light No tools available for selection.
+            .column.is-half
+              .field
+                label.label for="mcp_servers_json" MCP Server Configurations (JSON Array)
+                .control
+                  textarea.textarea#mcp_servers_json name="mcp_servers_json" rows="5" placeholder='[{"type": "stdio", "command": "..."}]'
+                p.help
+                  | Enter a valid JSON array or leave empty. Example:
+                  code | [{"type": "stdio", "command": "npx", "args": [...]}]
+
+      / ===== Workflow Configuration / Delegation Section =====
+      .form-section#workflow-configuration-section style="display: none;"
+        .form-section-header
+          span.icon
+            i.fas.fa-project-diagram
+          span#workflow-section-title Workflow Configuration
+        .form-section-content
+          .field
+            label.label#sub-agent-label Workflow Sub-Agents
+            p.help.mb-3#sub-agent-help
+              | Select agents to include in this workflow. For sequential workflows, the order is important.
+              | These agents must already be created before they can be added to a workflow.
+            .control
+              - all_agent_names = @view_agents ? @view_agents.map { |agent| agent[:name] } : []
+              - if all_agent_names.any?
+                .panel.sub-agent-selection-panel
+                  p.panel-heading Available Agents
+                  - all_agent_names.each do |agent_name|
+                    label.panel-block.is-clickable
+                      input.mr-3(type="checkbox" name="sub_agent_names[]" value=agent_name)
+                      span = agent_name
+                
+                / Additional dropdown for sequential workflow with ordering instructions
+                .field.mt-3#sequential-workflow-ordering style="display: none;"
+                  label.label.is-size-6 Execution Order
+                  p.help.is-size-7.mb-2 
+                    | For sequential workflows, agents will execute in the order they are selected above.
+                    | First selected = first executed.
+                  .notification.is-info.is-light
+                    span.icon.mr-2
+                      i.fas.fa-info-circle
+                    | Tip: After creating the workflow, you can edit the hierarchy to reorder the agents.
+              - else
+                .notification.is-warning.is-light 
+                  | No other agents available to select as sub-agents. 
+                  | Create some regular agents first before creating a workflow.
+
+          / Loop Specific Parameters
+          .field#loop-parameters-container style="display: none;"
+            label.label Loop Configuration
+            .columns
+              .column.is-one-third
+                .field
+                  label.label.is-small Max Iterations
+                  .control
+                    input.input.is-small(type="number" name="loop_max_iterations" placeholder="10" min="1")
+              .column.is-one-third
+                .field
+                  label.label.is-small Condition State Key
+                  .control
+                    input.input.is-small(type="text" name="loop_condition_state_key" placeholder="e.g. task_complete")
+              .column.is-one-third
+                .field
+                  label.label.is-small Expected Value
+                  .control
+                    input.input.is-small(type="text" name="loop_condition_expected_value" placeholder="e.g. true")
+
+      .field.mt-5
+        .control
+          button.button.is-link(type="submit")
+            span.icon
+              i.fas.fa-save
+            span Create Agent Definition
+
+.legion-section
+  .legion-header
+    .legion-header-left
+      h2.title.is-4.mb-0 Deployed Legion
+      span.legion-count#legion-count
+    .legion-header-right
+      .control.has-icons-left.search-with-shortcut
+        input.input#agent-search-input type="text" placeholder="Search agents..." onkeyup="filterAgents()"
+        span.icon.is-left
+          i.fas.fa-search
+        span.keyboard-hint
+          kbd ⌘K
+
+  / Card grid — HTMX start/stop/delete/create swap individual .agent-card elements
+  #agent-list-grid.legion-grid(data-testid="agent-list-grid")
+    - if @view_agents && !@view_agents.empty?
+      - @view_agents.each do |agent_info|
+        == slim :_agent_card, locals: { agent_info: agent_info, available_tools: @available_tools }
+
+  / Empty state — hidden whenever any cards are present (toggled by JS on filter/create)
+  #no-agents-state.legion-empty(class=(@view_agents && !@view_agents.empty? ? 'is-hidden' : ''))
+    span.icon.is-large.has-text-grey-lighter
+      i.fas.fa-robot.fa-3x
+    p.title.is-5.mt-4.has-text-grey No agents defined yet
+    p.subtitle.is-6.has-text-grey-light Get started by creating your first agent
+    .buttons.is-centered.mt-4
+      a.button.is-primary.is-outlined(href="#" onclick="document.querySelector('.create-agent-details').open = true; return false;")
+        span.icon
+          i.fas.fa-plus
+        span Create Agent
+
+javascript:
+  document.addEventListener('DOMContentLoaded', function() {
+    // Initialize form fields based on selected agent type
+    toggleWorkflowFields();
+  });
+  
+  function filterAgents() {
+    const input = document.getElementById('agent-search-input');
+    const filter = input ? input.value.toLowerCase().trim() : '';
+    const cards = document.querySelectorAll('#agent-list-grid .agent-card');
+    const emptyState = document.getElementById('no-agents-state');
+    const countEl = document.getElementById('legion-count');
+
+    let shown = 0;
+    cards.forEach(card => {
+      // data-search holds name + description + tools + model, pre-lowercased
+      const haystack = card.getAttribute('data-search') || card.textContent.toLowerCase();
+      const match = filter === '' || haystack.includes(filter);
+      card.style.display = match ? '' : 'none';
+      if (match) shown++;
+    });
+
+    // Empty state shows only when there are no cards at all (not when a search
+    // simply matches nothing — that gets the placeholder hint instead).
+    if (emptyState) emptyState.classList.toggle('is-hidden', cards.length > 0);
+
+    // Live count of agents in the legion
+    if (countEl) countEl.textContent = cards.length ? `${cards.length}` : '';
+
+    if (input) {
+      input.placeholder = (filter !== '')
+        ? `${shown} result${shown !== 1 ? 's' : ''} found`
+        : 'Search agents...';
+    }
+  }
+
+  // Initialise the legion count on load.
+  document.addEventListener('DOMContentLoaded', filterAgents);
+  
+  function toggleWorkflowFields() {
+    const agentType = document.getElementById('agent_type').value;
+
+    // Toggle display of model configuration section based on agent type
+    const modelConfigSection = document.getElementById('model-config-section');
+    if (agentType === 'llm') {
+      modelConfigSection.style.display = '';
+    } else {
+      modelConfigSection.style.display = 'none';
+    }
+    
+    // Toggle display of workflow/delegation configuration section
+    const workflowSection = document.getElementById('workflow-configuration-section');
+    const sectionTitle = document.getElementById('workflow-section-title');
+    const subAgentLabel = document.getElementById('sub-agent-label');
+    const subAgentHelp = document.getElementById('sub-agent-help');
+    const loopParams = document.getElementById('loop-parameters-container');
+    const orderingSection = document.getElementById('sequential-workflow-ordering');
+    
+    // We always show the section now, but customize text
+    workflowSection.style.display = '';
+    
+    // Reset displays
+    loopParams.style.display = 'none';
+    if(orderingSection) orderingSection.style.display = 'none';
+
+    if (agentType === 'llm') {
+       sectionTitle.textContent = "Delegation Configuration";
+       subAgentLabel.textContent = "Delegation Targets";
+       subAgentHelp.innerHTML = "Select other agents that this LLM agent can delegate tasks to.";
+    } else {
+       sectionTitle.textContent = "Workflow Configuration";
+       subAgentLabel.textContent = "Workflow Sub-Agents";
+       
+       // Check if there are any agents available for selection
+       const agentsAvailable = workflowSection.querySelector('.sub-agent-selection-panel') !== null;
+       
+       if (agentType === 'sequential') {
+          subAgentHelp.innerHTML = 'Select agents to execute in sequence. The order of selection matters.';
+          if (orderingSection) orderingSection.style.display = agentsAvailable ? '' : 'none';
+        } else if (agentType === 'parallel') {
+          subAgentHelp.innerHTML = 'Select agents to execute concurrently. All selected agents will run at the same time.';
+        } else if (agentType === 'loop') {
+          subAgentHelp.innerHTML = 'Select agents to execute in a loop until a condition is met.';
+          loopParams.style.display = '';
+        }
+    }
+  }
+
+/ Include the AI Agent Generator Modal
+== slim :_agent_generator_modal, layout: false
+
+/ Tool generator modal — enables the "Build →" handoff for suggested tools
+== slim :_tool_generator_modal, layout: false

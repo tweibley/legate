@@ -1,0 +1,5 @@
+.content
+   h1.title.is-danger= locals[:title] || "Error"
+   p= locals[:message] || "The requested page could not be found."
+   .mt-4
+     a.button href="/agents" Back to Agents List

@@ -1,0 +1,192 @@
+/ File: lib/legate/web/views/chat.slim
+/ Agent chat / run view — 3 zones: header (name·model·status·sessions) ·
+/ transcript + composer · Run Details inspector. HTMX wires preserved.
+- agent_name = @agent_data[:name]
+- is_running = @agent_data[:running]
+- chat_model = (@agent_data[:model] && !@agent_data[:model].to_s.empty?) ? @agent_data[:model] : Legate::Agent::DEFAULT_MODEL
+- configured_tools = @agent_data[:configured_tools] || []
+- sessions_to_list = (@previous_sessions_list || []).reject { |s| @active_session_details && s.id == @active_session_details.id }
+
+div#chat_interface_wrapper
+  .chat-shell
+    .chat-main
+      / --- Header bar ---
+      .chat-header
+        a.chat-back(href="/agents/#{agent_name}" title="Back to agent")
+          span.icon
+            i.fas.fa-arrow-left
+        .chat-header-titles
+          h2.chat-agent-name= agent_name
+          span.mono-chip.model-chip(title="Language model")
+            span.icon.is-small
+              i.fas.fa-microchip
+            span= chat_model
+        .chat-header-actions
+          div#agent-chat-panel-status-display
+            p
+              span.tag.is-rounded class=(is_running ? 'is-success' : 'is-danger')
+                = is_running ? 'Running' : 'Stopped'
+          button.chat-new-session-btn#start-new-chat-button(hx-post="/agents/#{agent_name}/chat/session/new" hx-target="#chat_interface_wrapper" hx-indicator="#start-new-chat-button")
+            span.icon.is-small
+              i.fas.fa-plus
+            span New Session
+            span.icon.is-small.htmx-indicator
+              i.fas.fa-spinner.fa-pulse
+          .dropdown.is-right.chat-sessions-dropdown(_="on click toggle .is-active on the closest .dropdown")
+            .dropdown-trigger
+              button.chat-sessions-btn(type="button" aria-haspopup="true")
+                span.icon.is-small
+                  i.fas.fa-clock-rotate-left
+                span Sessions
+                span.icon.is-small
+                  i.fas.fa-angle-down
+            .dropdown-menu(role="menu")
+              .dropdown-content
+                - if @active_session_details
+                  .chat-session-current
+                    .chat-session-line
+                      span.chat-session-tag Current session
+                      form(hx-delete="/agents/#{agent_name}/chat/session/#{@active_session_details.id}" hx-target="#chat_interface_wrapper" hx-confirm="Delete this chat session? This cannot be undone.")
+                        button.chat-session-del(type="submit" title="Delete session")
+                          i.fas.fa-trash-alt
+                    p.chat-session-summary= summarize_session(@active_session_details)
+                - if sessions_to_list.any?
+                  hr.dropdown-divider
+                  - sessions_to_list.each do |session_item|
+                    form.chat-session-switch(hx-post="/agents/#{agent_name}/chat/session/switch" hx-target="#chat_interface_wrapper")
+                      input type="hidden" name="legate_session_to_switch_to" value="#{session_item.id}"
+                      button.chat-session-switch-btn(type="submit")
+                        span.icon.is-small
+                          i.fas.fa-comment-dots
+                        span= summarize_session(session_item)
+                - elsif !@active_session_details
+                  p.dropdown-item.has-text-grey No previous sessions.
+
+      / Session operation error display (hidden until HTMX swaps an error in)
+      div#session-operation-error.notification.is-danger.is-hidden.mb-3
+
+      / --- Transcript ---
+      #chat-log-container.chat-transcript(
+        hx-on::after-swap="this.scrollTop = this.scrollHeight"
+        _="init set my scrollTop to my scrollHeight end"
+      )
+        - if @chat_history_events && !@chat_history_events.empty?
+          - @chat_history_events.each do |event|
+            - if event.role == :user
+              .message.is-link.is-small.mb-2.user-message(id="event-#{event.event_id}")
+                .message-header
+                  p You
+                .message-body= event.content
+            - elsif event.role == :agent
+              - agent_response_content = event.content
+              - is_complex_content = (agent_response_content.is_a?(Hash) && agent_response_content.key?(:status)) || (agent_response_content.is_a?(Array) && agent_response_content.first.is_a?(Hash) && agent_response_content.first.key?(:status))
+              - msg_class = 'is-light'
+              - if is_complex_content
+                - status = agent_response_content.is_a?(Array) ? agent_response_content.first[:status] : agent_response_content[:status]
+                - case status
+                - when :error
+                  - msg_class = 'is-danger'
+                - when :pending
+                  - msg_class = 'is-warning'
+                - else
+                  - msg_class = 'is-success'
+              - else
+                - msg_class = 'is-success'
+
+              .message class="#{msg_class} agent-message is-small mb-4" id="event-#{event.event_id}"
+                .message-header
+                  p Agent (#{@agent_data[:name]})
+                  - raw_json_content = agent_response_content.to_json rescue "{}"
+                  - unless raw_json_content.empty? || raw_json_content == "{}"
+                    button.button.is-light.is-small.ml-auto( onclick="var el = document.getElementById('raw-#{event.event_id}'); el.style.display = (el.style.display == 'none' ? 'block' : 'none');" )
+                      | Raw JSON
+                .message-body
+                  div style="white-space: pre-wrap; word-break: break-word; margin-bottom: 0.5rem;" = format_historical_agent_content(agent_response_content)
+
+                  - if agent_response_content.is_a?(Hash) && agent_response_content[:plan_details].is_a?(Array) && !agent_response_content[:plan_details].empty?
+                    details.execution-plan-details
+                      summary.execution-plan-summary
+                        | Execution Plan (#{agent_response_content[:plan_details].size} step#{'s' if agent_response_content[:plan_details].size != 1})
+                      .execution-plan-steps
+                        - agent_response_content[:plan_details].each_with_index do |step_detail, index|
+                          .execution-plan-step
+                            p.step-title Step #{index + 1}: #{step_detail[:tool_name]}
+                            p.step-params-label Parameters:
+                            pre.step-params-pre= JSON.pretty_generate(step_detail[:params] || {})
+
+                            - result_status = step_detail.dig(:result, :status)
+                            - result_class = case result_status when :success then 'has-text-success-dark' when :error then 'has-text-danger-dark' when :pending then 'has-text-warning-dark' else 'has-text-grey' end
+
+                            p class="step-result-label #{result_class}" Result (#{result_status || "unknown"}):
+                            pre class="step-result-pre #{result_class}"= JSON.pretty_generate(step_detail[:result] || {}) rescue "{}"
+
+                  - raw_json_content = agent_response_content.to_json rescue "{}"
+                  - unless raw_json_content.empty? || raw_json_content == "{}"
+                    div.raw-json-container id="raw-#{event.event_id}" style="display: none;"
+                      pre.raw-json-pre= raw_json_content
+            - elsif event.role == :tool_request || event.role == :tool_result
+              / Hidden for a cleaner history; details live in the agent message's execution plan.
+            - else
+              p.notification.is-warning.is-light Unknown event role: #{event.role}
+        - else
+          .chat-empty-state
+            .chat-empty-emblem
+              i.fas.fa-gem
+            p.chat-empty-title Start a conversation
+            p.chat-empty-hint
+              - if is_running
+                = "Send a message to #{agent_name} below to begin."
+              - else
+                | Start the agent from its page to begin chatting.
+
+      / --- Composer ---
+      .chat-composer
+        form#chat-form(
+          hx-post="/agents/#{agent_name}/chat"
+          hx-target="#chat-log-container"
+          hx-swap="beforeend"
+          hx-indicator="#send-button-indicator"
+          _="on htmx:afterRequest call me.reset() then get #chat-log-container then set its scrollTop to its scrollHeight"
+        )
+          .chat-composer-row
+            .control.is-expanded.chat-input-wrap
+              input.input#chat-input(
+                type="text"
+                name="message"
+                placeholder="Message #{agent_name}…"
+                required=true
+                autofocus
+                disabled=(!is_running || !@active_session_details)
+              )
+              span.icon.is-small.is-right.htmx-indicator.chat-input-spinner
+                i.fas.fa-spinner.fa-spin
+            button.button.is-primary#send-button(
+              type="submit"
+              disabled=(!is_running || !@active_session_details)
+            )
+              span Send
+              span.icon.is-small.ml-1
+                i.fas.fa-paper-plane
+              span.icon.is-small#send-button-indicator.htmx-indicator.ml-1
+                i.fas.fa-spinner.fa-pulse
+
+          #chat-status-help-container.mt-2
+            - if @agent_data && !is_running
+              p.help.is-danger#chat-not-running-help Agent must be running to chat.
+            - elsif @agent_data && is_running && !@active_session_details
+              p.help.is-warning#chat-no-active-session-help No active chat session. Start a new session above.
+            - else
+              p.help.is-hidden No issues.
+
+    / --- Run Details inspector ---
+    aside.chat-inspector
+      h3.inspector-title Run Details
+      == slim :_active_session_info, locals: { active_session_details: @active_session_details }
+      .inspector-section
+        .inspector-label Available Tools
+        - if configured_tools.any?
+          .inspector-tools
+            - configured_tools.each do |t|
+              span.tool-chip= t
+        - else
+          p.inspector-empty No tools configured

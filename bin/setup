@@ -1,0 +1,41 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'fileutils'
+
+# path to your application root.
+APP_ROOT = File.expand_path('..', __dir__)
+
+def system!(*args)
+  system(*args) || abort("\n== Command #{args} failed ==")
+end
+
+FileUtils.chdir APP_ROOT do
+  # This script is a way to set up or update your development environment automatically.
+  # This script is idempotent, so that you can run it at any time and get an expectable outcome.
+
+  puts '== Installing dependencies =='
+  system! 'gem install bundler --conservative'
+  system('bundle check') || system!('bundle install')
+
+  puts "\n== Copying sample files =="
+  unless File.exist?('.env')
+    FileUtils.cp '.env.example', '.env'
+    puts 'Created .env file'
+  end
+
+  puts "\n== Checking prerequisites =="
+
+  # Check Ruby version
+  ruby_version = RUBY_VERSION
+  min_version = '3.0.0'
+  abort "Ruby #{min_version}+ required, you have #{ruby_version}" if Gem::Version.new(ruby_version) < Gem::Version.new(min_version)
+  puts "✓ Ruby #{ruby_version}"
+
+  puts "\n== Removing old logs =="
+  system! 'rm -f log/*' if Dir.exist?('log')
+
+  puts "\n== Setup complete =="
+  puts "You can now run 'bundle exec legate web start' to start the server"
+  puts "or 'bundle exec rspec' to run tests."
+end

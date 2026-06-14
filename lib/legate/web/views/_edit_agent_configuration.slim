@@ -1,0 +1,74 @@
+/ File: lib/legate/web/views/_edit_agent_configuration.slim
+/ Displays the form for editing agent configuration fields.
+/ Expects locals: agent_data, available_models, error_message (optional)
+
+.box
+  form( hx-put="/agents/#{agent_data[:name]}/update/configuration"
+        hx-target="#agent-configuration-content"
+        hx-swap="innerHTML" )
+
+    h3.title.is-5 Edit Agent Configuration
+
+    / --- Display Error Message if Present ---
+    - if defined?(error_message) && error_message
+      .notification.is-danger.is-light.mb-4
+        button.delete type="button" onclick="this.parentElement.remove()"
+        = error_message
+
+    / --- Model ---
+    .field.mb-4
+      label.label Language Model
+      /! Use edit partial content directly
+      .field.has-addons
+        .control.is-expanded
+          .select.is-fullwidth
+            select(name="model")
+              - current_model = agent_data[:model] || Legate::Agent::DEFAULT_MODEL
+              - available_models.each do |model_name|
+                option(value=model_name selected=(model_name == current_model)) = model_name
+        /! Buttons moved to bottom
+
+    / --- Fallback ---
+    .field.mb-4
+      label.label Planning Fallback
+      /! Use edit partial content directly
+      .field.has-addons
+        .control.is-expanded
+          .select.is-fullwidth
+            select(name="fallback_mode")
+              - current_fallback_mode = agent_data[:fallback_mode] || 'error'
+              option(value="error" selected=(current_fallback_mode == 'error')) Return Error Message
+              option(value="echo" selected=(current_fallback_mode == 'echo')) Attempt Echo Tool (if available)
+        /! Buttons moved to bottom
+
+    / --- MCP ---
+    .field.mb-4
+      label.label for="mcp-json-editor" MCP Server Configurations (JSON Array)
+      /! Use edit partial content directly
+      .control
+        textarea.textarea#mcp-json-editor name="mcp_servers_json" rows="6" placeholder='[{"type": "stdio", "command": "...", "args": ["..."]}]' == agent_data[:mcp_servers_json]
+      p.help
+        | Enter a valid JSON array or leave empty. Example: `[{"type": "stdio", "command": "npx", "args": [...]}]`
+
+    / --- Instructions ---
+    .field.mb-5
+      label.label for="edit-instruction-textarea" Instructions (System Prompt)
+      /! Use edit partial content directly
+      .control
+        textarea.textarea#edit-instruction-textarea name="instruction" rows="5" placeholder="Guide the agent's behavior..." == agent_data[:instruction]
+      p.help Guide behavior, persona, tool usage. Markdown might be supported by the model.
+
+
+    / --- Action Buttons ---
+    .field.is-grouped.is-grouped-right
+      .control
+        button.button.is-light( type="button"
+                                hx-get="/agents/#{agent_data[:name]}/display/configuration"
+                                hx-target="#agent-configuration-content"
+                                hx-swap="innerHTML" )
+          span Cancel
+      .control
+        button.button.is-success(type="submit")
+          span.icon.is-small
+            i.fas.fa-check
+          span Save Configuration

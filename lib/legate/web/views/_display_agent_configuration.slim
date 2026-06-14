@@ -1,0 +1,26 @@
+/ File: lib/legate/web/views/_display_agent_configuration.slim
+/ Displays the read-only configuration fields for an agent.
+/ Expects locals: agent_data
+
+.box.config-panel
+  h3.title.is-5.mb-4 Configuration Details
+
+  / --- Model ---
+  div.config-field
+    == slim :_display_agent_model, locals: { agent_data: agent_data, show_edit_button: true }
+
+  / --- Fallback ---
+  div.config-field
+    == slim :_display_agent_fallback, locals: { agent_data: agent_data, show_edit_button: true }
+
+  / --- MCP ---
+  div.config-field
+    == slim :_display_agent_mcp, locals: { agent_data: agent_data, show_edit_button: true }
+
+  / --- Output Key ---
+  div.config-field
+    == slim :_display_agent_output_key, locals: { agent_data: agent_data, show_edit_button: true }
+
+  / --- Instructions ---
+  div.config-field
+    == slim :_display_agent_instruction, locals: { agent_data: agent_data, show_edit_button: true }

@@ -1,0 +1,67 @@
+/ File: lib/legate/web/views/_edit_agent_type.slim
+/ Expects agent_data hash with name and agent_type
+
+- agent_name = agent_data[:name]
+- agent_type = agent_data[:agent_type]&.to_sym || :llm
+- planning_strategy = agent_data[:planning_strategy]&.to_sym || :plan
+
+.content#agent-type-display
+  form( hx-put="/agents/#{agent_name}/update/type"
+        hx-target="#agent-type-display"
+        hx-swap="outerHTML" )
+    
+    h4.is-size-5 Edit Agent Type
+    
+    / Display error if provided
+    - if defined?(error_message) && error_message
+      .notification.is-danger.is-light.mb-4
+        button.delete(type="button" onclick="this.parentElement.remove()")
+        = error_message
+
+    .field
+      label.label for="agent_type" Agent Type
+      .control
+        .select.is-fullwidth
+          select#agent_type(name="agent_type")
+            option(value="llm" selected=(agent_type == :llm)) LLM Agent
+            option(value="sequential" selected=(agent_type == :sequential)) Sequential Workflow
+            option(value="parallel" selected=(agent_type == :parallel)) Parallel Workflow
+            option(value="loop" selected=(agent_type == :loop)) Loop Workflow
+      p.help
+        | LLM: AI-powered agent for task execution
+        br
+        | Sequential: Runs sub-agents in sequence
+        br 
+        | Parallel: Runs sub-agents concurrently
+        br
+        | Loop: Repeatedly executes sub-agents until condition is met
+
+    .field
+      label.label for="planning_strategy" Planning Strategy
+      .control
+        .select.is-fullwidth
+          select#planning_strategy(name="planning_strategy")
+            option(value="plan" selected=(planning_strategy == :plan)) Plan (default)
+            option(value="react" selected=(planning_strategy == :react)) ReAct (agentic loop)
+      p.help
+        | Applies to LLM agents only.
+        br
+        | Plan: generate one plan up front, then execute every step.
+        br
+        | ReAct: take one action, observe the result, then decide the next — better for multi-step tasks and tool errors.
+
+    / Action Buttons
+    .field.is-grouped.mt-4
+      .control
+        button.button.is-light( type="button"
+                               hx-get="/agents/#{agent_name}/display/type"
+                               hx-target="#agent-type-display"
+                               hx-swap="outerHTML" )
+          span Cancel
+      .control
+        button.button.is-success(type="submit" hx-indicator=".htmx-indicator")
+          span.icon.is-small.htmx-indicator
+            i.fas.fa-spinner.fa-spin
+          span.icon.is-small
+            i.fas.fa-check
+          span Save Changes 

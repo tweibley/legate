@@ -1,0 +1,311 @@
+/ File: lib/legate/web/views/_tool_generator_modal.slim
+/ AI-powered tool generator modal
+
+- runtime_load_enabled = Legate.config.allow_runtime_tool_load
+
+#tool-generator-modal.modal
+  .modal-background onclick="closeToolGeneratorModal()"
+  .modal-card style="width: 90%; max-width: 1200px; max-height: 90vh;"
+    header.modal-card-head
+      p.modal-card-title
+        span.icon.mr-2
+          i.fas.fa-wand-magic-sparkles
+        | Generate Tool with AI
+      button.delete aria-label="close" onclick="closeToolGeneratorModal()"
+    
+    section.modal-card-body style="display: flex; flex-direction: column; gap: 1.5rem;"
+      / Input Section
+      #tool-generator-input-section
+        .field
+          label.label
+            span.icon.is-small.mr-1
+              i.fas.fa-comment-dots
+            | Describe Your Tool
+          .control
+            textarea#tool-generator-description.textarea(
+              rows="5"
+              placeholder="Describe the tool you want to create. Examples: 'A tool that converts temperatures', 'A tool that fetches weather from OpenWeather API', 'A background job that processes CSV files'"
+            )
+          p.help 
+            | Describe what you want your tool to do. The AI will automatically choose the best tool type:
+            br
+            strong Simple 
+            | (calculations, transformations), 
+            strong HTTP 
+            | (API calls), or 
+            strong Async 
+            | (background jobs).
+        
+        .field
+          .control
+            button#tool-generator-btn.button.is-primary.is-medium(onclick="generateToolCode()")
+              span.icon
+                i.fas.fa-wand-magic-sparkles
+              span Generate Code
+            span#tool-generator-loading.ml-3 style="display: none;"
+              span.icon.has-text-info
+                i.fas.fa-spinner.fa-spin
+              span.has-text-grey Generating...
+
+      / Error Display
+      #tool-generator-error.notification.is-danger.is-light style="display: none;"
+        button.delete onclick="this.parentElement.style.display='none'"
+        span#tool-generator-error-message
+
+      / Output Section (hidden until generation)
+      #tool-generator-output-section style="display: none;"
+        .level.mb-3
+          .level-left
+            .level-item
+              p.subtitle.is-5
+                span.icon.is-small.mr-1
+                  i.fas.fa-code
+                | Generated Code
+            .level-item
+              span#tool-generator-name-tag.tag.is-info.is-light
+            .level-item
+              span#tool-generator-type-tag.tag.is-light
+          .level-right
+            .level-item
+              .buttons
+                button.button.is-small.is-light(onclick="regenerateToolCode()" title="Generate again with same description")
+                  span.icon.is-small
+                    i.fas.fa-sync
+                  span Regenerate
+                button.button.is-small.is-success.is-light(onclick="copyToolCode()" title="Copy to clipboard")
+                  span.icon.is-small
+                    i.fas.fa-copy
+                  span Copy
+                button.button.is-small.is-link.is-light(onclick="downloadToolCode()" title="Download as .rb file")
+                  span.icon.is-small
+                    i.fas.fa-download
+                  span Download
+        
+        .code-preview-container style="max-height: 360px; overflow: auto; border-radius: 6px;"
+          pre
+            code#tool-generator-code.language-ruby
+
+        / Install (live) — gated by config (on outside production)
+        - if runtime_load_enabled
+          .tool-install-box.mt-3
+            label.checkbox.tool-install-confirm
+              input#tool-install-confirm type="checkbox"
+              span
+                strong  Run this code on the server
+                |  and save it to your tools/ directory. Only install tools you've reviewed.
+            .is-flex.is-align-items-center.mt-2(style="gap: 0.75rem;")
+              button#tool-install-btn.button.is-primary(onclick="installTool()")
+                span.icon
+                  i.fas.fa-circle-plus
+                span Add Tool to Legion
+              span#tool-install-result
+        - else
+          p.help.tool-install-disabled.mt-3
+            span.icon.is-small
+              i.fas.fa-circle-info
+            |  Live install is disabled in this environment. Download the tool, place it in tools/, and restart to activate it.
+
+      / Copy success toast
+      #tool-generator-copy-toast.notification.is-success.is-light style="display: none; position: absolute; bottom: 1rem; right: 1rem; padding: 0.75rem 1rem;"
+        span.icon.is-small.mr-1
+          i.fas.fa-check
+        | Copied to clipboard!
+
+    footer.modal-card-foot style="justify-content: flex-end;"
+      button.button onclick="closeToolGeneratorModal()" Close
+
+javascript:
+  // Tool Generator Modal Functions
+  let generatedToolCode = '';
+  let suggestedToolName = 'generated_tool';
+  let detectedToolType = 'simple';
+
+  function openToolGeneratorModal() {
+    document.getElementById('tool-generator-modal').classList.add('is-active');
+    document.getElementById('tool-generator-description').focus();
+  }
+
+  function closeToolGeneratorModal() {
+    document.getElementById('tool-generator-modal').classList.remove('is-active');
+    // Reset state
+    document.getElementById('tool-generator-error').style.display = 'none';
+  }
+
+  async function generateToolCode() {
+    const description = document.getElementById('tool-generator-description').value.trim();
+    
+    if (!description) {
+      showToolGeneratorError('Please enter a description of the tool you want to create.');
+      return;
+    }
+
+    // Show loading state
+    const btn = document.getElementById('tool-generator-btn');
+    const loading = document.getElementById('tool-generator-loading');
+    btn.disabled = true;
+    loading.style.display = 'inline';
+    document.getElementById('tool-generator-error').style.display = 'none';
+    document.getElementById('tool-generator-output-section').style.display = 'none';
+
+    try {
+      const tokenEl = document.querySelector('meta[name="csrf-token"]');
+      const response = await fetch('/tools/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': tokenEl ? tokenEl.content : ''
+        },
+        body: JSON.stringify({ description: description })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Generation failed');
+      }
+
+      // Store the generated code
+      generatedToolCode = data.code;
+      suggestedToolName = data.suggested_name || 'generated_tool';
+      detectedToolType = data.tool_type || 'simple';
+
+      // Display the code
+      const codeElement = document.getElementById('tool-generator-code');
+      
+      // Reset highlight.js state before setting new content
+      codeElement.classList.remove('hljs');
+      delete codeElement.dataset.highlighted;
+      codeElement.textContent = data.code;
+      
+      // Apply syntax highlighting
+      if (typeof hljs !== 'undefined') {
+        hljs.highlightElement(codeElement);
+      }
+
+      // Update name tag
+      document.getElementById('tool-generator-name-tag').textContent = suggestedToolName;
+      
+      // Update type tag with appropriate styling
+      const typeTag = document.getElementById('tool-generator-type-tag');
+      typeTag.textContent = detectedToolType.charAt(0).toUpperCase() + detectedToolType.slice(1) + ' Tool';
+      typeTag.className = 'tag is-light';
+      if (detectedToolType === 'http') {
+        typeTag.classList.add('is-link');
+      } else if (detectedToolType === 'async') {
+        typeTag.classList.add('is-warning');
+      } else {
+        typeTag.classList.add('is-success');
+      }
+
+      // Show output section
+      document.getElementById('tool-generator-output-section').style.display = 'block';
+
+      // Reset the install affordance for the freshly generated code
+      const confirmEl = document.getElementById('tool-install-confirm');
+      if (confirmEl) confirmEl.checked = false;
+      const installBtn = document.getElementById('tool-install-btn');
+      if (installBtn) installBtn.disabled = false;
+      const installResult = document.getElementById('tool-install-result');
+      if (installResult) installResult.innerHTML = '';
+
+    } catch (error) {
+      showToolGeneratorError(error.message);
+    } finally {
+      btn.disabled = false;
+      loading.style.display = 'none';
+    }
+  }
+
+  function regenerateToolCode() {
+    generateToolCode();
+  }
+
+  function showToolGeneratorError(message) {
+    const errorEl = document.getElementById('tool-generator-error');
+    document.getElementById('tool-generator-error-message').textContent = message;
+    errorEl.style.display = 'block';
+  }
+
+  async function copyToolCode() {
+    try {
+      await navigator.clipboard.writeText(generatedToolCode);
+      
+      // Show toast
+      const toast = document.getElementById('tool-generator-copy-toast');
+      toast.style.display = 'block';
+      setTimeout(() => {
+        toast.style.display = 'none';
+      }, 2000);
+    } catch (err) {
+      showToolGeneratorError('Failed to copy to clipboard');
+    }
+  }
+
+  function downloadToolCode() {
+    const blob = new Blob([generatedToolCode], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${suggestedToolName}.rb`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  async function installTool() {
+    const confirmEl = document.getElementById('tool-install-confirm');
+    if (!confirmEl || !confirmEl.checked) {
+      showToolGeneratorError('Please tick the confirmation box — this runs the generated code on the server.');
+      return;
+    }
+    const btn = document.getElementById('tool-install-btn');
+    btn.classList.add('is-loading');
+    try {
+      const tokenEl = document.querySelector('meta[name="csrf-token"]');
+      const response = await fetch('/tools/install', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': tokenEl ? tokenEl.content : ''
+        },
+        body: JSON.stringify({
+          code: generatedToolCode,
+          suggested_name: suggestedToolName,
+          confirm: true
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Install failed');
+
+      // If we got here from the agent builder's "Build →", return to it with the
+      // newly-installed tool added + checked (it didn't exist when the form rendered).
+      if (window.legateReturnToAgentBuilder && typeof returnToAgentBuilderWithTool === 'function') {
+        const original = window.legateReturnToAgentBuilder;
+        window.legateReturnToAgentBuilder = null;
+        closeToolGeneratorModal();
+        returnToAgentBuilderWithTool(data.tool_name, original);
+        return;
+      }
+
+      const result = document.getElementById('tool-install-result');
+      result.innerHTML = '<span class="has-text-success"><span class="icon is-small"><i class="fas fa-check-circle"></i></span> Installed <strong>' + data.tool_name + '</strong> — usable by agents now.</span>';
+      btn.disabled = true;
+      confirmEl.disabled = true;
+    } catch (error) {
+      showToolGeneratorError(error.message);
+    } finally {
+      btn.classList.remove('is-loading');
+    }
+  }
+
+  // Close modal on Escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('tool-generator-modal');
+      if (modal && modal.classList.contains('is-active')) {
+        closeToolGeneratorModal();
+      }
+    }
+  });
+

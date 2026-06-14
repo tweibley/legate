@@ -1,0 +1,17 @@
+/ File: lib/legate/web/views/_display_agent_instruction.slim
+/ Displays the agent instructions and optionally an edit button.
+/ Expects locals: agent_data, show_edit_button (boolean, optional, defaults to true)
+
+- show_edit_button = defined?(show_edit_button) ? show_edit_button : true
+
+div#agent-instruction-display-container
+  .config-field-head
+    span.config-label Instructions (System Prompt)
+    - if show_edit_button
+      button.config-edit-btn(hx-get="/agents/#{agent_data[:name]}/edit/instruction" hx-target="#agent-instruction-display-container" hx-swap="outerHTML" title="Edit instructions")
+        i.fas.fa-pencil-alt
+  - instruction_text = agent_data[:instruction]
+  - if instruction_text.nil? || instruction_text.strip.empty?
+    p.config-empty No specific instructions provided.
+  - else
+    pre.config-code.instruction-display= instruction_text

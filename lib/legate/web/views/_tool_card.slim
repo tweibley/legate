@@ -1,0 +1,9 @@
+/ Expects 'tool_info' (a hash or object with :name and :description) in locals
+.column.is-one-third
+  .card.tool-card
+    .card-content
+      h3.title.is-5= tool_info[:name].to_s.capitalize
+      p= tool_info[:description]
+    .card-footer
+      / Link to the tool detail page (assuming /tools/:name exists)
+      a.card-footer-item(href="/tools/#{tool_info[:name]}") Details

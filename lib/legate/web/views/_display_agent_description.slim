@@ -1,0 +1,11 @@
+/ File: lib/legate/web/views/_display_agent_description.slim
+/ Displays the agent description and an edit button
+
+/ Use a flex container to keep text and button together
+.is-flex.is-align-items-center
+  / Description text paragraph
+  p.description-text.has-text-grey.mb-0= agent_data[:description] || "No description provided."
+  / Edit button with left margin for spacing
+  button.button.is-small.is-text.has-text-grey.edit-description-btn.ml-2 hx-get="/agents/#{agent_data[:name]}/edit/description" hx-target="#agent-description-display" hx-swap="outerHTML"
+    span.icon.is-small
+      i.fas.fa-pencil-alt

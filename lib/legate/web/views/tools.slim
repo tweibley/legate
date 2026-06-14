@@ -1,0 +1,50 @@
+/ File: lib/legate/web/views/tools.slim
+.content.mb-5
+  h1.title.is-2 Tools
+  p.subtitle Browse available tools that can be used by agents.
+
+/ AI Generator button - prominent placement
+.buttons.mb-4
+  button.button.is-medium.ai-generate-btn(onclick="openToolGeneratorModal()")
+    span.icon
+      i.fas.fa-wand-magic-sparkles
+    span
+      strong Build with AI Builder
+
+.box
+  h2.title.is-4 Available Native Tools
+  p.subtitle.is-6 Shows tools built directly into this Legate application.
+
+  - if @native_tools.nil? || @native_tools.empty?
+    .notification.is-warning No native tools found.
+  - else
+    .table-container
+      table.table.is-striped.is-hoverable.is-fullwidth
+        thead
+          tr
+            th Name
+            th Description
+            th Parameters
+        tbody
+          - @native_tools.each do |tool|
+            tr
+              td style="vertical-align: top;"
+                a href="/tools/#{tool[:name]}"
+                  strong = tool[:name]
+              td style="vertical-align: top;"
+                = tool[:description] || content_tag(:em, "[no description provided]")
+              td
+                - if tool[:parameters].empty?
+                  em None
+                - else
+                  dl.parameters-list
+                    - tool[:parameters].each do |param|
+                      dt
+                        code = param[:name]
+                        span.tag.is-light.is-family-code.ml-1 = param[:type]
+                        - if param[:required]
+                          span.tag.is-danger.is-light.is-small.ml-1 Required
+                      dd = param[:description]
+
+/ Include the AI Tool Generator Modal
+== slim :_tool_generator_modal, layout: false

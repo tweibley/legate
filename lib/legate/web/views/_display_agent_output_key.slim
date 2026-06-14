@@ -1,0 +1,26 @@
+/ File: lib/legate/web/views/_display_agent_output_key.slim
+/ Expects agent_data hash with output_key
+/ locals: show_edit_button (boolean)
+
+- output_key = agent_data[:output_key]
+- show_edit_button = locals.fetch(:show_edit_button, false)
+
+.field#agent-output-key-display
+  .config-field-row
+    .config-field-main
+      span.config-label Output Key
+      - if output_key && !output_key.to_s.empty?
+        span.mono-chip
+          span.icon.is-small
+            i.fas.fa-key
+          span= output_key
+      - else
+        span.config-empty No output key configured
+    - if show_edit_button
+      button.config-edit-btn(
+        hx-get="/agents/#{agent_data[:name]}/edit/output_key"
+        hx-target="#agent-output-key-display"
+        hx-swap="outerHTML"
+        title="Edit Output Key"
+      )
+        i.fas.fa-pencil-alt

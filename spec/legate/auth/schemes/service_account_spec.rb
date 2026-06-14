@@ -1,0 +1,301 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+require 'legate/auth/scheme'
+require 'legate/auth/error'
+require 'legate/auth/credential'
+require 'legate/auth/config'
+require 'legate/auth/exchanged_credential'
+require 'legate/auth/schemes/service_account'
+require 'securerandom'
+require 'webmock/rspec'
+
+RSpec.describe Legate::Auth::Schemes::ServiceAccount do
+  # Stub the generate_request_id method in Legate::Auth
+  before(:all) do
+    # Add the generate_request_id method to the Legate::Auth module if it doesn't exist
+    unless Legate::Auth.respond_to?(:generate_request_id)
+      Legate::Auth.define_singleton_method(:generate_request_id) do
+        SecureRandom.uuid
+      end
+    end
+  end
+
+  # Set test environment flag
+  before(:each) do
+    ENV['RSPEC_ENV'] = 'test'
+  end
+
+  after(:each) do
+    ENV.delete('RSPEC_ENV')
+  end
+
+  # Helper method for creating test credentials
+  def create_test_credential(auth_type:, access_token: nil, **options)
+    access_token ||= 'dummy_token' if ENV['RSPEC_ENV'] == 'test'
+    Legate::Auth::ExchangedCredential.new(auth_type: auth_type, access_token: access_token, **options)
+  end
+
+  # Helper method for calculating expires_in
+  def calculate_expires_in(expires_at)
+    return nil unless expires_at
+
+    (expires_at - Time.now).to_i
+  end
+
+  let(:token_url) { 'https://example.com/token' }
+  let(:audience) { 'https://api.example.com' }
+  let(:scopes) { %w[profile email] }
+
+  # Create a test subclass that implements the abstract method
+  let(:test_service_account_class) do
+    Class.new(described_class) do
+      def create_signed_jwt(_service_account_key)
+        'test.signed.jwt'
+      end
+
+      # Override validate! to raise Legate::Auth::SchemeValidationError instead of ArgumentError
+      def validate!
+        # Skip validation in test environment unless FORCE_VALIDATE is set
+        if ENV['RSPEC_ENV'] == 'test' && ENV['FORCE_VALIDATE'] != 'true'
+          # Only validate token_url and token_lifetime in test mode
+          raise Legate::Auth::SchemeValidationError, 'Token URL is required for service account authentication' if @token_url.nil? || @token_url.to_s.strip.empty?
+
+          raise Legate::Auth::SchemeValidationError, 'Token lifetime must be positive' if @token_lifetime && @token_lifetime <= 0
+
+          return
+        end
+
+        raise Legate::Auth::SchemeValidationError, 'Token URL is required for service account authentication' if @token_url.nil? || @token_url.to_s.strip.empty?
+
+        raise Legate::Auth::SchemeValidationError, 'Token lifetime must be positive' if @token_lifetime <= 0
+
+        raise Legate::Auth::SchemeValidationError, 'Client email is required' unless @client_email && !@client_email.empty?
+
+        return if @private_key && !@private_key.empty?
+
+        raise Legate::Auth::SchemeValidationError, 'Private key is required'
+      end
+    end
+  end
+
+  let(:scheme) do
+    test_service_account_class.new(
+      token_url: token_url,
+      audience: audience,
+      scopes: scopes
+    )
+  end
+
+  describe '#initialize' do
+    it 'sets the required attributes' do
+      expect(scheme.token_url).to eq(token_url)
+      expect(scheme.audience).to eq(audience)
+      expect(scheme.scopes).to eq(scopes)
+      expect(scheme.token_lifetime).to eq(3600)
+    end
+
+    it 'raises an error without token_url' do
+      # Temporarily force validation in test environment
+      ENV['FORCE_VALIDATE'] = 'true'
+      expect {
+        test_service_account_class.new(
+          token_url: nil,
+          audience: audience
+        )
+      }.to raise_error(Legate::Auth::SchemeValidationError)
+      ENV.delete('FORCE_VALIDATE')
+    end
+
+    it 'raises an error with negative token_lifetime' do
+      # Temporarily force validation in test environment
+      ENV['FORCE_VALIDATE'] = 'true'
+      expect {
+        test_service_account_class.new(
+          token_url: token_url,
+          token_lifetime: -1
+        )
+      }.to raise_error(Legate::Auth::SchemeValidationError)
+      ENV.delete('FORCE_VALIDATE')
+    end
+
+    it 'parses scopes from a string' do
+      scheme = test_service_account_class.new(
+        token_url: token_url,
+        scopes: 'profile email'
+      )
+
+      expect(scheme.scopes).to eq(%w[profile email])
+    end
+  end
+
+  describe '#scheme_type' do
+    it 'returns :service_account' do
+      expect(scheme.scheme_type).to eq(:service_account)
+    end
+  end
+
+  describe '#apply_to_request' do
+    let(:request) { { headers: {} } }
+    let(:access_token) { 'test_access_token' }
+
+    let(:exchanged_credential) do
+      create_test_credential(
+        auth_type: :service_account,
+        access_token: access_token
+      )
+    end
+
+    it 'adds the Authorization header with the token' do
+      result = scheme.apply_to_request(request, exchanged_credential)
+
+      expect(result[:headers]['Authorization']).to eq("Bearer #{access_token}")
+    end
+
+    it 'raises an error if the credential is not an ExchangedCredential' do
+      credential = Legate::Auth::Credential.new(
+        auth_type: :service_account,
+        service_account_key: '{"type":"service_account"}'
+      )
+
+      expect {
+        scheme.apply_to_request(request, credential)
+      }.to raise_error(Legate::Auth::CredentialError)
+    end
+
+    it 'raises an error if the access token is missing' do
+      # Store original environment
+      original_rspec_env = ENV['RSPEC_ENV']
+
+      # Disable test environment for this test
+      ENV.delete('RSPEC_ENV')
+
+      # Create a credential with explicitly nil access_token
+      empty_credential = Legate::Auth::ExchangedCredential.new(
+        auth_type: :service_account,
+        access_token: nil
+      )
+
+      # Create a simpler test class that doesn't try to validate during apply_to_request
+      test_class = Class.new(described_class) do
+        def validate!
+          # Skip validation for this test
+        end
+
+        def create_signed_jwt(_service_account_key = nil)
+          'test.signed.jwt'
+        end
+      end
+
+      test_scheme = test_class.new(token_url: token_url)
+
+      expect {
+        test_scheme.apply_to_request(request, empty_credential)
+      }.to raise_error(Legate::Auth::CredentialError)
+
+      # Restore environment
+      ENV['RSPEC_ENV'] = original_rspec_env
+    end
+  end
+
+  describe '#fetch_token' do
+    let(:credential) do
+      Legate::Auth::Credential.new(
+        auth_type: :service_account,
+        service_account_key: '{
+          "type": "service_account",
+          "client_email": "test@example.com",
+          "private_key": "-----BEGIN PRIVATE KEY-----\\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC9X9cNcwp2CPJ5\\n-----END PRIVATE KEY-----\\n"
+        }'
+      )
+    end
+
+    before do
+      # Stub the token exchange request
+      stub_request(:post, token_url)
+        .with(
+          body: /grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=test.signed.jwt/
+        )
+        .to_return(
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: {
+            access_token: 'test_access_token',
+            token_type: 'Bearer',
+            expires_in: 3600,
+            scope: 'profile email'
+          }.to_json
+        )
+    end
+
+    it 'exchanges a JWT for an access token' do
+      result = scheme.fetch_token(credential)
+
+      expect(result).to be_a(Legate::Auth::ExchangedCredential)
+      expect(result.auth_type).to eq(:service_account)
+      expect(result.access_token).to eq('test_access_token')
+      expect(result.token_type).to eq('Bearer')
+      expect(calculate_expires_in(result.expires_at)).to be_within(5).of(3600)
+      expect(result[:scope]).to eq('profile email')
+    end
+
+    it 'raises an error if credential is invalid' do
+      expect {
+        scheme.fetch_token('invalid_credential')
+      }.to raise_error(Legate::Auth::CredentialError)
+    end
+
+    it 'handles service account key from environment variable' do
+      # Set up a test environment variable
+      ENV['TEST_SA_KEY'] = '{
+        "type": "service_account",
+        "client_email": "test@example.com",
+        "private_key": "-----BEGIN PRIVATE KEY-----\\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC9X9cNcwp2CPJ5\\n-----END PRIVATE KEY-----\\n"
+      }'
+
+      env_credential = Legate::Auth::Credential.new(
+        auth_type: :service_account,
+        service_account_key: ENV['TEST_SA_KEY']
+      )
+
+      result = scheme.fetch_token(env_credential)
+
+      expect(result).to be_a(Legate::Auth::ExchangedCredential)
+      expect(result.access_token).to eq('test_access_token')
+
+      # Clean up
+      ENV.delete('TEST_SA_KEY')
+    end
+
+    it 'raises an error when token exchange fails' do
+      # Stub a failed token exchange request
+      stub_request(:post, token_url)
+        .with(
+          body: /grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=test.signed.jwt/
+        )
+        .to_return(
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+          body: {
+            error: 'invalid_grant',
+            error_description: 'Invalid JWT'
+          }.to_json
+        )
+
+      expect {
+        scheme.fetch_token(credential)
+      }.to raise_error(Legate::Auth::TokenExchangeError, /Invalid JWT/)
+    end
+  end
+
+  describe '#to_h' do
+    it 'includes token_url, audience, and scopes' do
+      hash = scheme.to_h
+
+      expect(hash).to include(token_url: token_url)
+      expect(hash).to include(audience: audience)
+      expect(hash).to include(scopes: scopes)
+      expect(hash).to include(token_lifetime: 3600)
+    end
+  end
+end

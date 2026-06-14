@@ -1,0 +1,25 @@
+/ File: lib/legate/web/views/_active_session_info.slim
+/ Renders the Run Details "session" block inside the chat inspector.
+/ Keeps id + hx-swap-oob so session new/switch/delete can update it out-of-band.
+
+div#active-session-info.inspector-session(hx-swap-oob="outerHTML")
+  - if active_session_details
+    .inspector-section
+      .inspector-label Session ID
+      .inspector-session-id
+        span.inspector-session-mono(title=active_session_details.id)= active_session_details.id
+        button.inspector-copy(type="button" title="Copy session ID" onclick="navigator.clipboard && navigator.clipboard.writeText('#{active_session_details.id}')")
+          i.fas.fa-copy
+    .inspector-section
+      .inspector-meta-row
+        span.inspector-meta-key Created
+        span.inspector-meta-val= active_session_details.created_at.strftime("%b %d, %H:%M")
+      .inspector-meta-row
+        span.inspector-meta-key Last activity
+        span.inspector-meta-val= active_session_details.updated_at.strftime("%b %d, %H:%M")
+      .inspector-meta-row
+        span.inspector-meta-key Events
+        span.inspector-meta-val= active_session_details.events&.count || 0
+  - else
+    .inspector-section
+      p.inspector-empty No active session.

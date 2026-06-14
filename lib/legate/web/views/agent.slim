@@ -1,0 +1,436 @@
+/ File: lib/legate/web/views/agent.slim
+- agent_data = @view_agent_data
+- is_running = agent_data[:running]
+- agent_name = agent_data[:name]
+
+section.section
+  .container
+    / Breadcrumb Navigation
+    nav.breadcrumb.mb-4(aria-label="breadcrumbs")
+      ul
+        li
+          a(href="/agents")
+            span.icon.is-small
+              i.fas.fa-robot
+            span Agents
+        li.is-active
+          a(href="#" aria-current="page")= agent_name
+
+    / Hero Header - Streamlined Agent Profile
+    .agent-header-hero.mb-5
+      / Top row: Name/badges on left, Status/action on right
+      .agent-header-top-row
+        / Left side: Agent identity (name, badges)
+        div#agent-name-display.agent-header-identity
+          == slim :_display_agent_name, locals: { agent_data: agent_data }
+        
+        / Right side: Status and action button (same row)
+        div#agent-status-controls-container.agent-header-actions
+          == slim :_agent_status_controls, locals: { agent_data: agent_data }
+
+      / Description - integrated into header
+      div#agent-description-display.agent-header-description hx-swap="outerHTML"
+        == slim :_display_agent_description, locals: { agent_data: agent_data }
+
+      / Stats bar - tool count, last run, status
+      .agent-stats-bar
+        a.agent-stat(href="#tools" data-tab-link="tools")
+          span.icon.is-small
+            i.fas.fa-tools
+          span.agent-stat-value= agent_data[:tool_count] || 0
+          span.agent-stat-label Tool#{'s' if (agent_data[:tool_count] || 0) != 1}
+        .agent-stat
+          span.icon.is-small
+            i.fas.fa-clock
+          - last_run_display = 'Never'
+          - if agent_data[:last_run_at]
+            - begin
+              - last_run_time = Time.parse(agent_data[:last_run_at].to_s)
+              - diff_seconds = (Time.now - last_run_time).to_i
+              - if diff_seconds < 60
+                - last_run_display = "#{diff_seconds}s ago"
+              - elsif diff_seconds < 3600
+                - last_run_display = "#{diff_seconds / 60}m ago"
+              - elsif diff_seconds < 86400
+                - last_run_display = "#{diff_seconds / 3600}h ago"
+              - else
+                - last_run_display = "#{diff_seconds / 86400}d ago"
+            - rescue => e
+              - last_run_display = 'Unknown'
+          span.agent-stat-value= last_run_display
+          span.agent-stat-label Last Run
+        .agent-stat
+          - if is_running
+            span.icon.is-small.has-text-success
+              i.fas.fa-check-circle
+            span.agent-stat-value.has-text-success Active
+          - else
+            span.icon.is-small.has-text-grey
+              i.fas.fa-pause-circle
+            span.agent-stat-value.has-text-grey Idle
+          span.agent-stat-label Status
+
+      / Collapsible Agent Details (Type & Hierarchy) - simplified
+      - sub_count = agent_data[:sub_agent_names]&.size || 0
+      - if sub_count > 0
+        details.agent-details-collapsible
+          summary.agent-details-summary
+            span.icon.is-small
+              i.fas.fa-chevron-right
+            span Sub-Agents
+            span.tag.is-light.is-small.ml-2= "#{sub_count} configured"
+          .agent-details-content
+            div#agent-hierarchy-display hx-swap="outerHTML"
+              == slim :_display_agent_hierarchy, locals: { agent_data: agent_data }
+
+    .custom-rounded-tabs-container
+      .tabs
+        ul
+          li data-tab="execute"
+            a href="#execute"
+              span.icon.is-small
+                i.fas.fa-play-circle aria-hidden="true"
+              span Execute
+          / Chat opens the dedicated full-screen chat experience (not embedded —
+          / the chat is a full 3-zone shell and must not be crammed into a tab).
+          li.tab-link-external
+            a href="/agents/#{agent_name}/chat"
+              span.icon.is-small
+                i.fas.fa-comments aria-hidden="true"
+              span Chat
+              span.icon.is-small.tab-external-icon
+                i.fas.fa-arrow-up-right-from-square aria-hidden="true"
+          li data-tab="config"
+            a href="#config"
+              span.icon.is-small
+                i.fas.fa-cogs aria-hidden="true"
+              span Config
+          li data-tab="tools"
+            a href="#tools"
+              span.icon.is-small
+                i.fas.fa-tools aria-hidden="true"
+              span Tools
+          li data-tab="auth"
+            a href="#auth"
+              span.icon.is-small
+                i.fas.fa-shield-alt aria-hidden="true"
+              span Authentication
+
+    div#tab-content
+
+      div.content-tab#execute-tab
+        .execute-tab-layout
+          / Task Input Section
+          .execute-input-section
+            .box.execute-input-box
+              h3.title.is-5
+                span.icon.mr-2
+                  i.fas.fa-terminal
+                | Execute Task
+              form#execute-task-form( hx-post="/agents/#{agent_name}/execute"
+                                      hx-target="#task-result-content"
+                                      hx-swap="innerHTML"
+                                      hx-indicator="#execute-task-button span.icon.htmx-indicator" )
+                  .field
+                    label.label Task (JSON Input)
+                    p.help.is-size-7 Format: `{"task": "..."}` or `{"tool_name": "...", ...}`
+                    .control
+                      textarea.textarea.is-code-editor#direct-task-json-input name="task_json" placeholder='{"task": "Ask me anything..."}' required=true rows="8"
+                  .field.is-grouped.is-grouped-right.mt-4
+                    .control
+                      button.button.is-link.is-light.is-small( type="button" id="generate-example-task-btn"
+                                                              hx-get="/agents/#{agent_name}/generate_example_task"
+                                                              hx-indicator="#generate-example-task-btn .htmx-indicator"
+                                                              hx-swap="none" )
+                        span.icon.is-small.htmx-indicator
+                          i.fas.fa-spinner.fa-spin
+                        span.icon.is-small
+                          i.fas.fa-wand-magic-sparkles
+                        span Example
+                    .control
+                      button.button.is-light.is-small(type="button" _=%q{on click put "<span class='terminal-placeholder'>Ready for output...</span>" into #task-result-content})
+                        span.icon.is-small
+                          i.fas.fa-eraser
+                        span Clear
+                    .control
+                      button.button.is-success.is-medium#execute-task-button(type="submit" disabled=!is_running)
+                        span.icon.is-small.htmx-indicator.mr-1
+                            i.fas.fa-spinner.fa-pulse
+                        span.icon.is-small
+                          i.fas.fa-play
+                        span = is_running ? 'Execute' : 'Start Agent First'
+
+          / Result Section - Terminal Style
+          .execute-result-section
+            .terminal-window
+              .terminal-header
+                .terminal-buttons
+                  span.terminal-btn.terminal-btn-close
+                  span.terminal-btn.terminal-btn-minimize
+                  span.terminal-btn.terminal-btn-maximize
+                span.terminal-title Output
+              #task-result.terminal-body
+                #task-result-content
+                  span.terminal-placeholder Ready for output...
+
+      div.content-tab.is-hidden#config-tab
+        div#agent-configuration-content
+          == slim :_display_agent_configuration, locals: { agent_data: agent_data }
+
+      div.content-tab.is-hidden#tools-tab
+        .box
+          .level.mb-4
+            .level-left
+              h3.title.is-5 Configured Tools
+            .level-right
+              button.button.is-link.is-light( hx-get="/agents/#{agent_name}/edit/tools"
+                                              hx-target="#agent-tools-table-container"
+                                              hx-swap="outerHTML")
+                span.icon.is-small.htmx-indicator
+                  i.fas.fa-spinner.fa-spin
+                span.icon.is-small
+                  i.fas.fa-pencil-alt
+                span Edit Tools
+
+          div#agent-tools-table-container
+            == slim :_agent_tool_table, locals: { agent_data: agent_data, view_configured_tools: view_configured_tools, mcp_tool_results: mcp_tool_results }
+
+      div.content-tab.is-hidden#auth-tab
+        .box.auth-tab-panel
+          .level.mb-4
+            .level-left
+              h3.title.is-5.mb-0 Authentication
+            .level-right
+              a.button.is-primary.is-light href="/agents/#{agent_name}/auth"
+                span.icon.is-small
+                  i.fas.fa-shield-alt
+                span Manage Authentication
+          p.has-text-grey.mb-4
+            | This agent can have scheme assignments, credential assignments, and URL mappings
+            | that override the global authentication defaults.
+          .auth-tab-status-row
+            span.config-label Status
+            #auth-status-indicator.auth-tab-status-value
+              == slim :_skeleton, locals: { type: :auth_status }
+          .buttons.mt-4
+            a.button.is-primary href="/agents/#{agent_name}/auth"
+              span.icon
+                i.fas.fa-cogs
+              span Configure
+            button.button onclick="testAgentAuth()"
+              span.icon
+                i.fas.fa-vial
+              span Test
+          #auth-test-results.mt-4 style="display: none;"
+
+
+    .mt-6.has-text-centered
+      a.button.is-link.is-light(href="/agents")
+        span.icon
+            i.fas.fa-arrow-left
+        span Back to Agents List
+
+    javascript:
+      document.addEventListener('DOMContentLoaded', function () {
+        const tabs = document.querySelectorAll('.custom-rounded-tabs-container .tabs li');
+        const tabContentBoxes = document.querySelectorAll('#tab-content > .content-tab');
+
+        function activateTab(tabElement) {
+            if (!tabElement) return;
+
+            tabs.forEach(item => item.classList.remove('is-active'));
+            tabContentBoxes.forEach(box => box.classList.add('is-hidden'));
+
+            tabElement.classList.add('is-active');
+            const targetTab = tabElement.getAttribute('data-tab');
+            const targetContent = document.getElementById(targetTab + '-tab');
+
+            if (targetContent) {
+              targetContent.classList.remove('is-hidden');
+              const editorsInTab = targetContent.querySelectorAll('textarea');
+              editorsInTab.forEach(textarea => {
+                if (textarea.id && window.codeMirrorInstances && window.codeMirrorInstances[textarea.id]) {
+                  setTimeout(() => {
+                      if(window.codeMirrorInstances[textarea.id]) {
+                          window.codeMirrorInstances[textarea.id].refresh();
+                      }
+                  }, 50);
+                 }
+              });
+            } else {
+              console.error("Could not find tab content for:", targetTab);
+            }
+
+            if (history.pushState) {
+                history.pushState(null, null, '#' + targetTab);
+            } else {
+                window.location.hash = targetTab;
+            }
+        }
+
+        tabs.forEach(tab => {
+          if (!tab.dataset.tab) return; // skip navigating links (e.g. Chat → dedicated page)
+          const anchor = tab.querySelector('a');
+          if (anchor) {
+             anchor.addEventListener('click', function(event) {
+                event.preventDefault();
+                activateTab(tab);
+             });
+          }
+        });
+
+         let activatedFromHash = false;
+         if (window.location.hash) {
+             const hash = window.location.hash.substring(1);
+             const targetTabElement = document.querySelector(`.custom-rounded-tabs-container .tabs li[data-tab="${hash}"]`);
+             if (targetTabElement) {
+                 activateTab(targetTabElement);
+                 activatedFromHash = true;
+             } else {
+                console.warn(`Tab for hash #${hash} not found.`);
+             }
+         }
+         if (!activatedFromHash) {
+            const defaultTab = document.querySelector('.custom-rounded-tabs-container .tabs li[data-tab="execute"]');
+            if (defaultTab) {
+                activateTab(defaultTab);
+            } else {
+               console.warn("Default execute tab not found! Activating first available tab.");
+               if (tabs.length > 0) {
+                   activateTab(tabs[0]);
+               } else {
+                   console.error("No tabs found to activate.");
+               }
+            }
+         }
+
+        // Quick Actions Dropdown Toggle
+        document.querySelectorAll('.agent-quick-actions-dropdown .dropdown-trigger button').forEach(function(button) {
+          button.addEventListener('click', function(event) {
+            event.stopPropagation();
+            const dropdown = button.closest('.dropdown');
+            dropdown.classList.toggle('is-active');
+          });
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+          if (!event.target.closest('.agent-quick-actions-dropdown')) {
+            document.querySelectorAll('.agent-quick-actions-dropdown.is-active').forEach(function(dropdown) {
+              dropdown.classList.remove('is-active');
+            });
+          }
+        });
+
+        // Close dropdown on Escape key
+        document.addEventListener('keydown', function(event) {
+          if (event.key === 'Escape') {
+            document.querySelectorAll('.agent-quick-actions-dropdown.is-active').forEach(function(dropdown) {
+              dropdown.classList.remove('is-active');
+            });
+          }
+        });
+
+        // Handle tab navigation from stats bar and dropdown
+        document.querySelectorAll('[data-tab-link]').forEach(function(link) {
+          link.addEventListener('click', function(event) {
+            event.preventDefault();
+            const tabName = this.getAttribute('data-tab-link');
+            const targetTab = document.querySelector(`.custom-rounded-tabs-container .tabs li[data-tab="${tabName}"]`);
+            if (targetTab) {
+              activateTab(targetTab);
+              // Close dropdown if open
+              document.querySelectorAll('.agent-quick-actions-dropdown.is-active').forEach(function(dropdown) {
+                dropdown.classList.remove('is-active');
+              });
+            }
+          });
+        });
+
+        // Delete agent confirmation
+        document.querySelectorAll('[data-action="delete-agent"]').forEach(function(link) {
+          link.addEventListener('click', function(event) {
+            event.preventDefault();
+            const agentName = this.getAttribute('data-agent-name');
+            if (confirm(`Are you sure you want to delete the agent "${agentName}"? This action cannot be undone.`)) {
+              Legate.apiRequest(`/agents/${encodeURIComponent(agentName)}`, { method: 'DELETE' })
+                .then(function () { window.location.href = '/agents'; })
+                .catch(function () { alert('Failed to delete agent. Please try again.'); });
+            }
+          });
+        });
+
+      });
+
+      // Persist a (possibly runtime-created) agent to agents/<name>.rb so it
+      // survives a restart. Uses the global showToast() from the layout.
+      function saveAgentToDisk(name) {
+        Legate.apiRequest('/agents/' + name + '/save', { method: 'POST' })
+          .then(d => showToast('Saved to ' + d.path + ' — survives restart.', 'is-success'))
+          .catch(e => showToast(e.message || 'Failed to save agent.', 'is-danger'));
+      }
+
+      // Authentication status loading
+      function loadAuthStatus() {
+        Legate.apiRequest(`/agents/${encodeURIComponent('#{agent_name}')}/auth/status`)
+          .then(data => {
+            const indicator = document.getElementById('auth-status-indicator');
+            if (data.status === 'success') {
+              indicator.innerHTML = '<span class="icon is-large has-text-success"><i class="fas fa-check-circle fa-2x"></i></span><br>Configured';
+            } else if (data.status === 'warning') {
+              indicator.innerHTML = '<span class="icon is-large has-text-warning"><i class="fas fa-exclamation-triangle fa-2x"></i></span><br>Using Defaults';
+            } else {
+              indicator.innerHTML = '<span class="icon is-large has-text-danger"><i class="fas fa-times-circle fa-2x"></i></span><br>Issues Found';
+            }
+          })
+          .catch(error => {
+            console.error('Error loading auth status:', error);
+            const indicator = document.getElementById('auth-status-indicator');
+            indicator.innerHTML = '<span class="icon is-large has-text-grey"><i class="fas fa-question-circle fa-2x"></i></span><br>Unknown';
+          });
+      }
+
+      // Test agent authentication
+      function testAgentAuth() {
+        const resultsDiv = document.getElementById('auth-test-results');
+        resultsDiv.style.display = 'block';
+        resultsDiv.innerHTML = '<div class="notification is-info">Running authentication tests...</div>';
+
+        Legate.apiRequest(`/agents/${encodeURIComponent('#{agent_name}')}/auth/test`, { method: 'POST' })
+        .then(data => {
+          if (data.success !== undefined) {
+            let html = `<div class="notification is-${data.success ? 'success' : 'danger'}">`;
+            html += `<strong>Test Results:</strong> ${data.success ? 'PASSED' : 'FAILED'}<br>`;
+            html += `Agent-specific Authentication: ${data.has_agent_auth ? 'Yes' : 'No (using global defaults)'}`;
+            html += '</div>';
+            
+            if (data.tests && data.tests.length > 0) {
+              html += '<div class="content is-small"><strong>Details:</strong><ul>';
+              data.tests.forEach(test => {
+                const statusClass = test.status === 'passed' ? 'has-text-success' : 
+                                   test.status === 'warning' ? 'has-text-warning' : 'has-text-danger';
+                html += `<li class="${statusClass}"><strong>${escapeHtml(test.name)}:</strong> ${escapeHtml(test.message)}</li>`;
+              });
+              html += '</ul></div>';
+            }
+            
+            resultsDiv.innerHTML = html;
+          } else {
+            Legate.renderError(resultsDiv, data.error);
+          }
+        })
+        .catch(error => {
+          console.error('Error testing auth:', error);
+          resultsDiv.innerHTML = '<div class="notification is-danger">Error running authentication tests</div>';
+        });
+      }
+
+      // Load auth status when auth tab is activated
+      document.addEventListener('DOMContentLoaded', function() {
+        const authTab = document.querySelector('.custom-rounded-tabs-container .tabs li[data-tab="auth"]');
+        if (authTab) {
+          authTab.querySelector('a').addEventListener('click', function() {
+            setTimeout(loadAuthStatus, 100); // Small delay to ensure tab is active
+          });
+        }
+      });

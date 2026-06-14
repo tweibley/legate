@@ -1,0 +1,148 @@
+/ File: lib/legate/web/views/index.slim
+
+/ Hero Welcome Section
+section.hero-welcome.mb-6
+  .hero-content
+    .hero-main
+      .hero-badge
+        i.fas.fa-gem
+      .hero-text
+        p.hero-eyebrow Legion Commander
+        h1.hero-title Command your AI legion
+        p.hero-subtitle Build, orchestrate, and run powerful AI agents in elegant Ruby.
+        button.hero-pronounce(type="button" title="Say it out loud" aria-label="Pronounce Legate")
+          span.respell
+            strong Legate
+            span.phon= "/ˈle·jit/"
+          span.pronounce-wink yep, like “legit” 😎
+          span.icon.pronounce-speaker
+            i.fas.fa-volume-up
+    .hero-actions
+      a.button.is-hero-primary.is-medium(href="/agents")
+        span.icon
+          i.fas.fa-plus
+        span Create Agent
+      a.button.is-hero-secondary.is-medium(href="/docs")
+        span.icon
+          i.fas.fa-book
+        span Documentation
+
+.columns.is-centered.is-multiline.index-dashboard-cards
+  .column.is-one-quarter
+    .card.dashboard-card.agents-card.has-text-centered
+      .card-content
+        span.icon.is-large.mb-3
+          i.fas.fa-robot.fa-3x style="color: var(--color-primary);"
+        h2.title.is-4 Agents
+        - if @running_count && @running_count > 0
+          p.is-size-2.has-text-weight-bold style="color: var(--color-primary);"
+            = @running_count
+          p.subtitle.is-6.mb-2 Running
+          p.is-size-7.has-text-grey
+            = "#{@agent_count} total defined"
+        - elsif @agent_count && @agent_count > 0
+          p.is-size-2.has-text-weight-bold style="color: var(--color-text-muted);"
+            = @agent_count
+          p.subtitle.is-6.mb-2 Defined
+          p.is-size-7.has-text-grey None running
+        - else
+          p.has-text-grey-light.is-italic.mb-2 No agents defined yet
+          p.is-size-7.has-text-grey Create your first agent
+      .card-footer
+        a.card-footer-item(href="/agents")
+          span View Agents
+          span.icon.is-small.ml-1
+            i.fas.fa-arrow-right
+        a.card-footer-item.quick-action(href="/agents" title="Create new agent")
+          span.icon
+            i.fas.fa-plus
+
+  .column.is-one-quarter
+    .card.dashboard-card.tools-card.has-text-centered
+      .card-content
+        span.icon.is-large.mb-3
+          i.fas.fa-wrench.fa-3x style="color: var(--color-primary);"
+        h2.title.is-4 Tools
+        - if @tool_count && @tool_count > 0
+          p.is-size-2.has-text-weight-bold style="color: var(--color-primary);"
+            = @tool_count
+          p.subtitle.is-6.mb-2 Available
+        - else
+          p.has-text-grey-light.is-italic.mb-2 No tools loaded
+      .card-footer
+        a.card-footer-item(href="/tools")
+          span View Tools
+          span.icon.is-small.ml-1
+            i.fas.fa-arrow-right
+        a.card-footer-item.quick-action(href="/tools" title="Build new tool with AI")
+          span.icon
+            i.fas.fa-plus
+
+  .column.is-one-quarter
+    .card.dashboard-card.auth-card.has-text-centered
+      .card-content
+        span.icon.is-large.mb-3
+          i.fas.fa-key.fa-3x style="color: var(--color-primary);"
+        h2.title.is-4 Authentication
+        - if @auth_scheme_count && @auth_scheme_count > 0
+          p.is-size-2.has-text-weight-bold style="color: var(--color-primary);"
+            = @auth_scheme_count
+          p.subtitle.is-6.mb-2 Schemes
+        - else
+          p.has-text-grey-light.is-italic.mb-2 Configure auth
+      .card-footer
+        a.card-footer-item(href="/auth")
+          span View Authentication
+          span.icon.is-small.ml-1
+            i.fas.fa-arrow-right
+
+  .column.is-one-quarter
+    .card.dashboard-card.docs-card.has-text-centered
+      .card-content
+        span.icon.is-large.mb-3
+          i.fas.fa-book-open.fa-3x style="color: var(--color-primary);"
+        h2.title.is-4 Documentation
+        p.has-text-grey Read guides and concepts about Legate.
+      .card-footer
+        a.card-footer-item(href="/docs")
+          span Read Docs
+          span.icon.is-small.ml-1
+            i.fas.fa-arrow-right
+
+/ Activity Stream Section
+.box.activity-stream-box.mt-5
+  .level.mb-4
+    .level-left
+      h3.title.is-5.mb-0
+        span.icon.mr-2
+          i.fas.fa-stream
+        | Recent Activity
+    .level-right
+      button.button.is-small.is-light(hx-get="/activity/recent" hx-target="#activity-list" hx-swap="innerHTML" title="Refresh activity")
+        span.icon.is-small
+          i.fas.fa-sync-alt
+  
+  #activity-list
+    == slim :_activity_list
+
+javascript:
+  (function () {
+    var btn = document.querySelector('.hero-pronounce');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      btn.classList.remove('is-saying');
+      // restart the wink animation
+      void btn.offsetWidth;
+      btn.classList.add('is-saying');
+      try {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          var u = new SpeechSynthesisUtterance('Legate. Say it like legit.');
+          u.rate = 0.95;
+          u.pitch = 1.05;
+          window.speechSynthesis.speak(u);
+        }
+      } catch (e) { /* no audio, the wink still fires */ }
+      setTimeout(function () { btn.classList.remove('is-saying'); }, 900);
+    });
+  })();

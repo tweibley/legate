@@ -1,0 +1,13 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Suppress logs when stdin is piped (for clean stdout output in pipe workflows)
+# or when --json flag is used (for clean machine-readable output)
+# This must happen BEFORE requiring Legate to prevent log initialization noise
+ENV['LEGATE_LOG_LEVEL'] ||= 'SILENT' if !$stdin.tty? || ARGV.include?('--json')
+
+require_relative '../lib/legate' # Load Legate library first
+Legate.load_environment # Handle Bundler, Dotenv, etc.
+require_relative '../lib/legate/cli' # Use require_relative for CLI component
+
+Legate::CLI::Main.start(ARGV)

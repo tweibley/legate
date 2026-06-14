@@ -1,0 +1,36 @@
+/ File: lib/legate/web/views/_edit_agent_output_key.slim
+/ Expects agent_data hash with name and output_key
+
+- agent_name = agent_data[:name]
+- output_key = agent_data[:output_key]
+
+.field#agent-output-key-display
+  form( hx-put="/agents/#{agent_name}/update/output_key"
+        hx-target="#agent-output-key-display"
+        hx-swap="outerHTML" )
+    
+    label.label.is-small Output Key
+    
+    .field.has-addons
+      .control.is-expanded
+        input.input.is-small(
+          type="text" 
+          name="value" 
+          value=output_key 
+          placeholder="e.g. result_key"
+          autofocus=true
+        )
+      .control
+        button.button.is-small.is-success(type="submit")
+          span.icon.is-small
+            i.fas.fa-check
+      .control
+        button.button.is-small.is-light(
+          type="button"
+          hx-get="/agents/#{agent_name}/display/output_key"
+          hx-target="#agent-output-key-display"
+          hx-swap="outerHTML"
+        )
+          span.icon.is-small
+            i.fas.fa-times
+    p.help.is-size-7 Optional. Key to store the result in the session state.

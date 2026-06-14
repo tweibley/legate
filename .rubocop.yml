@@ -1,0 +1,32 @@
+inherit_from: .rubocop_todo.yml
+
+AllCops:
+  TargetRubyVersion: 3.4
+  # Opt out of the "new cops not configured" prompt and the extension
+  # suggestion banner so `bundle exec rubocop` is quiet and exits clean.
+  NewCops: disable
+  SuggestExtensions: false
+
+Metrics/BlockLength:
+  Enabled: false
+
+Layout/LineLength:
+  Enabled: false
+
+Style/BlockDelimiters:
+  Enabled: false
+
+Style/Lambda:
+  Enabled: false
+
+Style/SingleLineMethods:
+  Enabled: false
+
+Style/StringConcatenation:
+  Enabled: false
+
+Lint/UselessAssignment:
+  Enabled: false
+
+Lint/UnusedBlockArgument:
+  Enabled: false

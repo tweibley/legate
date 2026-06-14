@@ -1,0 +1,93 @@
+/ File: lib/legate/web/views/_display_agent_hierarchy.slim
+/ Expects agent_data hash with name, agent_type, sub_agent_names
+
+- agent_name = agent_data[:name]
+- agent_type = agent_data[:agent_type]&.to_sym || :llm
+- sub_agent_names = agent_data[:sub_agent_names] || []
+- show_edit_button = locals.fetch(:show_edit_button, true)
+- loop_max = agent_data[:loop_max_iterations]
+- loop_key = agent_data[:loop_condition_state_key]
+- loop_val = agent_data[:loop_condition_expected_value]
+
+.content#agent-hierarchy-display
+  h4.is-size-5
+    span.icon.mr-2
+      - type_icon = case agent_type
+      - when :sequential then "fa-list-ol"
+      - when :parallel then "fa-layer-group"
+      - when :loop then "fa-sync-alt"
+      - else "fa-sitemap"
+      i(class="fas #{type_icon}")
+    
+    - if agent_type == :llm
+      | Delegation Targets
+    - elsif agent_type == :sequential
+      | Sequential Workflow
+    - elsif agent_type == :parallel
+      | Parallel Workflow
+    - elsif agent_type == :loop
+      | Loop Workflow
+    - else
+      | Agent Hierarchy
+
+  - if agent_type == :llm
+    p.help This agent can delegate tasks to the following agents:
+  - elsif agent_type == :sequential 
+    p.help Sub-agents execute in sequence, passing state between them.
+  - elsif agent_type == :parallel
+    p.help Sub-agents execute concurrently and results are combined.
+  - elsif agent_type == :loop
+    p.help Sub-agents execute repeatedly until a condition is met.
+    .tags.are-medium.mt-2.mb-3
+      - if loop_max
+        span.tag.is-light
+          span.has-text-weight-bold.mr-1 Max:
+          = loop_max
+      - if loop_key
+        span.tag.is-light 
+          span.has-text-weight-bold.mr-1 Until:
+          code = loop_key
+          span.mx-1 ==
+          code = loop_val.inspect
+
+  - if sub_agent_names.any?
+    .panel.mt-3
+      p.panel-heading.is-size-6 
+        = agent_type == :llm ? "Delegation Targets" : "Workflow Components"
+        span.tag.is-info.is-light.ml-2= "#{sub_agent_names.size} #{sub_agent_names.size == 1 ? 'agent' : 'agents'}"
+
+      - if agent_type == :sequential
+        p.panel-block.is-size-7.has-text-grey
+          | Agents will execute in the order shown below:
+      
+      - sub_agent_names.each_with_index do |sub_agent_name, index|
+        a.panel-block(href="/agents/#{sub_agent_name}")
+          span.icon.is-small.mr-2
+            - if agent_type == :sequential
+              span.tag.is-info.is-light.mr-1= index + 1
+            - elsif agent_type == :parallel
+              i.fas.fa-arrow-right
+            - elsif agent_type == :loop
+              i.fas.fa-redo-alt
+            - else
+              i.fas.fa-chevron-right
+          = sub_agent_name
+  - else
+    .notification.is-light.is-warning 
+      - if agent_type == :llm
+        | No delegation targets configured. This agent cannot delegate tasks.
+      - else
+        | This workflow has no components defined. Add sub-agents to make this workflow functional.
+
+  - if show_edit_button
+    .field.mt-4
+      button.button.is-small.is-link.is-light(
+        hx-get="/agents/#{agent_name}/edit/hierarchy"
+        hx-target="#agent-hierarchy-display"
+        hx-swap="outerHTML"
+        hx-indicator=".htmx-indicator")
+        span.icon.is-small.htmx-indicator
+          i.fas.fa-spinner.fa-spin
+        span.icon.is-small
+          i.fas.fa-edit
+        span Edit Configuration 

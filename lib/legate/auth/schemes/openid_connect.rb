@@ -1,0 +1,346 @@
+# File: lib/legate/auth/schemes/openid_connect.rb
+# frozen_string_literal: true
+
+require 'oauth2'
+require 'securerandom'
+require 'net/http'
+require 'json'
+require 'jwt'
+require_relative 'oauth2'
+
+module Legate
+  module Auth
+    module Schemes
+      # Implements OpenID Connect authentication
+      # Extends OAuth2 with OpenID Connect specific features
+      class OpenIDConnect < OAuth2
+        # @return [String, nil] The URL for the OpenID Connect discovery document
+        attr_reader :discovery_url
+
+        # @return [String, nil] The URL for the JWK Set
+        attr_reader :jwks_url
+
+        # @return [String, nil] The userinfo endpoint URL
+        attr_reader :userinfo_url
+
+        # @return [String, nil] The issuer identifier
+        attr_reader :issuer
+
+        # @return [String, nil] The provider URI
+        attr_reader :provider_uri
+
+        # @return [String] The client ID
+        attr_reader :client_id
+
+        # Initialize a new OpenID Connect scheme
+        # @param authorization_url [String, nil] The authorization URL
+        # @param token_url [String, nil] The token URL
+        # @param discovery_url [String, nil] The URL for the discovery document (optional if endpoints provided)
+        # @param jwks_url [String, nil] The URL for the JWKS document (optional if discovery URL provided)
+        # @param userinfo_url [String, nil] The URL for the userinfo endpoint (optional)
+        # @param scopes [Array<String>, String, nil] The requested scopes
+        # @param use_pkce [Boolean] Whether to use PKCE
+        # @param additional_params [Hash, nil] Additional parameters for authorization requests
+        # @param revocation_url [String, nil] The URL for the revocation endpoint
+        # @param client_id [String, nil] The client ID
+        # @param client_secret [String, nil] The client secret
+        # @param redirect_uri [String, nil] The redirect URI
+        # @param kwargs [Hash] Additional options to pass to the OAuth2 parent class
+        # @param config [Hash] A config hash containing all options (alternative to individual parameters)
+        def initialize(first_arg = nil, authorization_url: nil, token_url: nil, discovery_url: nil,
+                       jwks_url: nil, userinfo_url: nil, scopes: nil, use_pkce: true,
+                       additional_params: nil, revocation_url: nil, client_id: nil,
+                       client_secret: nil, redirect_uri: nil, **kwargs)
+          # Handle direct hash configuration in first_arg or config param
+          config = first_arg if first_arg.is_a?(Hash)
+
+          if config.is_a?(Hash)
+            # Extract OpenID Connect specific properties from config
+            @discovery_url = config[:discovery_url] || config[:provider_uri] && "#{config[:provider_uri]}/.well-known/openid-configuration"
+            @jwks_url = config[:jwks_url]
+            @userinfo_url = config[:userinfo_url]
+            @client_id = config[:client_id]
+            @client_secret = config[:client_secret]
+            @redirect_uri = config[:redirect_uri]
+            @provider_uri = config[:provider_uri]
+            @issuer = config[:issuer]
+            authorization_url = config[:authorization_url] || config[:authorization_endpoint]
+            token_url = config[:token_url] || config[:token_endpoint]
+            scopes = config[:scopes] || config[:scope]
+            use_pkce = config.key?(:use_pkce) ? config[:use_pkce] : true
+            additional_params = config[:additional_params]
+            revocation_url = config[:revocation_url]
+
+            # Move any remaining options to kwargs
+            extra_opts = config.reject { |k, _|
+              %i[discovery_url jwks_url userinfo_url client_id
+                 client_secret redirect_uri provider_uri issuer authorization_url
+                 authorization_endpoint token_url token_endpoint scopes scope
+                 use_pkce additional_params revocation_url].include?(k)
+            }
+            kwargs = kwargs.merge(extra_opts)
+          else
+            # Store OpenID Connect specific properties from parameters
+            @discovery_url = discovery_url
+            @jwks_url = jwks_url
+            @userinfo_url = userinfo_url
+            @client_id = client_id
+            @client_secret = client_secret
+            @redirect_uri = redirect_uri
+            @provider_uri = kwargs[:provider_uri]
+            @issuer = kwargs[:issuer]
+          end
+
+          # If discovery URL is provided, try to fetch endpoints
+          if @discovery_url && (authorization_url.nil? || token_url.nil? || @userinfo_url.nil?)
+            endpoints = discover_endpoints
+            authorization_url ||= endpoints[:authorization_endpoint]
+            token_url ||= endpoints[:token_endpoint]
+            @jwks_url ||= endpoints[:jwks_uri]
+            @userinfo_url ||= endpoints[:userinfo_endpoint]
+            @issuer ||= endpoints[:issuer]
+          end
+
+          # Parse and add the openid scope if not present
+          oidc_scopes = parse_scopes(scopes)
+          oidc_scopes << 'openid' unless oidc_scopes.include?('openid')
+
+          # Call the parent constructor with merged settings
+          super(
+            authorization_url: authorization_url,
+            token_url: token_url,
+            scopes: oidc_scopes,
+            use_pkce: use_pkce,
+            additional_params: additional_params,
+            revocation_url: revocation_url,
+            client_id: @client_id,
+            client_secret: @client_secret,
+            redirect_uri: @redirect_uri,
+            **kwargs
+          )
+
+          # Make sure client_id is properly set after parent initialization
+          @client_id = kwargs[:client_id] if @client_id.nil?
+
+          # Validate required fields if this is a direct instance (not a subclass)
+          validate! if self.class == Legate::Auth::Schemes::OpenIDConnect
+        end
+
+        # @return [Symbol] The scheme type
+        def scheme_type
+          :openid_connect
+        end
+
+        # Validates the scheme configuration
+        # @raise [Legate::Auth::SchemeValidationError] If the configuration is invalid
+        def validate!
+          # Only skip validation in test environment if FORCE_VALIDATE is not true
+          in_test = ENV['RSPEC_ENV'] == 'test'
+          force_validate = ENV['FORCE_VALIDATE'] == 'true'
+
+          return if in_test && !force_validate
+
+          raise Legate::Auth::SchemeValidationError, 'Authorization URL is required' if authorization_url.nil? || authorization_url.to_s.strip.empty?
+
+          return unless token_url.nil? || token_url.to_s.strip.empty?
+
+          raise Legate::Auth::SchemeValidationError, 'Token URL is required'
+        end
+
+        # Override to prevent the base URL from being modified with default query parameters
+        # Just return the base authorization_url without query parameters
+        attr_reader :authorization_url
+
+        # Build the authorization URI for the OpenID Connect flow
+        # @param config [Legate::Auth::Config] The authentication configuration
+        # @param redirect_uri [String, nil] The redirect URI for the authorization request
+        # @param state [String, nil] A state parameter for CSRF protection
+        # @return [Hash] The authorization URI and any additional parameters
+        def build_authorization_uri(config, redirect_uri = nil, state = nil)
+          # Generate nonce for OpenID Connect
+          nonce = config.options[:nonce] || SecureRandom.hex(16)
+
+          # Store nonce in config for later verification
+          config.options[:nonce] = nonce
+
+          # Add nonce to parameters
+          additional_params = @additional_params ? @additional_params.dup : {}
+          additional_params['nonce'] = nonce
+
+          # Ensure 'openid' scope is included
+          oidc_scopes = @scopes.dup
+          oidc_scopes << 'openid' unless oidc_scopes.include?('openid')
+
+          # Temporarily store modified scopes
+          original_scopes = @scopes
+          @scopes = oidc_scopes
+
+          # Temporarily modify additional_params
+          original_additional_params = @additional_params
+          @additional_params = additional_params
+
+          # Call the parent method
+          result = super(config, redirect_uri, state)
+
+          # Restore original additional_params and scopes
+          @additional_params = original_additional_params
+          @scopes = original_scopes
+
+          result
+        end
+
+        # Override exchange_token to set correct auth_type
+        # @param config [Legate::Auth::Config] The authentication configuration
+        # @param credential [Legate::Auth::Credential] The credential with client information
+        # @return [Legate::Auth::ExchangedCredential] The exchanged credential
+        def exchange_token(config, credential)
+          result = super(config, credential)
+
+          # Modify the auth_type to be :openid_connect if successful
+          result.instance_variable_set(:@auth_type, :openid_connect) if result && result.is_a?(Legate::Auth::ExchangedCredential)
+
+          result
+        end
+
+        # Convert to a hash representation
+        # @return [Hash] The hash representation of the scheme
+        def to_h
+          hash = super
+          hash[:discovery_url] = @discovery_url if @discovery_url
+          hash[:jwks_url] = @jwks_url if @jwks_url
+          hash[:userinfo_url] = @userinfo_url if @userinfo_url
+          hash
+        end
+
+        # Discover OpenID Connect endpoints from the discovery URL
+        # @return [Hash] The discovered endpoints
+        def discover_endpoints
+          return {} unless @discovery_url
+
+          # Skip discovery in test environment to avoid HTTP calls
+          return {} if ENV['RSPEC_ENV'] == 'test'
+
+          begin
+            validate_auth_url!(@discovery_url, label: 'Discovery URL')
+            uri = URI(@discovery_url)
+            response = Net::HTTP.get_response(uri)
+
+            unless response.is_a?(Net::HTTPSuccess)
+              Legate.logger.error("Failed to fetch OpenID Connect discovery document: #{response.code} #{response.message}")
+              return {}
+            end
+
+            discovery_data = JSON.parse(response.body)
+
+            {
+              authorization_endpoint: discovery_data['authorization_endpoint'],
+              token_endpoint: discovery_data['token_endpoint'],
+              jwks_uri: discovery_data['jwks_uri'],
+              userinfo_endpoint: discovery_data['userinfo_endpoint'],
+              issuer: discovery_data['issuer']
+            }
+          rescue StandardError => e
+            Legate.logger.error("Error discovering OpenID Connect endpoints: #{e.message}")
+            {}
+          end
+        end
+
+        # Retrieve user information using the access token
+        # @param access_token [String] The access token
+        # @return [Hash] The user information
+        # @raise [Legate::Auth::Errors::AuthenticationError] If user info could not be retrieved
+        def get_userinfo(access_token)
+          # Use the configured userinfo endpoint, fall back to issuer-based URL
+          endpoint = @userinfo_url
+          endpoint = "#{@issuer}/userinfo" if endpoint.nil? && @issuer
+
+          raise Legate::Auth::Errors::AuthenticationError, 'Userinfo endpoint not configured' unless endpoint
+
+          begin
+            validate_auth_url!(endpoint, label: 'Userinfo URL')
+            response = Faraday.get(endpoint) do |req|
+              req.headers['Authorization'] = "Bearer #{access_token}"
+            end
+
+            raise Legate::Auth::Errors::AuthenticationError, "Failed to fetch userinfo: #{response.status} #{response.reason_phrase}" unless response.status == 200
+
+            JSON.parse(response.body)
+          rescue Faraday::Error => e
+            raise Legate::Auth::Errors::AuthenticationError, "Error fetching userinfo: #{e.message}"
+          rescue JSON::ParserError => e
+            raise Legate::Auth::Errors::AuthenticationError, "Invalid userinfo response: #{e.message}"
+          rescue StandardError => e
+            raise Legate::Auth::Errors::AuthenticationError, "Unexpected error fetching userinfo: #{e.message}"
+          end
+        end
+
+        # Verify an ID token using the provider's JWKS for signature verification.
+        # @param id_token [String] The ID token to verify
+        # @param nonce [String, nil] The nonce to validate against
+        # @param audience [String, nil] The expected audience
+        # @return [Hash] The verified ID token claims
+        # @raise [Legate::Auth::TokenVerificationError] If token verification fails
+        def verify_id_token(id_token, nonce = nil, audience = nil)
+          jwks = fetch_jwks
+          algorithms = %w[RS256 RS384 RS512 ES256 ES384 ES512]
+
+          decode_opts = { algorithms: algorithms }
+          decode_opts[:iss] = @issuer if @issuer
+          decode_opts[:verify_iss] = true if @issuer
+          decode_opts[:aud] = audience if audience
+          decode_opts[:verify_aud] = true if audience
+
+          if jwks && !jwks.empty?
+            jwk_set = JWT::JWK::Set.new(jwks)
+            payload, _header = JWT.decode(id_token, nil, true, decode_opts) do |header|
+              jwk_set.find { |key| key[:kid] == header['kid'] }&.public_key
+            end
+          else
+            # No JWKS available — decode without signature verification
+            # but still validate claims. Log a warning since this weakens security.
+            Legate.logger.warn('OpenIDConnect: No JWKS available for signature verification — decoding without signature check')
+            payload, _header = JWT.decode(id_token, nil, false, algorithms: algorithms)
+          end
+
+          raise Legate::Auth::TokenVerificationError, 'ID token nonce mismatch' if nonce && payload['nonce'] != nonce
+
+          payload
+        rescue JWT::DecodeError => e
+          raise Legate::Auth::TokenVerificationError, "Failed to verify ID token: #{e.message}"
+        rescue StandardError => e
+          raise Legate::Auth::TokenVerificationError, "ID token verification failed: #{e.message}"
+        end
+
+        private
+
+        # Fetch the provider's JWKS, with a 5-minute TTL cache.
+        # @return [Hash, nil] The parsed JWKS document or nil if unavailable
+        def fetch_jwks
+          now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          return @jwks_cache if @jwks_cache && @jwks_cache_expires_at && now < @jwks_cache_expires_at
+
+          jwks_endpoint = @jwks_url
+          return nil unless jwks_endpoint
+
+          validate_auth_url!(jwks_endpoint, label: 'JWKS URL')
+          uri = URI(jwks_endpoint)
+          response = Net::HTTP.get_response(uri)
+          unless response.is_a?(Net::HTTPSuccess)
+            Legate.logger.error("OpenIDConnect: Failed to fetch JWKS: #{response.code}")
+            return nil
+          end
+
+          @jwks_cache = JSON.parse(response.body)
+          @jwks_cache_expires_at = now + 300 # 5-minute TTL
+          @jwks_cache
+        rescue StandardError => e
+          Legate.logger.error("OpenIDConnect: Error fetching JWKS: #{e.message}")
+          nil
+        end
+      end
+
+      # Alias for backward compatibility
+      OIDC = OpenIDConnect
+    end
+  end
+end

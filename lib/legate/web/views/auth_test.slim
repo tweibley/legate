@@ -1,0 +1,418 @@
+nav.breadcrumb aria-label="breadcrumbs"
+  ul
+    li
+      a href="/auth" Authentication
+    li.is-active
+      a href="/auth/test" aria-current="page" Testing
+
+.section
+  .container
+    .columns
+      .column.is-12
+        h1.title.is-2 Authentication Testing Dashboard
+        p.subtitle Test and validate your authentication configurations
+
+    .columns
+      .column.is-4
+        .card
+          .card-header
+            .card-header-title
+              span.icon.has-text-primary
+                i.fas.fa-key
+              | &nbsp; Credential Testing
+          .card-content
+            p.content Test individual credentials to verify they're properly configured and functional.
+            .field
+              label.label Select Credential
+              .control
+                .select.is-fullwidth
+                  select#credential-select
+                    option value="" Select a credential...
+                    - @credentials.each do |credential|
+                      option value=credential[:name] data-type=credential[:auth_type]
+                        = credential[:name]
+                        |  (
+                        = credential[:auth_type]
+                        | )
+            .field
+              label.label Test URL (Optional)
+              .control
+                input.input#credential-test-url type="url" placeholder="https://api.example.com/test"
+              p.help For API Key and Bearer Token credentials, provide a test endpoint
+            .field
+              .control
+                button.button.is-primary.is-fullwidth#test-credential-btn disabled=true Test Credential
+          .card-footer
+            .card-footer-item
+              #credential-test-results
+
+      .column.is-4
+        .card
+          .card-header
+            .card-header-title
+              span.icon.has-text-primary
+                i.fas.fa-shield-alt
+              | &nbsp; Scheme Testing
+          .card-content
+            p.content Validate authentication schemes and their configurations.
+            .field
+              label.label Select Scheme
+              .control
+                .select.is-fullwidth
+                  select#scheme-select
+                    option value="" Select a scheme...
+                    - @schemes.each do |scheme|
+                      option value=scheme[:name] data-type=scheme[:scheme_type]
+                        = scheme[:name]
+                        |  (
+                        = scheme[:scheme_type]
+                        | )
+            .field
+              .control
+                button.button.is-primary.is-fullwidth#test-scheme-btn disabled=true Test Scheme
+          .card-footer
+            .card-footer-item
+              #scheme-test-results
+
+      .column.is-4
+        .card
+          .card-header
+            .card-header-title
+              span.icon.has-text-primary
+                i.fas.fa-exchange-alt
+              | &nbsp; Flow Testing
+          .card-content
+            p.content Simulate complete authentication flows to verify end-to-end functionality.
+            .field
+              label.label Select Scheme
+              .control
+                .select.is-fullwidth
+                  select#flow-scheme-select
+                    option value="" Select a scheme...
+                    - @schemes.each do |scheme|
+                      option value=scheme[:name] data-type=scheme[:scheme_type]
+                        = scheme[:name]
+                        |  (
+                        = scheme[:scheme_type]
+                        | )
+            .field
+              label.label Select Credential
+              .control
+                .select.is-fullwidth
+                  select#flow-credential-select disabled=true
+                    option value="" Select a credential...
+            .field
+              .control
+                button.button.is-primary.is-fullwidth#test-flow-btn disabled=true Test Flow
+          .card-footer
+            .card-footer-item
+              #flow-test-results
+
+    .columns
+      .column.is-12
+        .card
+          .card-header
+            .card-header-title
+              span.icon.has-text-primary
+                i.fas.fa-globe
+              | &nbsp; API Call Testing
+          .card-content
+            p.content Test actual API calls using configured authentication to verify real-world functionality.
+            .columns
+              .column.is-4
+                .field
+                  label.label API URL
+                  .control
+                    input.input#api-test-url type="url" placeholder="https://api.example.com/endpoint" required=true
+                  p.help The API endpoint to test against
+              .column.is-4
+                .field
+                  label.label Authentication Scheme
+                  .control
+                    .select.is-fullwidth
+                      select#api-scheme-select
+                        option value="" Select a scheme...
+                        - @schemes.each do |scheme|
+                          option value=scheme[:name] data-type=scheme[:scheme_type]
+                            = scheme[:name]
+                            |  (
+                            = scheme[:scheme_type]
+                            | )
+              .column.is-4
+                .field
+                  label.label Credential
+                  .control
+                    .select.is-fullwidth
+                      select#api-credential-select disabled=true
+                        option value="" Select a credential...
+            .field
+              .control
+                button.button.is-primary.is-fullwidth#test-api-btn disabled=true Test API Call
+          .card-footer
+            .card-footer-item
+              #api-test-results
+
+    .columns
+      .column.is-12
+        .card
+          .card-header
+            .card-header-title
+              span.icon.has-text-primary
+                i.fas.fa-chart-line
+              | &nbsp; Testing Summary
+          .card-content
+            .columns
+              .column.is-3.has-text-centered
+                p.heading Schemes Available
+                p.title.is-4 = @schemes.size
+              .column.is-3.has-text-centered
+                p.heading Credentials Available
+                p.title.is-4 = @credentials.size
+              .column.is-3.has-text-centered
+                p.heading URL Mappings
+                p.title.is-4 = @mappings_count
+              .column.is-3.has-text-centered
+                p.heading Test Status
+                p.title.is-4#overall-status Ready
+
+javascript:
+  document.addEventListener('DOMContentLoaded', function() {
+    // Credential testing
+    const credentialSelect = document.getElementById('credential-select');
+    const credentialTestBtn = document.getElementById('test-credential-btn');
+    const credentialTestUrl = document.getElementById('credential-test-url');
+    const credentialResults = document.getElementById('credential-test-results');
+
+    credentialSelect.addEventListener('change', function() {
+      credentialTestBtn.disabled = !this.value;
+    });
+
+    credentialTestBtn.addEventListener('click', function() {
+      const credentialName = credentialSelect.value;
+      const testUrl = credentialTestUrl.value;
+      
+      if (!credentialName) return;
+      
+      this.classList.add('is-loading');
+      credentialResults.innerHTML = '';
+      
+      const formData = new FormData();
+      if (testUrl) formData.append('test_url', testUrl);
+      
+      Legate.apiRequest(`/auth/test/credential/${credentialName}`, { method: 'POST', body: formData })
+        .then(data => {
+          this.classList.remove('is-loading');
+          displayCredentialResults(data);
+        })
+        .catch(error => {
+          this.classList.remove('is-loading');
+          Legate.renderError(credentialResults, error.message);
+        });
+    });
+
+    function displayCredentialResults(data) {
+      let html = `<div class="notification ${data.success ? 'is-success' : 'is-danger'}">
+        <strong>Credential: ${escapeHtml(data.credential_name)}</strong><br>
+        Overall Status: ${data.success ? 'PASSED' : 'FAILED'}
+      </div>`;
+      
+      html += Legate.renderTestItems(data.tests);
+      
+      credentialResults.innerHTML = html;
+    }
+
+    // Scheme testing
+    const schemeSelect = document.getElementById('scheme-select');
+    const schemeTestBtn = document.getElementById('test-scheme-btn');
+    const schemeResults = document.getElementById('scheme-test-results');
+
+    schemeSelect.addEventListener('change', function() {
+      schemeTestBtn.disabled = !this.value;
+    });
+
+    schemeTestBtn.addEventListener('click', function() {
+      const schemeName = schemeSelect.value;
+      
+      if (!schemeName) return;
+      
+      this.classList.add('is-loading');
+      schemeResults.innerHTML = '';
+      
+      Legate.apiRequest(`/auth/test/scheme/${schemeName}`, { method: 'POST' })
+        .then(data => {
+          this.classList.remove('is-loading');
+          displaySchemeResults(data);
+        })
+        .catch(error => {
+          this.classList.remove('is-loading');
+          Legate.renderError(schemeResults, error.message);
+        });
+    });
+
+    function displaySchemeResults(data) {
+      let html = `<div class="notification ${data.success ? 'is-success' : 'is-danger'}">
+        <strong>Scheme: ${escapeHtml(data.scheme_name)}</strong><br>
+        Overall Status: ${data.success ? 'PASSED' : 'FAILED'}
+      </div>`;
+      
+      html += Legate.renderTestItems(data.tests);
+      
+      schemeResults.innerHTML = html;
+    }
+
+    // Flow testing
+    const flowSchemeSelect = document.getElementById('flow-scheme-select');
+    const flowCredentialSelect = document.getElementById('flow-credential-select');
+    const flowTestBtn = document.getElementById('test-flow-btn');
+    const flowResults = document.getElementById('flow-test-results');
+
+    flowSchemeSelect.addEventListener('change', function() {
+      const schemeName = this.value;
+      flowCredentialSelect.disabled = !schemeName;
+      flowTestBtn.disabled = true;
+      
+      if (schemeName) {
+        updateCompatibleCredentials(flowCredentialSelect, schemeName);
+      } else {
+        flowCredentialSelect.innerHTML = '<option value="">Select a credential...</option>';
+      }
+    });
+
+    flowCredentialSelect.addEventListener('change', function() {
+      flowTestBtn.disabled = !this.value || !flowSchemeSelect.value;
+    });
+
+    flowTestBtn.addEventListener('click', function() {
+      const schemeName = flowSchemeSelect.value;
+      const credentialName = flowCredentialSelect.value;
+      
+      if (!schemeName || !credentialName) return;
+      
+      this.classList.add('is-loading');
+      flowResults.innerHTML = '';
+      
+      const formData = new FormData();
+      formData.append('scheme_name', schemeName);
+      formData.append('credential_name', credentialName);
+      
+      Legate.apiRequest('/auth/test/flow', { method: 'POST', body: formData })
+        .then(data => {
+          this.classList.remove('is-loading');
+          displayFlowResults(data);
+        })
+        .catch(error => {
+          this.classList.remove('is-loading');
+          Legate.renderError(flowResults, error.message);
+        });
+    });
+
+    function displayFlowResults(data) {
+      let html = `<div class="notification ${data.success ? 'is-success' : 'is-danger'}">
+        <strong>Flow Type: ${escapeHtml(data.scheme_type)}</strong><br>
+        Overall Status: ${data.success ? 'SUCCESS' : 'FAILED'}
+      </div>`;
+      
+      html += Legate.renderTestItems(data.steps, { labelKey: 'step', neutralClass: 'is-info' });
+      
+      flowResults.innerHTML = html;
+    }
+
+    // API testing
+    const apiUrlInput = document.getElementById('api-test-url');
+    const apiSchemeSelect = document.getElementById('api-scheme-select');
+    const apiCredentialSelect = document.getElementById('api-credential-select');
+    const apiTestBtn = document.getElementById('test-api-btn');
+    const apiResults = document.getElementById('api-test-results');
+
+    apiSchemeSelect.addEventListener('change', function() {
+      const schemeName = this.value;
+      apiCredentialSelect.disabled = !schemeName;
+      updateTestApiButton();
+      
+      if (schemeName) {
+        updateCompatibleCredentials(apiCredentialSelect, schemeName);
+      } else {
+        apiCredentialSelect.innerHTML = '<option value="">Select a credential...</option>';
+      }
+    });
+
+    apiCredentialSelect.addEventListener('change', updateTestApiButton);
+    apiUrlInput.addEventListener('input', updateTestApiButton);
+
+    function updateTestApiButton() {
+      apiTestBtn.disabled = !apiUrlInput.value || !apiSchemeSelect.value || !apiCredentialSelect.value;
+    }
+
+    apiTestBtn.addEventListener('click', function() {
+      const url = apiUrlInput.value;
+      const schemeName = apiSchemeSelect.value;
+      const credentialName = apiCredentialSelect.value;
+      
+      if (!url || !schemeName || !credentialName) return;
+      
+      this.classList.add('is-loading');
+      apiResults.innerHTML = '';
+      
+      const formData = new FormData();
+      formData.append('url', url);
+      formData.append('scheme_name', schemeName);
+      formData.append('credential_name', credentialName);
+      
+      Legate.apiRequest('/auth/test/api', { method: 'POST', body: formData })
+        .then(data => {
+          this.classList.remove('is-loading');
+          displayApiResults(data);
+        })
+        .catch(error => {
+          this.classList.remove('is-loading');
+          Legate.renderError(apiResults, error.message);
+        });
+    });
+
+    function displayApiResults(data) {
+      if (data.success) {
+        const statusClass = data.authenticated ? 'is-success' : 'is-warning';
+        let html = `<div class="notification ${statusClass}">
+          <strong>API Call Result</strong><br>
+          Status: ${escapeHtml(data.status_code)} ${escapeHtml(data.status_message)}<br>
+          Authenticated: ${data.authenticated ? 'YES' : 'NO'}
+        </div>`;
+        
+        if (data.body_preview) {
+          html += `<div class="notification is-info is-small">
+            <strong>Response Preview:</strong><br>
+            <code>${escapeHtml(data.body_preview.substring(0, 200))}${data.body_preview.length > 200 ? '...' : ''}</code>
+          </div>`;
+        }
+        
+        apiResults.innerHTML = html;
+      } else {
+        apiResults.innerHTML = `<div class="notification is-danger">
+          <strong>API Call Failed</strong><br>
+          Error: ${escapeHtml(data.error)}
+        </div>`;
+      }
+    }
+
+    // Helper function to update compatible credentials
+    function updateCompatibleCredentials(selectElement, schemeName) {
+      // This would ideally make an AJAX call to get compatible credentials
+      // For now, we'll populate with all credentials and let the server validate
+      selectElement.innerHTML = '<option value="">Select a credential...</option>';
+      
+      // Get credentials from the original credential select dropdown
+      const credentialSelect = document.getElementById('credential-select');
+      const credentialOptions = credentialSelect.querySelectorAll('option');
+      
+      credentialOptions.forEach(option => {
+        // Skip the placeholder option with empty value
+        if (option.value && option.value !== '') {
+          const newOption = document.createElement('option');
+          newOption.value = option.value;
+          newOption.textContent = option.textContent;
+          newOption.dataset.type = option.dataset.type;
+          selectElement.appendChild(newOption);
+        }
+      });
+    }
+  }); 

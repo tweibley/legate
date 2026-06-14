@@ -1,0 +1,56 @@
+/ File: lib/legate/web/views/_agent_card.slim
+/ Renders one agent as a "Legion" command-console card.
+/ Expects 'agent_info' (hash: :name, :description, :running, :configured_tools,
+/ :agent_type, :model) and 'available_tools' (list). Replaces the old table row;
+/ HTMX start/stop/delete swap `closest .agent-card` with this same partial.
+
+- agent_name = agent_info[:name]
+- encoded_agent_name = URI.encode_www_form_component(agent_name.to_s).gsub('+', '%20')
+- safe_agent_id = agent_name.to_s.gsub(/[^a-zA-Z0-9_-]/, '-')
+- is_running = agent_info[:running]
+- model_display = (agent_info[:model] && !agent_info[:model].to_s.empty?) ? agent_info[:model] : Legate::Agent::DEFAULT_MODEL
+- card_id = "agent-card-#{safe_agent_id}"
+- is_new_card = locals.fetch(:agent_info, {}).fetch(:is_new, false)
+- agent_type = agent_info[:agent_type]&.to_sym || :llm
+- configured_tools = agent_info[:configured_tools] || []
+- find_tool_desc = lambda { |name| available_tools&.find { |t| t[:name].to_s == name.to_s }&.[](:description) || name.to_s }
+- type_label = { sequential: 'Sequential', parallel: 'Parallel', loop: 'Loop' }[agent_type] || 'LLM'
+- search_blob = [agent_name, agent_info[:description], configured_tools.join(' '), model_display].join(' ').downcase
+
+article.agent-card(id=card_id data-agent-name=agent_name data-search=search_blob class=("is-running" if is_running) class=("is-newly-added" if is_new_card))
+  header.agent-card-head
+    .agent-card-titles
+      a.agent-card-name(href="/agents/#{encoded_agent_name}")= agent_name
+      span.agent-type-chip= type_label
+    span.status-pill(class=(is_running ? 'is-running' : 'is-idle'))
+      span.status-dot
+      span= is_running ? 'Running' : 'Idle'
+
+  p.agent-card-desc= agent_info[:description]
+
+  .agent-card-meta
+    span.mono-chip.model-chip(title="Language model")
+      span.icon.is-small
+        i.fas.fa-microchip
+      span= model_display
+
+  .agent-card-tools
+    - if configured_tools.any?
+      - configured_tools.each do |tool_name|
+        a.tool-chip(href="/tools/#{tool_name}" title=find_tool_desc.call(tool_name))= tool_name
+    - else
+      span.tool-chip.is-empty no tools configured
+
+  footer.agent-card-foot
+    - unless is_running
+      button.legion-action.is-run(type="button" title="Start agent" hx-post="/agents/#{encoded_agent_name}/start" hx-target="closest .agent-card" hx-swap="outerHTML")
+        i.fas.fa-play
+        span Run
+    - if is_running
+      button.legion-action.is-stop(type="button" title="Stop agent" hx-post="/agents/#{encoded_agent_name}/stop" hx-target="closest .agent-card" hx-swap="outerHTML")
+        i.fas.fa-stop
+        span Stop
+    a.legion-action.is-icon.is-details(href="/agents/#{encoded_agent_name}" title="View details")
+      i.fas.fa-external-link-alt
+    button.legion-action.is-icon.is-danger(type="button" title="Delete agent" hx-delete="/agents/#{encoded_agent_name}" hx-target="closest .agent-card" hx-swap="outerHTML" hx-confirm="Are you sure you want to delete '#{agent_name}'?")
+      i.fas.fa-trash-alt

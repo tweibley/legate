@@ -1,0 +1,562 @@
+/ Agent Authentication Management Page
+.container
+  .section
+    .level
+      .level-left
+        .level-item
+          div
+            h1.title.is-3 Authentication for Agent: #{@agent_auth_data[:name]}
+            p.subtitle.is-5.mt-1 #{@agent_auth_data[:description]}
+      .level-right
+        .level-item
+          a.button.is-light href="/agents/#{@agent_auth_data[:name]}"
+            span.icon
+              i.fas.fa-arrow-left
+            span Back to Agent
+
+    / Authentication Status Card
+    .card.mb-5
+      .card-header
+        .card-header-title
+          span.icon.mr-2
+            i.fas.fa-shield-alt
+          | Authentication Status
+      .card-content
+        - status = @agent_auth_data[:auth_status]
+        .notification class="is-#{status[:status] == :success ? 'success' : status[:status] == :warning ? 'warning' : 'danger'}"
+          .level
+            .level-left
+              .level-item
+                span.icon
+                  i.fas class="fa-#{status[:status] == :success ? 'check-circle' : status[:status] == :warning ? 'exclamation-triangle' : 'times-circle'}"
+                strong #{status[:message]}
+            .level-right
+              .level-item
+                button.button.is-small.is-outlined id="refresh-status" hx-get="/agents/#{@agent_auth_data[:name]}/auth/status" hx-target="#status-details" hx-swap="innerHTML"
+                  span.icon
+                    i.fas.fa-sync-alt
+                  span Refresh
+        
+        #status-details
+          - if status[:details]
+            .content.is-small.mt-3
+              - if status[:status] == :error && status[:details][:issues]
+                strong Issues Found:
+                ul
+                  - status[:details][:issues].each do |issue|
+                    li #{issue}
+              - else
+                .columns.is-mobile
+                  .column
+                    .has-text-centered
+                      .heading Scheme Assignments
+                      .title.is-4 #{status[:details][:scheme_assignments] || 0}
+                  .column
+                    .has-text-centered
+                      .heading Credential Assignments
+                      .title.is-4 #{status[:details][:credential_assignments] || 0}
+                  .column
+                    .has-text-centered
+                      .heading URL Mappings
+                      .title.is-4 #{status[:details][:url_mappings] || 0}
+                  - if status[:details][:global_mappings]
+                    .column
+                      .has-text-centered
+                        .heading Global Mappings
+                        .title.is-4 #{status[:details][:global_mappings]}
+
+    .columns
+      / Left Column - Authentication Assignments
+      .column.is-half
+        / Scheme Assignments Card
+        .card.mb-5
+          .card-header
+            .card-header-title
+              span.icon.mr-2
+                i.fas.fa-cogs
+              | Scheme Assignments
+            .card-header-icon
+              button.button.is-small.is-primary id="add-scheme-btn"
+                span.icon
+                  i.fas.fa-plus
+                span Add Scheme
+          .card-content
+            #scheme-assignments
+              - if @agent_auth_data[:scheme_assignments].empty?
+                .has-text-grey-light.has-text-centered.py-4
+                  span.icon.is-large
+                    i.fas.fa-inbox.fa-2x
+                  p.mt-2 No scheme assignments configured
+                  p.is-size-7 Agent will use global authentication settings
+              - else
+                .table-container
+                  table.table.is-fullwidth.is-striped
+                    thead
+                      tr
+                        th Service
+                        th Scheme
+                        th Actions
+                    tbody
+                      - @agent_auth_data[:scheme_assignments].each do |service, scheme_name|
+                        tr
+                          td
+                            span.tag.is-info #{service}
+                          td
+                            span.tag.is-primary #{scheme_name}
+                          td
+                            button.button.is-small.is-danger.is-outlined onclick="removeAssignment('scheme', '#{service}')"
+                              span.icon
+                                i.fas.fa-trash
+                              span Remove
+
+        / Credential Assignments Card
+        .card.mb-5
+          .card-header
+            .card-header-title
+              span.icon.mr-2
+                i.fas.fa-key
+              | Credential Assignments
+            .card-header-icon
+              button.button.is-small.is-primary id="add-credential-btn"
+                span.icon
+                  i.fas.fa-plus
+                span Add Credential
+          .card-content
+            #credential-assignments
+              - if @agent_auth_data[:credential_assignments].empty?
+                .has-text-grey-light.has-text-centered.py-4
+                  span.icon.is-large
+                    i.fas.fa-inbox.fa-2x
+                  p.mt-2 No credential assignments configured
+                  p.is-size-7 Agent will use global authentication settings
+              - else
+                .table-container
+                  table.table.is-fullwidth.is-striped
+                    thead
+                      tr
+                        th Service
+                        th Credential
+                        th Actions
+                    tbody
+                      - @agent_auth_data[:credential_assignments].each do |service, credential_name|
+                        tr
+                          td
+                            span.tag.is-info #{service}
+                          td
+                            span.tag.is-warning #{credential_name}
+                          td
+                            button.button.is-small.is-danger.is-outlined onclick="removeAssignment('credential', '#{service}')"
+                              span.icon
+                                i.fas.fa-trash
+                              span Remove
+
+      / Right Column - URL Mappings and Testing
+      .column.is-half
+        / URL Mappings Card
+        .card.mb-5
+          .card-header
+            .card-header-title
+              span.icon.mr-2
+                i.fas.fa-link
+              | URL Mappings
+            .card-header-icon
+              button.button.is-small.is-primary id="add-mapping-btn"
+                span.icon
+                  i.fas.fa-plus
+                span Add Mapping
+          .card-content
+            #url-mappings
+              - if @agent_auth_data[:url_mappings].empty?
+                .has-text-grey-light.has-text-centered.py-4
+                  span.icon.is-large
+                    i.fas.fa-inbox.fa-2x
+                  p.mt-2 No URL mappings configured
+                  p.is-size-7 Agent will use global URL mappings
+              - else
+                - @agent_auth_data[:url_mappings].each_with_index do |mapping, index|
+                  .box.is-small.mb-3
+                    .level.is-mobile
+                      .level-left
+                        .level-item
+                          .content.is-small
+                            strong #{mapping['pattern'] || mapping[:pattern]}
+                            br
+                            span.tag.is-small.is-primary #{mapping['scheme_name'] || mapping[:scheme_name]}
+                            span.tag.is-small.is-warning.ml-1 #{mapping['credential_name'] || mapping[:credential_name]}
+                      .level-right
+                        .level-item
+                          button.button.is-small.is-danger.is-outlined onclick="removeUrlMapping(#{index})"
+                            span.icon
+                              i.fas.fa-trash
+
+        / Testing Card
+        .card
+          .card-header
+            .card-header-title
+              span.icon.mr-2
+                i.fas.fa-vial
+              | Authentication Testing
+          .card-content
+            .field
+              label.label Test URL (Optional)
+              .control.has-icons-left
+                input.input#test-url type="text" placeholder="https://api.example.com/endpoint"
+                span.icon.is-small.is-left
+                  i.fas.fa-link
+              p.help Enter a URL to test authentication resolution for this agent
+            
+            .field
+              .control
+                button.button.is-primary.is-fullwidth id="test-auth-btn"
+                  span.icon
+                    i.fas.fa-play
+                  span Test Authentication
+            
+            #test-results.mt-4 style="display: none;"
+
+/ Modals
+/ Add Scheme Assignment Modal
+.modal#add-scheme-modal
+  .modal-background
+  .modal-card
+    header.modal-card-head
+      p.modal-card-title Add Scheme Assignment
+      button.delete aria-label="close" onclick="closeModal('add-scheme-modal')"
+    section.modal-card-body
+      .field
+        label.label Service Name
+        .control
+          input.input#scheme-service type="text" placeholder="e.g., github, slack, openai"
+        p.help The service or domain this scheme applies to
+      
+      .field
+        label.label Authentication Scheme
+        .control
+          .select.is-fullwidth
+            select#scheme-select
+              option value="" Select a scheme...
+              - @agent_auth_data[:available_schemes].each do |scheme|
+                option value="#{scheme[:name]}" #{scheme[:name]} (#{scheme[:type]})
+    footer.modal-card-foot
+      button.button.is-primary onclick="addSchemeAssignment()" Add Assignment
+      button.button onclick="closeModal('add-scheme-modal')" Cancel
+
+/ Add Credential Assignment Modal
+.modal#add-credential-modal
+  .modal-background
+  .modal-card
+    header.modal-card-head
+      p.modal-card-title Add Credential Assignment
+      button.delete aria-label="close" onclick="closeModal('add-credential-modal')"
+    section.modal-card-body
+      .field
+        label.label Service Name
+        .control
+          input.input#credential-service type="text" placeholder="e.g., github, slack, openai"
+        p.help The service or domain this credential applies to
+      
+      .field
+        label.label Authentication Credential
+        .control
+          .select.is-fullwidth
+            select#credential-select
+              option value="" Select a credential...
+              - @agent_auth_data[:available_credentials].each do |credential|
+                option value="#{credential[:name]}" #{credential[:name]} (#{credential[:type]})
+    footer.modal-card-foot
+      button.button.is-primary onclick="addCredentialAssignment()" Add Assignment
+      button.button onclick="closeModal('add-credential-modal')" Cancel
+
+/ Add URL Mapping Modal
+.modal#add-mapping-modal
+  .modal-background
+  .modal-card
+    header.modal-card-head
+      p.modal-card-title Add URL Mapping
+      button.delete aria-label="close" onclick="closeModal('add-mapping-modal')"
+    section.modal-card-body
+      .field
+        label.label URL Pattern
+        .control
+          input.input#mapping-pattern type="text" placeholder="https://api.github.com/*"
+        p.help Use * for wildcards or enter exact URLs
+      
+      .field
+        label.label Pattern Type
+        .control
+          .select.is-fullwidth
+            select#pattern-type
+              option value="wildcard" selected Wildcard
+              option value="exact" Exact Match
+              option value="regex" Regular Expression
+      
+      .field
+        label.label Authentication Scheme
+        .control
+          .select.is-fullwidth
+            select#mapping-scheme
+              option value="" Select a scheme...
+              - @agent_auth_data[:available_schemes].each do |scheme|
+                option value="#{scheme[:name]}" #{scheme[:name]} (#{scheme[:type]})
+      
+      .field
+        label.label Authentication Credential
+        .control
+          .select.is-fullwidth
+            select#mapping-credential
+              option value="" Select a credential...
+              - @agent_auth_data[:available_credentials].each do |credential|
+                option value="#{credential[:name]}" #{credential[:name]} (#{credential[:type]})
+      
+      .field
+        label.label Priority
+        .control
+          input.input#mapping-priority type="number" value="1" min="1" max="100"
+        p.help Higher numbers = higher priority (1-100)
+    footer.modal-card-foot
+      button.button.is-primary onclick="addUrlMapping()" Add Mapping
+      button.button onclick="closeModal('add-mapping-modal')" Cancel
+
+javascript:
+  const agentName = '#{@agent_auth_data[:name]}';
+  
+  // Modal management
+  function openModal(modalId) {
+    document.getElementById(modalId).classList.add('is-active');
+  }
+  
+  function closeModal(modalId) {
+    document.getElementById(modalId).classList.remove('is-active');
+    // Clear form fields
+    const modal = document.getElementById(modalId);
+    const inputs = modal.querySelectorAll('input, select');
+    inputs.forEach(input => {
+      if (input.type === 'number') {
+        input.value = input.defaultValue || '1';
+      } else {
+        input.value = '';
+      }
+    });
+  }
+  
+  // Event listeners for modal buttons
+  document.getElementById('add-scheme-btn').addEventListener('click', () => openModal('add-scheme-modal'));
+  document.getElementById('add-credential-btn').addEventListener('click', () => openModal('add-credential-modal'));
+  document.getElementById('add-mapping-btn').addEventListener('click', () => openModal('add-mapping-modal'));
+  
+  // Add scheme assignment
+  function addSchemeAssignment() {
+    const service = document.getElementById('scheme-service').value.trim();
+    const schemeName = document.getElementById('scheme-select').value;
+    
+    if (!service || !schemeName) {
+      alert('Please fill in all fields');
+      return;
+    }
+    
+    fetch(`/agents/${agentName}/auth/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        assignment_type: 'scheme',
+        service: service,
+        auth_name: schemeName
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        closeModal('add-scheme-modal');
+        location.reload(); // Refresh to show updated assignments
+      } else {
+        alert('Error: ' + (data.error || 'Failed to add scheme assignment'));
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('Error adding scheme assignment');
+    });
+  }
+  
+  // Add credential assignment
+  function addCredentialAssignment() {
+    const service = document.getElementById('credential-service').value.trim();
+    const credentialName = document.getElementById('credential-select').value;
+    
+    if (!service || !credentialName) {
+      alert('Please fill in all fields');
+      return;
+    }
+    
+    fetch(`/agents/${agentName}/auth/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        assignment_type: 'credential',
+        service: service,
+        auth_name: credentialName
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        closeModal('add-credential-modal');
+        location.reload(); // Refresh to show updated assignments
+      } else {
+        alert('Error: ' + (data.error || 'Failed to add credential assignment'));
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('Error adding credential assignment');
+    });
+  }
+  
+  // Remove assignment
+  function removeAssignment(type, service) {
+    if (!confirm(`Remove ${type} assignment for service '${service}'?`)) {
+      return;
+    }
+    
+    fetch(`/agents/${agentName}/auth/remove`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        assignment_type: type,
+        service: service
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        location.reload(); // Refresh to show updated assignments
+      } else {
+        alert('Error: ' + (data.error || 'Failed to remove assignment'));
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('Error removing assignment');
+    });
+  }
+  
+  // Add URL mapping
+  function addUrlMapping() {
+    const pattern = document.getElementById('mapping-pattern').value.trim();
+    const patternType = document.getElementById('pattern-type').value;
+    const schemeName = document.getElementById('mapping-scheme').value;
+    const credentialName = document.getElementById('mapping-credential').value;
+    const priority = document.getElementById('mapping-priority').value;
+    
+    if (!pattern || !schemeName || !credentialName) {
+      alert('Please fill in all required fields');
+      return;
+    }
+    
+    fetch(`/agents/${agentName}/auth/url-mapping`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        pattern: pattern,
+        pattern_type: patternType,
+        scheme_name: schemeName,
+        credential_name: credentialName,
+        priority: priority
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        closeModal('add-mapping-modal');
+        location.reload(); // Refresh to show updated mappings
+      } else {
+        alert('Error: ' + (data.error || 'Failed to add URL mapping'));
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('Error adding URL mapping');
+    });
+  }
+  
+  // Remove URL mapping
+  function removeUrlMapping(mappingId) {
+    if (!confirm('Remove this URL mapping?')) {
+      return;
+    }
+    
+    fetch(`/agents/${agentName}/auth/url-mapping/${mappingId}`, {
+      method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        location.reload(); // Refresh to show updated mappings
+      } else {
+        alert('Error: ' + (data.error || 'Failed to remove URL mapping'));
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('Error removing URL mapping');
+    });
+  }
+  
+  // Test authentication
+  document.getElementById('test-auth-btn').addEventListener('click', function() {
+    const testUrl = document.getElementById('test-url').value.trim();
+    const resultsDiv = document.getElementById('test-results');
+    
+    // Show loading state
+    this.classList.add('is-loading');
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = '<div class="notification is-info">Running authentication tests...</div>';
+    
+    const params = new URLSearchParams();
+    if (testUrl) {
+      params.append('test_url', testUrl);
+    }
+    
+    Legate.apiRequest(`/agents/${agentName}/auth/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params
+    })
+    .then(data => {
+      this.classList.remove('is-loading');
+      
+      if (data.success !== undefined) {
+        let html = `<div class="notification is-${data.success ? 'success' : 'danger'}">`;
+        html += `<strong>Test Results for Agent: ${escapeHtml(data.agent_name)}</strong><br>`;
+        html += `Overall Status: ${data.success ? 'PASSED' : 'FAILED'}<br>`;
+        html += `Agent-specific Authentication: ${data.has_agent_auth ? 'Yes' : 'No (using global defaults)'}`;
+        html += '</div>';
+        
+        if (data.tests && data.tests.length > 0) {
+          html += '<div class="content"><strong>Test Details:</strong><ul>';
+          data.tests.forEach(test => {
+            const statusClass = test.status === 'passed' ? 'has-text-success' : 
+                               test.status === 'warning' ? 'has-text-warning' : 'has-text-danger';
+            html += `<li class="${statusClass}"><strong>${escapeHtml(test.name)}:</strong> ${escapeHtml(test.message)}</li>`;
+          });
+          html += '</ul></div>';
+        }
+        
+        resultsDiv.innerHTML = html;
+      } else {
+        Legate.renderError(resultsDiv, data.error);
+      }
+    })
+    .catch(error => {
+      this.classList.remove('is-loading');
+      console.error('Error:', error);
+      resultsDiv.innerHTML = '<div class="notification is-danger">Error running authentication tests</div>';
+    });
+  });
+  
+  // Close modals when clicking background
+  document.querySelectorAll('.modal-background').forEach(bg => {
+    bg.addEventListener('click', function() {
+      this.closest('.modal').classList.remove('is-active');
+    });
+  }); 

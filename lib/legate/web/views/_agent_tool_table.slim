@@ -1,0 +1,74 @@
+/ File: lib/legate/web/views/_agent_tool_table.slim
+/ Renders the tools as a card grid layout.
+/ Expects locals:
+/   agent_data (Hash: {name, ...}) - Used only for potential future actions
+/   view_configured_tools (Array<Hash>: Filtered list of configured tool metadata)
+/   mcp_tool_results (Array<Hash>: Raw results from fetch_mcp_tools for error display)
+
+.box.mb-5
+  - if view_configured_tools && !view_configured_tools.empty?
+    .tools-card-grid
+      - view_configured_tools.each do |tool_info|
+        .tool-card
+          .tool-card-header
+            .tool-card-icon
+              - icon_class = case tool_info[:source]
+              - when :native then "fa-gem"
+              - when :mcp then "fa-plug"
+              - else "fa-wrench"
+              span.icon.is-medium
+                i.fas class=icon_class
+            .tool-card-meta
+              - source_tag_class = (tool_info[:source] == :native) ? 'is-info' : 'is-link'
+              span.tag.is-small class="#{source_tag_class} is-light" = tool_info[:source_detail]
+          
+          .tool-card-body
+            h4.tool-card-title
+              - if tool_info[:source] == :native
+                a href="/tools/#{tool_info[:name]}" = tool_info[:name]
+              - else
+                = tool_info[:name]
+            p.tool-card-description= tool_info[:description] || "No description available"
+          
+          .tool-card-footer
+            - if tool_info[:parameters].is_a?(Array) && !tool_info[:parameters].empty? && tool_info[:parameters].all? { |p| p.is_a?(Hash) }
+              .tool-card-params
+                span.icon.is-small
+                  i.fas.fa-sliders-h
+                span.tool-param-count = "#{tool_info[:parameters].size} parameter#{'s' if tool_info[:parameters].size != 1}"
+                .tool-param-details
+                  - tool_info[:parameters].each do |param|
+                    .tool-param
+                      code= param[:name]
+                      span.tool-param-type= param[:type]
+                      - if param[:required]
+                        span.tag.is-danger.is-light.is-small required
+            - else
+              .tool-card-params
+                span.icon.is-small.has-text-grey-light
+                  i.fas.fa-sliders-h
+                span.has-text-grey No parameters
+
+  - else
+    .tools-empty-state
+      .tools-empty-icon
+        span.icon.is-large.has-text-grey-light
+          i.fas.fa-3x.fa-toolbox
+      h4.tools-empty-title No Tools Configured
+      p.tools-empty-text This agent doesn't have any tools configured yet.
+      p.tools-empty-hint
+        | Tools give agents the ability to perform actions like searching the web, 
+        | reading files, or calling external APIs.
+
+  / --- Display MCP Server Errors (if any) ---
+  - if defined?(mcp_tool_results) && mcp_tool_results.any? { |r| r[:status] == :error }
+    .tools-mcp-errors.mt-5
+      h5.tools-mcp-errors-title
+        span.icon.is-small.mr-2
+          i.fas.fa-exclamation-triangle
+        | MCP Server Issues
+      - mcp_tool_results.each do |result|
+        - if result[:status] == :error
+          .notification.is-danger.is-light.is-size-7.mb-2
+            strong= result[:server]
+            |  — #{result[:message]}

@@ -1,0 +1,112 @@
+/ File: lib/legate/web/views/auth.slim
+.content.has-text-centered.mb-6
+  h1.title.is-2 Authentication Management
+  p.subtitle.is-4 Configure and manage authentication schemes for Legate agents
+
+- if @auth_manager_available
+  .columns.is-centered.is-multiline
+    .column.is-one-third
+      .card.has-text-centered
+        .card-content
+          span.icon.is-large.has-text-primary.mb-3
+            i.fas.fa-key.fa-3x
+          h2.title.is-4 Schemes
+          p.subtitle.is-6 #{@schemes_count} registered
+          p Manage authentication schemes like OAuth2, API Keys, and Service Accounts
+          .buttons.is-centered.mt-4
+            a.button.is-primary(href="/auth/schemes")
+              span.icon
+                i.fas.fa-eye
+              span View Schemes
+
+    .column.is-one-third
+      .card.has-text-centered
+        .card-content
+          span.icon.is-large.has-text-primary.mb-3
+            i.fas.fa-id-card.fa-3x
+          h2.title.is-4 Credentials
+          p.subtitle.is-6 #{@credentials_count} configured
+          p Securely manage authentication credentials for external services
+          .buttons.is-centered.mt-4
+            a.button.is-primary(href="/auth/credentials")
+              span.icon
+                i.fas.fa-eye
+              span View Credentials
+
+    .column.is-one-third
+      .card.has-text-centered
+        .card-content
+          span.icon.is-large.has-text-primary.mb-3
+            i.fas.fa-sitemap.fa-3x
+          h2.title.is-4 URL Mappings
+          p.subtitle.is-6 #{@mappings_count} configured
+          p Configure which authentication to use for specific URLs and services
+          .buttons.is-centered.mt-4
+            a.button.is-primary(href="/auth/mappings")
+              span.icon
+                i.fas.fa-eye
+              span View Mappings
+
+  .columns.is-centered.mt-5
+    .column.is-one-third
+      .card.has-text-centered
+        .card-content
+          span.icon.is-large.has-text-primary.mb-3
+            i.fas.fa-vial.fa-3x
+          h2.title.is-4 Testing Tools
+          p Test and validate your authentication configurations
+          .buttons.is-centered.mt-4
+            a.button.is-danger(href="/auth/test")
+              span.icon
+                i.fas.fa-play
+              span Test Authentication
+
+    .column.is-one-third
+      .card.has-text-centered
+        .card-content
+          span.icon.is-large.has-text-primary.mb-3
+            i.fas.fa-bug.fa-3x
+          h2.title.is-4 Debug Information
+          p View detailed information about the authentication manager state
+          .buttons.is-centered.mt-4
+            a.button.is-warning(href="/auth/debug")
+              span.icon
+                i.fas.fa-search
+              span Debug Info
+
+- else
+  .columns.is-centered
+    .column.is-half
+      .notification.is-danger
+        h3.title.is-4 Authentication Manager Unavailable
+        p The authentication manager is not available. This could be due to:
+        ul.mt-3
+          li Authentication system not initialized
+          li Missing required dependencies
+          li Configuration error
+        - if @error_message
+          .message.is-danger.mt-4
+            .message-header
+              p Error Details
+            .message-body
+              pre = @error_message
+
+.content.mt-6
+  h2.title.is-4 About Authentication Management
+  .columns
+    .column.is-half
+      .content
+        h3.title.is-5 What is this for?
+        p This authentication management system helps you configure how your Legate agents authenticate with external services.
+        ul
+          li <strong>Schemes</strong>: Different authentication methods (OAuth2, API Keys, etc.)
+          li <strong>Credentials</strong>: The actual authentication data (keys, tokens, etc.)
+          li <strong>URL Mappings</strong>: Rules for which authentication to use for specific services
+    .column.is-half
+      .content
+        h3.title.is-5 Getting Started
+        ol
+          li Configure authentication schemes for the types of services you'll use
+          li Add credentials for your specific accounts and API keys
+          li Set up URL mappings to automatically apply the right authentication
+          li Test your configurations to ensure they work correctly 
