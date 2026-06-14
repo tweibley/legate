@@ -3,7 +3,7 @@
 [![Gem Version](https://badge.fury.io/rb/legate.svg)](https://badge.fury.io/rb/legate)
 [![CI](https://github.com/tweibley/legate/actions/workflows/ci.yml/badge.svg)](https://github.com/tweibley/legate/actions/workflows/ci.yml)
 
-Legate is a framework for building AI agents in Ruby with dynamic tool selection, multi-step planning, and session management.
+Legate (_pronounced like "legit"_ — `/ˈle·jit/` — because it is) is a framework for building AI agents in Ruby with dynamic tool selection, multi-step planning, and session management.
 
 It's **batteries-included** — one gem ships the agent runtime, an LLM planner, a web UI, a CLI, MCP support, and an authentication subsystem. That's a deliberate choice: Legate is a framework, not a micro-library, so it bundles the dependencies those pieces need (Sinatra/Puma for the web UI, Thor for the CLI, and so on). If you only want the library, `require 'legate'` loads **just the core** — the web stack is opt-in via `require 'legate/web'` and the CLI via the `legate` executable, so library-only users never load Sinatra, Puma, or Slim.
 

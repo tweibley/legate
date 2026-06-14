@@ -373,7 +373,9 @@ RSpec.describe Legate::Agent do
       # Ensure planner_override is nil so the agent creates its own default planner
       agent = create_agent_from_definition(mock_definition, planner_override: nil)
       expect(agent.planner).to be_an_instance_of(Legate::Planner)
-      expect(agent.planner.instance_variable_get(:@model_name)).to eq(mock_definition.model_name)
+      # Assert the model the planner was *configured* with (key-independent), not the
+      # live adapter's model_name, which is nil without an API key (e.g. in CI).
+      expect(agent.planner.instance_variable_get(:@configured_model_name)).to eq(mock_definition.model_name)
     end
 
     it 'correctly initializes fallback_mode from definition' do
