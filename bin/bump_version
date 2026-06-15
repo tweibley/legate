@@ -3,10 +3,10 @@
 
 # Script to bump the version number in all the right places.
 # Usage:
-#   bin/bump_version patch   # 0.6.8 -> 0.6.9
-#   bin/bump_version minor   # 0.6.8 -> 0.7.0
-#   bin/bump_version major   # 0.6.8 -> 1.0.0
-#   bin/bump_version 0.7.0   # Set specific version
+#   bin/bump_version patch   # 0.1.0 -> 0.1.1
+#   bin/bump_version minor   # 0.1.0 -> 0.2.0
+#   bin/bump_version major   # 0.1.0 -> 1.0.0
+#   bin/bump_version 0.2.0   # Set specific version
 
 require 'fileutils'
 
@@ -127,9 +127,9 @@ if ARGV.empty?
   puts "Usage: #{$PROGRAM_NAME} <bump_type>"
   puts ''
   puts 'Bump types:'
-  puts '  patch   - Bump patch version (0.6.8 -> 0.6.9)'
-  puts '  minor   - Bump minor version (0.6.8 -> 0.7.0)'
-  puts '  major   - Bump major version (0.6.8 -> 1.0.0)'
+  puts '  patch   - Bump patch version (0.1.0 -> 0.1.1)'
+  puts '  minor   - Bump minor version (0.1.0 -> 0.2.0)'
+  puts '  major   - Bump major version (0.1.0 -> 1.0.0)'
   puts '  X.Y.Z   - Set specific version (e.g., 1.0.0)'
   puts ''
   puts "Current version: #{VersionBumper.new.current_version}"
